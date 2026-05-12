@@ -136,6 +136,17 @@ func NewRouter(
 				c.Status(http.StatusNotFound)
 			}
 
+			redirectBasePath := func(c *gin.Context) {
+				target := basePath + "/"
+				if c.Request.URL.RawQuery != "" {
+					target += "?" + c.Request.URL.RawQuery
+				}
+				c.Redirect(http.StatusPermanentRedirect, target)
+			}
+			if basePath != "" {
+				appGroup.GET("", redirectBasePath)
+				appGroup.HEAD("", redirectBasePath)
+			}
 			appGroup.GET("/", serveIndex)
 			appGroup.GET("/assets/*filepath", serveAsset)
 			appGroup.HEAD("/assets/*filepath", serveAsset)

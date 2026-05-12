@@ -334,6 +334,24 @@ func TestSubpathStaticRoutesServeOnlyUnderPrefix(t *testing.T) {
 	}
 }
 
+func TestSubpathStaticRouteRedirectsBareBasePath(t *testing.T) {
+	staticFS := testStaticFS(t, map[string]string{
+		"index.html": `<html><head><script>window.__APP_BASE_PATH__ = "__APP_BASE_PATH__";</script></head><body>app</body></html>`,
+	})
+
+	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{BasePath: "/cpa"}, nil, "/cpa")
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/cpa?range=7d", nil)
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusPermanentRedirect {
+		t.Fatalf("expected bare base path redirect, got %d", resp.Code)
+	}
+	if location := resp.Header().Get("Location"); location != "/cpa/?range=7d" {
+		t.Fatalf("expected redirect to preserve base path and query, got %q", location)
+	}
+}
+
 func TestCleanURLPathUsesSlashSemantics(t *testing.T) {
 	if cleaned := cleanURLPath("/cpa//dashboard/../assets/app.js"); cleaned != "/cpa/assets/app.js" {
 		t.Fatalf("expected slash-normalized URL path, got %q", cleaned)
