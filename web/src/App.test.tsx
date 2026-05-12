@@ -52,6 +52,71 @@ describe('App', () => {
             { label: '05-11', total_cost: 0.24, total_tokens: 1000000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
             { label: '05-12', total_cost: 0.25, total_tokens: 1100100, request_count: 181, success_count: 177, failure_count: 4, cost_available: false, cost_status: 'partial' },
           ],
+          key_alias_breakdown: [
+            {
+              label: 'Shared Alias',
+              alias: 'Shared Alias',
+              traceability: 'sk-a*******3456 · OpenAI',
+              identity: 'sk-a*******3456',
+              auth_type: 2,
+              auth_type_name: 'apikey',
+              type: 'openai',
+              provider: 'OpenAI',
+              is_deleted: false,
+              total_cost: 2,
+              total_tokens: 2000000,
+              request_count: 20,
+              success_count: 20,
+              failure_count: 0,
+              success_rate: 100,
+              last_used_at: '2026-05-12T23:59:59Z',
+              cost_available: true,
+              cost_status: 'available',
+              trend: [{ label: '05-12', total_cost: 2, total_tokens: 2000000, cost_available: true, cost_status: 'available' }],
+            },
+            {
+              label: 'Shared Alias',
+              alias: 'Shared Alias',
+              traceability: 'sk-b*******3456 · Anthropic',
+              identity: 'sk-b*******3456',
+              auth_type: 2,
+              auth_type_name: 'apikey',
+              type: 'claude',
+              provider: 'Anthropic',
+              is_deleted: false,
+              total_cost: 1,
+              total_tokens: 1000000,
+              request_count: 10,
+              success_count: 9,
+              failure_count: 1,
+              success_rate: 90,
+              last_used_at: '2026-05-12T22:00:00Z',
+              cost_available: true,
+              cost_status: 'available',
+              trend: [{ label: '05-12', total_cost: 1, total_tokens: 1000000, cost_available: true, cost_status: 'available' }],
+            },
+            {
+              label: 'Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout',
+              alias: '',
+              traceability: 'sk-m*******3456',
+              identity: 'sk-m*******3456',
+              auth_type: 2,
+              auth_type_name: 'apikey',
+              type: '',
+              provider: '',
+              is_deleted: true,
+              total_cost: 0,
+              total_tokens: 3000000,
+              request_count: 3,
+              success_count: 3,
+              failure_count: 0,
+              success_rate: 100,
+              last_used_at: null,
+              cost_available: false,
+              cost_status: 'unavailable',
+              trend: [{ label: '05-12', total_cost: 0, total_tokens: 3000000, cost_available: false, cost_status: 'unavailable' }],
+            },
+          ],
         }))
       }
       return new Response(null, { status: 404 })
@@ -70,10 +135,41 @@ describe('App', () => {
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
     expect(screen.getByText('Model Distribution')).toBeInTheDocument()
     expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
-    expect(screen.getAllByText('Agent Research')).toHaveLength(2)
-    expect(screen.getByText('sk-cpa...7A91 · codex')).toBeInTheDocument()
-    expect(screen.getByText('4.92M tokens')).toBeInTheDocument()
+    expect(screen.getAllByText('Shared Alias')).toHaveLength(2)
+    expect(screen.getByText('sk-a*******3456 · OpenAI')).toBeInTheDocument()
+    expect(screen.getByText('sk-b*******3456 · Anthropic')).toBeInTheDocument()
+    expect(screen.getByText('Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout')).toBeInTheDocument()
+    expect(screen.getByText('Cost unavailable')).toBeInTheDocument()
+    expect(screen.getByText('Deleted')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d')
+  })
+
+  it('renders an empty key alias ranking state', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/analytics/summary')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 0,
+            total_tokens: 0,
+            request_count: 0,
+            success_count: 0,
+            failure_count: 0,
+            success_rate: 0,
+            cost_available: true,
+            cost_status: 'available',
+          },
+          trend: [],
+          key_alias_breakdown: [],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByText('No key alias usage in this range')).toBeInTheDocument()
   })
 
   it('renders unavailable analytics cost as unknown instead of zero currency', async () => {

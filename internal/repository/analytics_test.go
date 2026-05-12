@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"math"
 	"testing"
 	"time"
@@ -237,5 +238,91 @@ func TestBuildAnalyticsSummaryWithFilterReturnsEmptyState(t *testing.T) {
 	}
 	if len(snapshot.Trend) != 0 {
 		t.Fatalf("expected empty trend, got %+v", snapshot.Trend)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterAggregatesKeyAliasBreakdownByStableIdentity(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(7 * 24 * time.Hour)
+	deletedAt := start.Add(-time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	identities := []entities.UsageIdentity{
+		{Name: "OpenAI Team", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "sk-alpha-123456", Type: "openai", Provider: "OpenAI"},
+		{Name: "Anthropic Team", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "sk-beta-123456", Type: "claude", Provider: "Anthropic"},
+		{Name: "Deleted Team", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "sk-deleted-123456", Type: "codex", Provider: "Codex", IsDeleted: true, DeletedAt: &deletedAt},
+	}
+	if err := db.Create(&identities).Error; err != nil {
+		t.Fatalf("create identities: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha-123456", "Shared Alias", start); err != nil {
+		t.Fatalf("set alpha alias: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-beta-123456", "Shared Alias", start); err != nil {
+		t.Fatalf("set beta alias: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-deleted-123456", "Historical Alias", start); err != nil {
+		t.Fatalf("set deleted alias: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "alpha-1", AuthType: "apikey", AuthIndex: "sk-alpha-123456", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000},
+		{EventKey: "beta-1", AuthType: "apikey", AuthIndex: "sk-beta-123456", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000, Failed: true},
+		{EventKey: "missing-alias-1", AuthType: "apikey", AuthIndex: "sk-missing-123456", Model: "missing-model", Timestamp: start.Add(4 * time.Hour), InputTokens: 3_000_000, TotalTokens: 3_000_000},
+		{EventKey: "deleted-1", AuthType: "apikey", AuthIndex: "sk-deleted-123456", Model: "priced-model", Timestamp: start.Add(5 * time.Hour), InputTokens: 500_000, TotalTokens: 500_000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	rows := snapshot.KeyAliasBreakdown
+	if len(rows) != 4 {
+		t.Fatalf("expected four key alias rows, got %+v", rows)
+	}
+	if rows[0].Identity != "sk-alpha-123456" || rows[0].Alias != "Shared Alias" || rows[0].TotalCost != 2 || rows[0].RequestCount != 1 {
+		t.Fatalf("expected first row ordered by cost for alpha, got %+v", rows[0])
+	}
+	if rows[1].Identity != "sk-beta-123456" || rows[1].Alias != "Shared Alias" || rows[1].FailureCount != 1 {
+		t.Fatalf("expected duplicate alias to remain traceable as beta row, got %+v", rows[1])
+	}
+	if rows[2].Identity != "sk-deleted-123456" || !rows[2].IsDeleted || rows[2].Alias != "Historical Alias" {
+		t.Fatalf("expected deleted identity to stay in historical breakdown, got %+v", rows[2])
+	}
+	if rows[3].Identity != "sk-missing-123456" || rows[3].Alias != "" || rows[3].CostStatus != "unavailable" || rows[3].Trend[0].TotalTokens != 3_000_000 {
+		t.Fatalf("expected missing alias row with unavailable cost and token trend, got %+v", rows[3])
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterOrdersKeyAliasBreakdownByTokensWhenCostUnavailable(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "low-token-unpriced", AuthType: "apikey", AuthIndex: "sk-low-123456", Model: "missing-model", Timestamp: start.Add(time.Hour), InputTokens: 10, TotalTokens: 10},
+		{EventKey: "high-token-unpriced", AuthType: "apikey", AuthIndex: "sk-high-123456", Model: "missing-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1000, TotalTokens: 1000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.KeyAliasBreakdown) != 2 {
+		t.Fatalf("expected two key alias rows, got %+v", snapshot.KeyAliasBreakdown)
+	}
+	if snapshot.KeyAliasBreakdown[0].Identity != "sk-high-123456" || snapshot.KeyAliasBreakdown[0].CostStatus != "unavailable" {
+		t.Fatalf("expected unavailable cost rows to fall back to token ordering, got %+v", snapshot.KeyAliasBreakdown)
 	}
 }

@@ -15,6 +15,10 @@ export type AliasRow = {
   requests: number
   successRate: number
   trend: number[]
+  costAvailable?: boolean
+  costStatus?: 'available' | 'partial' | 'unavailable'
+  failures?: number
+  isDeleted?: boolean
 }
 
 export type ModelRow = {

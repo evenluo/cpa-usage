@@ -32,7 +32,39 @@ type AnalyticsTrendPointRecord struct {
 	CostStatus    string
 }
 
+type AnalyticsKeyAliasTrendPointRecord struct {
+	Label         string
+	TotalCost     float64
+	TotalTokens   int64
+	CostAvailable bool
+	CostStatus    string
+}
+
+type AnalyticsKeyAliasBreakdownRecord struct {
+	AuthType      int
+	Identity      string
+	Alias         string
+	Name          string
+	AuthTypeName  string
+	Type          string
+	Provider      string
+	Prefix        string
+	BaseURL       string
+	IsDeleted     bool
+	TotalCost     float64
+	TotalTokens   int64
+	RequestCount  int64
+	SuccessCount  int64
+	FailureCount  int64
+	SuccessRate   float64
+	LastUsedAt    *time.Time
+	CostAvailable bool
+	CostStatus    string
+	Trend         []AnalyticsKeyAliasTrendPointRecord
+}
+
 type AnalyticsSummarySnapshot struct {
-	Summary AnalyticsSummaryRecord
-	Trend   []AnalyticsTrendPointRecord
+	Summary           AnalyticsSummaryRecord
+	Trend             []AnalyticsTrendPointRecord
+	KeyAliasBreakdown []AnalyticsKeyAliasBreakdownRecord
 }

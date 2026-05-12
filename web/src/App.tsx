@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsTrigger } from '@/components/ui/tabs'
-import { type TrendPoint, aliasRows, healthBlocks, insightChips, modelRows } from '@/data/analyticsPrototype'
+import { type AliasRow, type TrendPoint, healthBlocks, insightChips, modelRows } from '@/data/analyticsPrototype'
 
 import './index.css'
 
@@ -91,14 +91,46 @@ type AnalyticsTrendPointPayload = {
   cost_status: 'available' | 'partial' | 'unavailable'
 }
 
+type AnalyticsKeyAliasTrendPointPayload = {
+  label: string
+  total_cost: number
+  total_tokens: number
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
+type AnalyticsKeyAliasPayload = {
+  label: string
+  alias: string
+  traceability: string
+  identity: string
+  auth_type: number
+  auth_type_name: string
+  type: string
+  provider: string
+  is_deleted: boolean
+  total_cost: number
+  total_tokens: number
+  request_count: number
+  success_count: number
+  failure_count: number
+  success_rate: number
+  last_used_at: string | null
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+  trend: AnalyticsKeyAliasTrendPointPayload[]
+}
+
 type AnalyticsSummaryResponse = {
   summary: AnalyticsSummaryPayload
   trend: AnalyticsTrendPointPayload[]
+  key_alias_breakdown?: AnalyticsKeyAliasPayload[]
 }
 
 type AnalyticsState = {
   summary: AnalyticsSummaryPayload
   trend: TrendPoint[]
+  keyAliases: AliasRow[]
 }
 
 const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
@@ -113,7 +145,7 @@ const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
 }
 
 function useAnalyticsSummary(enabled: boolean) {
-  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [] })
+  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [] })
 
   useEffect(() => {
     if (!enabled) {
@@ -140,11 +172,25 @@ function useAnalyticsSummary(enabled: boolean) {
             requests: point.request_count,
             failures: point.failure_count,
           })),
+          keyAliases: (payload.key_alias_breakdown ?? []).map((row) => ({
+            alias: row.label,
+            key: row.traceability || row.identity,
+            provider: row.provider || row.type || row.auth_type_name,
+            cost: row.total_cost,
+            tokens: row.total_tokens,
+            requests: row.request_count,
+            successRate: row.success_rate,
+            failures: row.failure_count,
+            isDeleted: row.is_deleted,
+            costAvailable: row.cost_available,
+            costStatus: row.cost_status,
+            trend: row.trend.map((point) => (point.cost_status === 'unavailable' ? point.total_tokens : point.total_cost)),
+          })),
         })
       })
       .catch(() => {
         if (active) {
-          setAnalytics({ summary: emptyAnalyticsSummary, trend: [] })
+          setAnalytics({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [] })
         }
       })
     return () => {
@@ -160,6 +206,7 @@ function App() {
   const analytics = useAnalyticsSummary(route !== '/keys')
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
+  const analyticsAliases = analytics.keyAliases
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -308,22 +355,27 @@ function App() {
               <CardContent>
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
                   <div className="h-[250px] min-w-0">
-                    <AliasRankingChart rows={aliasRows} />
+                    <AliasRankingChart rows={analyticsAliases} />
                   </div>
                   <div className="grid gap-2">
-                    {aliasRows.map((row) => (
+                    {analyticsAliases.length === 0 ? (
+                      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                        No key alias usage in this range
+                      </div>
+                    ) : analyticsAliases.map((row) => (
                       <div className="grid grid-cols-[minmax(0,1fr)_86px_96px] items-center gap-3 rounded-md border border-border p-3" key={row.key}>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">{row.alias}</p>
                           <p className="truncate text-xs text-muted-foreground">
-                            {row.key} · {row.provider}
+                            {row.key}
                           </p>
+                          {row.isDeleted ? <Badge variant="outline">Deleted</Badge> : null}
                         </div>
                         <div className="h-9">
                           <Sparkline values={row.trend} />
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-semibold">${row.cost.toFixed(0)}</p>
+                          <p className="text-sm font-semibold">{row.costAvailable === false ? 'Cost unavailable' : formatCost(row.cost)}</p>
                           <p className="text-xs text-muted-foreground">{formatCompact(row.tokens, 2)} tokens</p>
                           <p className="text-xs text-muted-foreground">{row.successRate}% success</p>
                         </div>

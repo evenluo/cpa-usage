@@ -2,8 +2,11 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
+	"cpa-usage/internal/entities"
+	"cpa-usage/internal/redact"
 	"cpa-usage/internal/repository/dto"
 	"cpa-usage/internal/service"
 	servicedto "cpa-usage/internal/service/dto"
@@ -17,6 +20,7 @@ type analyticsSummaryResponse struct {
 	Timezone   string                  `json:"timezone"`
 	Summary    analyticsSummaryPayload `json:"summary"`
 	Trend      []analyticsTrendPoint   `json:"trend"`
+	KeyAliases []analyticsKeyAliasRow  `json:"key_alias_breakdown"`
 }
 
 type analyticsSummaryPayload struct {
@@ -41,6 +45,36 @@ type analyticsTrendPoint struct {
 	FailureCount  int64     `json:"failure_count"`
 	CostAvailable bool      `json:"cost_available"`
 	CostStatus    string    `json:"cost_status"`
+}
+
+type analyticsKeyAliasTrendPoint struct {
+	Label         string  `json:"label"`
+	TotalCost     float64 `json:"total_cost"`
+	TotalTokens   int64   `json:"total_tokens"`
+	CostAvailable bool    `json:"cost_available"`
+	CostStatus    string  `json:"cost_status"`
+}
+
+type analyticsKeyAliasRow struct {
+	Label         string                         `json:"label"`
+	Alias         string                         `json:"alias"`
+	Traceability  string                         `json:"traceability"`
+	Identity      string                         `json:"identity"`
+	AuthType      entities.UsageIdentityAuthType `json:"auth_type"`
+	AuthTypeName  string                         `json:"auth_type_name"`
+	Type          string                         `json:"type"`
+	Provider      string                         `json:"provider"`
+	IsDeleted     bool                           `json:"is_deleted"`
+	TotalCost     float64                        `json:"total_cost"`
+	TotalTokens   int64                          `json:"total_tokens"`
+	RequestCount  int64                          `json:"request_count"`
+	SuccessCount  int64                          `json:"success_count"`
+	FailureCount  int64                          `json:"failure_count"`
+	SuccessRate   float64                        `json:"success_rate"`
+	LastUsedAt    *time.Time                     `json:"last_used_at,omitempty"`
+	CostAvailable bool                           `json:"cost_available"`
+	CostStatus    string                         `json:"cost_status"`
+	Trend         []analyticsKeyAliasTrendPoint  `json:"trend"`
 }
 
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
@@ -74,7 +108,8 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 			CostAvailable: true,
 			CostStatus:    dto.AnalyticsCostStatusAvailable,
 		},
-		Trend: []analyticsTrendPoint{},
+		Trend:      []analyticsTrendPoint{},
+		KeyAliases: []analyticsKeyAliasRow{},
 	}
 	if snapshot == nil {
 		return response
@@ -104,5 +139,70 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 			CostStatus:    point.CostStatus,
 		})
 	}
+	response.KeyAliases = make([]analyticsKeyAliasRow, 0, len(snapshot.KeyAliasBreakdown))
+	for _, row := range snapshot.KeyAliasBreakdown {
+		response.KeyAliases = append(response.KeyAliases, mapAnalyticsKeyAliasRow(row))
+	}
 	return response
+}
+
+func mapAnalyticsKeyAliasRow(row servicedto.AnalyticsKeyAliasBreakdown) analyticsKeyAliasRow {
+	authType := entities.UsageIdentityAuthType(row.AuthType)
+	identity := analyticsMaskedIdentity(authType, row.Identity)
+	label := strings.TrimSpace(row.Alias)
+	if label == "" {
+		label = usageIdentityDisplayName(entities.UsageIdentity{
+			Name:     row.Name,
+			AuthType: authType,
+			Type:     row.Type,
+			Provider: row.Provider,
+			Prefix:   row.Prefix,
+			BaseURL:  row.BaseURL,
+		})
+	}
+	if strings.TrimSpace(label) == "" {
+		label = identity
+	}
+	traceability := identity
+	if strings.TrimSpace(row.Provider) != "" {
+		traceability += " · " + strings.TrimSpace(row.Provider)
+	}
+	trend := make([]analyticsKeyAliasTrendPoint, 0, len(row.Trend))
+	for _, point := range row.Trend {
+		trend = append(trend, analyticsKeyAliasTrendPoint{
+			Label:         point.Label,
+			TotalCost:     point.TotalCost,
+			TotalTokens:   point.TotalTokens,
+			CostAvailable: point.CostAvailable,
+			CostStatus:    point.CostStatus,
+		})
+	}
+	return analyticsKeyAliasRow{
+		Label:         label,
+		Alias:         row.Alias,
+		Traceability:  traceability,
+		Identity:      identity,
+		AuthType:      authType,
+		AuthTypeName:  row.AuthTypeName,
+		Type:          row.Type,
+		Provider:      row.Provider,
+		IsDeleted:     row.IsDeleted,
+		TotalCost:     row.TotalCost,
+		TotalTokens:   row.TotalTokens,
+		RequestCount:  row.RequestCount,
+		SuccessCount:  row.SuccessCount,
+		FailureCount:  row.FailureCount,
+		SuccessRate:   row.SuccessRate,
+		LastUsedAt:    row.LastUsedAt,
+		CostAvailable: row.CostAvailable,
+		CostStatus:    row.CostStatus,
+		Trend:         trend,
+	}
+}
+
+func analyticsMaskedIdentity(authType entities.UsageIdentityAuthType, identity string) string {
+	if authType == entities.UsageIdentityAuthTypeAIProvider {
+		return redact.APIKeyDisplayName(identity)
+	}
+	return strings.TrimSpace(identity)
 }

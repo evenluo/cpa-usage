@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"cpa-usage/internal/entities"
 	servicedto "cpa-usage/internal/service/dto"
 	"github.com/gin-gonic/gin"
 )
@@ -53,6 +54,31 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CostAvailable: true,
 			CostStatus:    "available",
 		}},
+		KeyAliasBreakdown: []servicedto.AnalyticsKeyAliasBreakdown{{
+			AuthType:      int(entities.UsageIdentityAuthTypeAIProvider),
+			Identity:      "sk-alpha-123456",
+			Alias:         "Shared Alias",
+			Name:          "OpenAI Team",
+			AuthTypeName:  "apikey",
+			Type:          "openai",
+			Provider:      "OpenAI",
+			TotalCost:     2.45,
+			TotalTokens:   2_100_100,
+			RequestCount:  3,
+			SuccessCount:  2,
+			FailureCount:  1,
+			SuccessRate:   66.6666666667,
+			LastUsedAt:    &end,
+			CostAvailable: false,
+			CostStatus:    "partial",
+			Trend: []servicedto.AnalyticsKeyAliasTrendPoint{{
+				Label:         "2026-05-11",
+				TotalCost:     2.45,
+				TotalTokens:   2_100_100,
+				CostAvailable: false,
+				CostStatus:    "partial",
+			}},
+		}},
 	}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
@@ -75,6 +101,11 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"cost_available":false`,
 		`"cost_status":"partial"`,
 		`"label":"2026-05-11"`,
+		`"key_alias_breakdown":[`,
+		`"label":"Shared Alias"`,
+		`"traceability":"sk-a*******3456 · OpenAI"`,
+		`"identity":"sk-a*******3456"`,
+		`"last_used_at":"2026-05-12T23:59:59Z"`,
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected response to contain %s, got %s", expected, body)

@@ -45,6 +45,41 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			CostStatus:    point.CostStatus,
 		})
 	}
+	keyAliasBreakdown := make([]servicedto.AnalyticsKeyAliasBreakdown, 0, len(snapshot.KeyAliasBreakdown))
+	for _, row := range snapshot.KeyAliasBreakdown {
+		trend := make([]servicedto.AnalyticsKeyAliasTrendPoint, 0, len(row.Trend))
+		for _, point := range row.Trend {
+			trend = append(trend, servicedto.AnalyticsKeyAliasTrendPoint{
+				Label:         point.Label,
+				TotalCost:     point.TotalCost,
+				TotalTokens:   point.TotalTokens,
+				CostAvailable: point.CostAvailable,
+				CostStatus:    point.CostStatus,
+			})
+		}
+		keyAliasBreakdown = append(keyAliasBreakdown, servicedto.AnalyticsKeyAliasBreakdown{
+			AuthType:      row.AuthType,
+			Identity:      row.Identity,
+			Alias:         row.Alias,
+			Name:          row.Name,
+			AuthTypeName:  row.AuthTypeName,
+			Type:          row.Type,
+			Provider:      row.Provider,
+			Prefix:        row.Prefix,
+			BaseURL:       row.BaseURL,
+			IsDeleted:     row.IsDeleted,
+			TotalCost:     row.TotalCost,
+			TotalTokens:   row.TotalTokens,
+			RequestCount:  row.RequestCount,
+			SuccessCount:  row.SuccessCount,
+			FailureCount:  row.FailureCount,
+			SuccessRate:   row.SuccessRate,
+			LastUsedAt:    row.LastUsedAt,
+			CostAvailable: row.CostAvailable,
+			CostStatus:    row.CostStatus,
+			Trend:         trend,
+		})
+	}
 	return &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
 			TotalCost:     snapshot.Summary.TotalCost,
@@ -56,6 +91,7 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			CostAvailable: snapshot.Summary.CostAvailable,
 			CostStatus:    snapshot.Summary.CostStatus,
 		},
-		Trend: trend,
+		Trend:             trend,
+		KeyAliasBreakdown: keyAliasBreakdown,
 	}, nil
 }
