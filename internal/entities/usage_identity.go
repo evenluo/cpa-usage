@@ -43,6 +43,9 @@ type UsageIdentity struct {
 	LastUsedAt                 *time.Time
 	StatsUpdatedAt             *time.Time
 
+	TotalCost     float64 `gorm:"-"`
+	CostAvailable bool    `gorm:"-"`
+
 	IsDeleted bool
 	CreatedAt time.Time
 	UpdatedAt time.Time

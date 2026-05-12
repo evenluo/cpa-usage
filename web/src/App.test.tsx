@@ -57,7 +57,7 @@ describe('App', () => {
     window.history.replaceState({}, '', '/keys')
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url.includes('/api/v1/usage/identities/page')) {
+      if (url.includes('/api/v1/usage/identities/page') && url.includes('page=1')) {
         return new Response(JSON.stringify({
           identities: [
             {
@@ -75,6 +75,16 @@ describe('App', () => {
               cost_available: true,
               last_used_at: '2026-05-13T08:00:00Z',
             },
+          ],
+          total_count: 2,
+          page: 1,
+          page_size: 100,
+          total_pages: 2,
+        }))
+      }
+      if (url.includes('/api/v1/usage/identities/page') && url.includes('page=2')) {
+        return new Response(JSON.stringify({
+          identities: [
             {
               id: 43,
               name: 'Claude Desktop',
@@ -92,9 +102,9 @@ describe('App', () => {
             },
           ],
           total_count: 2,
-          page: 1,
+          page: 2,
           page_size: 100,
-          total_pages: 1,
+          total_pages: 2,
         }))
       }
       if (url.includes('/api/v1/usage/identities/42/alias') && init?.method === 'PUT') {
@@ -113,8 +123,10 @@ describe('App', () => {
     expect(screen.getByText('Agent Research')).toBeInTheDocument()
     expect(screen.getByText('sk-cpa...7A91')).toBeInTheDocument()
     expect(screen.getByText('OpenAI')).toBeInTheDocument()
+    expect(screen.getByText('Claude Desktop')).toBeInTheDocument()
     expect(screen.getByText('4.92M tokens')).toBeInTheDocument()
     expect(screen.getByText('$18.45')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/usage/identities/page?page=2&page_size=100')
 
     fireEvent.change(screen.getByPlaceholderText('Search alias or key'), { target: { value: 'agent' } })
     expect(screen.getByText('Agent Research')).toBeInTheDocument()

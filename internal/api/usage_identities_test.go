@@ -174,13 +174,15 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 
 func TestUsageIdentitiesPageRouteIncludesLocalAlias(t *testing.T) {
 	identity := entities.UsageIdentity{
-		ID:           42,
-		Name:         "Provider Name",
-		AuthType:     entities.UsageIdentityAuthTypeAIProvider,
-		AuthTypeName: "apikey",
-		Identity:     "sk-live-secret-value",
-		Type:         "openai",
-		Provider:     "OpenAI",
+		ID:            42,
+		Name:          "Provider Name",
+		AuthType:      entities.UsageIdentityAuthTypeAIProvider,
+		AuthTypeName:  "apikey",
+		Identity:      "sk-live-secret-value",
+		Type:          "openai",
+		Provider:      "OpenAI",
+		TotalCost:     18.45,
+		CostAvailable: true,
 	}
 	aliasProvider := &keyAliasStub{aliases: map[service.UsageIdentityAliasKey]string{
 		{AuthType: identity.AuthType, Identity: identity.Identity}: "Agent Research",
@@ -200,6 +202,9 @@ func TestUsageIdentitiesPageRouteIncludesLocalAlias(t *testing.T) {
 	}
 	if !contains(body, `"alias":"Agent Research"`) {
 		t.Fatalf("expected alias in response body: %s", body)
+	}
+	if !contains(body, `"total_cost":18.45`) || !contains(body, `"cost_available":true`) {
+		t.Fatalf("expected cost fields in response body: %s", body)
 	}
 }
 

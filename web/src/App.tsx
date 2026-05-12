@@ -328,6 +328,26 @@ type KeyIdentity = {
 
 type KeyIdentityPage = {
   identities: KeyIdentity[]
+  total_pages?: number
+}
+
+const keyIdentityPageSize = 100
+
+async function fetchKeyIdentityPage(page: number) {
+  const response = await fetch(apiPath(`/usage/identities/page?page=${page}&page_size=${keyIdentityPageSize}`))
+  if (!response.ok) {
+    throw new Error('load keys failed')
+  }
+  return response.json() as Promise<KeyIdentityPage>
+}
+
+async function fetchAllKeyIdentities() {
+  const firstPage = await fetchKeyIdentityPage(1)
+  const totalPages = Math.max(1, Math.trunc(firstPage.total_pages ?? 1))
+  const remainingPages = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, index) => fetchKeyIdentityPage(index + 2)),
+  )
+  return [firstPage, ...remainingPages].flatMap((page) => page.identities ?? [])
 }
 
 function KeysWorkspace() {
@@ -339,16 +359,10 @@ function KeysWorkspace() {
 
   useEffect(() => {
     let active = true
-    fetch(apiPath('/usage/identities/page?page=1&page_size=100'))
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('load keys failed')
-        }
-        return response.json() as Promise<KeyIdentityPage>
-      })
-      .then((page) => {
+    fetchAllKeyIdentities()
+      .then((identities) => {
         if (active) {
-          setKeys(page.identities ?? [])
+          setKeys(identities)
         }
       })
       .catch(() => {

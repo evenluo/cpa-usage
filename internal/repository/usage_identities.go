@@ -127,6 +127,9 @@ func ListActiveUsageIdentitiesPage(ctx context.Context, db *gorm.DB, request Lis
 	if err := query.Order("total_requests DESC").Order("id ASC").Offset((page - 1) * pageSize).Limit(pageSize).Find(&identities).Error; err != nil {
 		return nil, 0, fmt.Errorf("list active usage identities page: %w", err)
 	}
+	if err := attachUsageIdentityCosts(ctx, db, identities); err != nil {
+		return nil, 0, err
+	}
 	return identities, total, nil
 }
 
@@ -267,18 +270,133 @@ func aggregateUsageIdentityDelta(tx *gorm.DB, identity entities.UsageIdentity) (
 }
 
 func usageIdentityEventsQuery(query *gorm.DB, identity entities.UsageIdentity) (*gorm.DB, bool) {
-	var eventAuthType string
-	switch identity.AuthType {
-	case entities.UsageIdentityAuthTypeAuthFile:
-		eventAuthType = "oauth"
-	case entities.UsageIdentityAuthTypeAIProvider:
-		eventAuthType = "apikey"
-	default:
+	eventAuthType, ok := usageIdentityEventAuthType(identity.AuthType)
+	if !ok {
 		return query, false
 	}
 
 	// usage_events 和 usage_identities 只通过 auth_index 与 identity 精确关联。
 	return query.Where("auth_type = ? AND auth_index = ?", eventAuthType, identity.Identity), true
+}
+
+func usageIdentityEventAuthType(authType entities.UsageIdentityAuthType) (string, bool) {
+	switch authType {
+	case entities.UsageIdentityAuthTypeAuthFile:
+		return "oauth", true
+	case entities.UsageIdentityAuthTypeAIProvider:
+		return "apikey", true
+	default:
+		return "", false
+	}
+}
+
+type usageIdentityCostKey struct {
+	EventAuthType string
+	AuthIndex     string
+}
+
+type usageIdentityCostAggregate struct {
+	AuthType     string `gorm:"column:auth_type"`
+	AuthIndex    string `gorm:"column:auth_index"`
+	Model        string
+	InputTokens  int64
+	OutputTokens int64
+	CachedTokens int64
+}
+
+type usageIdentityCost struct {
+	TotalCost     float64
+	CostAvailable bool
+}
+
+func attachUsageIdentityCosts(ctx context.Context, db *gorm.DB, identities []entities.UsageIdentity) error {
+	if len(identities) == 0 {
+		return nil
+	}
+
+	for index := range identities {
+		identities[index].CostAvailable = true
+	}
+
+	pricingByModel, err := loadPriceSettingsByModel(db.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("load model price settings for usage identities: %w", err)
+	}
+
+	identityIndexes := make(map[usageIdentityCostKey]int, len(identities))
+	authIndexesByEventType := make(map[string][]string)
+	seenAuthIndexes := make(map[usageIdentityCostKey]struct{}, len(identities))
+	for index, identity := range identities {
+		eventAuthType, ok := usageIdentityEventAuthType(identity.AuthType)
+		if !ok {
+			continue
+		}
+		key := usageIdentityCostKey{EventAuthType: eventAuthType, AuthIndex: identity.Identity}
+		identityIndexes[key] = index
+		if _, ok := seenAuthIndexes[key]; ok {
+			continue
+		}
+		seenAuthIndexes[key] = struct{}{}
+		authIndexesByEventType[eventAuthType] = append(authIndexesByEventType[eventAuthType], identity.Identity)
+	}
+	if len(authIndexesByEventType) == 0 {
+		return nil
+	}
+
+	var query *gorm.DB
+	for eventAuthType, authIndexes := range authIndexesByEventType {
+		condition := db.WithContext(ctx).Model(&entities.UsageEvent{}).Where("auth_type = ? AND auth_index IN ?", eventAuthType, authIndexes)
+		if query == nil {
+			query = condition
+			continue
+		}
+		query = query.Or("auth_type = ? AND auth_index IN ?", eventAuthType, authIndexes)
+	}
+
+	var rows []usageIdentityCostAggregate
+	if err := query.
+		Select(`
+			auth_type,
+			auth_index,
+			model,
+			COALESCE(SUM(input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(cached_tokens), 0) AS cached_tokens`).
+		Group("auth_type, auth_index, model").
+		Scan(&rows).Error; err != nil {
+		return fmt.Errorf("aggregate usage identity costs: %w", err)
+	}
+
+	costs := make(map[usageIdentityCostKey]usageIdentityCost, len(identities))
+	for _, row := range rows {
+		key := usageIdentityCostKey{EventAuthType: row.AuthType, AuthIndex: row.AuthIndex}
+		cost := costs[key]
+		if _, ok := costs[key]; !ok {
+			cost.CostAvailable = true
+		}
+		event := entities.UsageEvent{
+			Model:        row.Model,
+			InputTokens:  row.InputTokens,
+			OutputTokens: row.OutputTokens,
+			CachedTokens: row.CachedTokens,
+		}
+		pricing, ok := pricingByModel[strings.TrimSpace(row.Model)]
+		if !ok && usageEventRequiresPricing(event) {
+			cost.CostAvailable = false
+		}
+		cost.TotalCost += calculateUsageEventCost(event, pricing)
+		costs[key] = cost
+	}
+
+	for key, cost := range costs {
+		index, ok := identityIndexes[key]
+		if !ok {
+			continue
+		}
+		identities[index].TotalCost = cost.TotalCost
+		identities[index].CostAvailable = cost.CostAvailable
+	}
+	return nil
 }
 
 func normalizeUsageIdentities(identities []entities.UsageIdentity, authType entities.UsageIdentityAuthType) ([]entities.UsageIdentity, []string) {

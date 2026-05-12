@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"testing"
 	"time"
 
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/repository/dto"
 	"gorm.io/gorm"
 )
 
@@ -706,6 +708,49 @@ func TestUsageIdentityListActivePageOrdersByTotalRequestsDesc(t *testing.T) {
 	}
 	if got := []string{items[0].Identity}; !reflect.DeepEqual(got, []string{"low"}) {
 		t.Fatalf("expected second page sorted by total requests desc, got %v", got)
+	}
+}
+
+func TestUsageIdentityListActivePageIncludesCalculatedCost(t *testing.T) {
+	db := openTestDatabase(t)
+	now := time.Date(2026, 5, 13, 8, 0, 0, 0, time.UTC)
+	rows := []entities.UsageIdentity{
+		{Identity: "authidx-priced", Name: "Priced", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Type: "openai", Provider: "OpenAI", TotalRequests: 2, CreatedAt: now, UpdatedAt: now},
+		{Identity: "authidx-unpriced", Name: "Unpriced", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Type: "openai", Provider: "OpenAI", TotalRequests: 1, CreatedAt: now, UpdatedAt: now},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatalf("seed usage identities: %v", err)
+	}
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	events := []entities.UsageEvent{
+		{EventKey: "priced-1", APIGroupKey: "group", AuthType: "apikey", AuthIndex: "authidx-priced", Model: "priced-model", Timestamp: now, InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 100_000, TotalTokens: 1_600_000},
+		{EventKey: "free-unpriced", APIGroupKey: "group", AuthType: "apikey", AuthIndex: "authidx-priced", Model: "unpriced-zero", Timestamp: now, TotalTokens: 0},
+		{EventKey: "unpriced-1", APIGroupKey: "group", AuthType: "apikey", AuthIndex: "authidx-unpriced", Model: "unpriced-model", Timestamp: now, InputTokens: 1, TotalTokens: 1},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	items, total, err := ListActiveUsageIdentitiesPage(context.Background(), db, ListUsageIdentitiesPageRequest{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list page: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("expected total 2, got %d", total)
+	}
+	byIdentity := usageIdentitiesByIdentity(items)
+	if math.Abs(byIdentity["authidx-priced"].TotalCost-1.95) > 0.000000001 || !byIdentity["authidx-priced"].CostAvailable {
+		t.Fatalf("expected priced identity cost to be available at 1.95, got %+v", byIdentity["authidx-priced"])
+	}
+	if byIdentity["authidx-unpriced"].CostAvailable {
+		t.Fatalf("expected unpriced identity cost to be unavailable, got %+v", byIdentity["authidx-unpriced"])
 	}
 }
 
