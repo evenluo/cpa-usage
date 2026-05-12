@@ -1,16 +1,20 @@
+import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   BarChart3,
   Bell,
   CalendarRange,
-  CircleDollarSign,
+  Check,
   Database,
   KeyRound,
   ListFilter,
+  Pencil,
   Search,
   Settings,
+  Trash2,
   TableProperties,
   WalletCards,
+  X,
 } from 'lucide-react'
 
 import { AliasRankingChart, HealthTimeline, MetricTrendChart, ModelDistributionChart, Sparkline, TokenCostCompareChart } from '@/components/charts'
@@ -67,7 +71,20 @@ function withBasePath(path: string) {
   return `${appBasePath()}${path}`
 }
 
+function currentRoute() {
+  const base = appBasePath()
+  const pathname = window.location.pathname
+  const withoutBase = base && pathname.startsWith(base) ? pathname.slice(base.length) || '/' : pathname
+  return withoutBase === '/keys' ? '/keys' : '/'
+}
+
+function apiPath(path: string) {
+  return withBasePath(`/api/v1${path}`)
+}
+
 function App() {
+  const route = currentRoute()
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="grid min-h-screen grid-cols-[240px_minmax(0,1fr)] max-lg:grid-cols-1">
@@ -85,10 +102,11 @@ function App() {
           <nav className="mt-7 grid gap-1 max-lg:grid-cols-5 max-md:grid-cols-2" aria-label="Primary navigation">
             {navItems.map((item, index) => {
               const Icon = item.icon
+              const active = item.href === route || (route === '/' && index === 0)
               return (
                 <a
                   className={`flex min-h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold ${
-                    index === 0 ? 'bg-emerald-50 text-emerald-700' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    active ? 'bg-emerald-50 text-emerald-700' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                   }`}
                   href={withBasePath(item.href)}
                   key={item.href}
@@ -101,7 +119,11 @@ function App() {
           </nav>
         </aside>
 
-        <section className="min-w-0 px-6 py-5 max-md:px-4" aria-labelledby="analytics-title">
+        <section className="min-w-0 px-6 py-5 max-md:px-4" aria-labelledby={route === '/keys' ? 'keys-title' : 'analytics-title'}>
+          {route === '/keys' ? (
+            <KeysWorkspace />
+          ) : (
+            <>
           <header className="flex items-start justify-between gap-4 max-md:grid">
             <div>
               <p className="text-xs font-semibold uppercase text-muted-foreground">Analytics / 数据分析</p>
@@ -280,10 +302,230 @@ function App() {
               </div>
             </CardContent>
           </Card>
+            </>
+          )}
         </section>
       </div>
     </main>
   )
+}
+
+type KeyIdentity = {
+  id: number
+  name: string
+  displayName: string
+  alias: string
+  auth_type: number
+  auth_type_name: string
+  identity: string
+  type: string
+  provider: string
+  total_tokens: number
+  total_cost: number
+  cost_available: boolean
+  last_used_at: string | null
+}
+
+type KeyIdentityPage = {
+  identities: KeyIdentity[]
+}
+
+function KeysWorkspace() {
+  const [keys, setKeys] = useState<KeyIdentity[]>([])
+  const [query, setQuery] = useState('')
+  const [editingID, setEditingID] = useState<number | null>(null)
+  const [draftAlias, setDraftAlias] = useState('')
+  const [savingID, setSavingID] = useState<number | null>(null)
+
+  useEffect(() => {
+    let active = true
+    fetch(apiPath('/usage/identities/page?page=1&page_size=100'))
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('load keys failed')
+        }
+        return response.json() as Promise<KeyIdentityPage>
+      })
+      .then((page) => {
+        if (active) {
+          setKeys(page.identities ?? [])
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setKeys([])
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const filteredKeys = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    if (!normalized) {
+      return keys
+    }
+    return keys.filter((key) => {
+      const values = [key.alias, key.displayName, key.name, key.identity, key.provider, key.type, key.auth_type_name]
+      return values.some((value) => value.toLowerCase().includes(normalized))
+    })
+  }, [keys, query])
+
+  function startEditing(key: KeyIdentity) {
+    setEditingID(key.id)
+    setDraftAlias(key.alias)
+  }
+
+  async function saveAlias(key: KeyIdentity) {
+    setSavingID(key.id)
+    try {
+      const response = await fetch(apiPath(`/usage/identities/${key.id}/alias`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alias: draftAlias }),
+      })
+      if (!response.ok) {
+        return
+      }
+      const payload = (await response.json()) as { alias: string }
+      setKeys((current) => current.map((item) => (item.id === key.id ? { ...item, alias: payload.alias } : item)))
+      setEditingID(null)
+    } finally {
+      setSavingID(null)
+    }
+  }
+
+  async function clearAlias(key: KeyIdentity) {
+    setSavingID(key.id)
+    try {
+      const response = await fetch(apiPath(`/usage/identities/${key.id}/alias`), { method: 'DELETE' })
+      if (!response.ok) {
+        return
+      }
+      setKeys((current) => current.map((item) => (item.id === key.id ? { ...item, alias: '' } : item)))
+      if (editingID === key.id) {
+        setEditingID(null)
+      }
+    } finally {
+      setSavingID(null)
+    }
+  }
+
+  return (
+    <>
+      <header className="flex items-start justify-between gap-4 max-md:grid">
+        <div>
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Keys / Key 管理</p>
+          <h2 id="keys-title" className="mt-1 text-2xl font-semibold tracking-normal">
+            Key Management
+          </h2>
+        </div>
+        <Badge variant="green">{keys.length} active</Badge>
+      </header>
+
+      <Card className="mt-5">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Key Alias Directory</CardTitle>
+            <CardDescription>Alias labels are stored locally and do not change CPA source data.</CardDescription>
+          </div>
+          <div className="flex min-w-[260px] items-center gap-2 rounded-md border border-border bg-background px-3 py-2 max-md:min-w-0">
+            <Search className="size-4 text-muted-foreground" aria-hidden="true" />
+            <input
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              id="key-search"
+              name="key-search"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search alias or key"
+              value={query}
+            />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-2">
+            {filteredKeys.map((key) => {
+              const label = keyLabel(key)
+              const editing = editingID === key.id
+              return (
+                <div className="grid grid-cols-[minmax(0,1fr)_120px_130px_112px] items-center gap-3 rounded-md border border-border p-3 max-lg:grid-cols-1" key={key.id}>
+                  <div className="min-w-0">
+                    {editing ? (
+                      <input
+                        aria-label={`Alias for ${label}`}
+                        className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-semibold outline-none"
+                        maxLength={80}
+                        onChange={(event) => setDraftAlias(event.target.value)}
+                        value={draftAlias}
+                      />
+                    ) : (
+                      <p className="truncate text-sm font-semibold">{label}</p>
+                    )}
+                    <p className="mt-1 truncate text-xs text-muted-foreground">{key.identity}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge variant="outline">{key.provider}</Badge>
+                      <Badge variant="outline">{key.type}</Badge>
+                      <Badge variant="outline">{key.auth_type_name}</Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Last used</p>
+                    <p className="mt-1 text-sm font-semibold">{formatLastUsed(key.last_used_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">Usage</p>
+                    <p className="mt-1 text-sm font-semibold">{formatCompact(key.total_tokens, 2)} tokens</p>
+                    <p className="text-xs text-muted-foreground">{key.cost_available ? formatCost(key.total_cost) : 'Cost unavailable'}</p>
+                  </div>
+                  <div className="flex justify-end gap-2 max-lg:justify-start">
+                    {editing ? (
+                      <>
+                        <Button aria-label={`Save alias for ${label}`} disabled={savingID === key.id} onClick={() => void saveAlias(key)} size="icon" variant="outline">
+                          <Check className="size-4" aria-hidden="true" />
+                        </Button>
+                        <Button aria-label={`Cancel alias edit for ${label}`} onClick={() => setEditingID(null)} size="icon" variant="outline">
+                          <X className="size-4" aria-hidden="true" />
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button aria-label={`Edit alias for ${label}`} onClick={() => startEditing(key)} size="icon" variant="outline">
+                          <Pencil className="size-4" aria-hidden="true" />
+                        </Button>
+                        <Button aria-label={`Clear alias for ${label}`} disabled={!key.alias || savingID === key.id} onClick={() => void clearAlias(key)} size="icon" variant="outline">
+                          <Trash2 className="size-4" aria-hidden="true" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  )
+}
+
+function keyLabel(key: KeyIdentity) {
+  return key.alias.trim() || key.displayName || key.name || key.identity
+}
+
+function formatCost(value: number) {
+  return `$${value.toLocaleString('en', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
+}
+
+function formatLastUsed(value: string | null) {
+  if (!value) {
+    return 'Never'
+  }
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
 }
 
 function MetricCard({ label, value, caption, tone }: { label: string; value: string; caption: string; tone: 'green' | 'blue' | 'violet' | 'amber' }) {

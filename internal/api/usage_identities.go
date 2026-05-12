@@ -1,12 +1,16 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/redact"
+	"cpa-usage/internal/repository"
 	"cpa-usage/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +31,7 @@ type usageIdentityResponse struct {
 	ID                         uint                           `json:"id"`
 	Name                       string                         `json:"name"`
 	DisplayName                string                         `json:"displayName"`
+	Alias                      string                         `json:"alias"`
 	AuthType                   entities.UsageIdentityAuthType `json:"auth_type"`
 	AuthTypeName               string                         `json:"auth_type_name"`
 	Identity                   string                         `json:"identity"`
@@ -43,6 +48,8 @@ type usageIdentityResponse struct {
 	ReasoningTokens            int64                          `json:"reasoning_tokens"`
 	CachedTokens               int64                          `json:"cached_tokens"`
 	TotalTokens                int64                          `json:"total_tokens"`
+	TotalCost                  float64                        `json:"total_cost"`
+	CostAvailable              bool                           `json:"cost_available"`
 	LastAggregatedUsageEventID uint                           `json:"last_aggregated_usage_event_id"`
 	FirstUsedAt                *time.Time                     `json:"first_used_at,omitempty"`
 	LastUsedAt                 *time.Time                     `json:"last_used_at,omitempty"`
@@ -53,7 +60,11 @@ type usageIdentityResponse struct {
 	DeletedAt                  *time.Time                     `json:"deleted_at,omitempty"`
 }
 
-func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider service.UsageIdentityProvider) {
+type usageIdentityAliasResponse struct {
+	Alias string `json:"alias"`
+}
+
+func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider service.UsageIdentityProvider, keyAliasProvider service.KeyAliasProvider) {
 	router.GET("/usage/identities/page", func(c *gin.Context) {
 		if usageIdentityProvider == nil {
 			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: 1, PageSize: 10})
@@ -71,10 +82,16 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider servi
 			return
 		}
 
+		aliases, err := aliasesForUsageIdentities(c.Request.Context(), keyAliasProvider, result.Items)
+		if err != nil {
+			writeInternalError(c, "list key aliases failed", err)
+			return
+		}
+
 		// 复用统一响应映射，保证分页接口和旧列表接口的字段/脱敏规则一致。
 		response := make([]usageIdentityResponse, 0, len(result.Items))
 		for _, item := range result.Items {
-			response = append(response, mapUsageIdentityResponse(item))
+			response = append(response, mapUsageIdentityResponse(item, aliases))
 		}
 		c.JSON(http.StatusOK, usageIdentitiesPageResponse{
 			Identities: response,
@@ -97,11 +114,76 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider servi
 			return
 		}
 
+		aliases, err := aliasesForUsageIdentities(c.Request.Context(), keyAliasProvider, items)
+		if err != nil {
+			writeInternalError(c, "list key aliases failed", err)
+			return
+		}
+
 		response := make([]usageIdentityResponse, 0, len(items))
 		for _, item := range items {
-			response = append(response, mapUsageIdentityResponse(item))
+			response = append(response, mapUsageIdentityResponse(item, aliases))
 		}
 		c.JSON(http.StatusOK, usageIdentitiesResponse{Identities: response})
+	})
+
+	router.GET("/usage/identities/:id/alias", func(c *gin.Context) {
+		if keyAliasProvider == nil {
+			c.JSON(http.StatusOK, usageIdentityAliasResponse{})
+			return
+		}
+		id, ok := parseUsageIdentityID(c)
+		if !ok {
+			return
+		}
+		alias, err := keyAliasProvider.GetUsageIdentityAlias(c.Request.Context(), id)
+		if err != nil {
+			writeKeyAliasError(c, "get key alias failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: alias})
+	})
+
+	router.PUT("/usage/identities/:id/alias", func(c *gin.Context) {
+		id, ok := parseUsageIdentityID(c)
+		if !ok {
+			return
+		}
+		var request usageIdentityAliasResponse
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid alias payload"})
+			return
+		}
+		if _, err := repository.NormalizeKeyAlias(request.Alias); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "alias must be 80 characters or fewer"})
+			return
+		}
+		if keyAliasProvider == nil {
+			c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: strings.TrimSpace(request.Alias)})
+			return
+		}
+		alias, err := keyAliasProvider.SetUsageIdentityAlias(c.Request.Context(), id, request.Alias)
+		if err != nil {
+			writeKeyAliasError(c, "set key alias failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: alias})
+	})
+
+	router.DELETE("/usage/identities/:id/alias", func(c *gin.Context) {
+		if keyAliasProvider == nil {
+			c.Status(http.StatusNoContent)
+			return
+		}
+		id, ok := parseUsageIdentityID(c)
+		if !ok {
+			return
+		}
+		if err := keyAliasProvider.ClearUsageIdentityAlias(c.Request.Context(), id); err != nil {
+			writeKeyAliasError(c, "clear key alias failed", err)
+			return
+		}
+		c.Status(http.StatusNoContent)
 	})
 }
 
@@ -137,17 +219,46 @@ func totalPages(total int64, pageSize int) int {
 	return int((total + int64(pageSize) - 1) / int64(pageSize))
 }
 
-func mapUsageIdentityResponse(item entities.UsageIdentity) usageIdentityResponse {
+func aliasesForUsageIdentities(ctx context.Context, keyAliasProvider service.KeyAliasProvider, items []entities.UsageIdentity) (map[service.UsageIdentityAliasKey]string, error) {
+	if keyAliasProvider == nil || len(items) == 0 {
+		return map[service.UsageIdentityAliasKey]string{}, nil
+	}
+	return keyAliasProvider.ListAliasesForUsageIdentities(ctx, items)
+}
+
+func parseUsageIdentityID(c *gin.Context) (uint, bool) {
+	value, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || value == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "usage identity id must be a positive integer"})
+		return 0, false
+	}
+	return uint(value), true
+}
+
+func writeKeyAliasError(c *gin.Context, message string, err error) {
+	switch {
+	case errors.Is(err, service.ErrInvalidKeyAlias):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "alias must be 80 characters or fewer"})
+	case errors.Is(err, service.ErrUsageIdentityMissing):
+		c.JSON(http.StatusNotFound, gin.H{"error": "usage identity not found"})
+	default:
+		writeInternalError(c, message, err)
+	}
+}
+
+func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.UsageIdentityAliasKey]string) usageIdentityResponse {
 	// AI provider 的 identity 是 API Key，只在返回给前端时脱敏，数据库原值不改。
 	identity := item.Identity
 	if item.AuthType == entities.UsageIdentityAuthTypeAIProvider {
 		identity = redact.APIKeyDisplayName(item.Identity)
 	}
+	alias := aliases[service.UsageIdentityAliasKey{AuthType: item.AuthType, Identity: item.Identity}]
 
 	return usageIdentityResponse{
 		ID:                         item.ID,
 		Name:                       item.Name,
 		DisplayName:                usageIdentityDisplayName(item),
+		Alias:                      alias,
 		AuthType:                   item.AuthType,
 		AuthTypeName:               item.AuthTypeName,
 		Identity:                   identity,
@@ -164,6 +275,8 @@ func mapUsageIdentityResponse(item entities.UsageIdentity) usageIdentityResponse
 		ReasoningTokens:            item.ReasoningTokens,
 		CachedTokens:               item.CachedTokens,
 		TotalTokens:                item.TotalTokens,
+		TotalCost:                  0,
+		CostAvailable:              false,
 		LastAggregatedUsageEventID: item.LastAggregatedUsageEventID,
 		FirstUsedAt:                item.FirstUsedAt,
 		LastUsedAt:                 item.LastUsedAt,

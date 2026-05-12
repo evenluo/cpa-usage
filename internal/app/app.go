@@ -90,6 +90,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 
 	usageService := service.NewUsageService(db)
 	usageIdentityService := service.NewUsageIdentityService(db)
+	keyAliasService := service.NewKeyAliasService(db)
 	cpaClient := cpa.NewClient(cfg.CPABaseURL, cfg.CPAManagementKey, cfg.RequestTimeout, cfg.TLSSkipVerify)
 	if cfg.TLSSkipVerify {
 		logrus.WithField("cpa_base_url", cfg.CPABaseURL).Warn("TLS certificate verification is disabled for CPA and Redis queue connections")
@@ -125,7 +126,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 			},
 			authHandler,
 			cfg.AppBasePath,
-			api.OptionalProviders{UsageIdentity: usageIdentityService, Quota: quotaService},
+			api.OptionalProviders{UsageIdentity: usageIdentityService, KeyAlias: keyAliasService, Quota: quotaService},
 		),
 	}, nil
 }

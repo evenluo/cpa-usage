@@ -1,13 +1,20 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 
 describe('App', () => {
   const originalBasePath = window.__APP_BASE_PATH__
+  const originalPath = window.location.pathname
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/')
+    vi.restoreAllMocks()
+  })
 
   afterEach(() => {
     window.__APP_BASE_PATH__ = originalBasePath
+    window.history.replaceState({}, '', originalPath)
     cleanup()
   })
 
@@ -44,5 +51,83 @@ describe('App', () => {
 
     expect(screen.getByRole('link', { name: 'Key 管理 Keys' })).toHaveAttribute('href', '/cpa/keys')
     expect(screen.getByRole('link', { name: '请求明细 Events' })).toHaveAttribute('href', '/cpa/events')
+  })
+
+  it('renders the Keys workspace with alias search and inline editing', async () => {
+    window.history.replaceState({}, '', '/keys')
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/api/v1/usage/identities/page')) {
+        return new Response(JSON.stringify({
+          identities: [
+            {
+              id: 42,
+              name: 'OpenAI Team',
+              displayName: 'OpenAI Team',
+              alias: 'Agent Research',
+              auth_type: 2,
+              auth_type_name: 'apikey',
+              identity: 'sk-cpa...7A91',
+              type: 'openai',
+              provider: 'OpenAI',
+              total_tokens: 4920000,
+              total_cost: 18.45,
+              cost_available: true,
+              last_used_at: '2026-05-13T08:00:00Z',
+            },
+            {
+              id: 43,
+              name: 'Claude Desktop',
+              displayName: 'Claude Desktop',
+              alias: '',
+              auth_type: 1,
+              auth_type_name: 'oauth',
+              identity: 'auth-index-1',
+              type: 'claude',
+              provider: 'Anthropic',
+              total_tokens: 2400,
+              total_cost: 0,
+              cost_available: false,
+              last_used_at: null,
+            },
+          ],
+          total_count: 2,
+          page: 1,
+          page_size: 100,
+          total_pages: 1,
+        }))
+      }
+      if (url.includes('/api/v1/usage/identities/42/alias') && init?.method === 'PUT') {
+        return new Response(JSON.stringify({ alias: 'Research Ops' }))
+      }
+      if (url.includes('/api/v1/usage/identities/42/alias') && init?.method === 'DELETE') {
+        return new Response(null, { status: 204 })
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Key Management' })).toBeInTheDocument()
+    expect(screen.getByText('Agent Research')).toBeInTheDocument()
+    expect(screen.getByText('sk-cpa...7A91')).toBeInTheDocument()
+    expect(screen.getByText('OpenAI')).toBeInTheDocument()
+    expect(screen.getByText('4.92M tokens')).toBeInTheDocument()
+    expect(screen.getByText('$18.45')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Search alias or key'), { target: { value: 'agent' } })
+    expect(screen.getByText('Agent Research')).toBeInTheDocument()
+    expect(screen.queryByText('Claude Desktop')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit alias for Agent Research' }))
+    fireEvent.change(screen.getByLabelText('Alias for Agent Research'), { target: { value: 'Research Ops' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save alias for Agent Research' }))
+
+    fireEvent.change(screen.getByPlaceholderText('Search alias or key'), { target: { value: '' } })
+    await waitFor(() => expect(screen.getByText('Research Ops')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Clear alias for Research Ops' }))
+
+    await waitFor(() => expect(screen.getByText('OpenAI Team')).toBeInTheDocument())
   })
 })

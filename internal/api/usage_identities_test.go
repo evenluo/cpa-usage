@@ -2,8 +2,10 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +42,45 @@ func (s usageIdentitiesStub) ListActiveUsageIdentitiesPage(_ context.Context, re
 		return service.ListUsageIdentitiesResponse{Items: s.pagedActiveItems, Total: s.pagedActiveTotal}, s.err
 	}
 	return service.ListUsageIdentitiesResponse{Items: s.items, Total: int64(len(s.items))}, s.err
+}
+
+type keyAliasStub struct {
+	aliases    map[service.UsageIdentityAliasKey]string
+	setID      uint
+	setAlias   string
+	clearID    uint
+	getID      uint
+	err        error
+	invalidErr error
+}
+
+func (s *keyAliasStub) ListAliasesForUsageIdentities(_ context.Context, identities []entities.UsageIdentity) (map[service.UsageIdentityAliasKey]string, error) {
+	result := map[service.UsageIdentityAliasKey]string{}
+	for _, identity := range identities {
+		key := service.UsageIdentityAliasKey{AuthType: identity.AuthType, Identity: identity.Identity}
+		if alias, ok := s.aliases[key]; ok {
+			result[key] = alias
+		}
+	}
+	return result, s.err
+}
+
+func (s *keyAliasStub) GetUsageIdentityAlias(context.Context, uint) (string, error) {
+	return "Agent Research", s.err
+}
+
+func (s *keyAliasStub) SetUsageIdentityAlias(_ context.Context, id uint, alias string) (string, error) {
+	s.setID = id
+	s.setAlias = alias
+	if s.invalidErr != nil {
+		return "", s.invalidErr
+	}
+	return strings.TrimSpace(alias), s.err
+}
+
+func (s *keyAliasStub) ClearUsageIdentityAlias(_ context.Context, id uint) error {
+	s.clearID = id
+	return s.err
 }
 
 func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
@@ -128,6 +169,114 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		if !contains(body, expected) {
 			t.Fatalf("expected %s in response body: %s", expected, body)
 		}
+	}
+}
+
+func TestUsageIdentitiesPageRouteIncludesLocalAlias(t *testing.T) {
+	identity := entities.UsageIdentity{
+		ID:           42,
+		Name:         "Provider Name",
+		AuthType:     entities.UsageIdentityAuthTypeAIProvider,
+		AuthTypeName: "apikey",
+		Identity:     "sk-live-secret-value",
+		Type:         "openai",
+		Provider:     "OpenAI",
+	}
+	aliasProvider := &keyAliasStub{aliases: map[service.UsageIdentityAliasKey]string{
+		{AuthType: identity.AuthType, Identity: identity.Identity}: "Agent Research",
+	}}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{
+		UsageIdentity: usageIdentitiesStub{pagedActiveItems: []entities.UsageIdentity{identity}, pagedActiveTotal: 1},
+		KeyAlias:      aliasProvider,
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/identities/page?page=1&page_size=10", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	if !contains(body, `"alias":"Agent Research"`) {
+		t.Fatalf("expected alias in response body: %s", body)
+	}
+}
+
+func TestUsageIdentityAliasRoutesSetReadAndClear(t *testing.T) {
+	aliasProvider := &keyAliasStub{}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{KeyAlias: aliasProvider})
+
+	putReq := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/42/alias", strings.NewReader(`{"alias":" Agent Research "}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp := httptest.NewRecorder()
+	router.ServeHTTP(putResp, putReq)
+	if putResp.Code != http.StatusOK {
+		t.Fatalf("expected PUT status 200, got %d: %s", putResp.Code, putResp.Body.String())
+	}
+	if aliasProvider.setID != 42 || aliasProvider.setAlias != " Agent Research " || !contains(putResp.Body.String(), `"alias":"Agent Research"`) {
+		t.Fatalf("expected set alias call and response, got id=%d alias=%q body=%s", aliasProvider.setID, aliasProvider.setAlias, putResp.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/usage/identities/42/alias", nil)
+	getResp := httptest.NewRecorder()
+	router.ServeHTTP(getResp, getReq)
+	if getResp.Code != http.StatusOK || !contains(getResp.Body.String(), `"alias":"Agent Research"`) {
+		t.Fatalf("expected GET alias response, got %d: %s", getResp.Code, getResp.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/usage/identities/42/alias", nil)
+	deleteResp := httptest.NewRecorder()
+	router.ServeHTTP(deleteResp, deleteReq)
+	if deleteResp.Code != http.StatusNoContent {
+		t.Fatalf("expected DELETE status 204, got %d: %s", deleteResp.Code, deleteResp.Body.String())
+	}
+	if aliasProvider.clearID != 42 {
+		t.Fatalf("expected clear alias for identity 42, got %d", aliasProvider.clearID)
+	}
+}
+
+func TestUsageIdentityAliasRouteValidatesAliasLength(t *testing.T) {
+	aliasProvider := &keyAliasStub{}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{KeyAlias: aliasProvider})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/42/alias", strings.NewReader(`{"alias":"`+strings.Repeat("a", 81)+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if aliasProvider.setID != 0 {
+		t.Fatalf("expected invalid alias not to reach provider, got set id %d", aliasProvider.setID)
+	}
+}
+
+func TestUsageIdentityAliasRouteMapsValidationErrors(t *testing.T) {
+	aliasProvider := &keyAliasStub{invalidErr: service.ErrInvalidKeyAlias}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{KeyAlias: aliasProvider})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/42/alias", strings.NewReader(`{"alias":"Alias"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestUsageIdentityAliasRouteMapsUnexpectedErrors(t *testing.T) {
+	aliasProvider := &keyAliasStub{err: errors.New("boom")}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{KeyAlias: aliasProvider})
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/usage/identities/42/alias", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status 500, got %d: %s", resp.Code, resp.Body.String())
 	}
 }
 

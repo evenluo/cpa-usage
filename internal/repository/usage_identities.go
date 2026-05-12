@@ -130,6 +130,17 @@ func ListActiveUsageIdentitiesPage(ctx context.Context, db *gorm.DB, request Lis
 	return identities, total, nil
 }
 
+func GetUsageIdentityByID(ctx context.Context, db *gorm.DB, id uint) (entities.UsageIdentity, error) {
+	var identity entities.UsageIdentity
+	if db == nil {
+		return identity, fmt.Errorf("database is nil")
+	}
+	if err := db.WithContext(ctx).Where("id = ?", id).First(&identity).Error; err != nil {
+		return identity, fmt.Errorf("get usage identity by id: %w", err)
+	}
+	return identity, nil
+}
+
 func activeUsageIdentitiesQuery(db *gorm.DB, authType *entities.UsageIdentityAuthType) *gorm.DB {
 	// 把活跃条件和可选 auth_type 条件集中到一个查询构造器，避免 count/list 条件漂移。
 	query := db.Where("is_deleted = ?", false)
