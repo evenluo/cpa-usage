@@ -326,3 +326,31 @@ func TestBuildAnalyticsSummaryWithFilterOrdersKeyAliasBreakdownByTokensWhenCostU
 		t.Fatalf("expected unavailable cost rows to fall back to token ordering, got %+v", snapshot.KeyAliasBreakdown)
 	}
 }
+
+func TestBuildAnalyticsKeyAliasTrendsRestrictsRowsToSelectedIdentities(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "included", AuthType: "apikey", AuthIndex: "sk-included-123456", Model: "missing-model", Timestamp: start.Add(time.Hour), InputTokens: 10, TotalTokens: 10},
+		{EventKey: "excluded", AuthType: "apikey", AuthIndex: "sk-excluded-123456", Model: "missing-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1000, TotalTokens: 1000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	trends, err := buildAnalyticsKeyAliasTrends(
+		db,
+		dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end},
+		[]analyticsIdentityKey{{AuthType: int(entities.UsageIdentityAuthTypeAIProvider), Identity: "sk-included-123456"}},
+	)
+	if err != nil {
+		t.Fatalf("buildAnalyticsKeyAliasTrends returned error: %v", err)
+	}
+
+	if len(trends) != 1 {
+		t.Fatalf("expected trends for only selected identity, got %+v", trends)
+	}
+	if _, ok := trends[analyticsIdentityKey{AuthType: int(entities.UsageIdentityAuthTypeAIProvider), Identity: "sk-excluded-123456"}]; ok {
+		t.Fatalf("expected excluded identity to be absent, got %+v", trends)
+	}
+}

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"cpa-usage/internal/entities"
@@ -179,15 +180,18 @@ func buildAnalyticsKeyAliasBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) (
 
 	breakdown := make([]dto.AnalyticsKeyAliasBreakdownRecord, 0, len(rows))
 	breakdownIndexes := make(map[analyticsIdentityKey]int, len(rows))
+	breakdownKeys := make([]analyticsIdentityKey, 0, len(rows))
 	for _, row := range rows {
-		breakdownIndexes[analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}] = len(breakdown)
+		key := analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}
+		breakdownIndexes[key] = len(breakdown)
+		breakdownKeys = append(breakdownKeys, key)
 		breakdown = append(breakdown, mapAnalyticsKeyAliasBreakdown(row))
 	}
 	if len(breakdown) == 0 {
 		return breakdown, nil
 	}
 
-	trends, err := buildAnalyticsKeyAliasTrends(db, filter)
+	trends, err := buildAnalyticsKeyAliasTrends(db, filter, breakdownKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -201,13 +205,16 @@ func buildAnalyticsKeyAliasBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) (
 	return breakdown, nil
 }
 
-func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPointRecord, error) {
+func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPointRecord, error) {
+	if len(keys) == 0 {
+		return map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPointRecord{}, nil
+	}
 	authTypeExpr := analyticsUsageIdentityAuthTypeSQLExpression()
 	identityExpr := analyticsUsageIdentitySQLExpression()
 	bucketByDay := shouldBucketUsageOverviewByDay(filter, computeWindowMinutes(filter))
 	bucketExpr := analyticsBucketSQLExpression(bucketByDay)
 	var rows []analyticsIdentityTrendRow
-	if err := analyticsIdentityEventsWithPricingQuery(db, filter).
+	if err := applyAnalyticsIdentityKeyFilter(analyticsIdentityEventsWithPricingQuery(db, filter), keys, authTypeExpr, identityExpr).
 		Select(`
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
@@ -235,6 +242,16 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter) (map
 		})
 	}
 	return trends, nil
+}
+
+func applyAnalyticsIdentityKeyFilter(query *gorm.DB, keys []analyticsIdentityKey, authTypeExpr string, identityExpr string) *gorm.DB {
+	conditions := make([]string, 0, len(keys))
+	args := make([]any, 0, len(keys)*2)
+	for _, key := range keys {
+		conditions = append(conditions, "("+authTypeExpr+" = ? AND "+identityExpr+" = ?)")
+		args = append(args, key.AuthType, key.Identity)
+	}
+	return query.Where(strings.Join(conditions, " OR "), args...)
 }
 
 func analyticsCostSQLExpression() string {
