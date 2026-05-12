@@ -30,11 +30,29 @@ const navItems = [
   { label: '系统设置 Settings', href: '/settings', icon: Settings },
 ]
 
-const totals = {
-  cost: '$838.45',
-  tokens: '10.94M',
-  requests: '13,086',
-  successRate: '98.2%',
+function formatCompact(value: number, maximumFractionDigits = 1) {
+  return Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits }).format(value)
+}
+
+function formatCurrency(value: number) {
+  return `$${value.toLocaleString('en', { maximumFractionDigits: 0 })}`
+}
+
+const totals = trendData.reduce(
+  (result, point) => ({
+    cost: result.cost + point.cost,
+    tokens: result.tokens + point.tokens,
+    requests: result.requests + point.requests,
+    failures: result.failures + point.failures,
+  }),
+  { cost: 0, tokens: 0, requests: 0, failures: 0 },
+)
+
+const kpis = {
+  cost: formatCurrency(totals.cost),
+  tokens: formatCompact(totals.tokens, 2),
+  requests: totals.requests.toLocaleString('en'),
+  successRate: `${(((totals.requests - totals.failures) / totals.requests) * 100).toFixed(1)}%`,
 }
 
 function appBasePath() {
@@ -105,10 +123,10 @@ function App() {
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
             <section className="grid gap-4">
               <div className="grid gap-3 md:grid-cols-4">
-                <MetricCard label="Total Cost" value={totals.cost} caption="Partial: 2 unpriced models" tone="green" />
-                <MetricCard label="Total Tokens" value={totals.tokens} caption="Cost peer measure" tone="blue" />
-                <MetricCard label="Requests" value={totals.requests} caption="+14.8% vs previous" tone="violet" />
-                <MetricCard label="Success Rate" value={totals.successRate} caption="18 failures today" tone="amber" />
+                <MetricCard label="Total Cost" value={kpis.cost} caption="Partial: 2 unpriced models" tone="green" />
+                <MetricCard label="Total Tokens" value={kpis.tokens} caption="Cost peer measure" tone="blue" />
+                <MetricCard label="Requests" value={kpis.requests} caption="+14.8% vs previous" tone="violet" />
+                <MetricCard label="Success Rate" value={kpis.successRate} caption={`${totals.failures} failures in range`} tone="amber" />
               </div>
 
               <Card>
@@ -196,7 +214,7 @@ function App() {
                   </div>
                   <div className="grid gap-2">
                     {aliasRows.map((row) => (
-                      <div className="grid grid-cols-[minmax(0,1fr)_90px_80px] items-center gap-3 rounded-md border border-border p-3" key={row.key}>
+                      <div className="grid grid-cols-[minmax(0,1fr)_86px_96px] items-center gap-3 rounded-md border border-border p-3" key={row.key}>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">{row.alias}</p>
                           <p className="truncate text-xs text-muted-foreground">
@@ -208,7 +226,8 @@ function App() {
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-semibold">${row.cost.toFixed(0)}</p>
-                          <p className="text-xs text-muted-foreground">{row.successRate}%</p>
+                          <p className="text-xs text-muted-foreground">{formatCompact(row.tokens, 2)} tokens</p>
+                          <p className="text-xs text-muted-foreground">{row.successRate}% success</p>
                         </div>
                       </div>
                     ))}

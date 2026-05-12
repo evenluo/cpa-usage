@@ -32,6 +32,9 @@ describe('App', () => {
     expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
     expect(screen.getAllByText('Agent Research')).toHaveLength(2)
     expect(screen.getByText('sk-cpa...7A91 · codex')).toBeInTheDocument()
+    expect(screen.getByText('$1,006')).toBeInTheDocument()
+    expect(screen.getByText('12.27M')).toBeInTheDocument()
+    expect(screen.getByText('4.92M tokens')).toBeInTheDocument()
   })
 
   it('prefixes navigation links with the configured application base path', () => {

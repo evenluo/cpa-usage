@@ -60,18 +60,28 @@ export function TokenCostCompareChart({ data }: { data: TrendPoint[] }) {
         <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" vertical={false} />
         <XAxis axisLine={false} dataKey="label" tick={axisStyle} tickLine={false} />
         <YAxis
+          yAxisId="tokens"
           axisLine={false}
           tick={axisStyle}
           tickFormatter={(value) => compactNumber(Number(value))}
           tickLine={false}
           width={48}
         />
+        <YAxis
+          yAxisId="cost"
+          axisLine={false}
+          orientation="right"
+          tick={axisStyle}
+          tickFormatter={formatCurrency}
+          tickLine={false}
+          width={42}
+        />
         <Tooltip
           contentStyle={{ borderColor: '#e4e4e7', borderRadius: 8, boxShadow: '0 8px 24px rgba(24,24,27,0.08)' }}
           formatter={(value, name) => [name === 'tokens' ? compactNumber(Number(value)) : `$${Number(value).toFixed(2)}`, name]}
         />
-        <Line dataKey="tokens" dot={false} stroke="#2563eb" strokeWidth={2.5} type="monotone" />
-        <Line dataKey="cost" dot={false} stroke="#059669" strokeWidth={2.5} type="monotone" />
+        <Line yAxisId="tokens" dataKey="tokens" dot={false} stroke="#2563eb" strokeWidth={2.5} type="monotone" />
+        <Line yAxisId="cost" dataKey="cost" dot={false} stroke="#059669" strokeWidth={2.5} type="monotone" />
       </LineChart>
     </ResponsiveContainer>
   )
