@@ -185,6 +185,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Time' }))
     expect(screen.getByText('Time Breakdown')).toBeInTheDocument()
     expect(screen.getByText('221 requests · 6 failures')).toBeInTheDocument()
+    expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(2)
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d')
   })
 

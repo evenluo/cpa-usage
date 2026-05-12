@@ -31,9 +31,13 @@ function formatCurrency(value: number) {
 }
 
 export function MetricTrendChart({ data }: { data: TrendPoint[] }) {
+  const chartData = data.map((point) => ({
+    ...point,
+    chartCost: point.costStatus === 'unavailable' ? null : point.cost,
+  }))
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={defaultInitialDimension}>
-      <AreaChart data={data} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
+      <AreaChart data={chartData} margin={{ left: 0, right: 4, top: 8, bottom: 0 }}>
         <defs>
           <linearGradient id="costFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="5%" stopColor="#059669" stopOpacity={0.24} />
@@ -47,16 +51,20 @@ export function MetricTrendChart({ data }: { data: TrendPoint[] }) {
           contentStyle={{ borderColor: '#e4e4e7', borderRadius: 8, boxShadow: '0 8px 24px rgba(24,24,27,0.08)' }}
           formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Cost']}
         />
-        <Area dataKey="cost" fill="url(#costFill)" stroke="#059669" strokeWidth={2.5} type="monotone" />
+        <Area dataKey="chartCost" fill="url(#costFill)" stroke="#059669" strokeWidth={2.5} type="monotone" />
       </AreaChart>
     </ResponsiveContainer>
   )
 }
 
 export function TokenCostCompareChart({ data }: { data: TrendPoint[] }) {
+  const chartData = data.map((point) => ({
+    ...point,
+    chartCost: point.costStatus === 'unavailable' ? null : point.cost,
+  }))
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={defaultInitialDimension}>
-      <LineChart data={data} margin={{ left: 0, right: 6, top: 8, bottom: 0 }}>
+      <LineChart data={chartData} margin={{ left: 0, right: 6, top: 8, bottom: 0 }}>
         <CartesianGrid stroke={gridStroke} strokeDasharray="3 3" vertical={false} />
         <XAxis axisLine={false} dataKey="label" tick={axisStyle} tickLine={false} />
         <YAxis
@@ -81,7 +89,7 @@ export function TokenCostCompareChart({ data }: { data: TrendPoint[] }) {
           formatter={(value, name) => [name === 'tokens' ? compactNumber(Number(value)) : `$${Number(value).toFixed(2)}`, name]}
         />
         <Line yAxisId="tokens" dataKey="tokens" dot={false} stroke="#2563eb" strokeWidth={2.5} type="monotone" />
-        <Line yAxisId="cost" dataKey="cost" dot={false} stroke="#059669" strokeWidth={2.5} type="monotone" />
+        <Line yAxisId="cost" dataKey="chartCost" dot={false} stroke="#059669" strokeWidth={2.5} type="monotone" />
       </LineChart>
     </ResponsiveContainer>
   )

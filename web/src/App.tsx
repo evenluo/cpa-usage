@@ -191,6 +191,8 @@ function useAnalyticsSummary(enabled: boolean) {
             tokens: point.total_tokens,
             requests: point.request_count,
             failures: point.failure_count,
+            costAvailable: point.cost_available,
+            costStatus: point.cost_status,
           })),
           keyAliases: (payload.key_alias_breakdown ?? []).map((row) => ({
             alias: row.label,
@@ -224,6 +226,8 @@ function useAnalyticsSummary(enabled: boolean) {
             tokens: point.total_tokens,
             requests: point.request_count,
             failures: point.failure_count,
+            costAvailable: point.cost_available,
+            costStatus: point.cost_status,
           })),
         })
       })
@@ -491,7 +495,7 @@ function App() {
                           <p className="text-xs text-muted-foreground">{formatCompact(row.requests, 1)} requests · {row.failures} failures</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-semibold">{formatCost(row.cost)}</p>
+                          <p className="text-sm font-semibold">{formatBreakdownCost(row)}</p>
                           <p className="text-xs text-muted-foreground">{formatCompact(row.tokens, 2)} tokens</p>
                         </div>
                       </div>
@@ -746,6 +750,13 @@ function keyLabel(key: KeyIdentity) {
 
 function formatCost(value: number) {
   return `$${value.toLocaleString('en', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
+}
+
+function formatBreakdownCost(row: Pick<TrendPoint, 'cost' | 'costAvailable' | 'costStatus'>) {
+  if (row.costAvailable === false) {
+    return row.costStatus === 'partial' ? 'Cost partial' : 'Cost unavailable'
+  }
+  return formatCost(row.cost)
 }
 
 function formatLastUsed(value: string | null) {

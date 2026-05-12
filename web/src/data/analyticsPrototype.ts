@@ -4,6 +4,8 @@ export type TrendPoint = {
   tokens: number
   requests: number
   failures: number
+  costAvailable?: boolean
+  costStatus?: 'available' | 'partial' | 'unavailable'
 }
 
 export type AliasRow = {
