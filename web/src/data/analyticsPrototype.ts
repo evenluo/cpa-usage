@@ -23,8 +23,14 @@ export type AliasRow = {
 
 export type ModelRow = {
   model: string
+  provider: string
   cost: number
   tokens: number
+  requests: number
+  successRate: number
+  averageLatencyMS: number
+  costAvailable?: boolean
+  costStatus?: 'available' | 'partial' | 'unavailable'
   color: string
 }
 
@@ -82,10 +88,10 @@ export const aliasRows: AliasRow[] = [
 ]
 
 export const modelRows: ModelRow[] = [
-  { model: 'gpt-5.5', cost: 296.3, tokens: 3210000, color: '#2563eb' },
-  { model: 'claude-sonnet-4.5', cost: 221.8, tokens: 2420000, color: '#7c3aed' },
-  { model: 'gemini-3-pro', cost: 144.6, tokens: 3020000, color: '#059669' },
-  { model: 'kimi-k2', cost: 86.1, tokens: 1340000, color: '#d97706' },
+  { model: 'gpt-5.5', provider: 'openai', cost: 296.3, tokens: 3210000, requests: 1400, successRate: 99.2, averageLatencyMS: 380, color: '#2563eb' },
+  { model: 'claude-sonnet-4.5', provider: 'anthropic', cost: 221.8, tokens: 2420000, requests: 1180, successRate: 98.6, averageLatencyMS: 420, color: '#7c3aed' },
+  { model: 'gemini-3-pro', provider: 'gemini', cost: 144.6, tokens: 3020000, requests: 980, successRate: 97.9, averageLatencyMS: 360, color: '#059669' },
+  { model: 'kimi-k2', provider: 'kimi', cost: 86.1, tokens: 1340000, requests: 510, successRate: 96.4, averageLatencyMS: 520, color: '#d97706' },
 ]
 
 export const healthBlocks = trendData.map((point) => ({

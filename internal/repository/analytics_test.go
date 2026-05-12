@@ -159,6 +159,55 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostUnavailableWhenNoPricedCostExis
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterReturnsModelAndTimeBreakdowns(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(48 * time.Hour)
+	for _, input := range []dto.ModelPriceSettingInput{
+		{Model: "priced-model", PromptPricePer1M: 1, CompletionPricePer1M: 1, CachePricePer1M: 1},
+		{Model: "other-model", PromptPricePer1M: 2, CompletionPricePer1M: 1, CachePricePer1M: 1},
+	} {
+		if _, err := UpsertModelPriceSetting(db, input); err != nil {
+			t.Fatalf("upsert pricing: %v", err)
+		}
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "priced-openai-1", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000, LatencyMS: 100},
+		{EventKey: "priced-openai-2", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), OutputTokens: 500_000, TotalTokens: 500_000, Failed: true, LatencyMS: 300},
+		{EventKey: "unpriced-openai", Provider: "OpenAI", Model: "missing-model", Timestamp: start.Add(26 * time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000, LatencyMS: 200},
+		{EventKey: "priced-anthropic", Provider: "Anthropic", Model: "other-model", Timestamp: start.Add(4 * time.Hour), InputTokens: 4_000_000, TotalTokens: 4_000_000, LatencyMS: 400},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.Summary.RequestCount != 3 || snapshot.Summary.TotalTokens != 3_500_000 {
+		t.Fatalf("expected provider filter to limit summary to OpenAI events, got %+v", snapshot.Summary)
+	}
+	if len(snapshot.ModelBreakdown) != 2 {
+		t.Fatalf("expected two OpenAI model rows, got %+v", snapshot.ModelBreakdown)
+	}
+	if snapshot.ModelBreakdown[0].Model != "priced-model" || snapshot.ModelBreakdown[0].Provider != "OpenAI" || snapshot.ModelBreakdown[0].FailureCount != 1 {
+		t.Fatalf("expected priced model row first, got %+v", snapshot.ModelBreakdown[0])
+	}
+	if snapshot.ModelBreakdown[0].LatencySampleCount != 2 || snapshot.ModelBreakdown[0].AverageLatencyMS != 200 {
+		t.Fatalf("expected latency samples to be preserved, got %+v", snapshot.ModelBreakdown[0])
+	}
+	if snapshot.ModelBreakdown[1].Model != "missing-model" || snapshot.ModelBreakdown[1].CostStatus != "unavailable" {
+		t.Fatalf("expected missing model to expose unavailable cost, got %+v", snapshot.ModelBreakdown[1])
+	}
+	if len(snapshot.TimeBreakdown) != len(snapshot.Trend) || len(snapshot.TimeBreakdown) != 2 {
+		t.Fatalf("expected explicit time breakdown to mirror trend buckets, got trend=%+v time=%+v", snapshot.Trend, snapshot.TimeBreakdown)
+	}
+	if snapshot.TimeBreakdown[1].Label != "2026-05-12" || snapshot.TimeBreakdown[1].TotalTokens != 2_000_000 || snapshot.TimeBreakdown[1].CostStatus != "unavailable" {
+		t.Fatalf("expected second time bucket to expose token and cost status, got %+v", snapshot.TimeBreakdown[1])
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterMarksCostPartialWhenPricedRowsHaveZeroRates(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

@@ -17,10 +17,13 @@ type analyticsSummaryResponse struct {
 	Range      string                  `json:"range"`
 	RangeStart *time.Time              `json:"range_start,omitempty"`
 	RangeEnd   *time.Time              `json:"range_end,omitempty"`
+	Provider   string                  `json:"provider,omitempty"`
 	Timezone   string                  `json:"timezone"`
 	Summary    analyticsSummaryPayload `json:"summary"`
 	Trend      []analyticsTrendPoint   `json:"trend"`
 	KeyAliases []analyticsKeyAliasRow  `json:"key_alias_breakdown"`
+	Models     []analyticsModelRow     `json:"model_distribution"`
+	Time       []analyticsTrendPoint   `json:"time_breakdown"`
 }
 
 type analyticsSummaryPayload struct {
@@ -77,9 +80,25 @@ type analyticsKeyAliasRow struct {
 	Trend         []analyticsKeyAliasTrendPoint  `json:"trend"`
 }
 
+type analyticsModelRow struct {
+	Model              string  `json:"model"`
+	Provider           string  `json:"provider"`
+	TotalCost          float64 `json:"total_cost"`
+	TotalTokens        int64   `json:"total_tokens"`
+	RequestCount       int64   `json:"request_count"`
+	SuccessCount       int64   `json:"success_count"`
+	FailureCount       int64   `json:"failure_count"`
+	SuccessRate        float64 `json:"success_rate"`
+	TotalLatencyMS     int64   `json:"total_latency_ms"`
+	LatencySampleCount int64   `json:"latency_sample_count"`
+	AverageLatencyMS   float64 `json:"average_latency_ms"`
+	CostAvailable      bool    `json:"cost_available"`
+	CostStatus         string  `json:"cost_status"`
+}
+
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
 	router.GET("/analytics/summary", func(c *gin.Context) {
-		filter, err := parseUsageTimeFilterQuery(c.Request, time.Now().UTC())
+		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -98,11 +117,23 @@ func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.Analy
 	})
 }
 
+func parseAnalyticsSummaryFilterQuery(req *http.Request, anchor time.Time) (servicedto.UsageFilter, error) {
+	filter, err := parseUsageTimeFilterQuery(req, anchor)
+	if err != nil {
+		return servicedto.UsageFilter{}, err
+	}
+	if req != nil {
+		filter.Provider = strings.TrimSpace(req.URL.Query().Get("provider"))
+	}
+	return filter, nil
+}
+
 func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *servicedto.AnalyticsSummarySnapshot) analyticsSummaryResponse {
 	response := analyticsSummaryResponse{
 		Range:      filter.Range,
 		RangeStart: filter.StartTime,
 		RangeEnd:   filter.EndTime,
+		Provider:   filter.Provider,
 		Timezone:   time.Local.String(),
 		Summary: analyticsSummaryPayload{
 			CostAvailable: true,
@@ -110,6 +141,8 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 		},
 		Trend:      []analyticsTrendPoint{},
 		KeyAliases: []analyticsKeyAliasRow{},
+		Models:     []analyticsModelRow{},
+		Time:       []analyticsTrendPoint{},
 	}
 	if snapshot == nil {
 		return response
@@ -142,6 +175,39 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 	response.KeyAliases = make([]analyticsKeyAliasRow, 0, len(snapshot.KeyAliasBreakdown))
 	for _, row := range snapshot.KeyAliasBreakdown {
 		response.KeyAliases = append(response.KeyAliases, mapAnalyticsKeyAliasRow(row))
+	}
+	response.Models = make([]analyticsModelRow, 0, len(snapshot.ModelBreakdown))
+	for _, row := range snapshot.ModelBreakdown {
+		response.Models = append(response.Models, analyticsModelRow{
+			Model:              row.Model,
+			Provider:           row.Provider,
+			TotalCost:          row.TotalCost,
+			TotalTokens:        row.TotalTokens,
+			RequestCount:       row.RequestCount,
+			SuccessCount:       row.SuccessCount,
+			FailureCount:       row.FailureCount,
+			SuccessRate:        row.SuccessRate,
+			TotalLatencyMS:     row.TotalLatencyMS,
+			LatencySampleCount: row.LatencySampleCount,
+			AverageLatencyMS:   row.AverageLatencyMS,
+			CostAvailable:      row.CostAvailable,
+			CostStatus:         row.CostStatus,
+		})
+	}
+	response.Time = make([]analyticsTrendPoint, 0, len(snapshot.TimeBreakdown))
+	for _, point := range snapshot.TimeBreakdown {
+		response.Time = append(response.Time, analyticsTrendPoint{
+			Label:         point.Label,
+			BucketStart:   point.BucketStart,
+			BucketEnd:     point.BucketEnd,
+			TotalCost:     point.TotalCost,
+			TotalTokens:   point.TotalTokens,
+			RequestCount:  point.RequestCount,
+			SuccessCount:  point.SuccessCount,
+			FailureCount:  point.FailureCount,
+			CostAvailable: point.CostAvailable,
+			CostStatus:    point.CostStatus,
+		})
 	}
 	return response
 }

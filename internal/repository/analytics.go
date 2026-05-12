@@ -53,6 +53,21 @@ type analyticsIdentityTrendRow struct {
 	PricedBillableEvents int64
 }
 
+type analyticsModelAggregateRow struct {
+	Model                string
+	Provider             string
+	ProviderCount        int64
+	RequestCount         int64
+	SuccessCount         int64
+	FailureCount         int64
+	TotalTokens          int64
+	TotalCost            float64
+	TotalLatencyMS       int64
+	LatencySampleCount   int64
+	MissingPricingEvents int64
+	PricedBillableEvents int64
+}
+
 type analyticsIdentityKey struct {
 	AuthType int
 	Identity string
@@ -77,8 +92,18 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 	if err != nil {
 		return nil, err
 	}
+	modelBreakdown, err := buildAnalyticsModelBreakdown(db, filter)
+	if err != nil {
+		return nil, err
+	}
 
-	return &dto.AnalyticsSummarySnapshot{Summary: summary, Trend: trend, KeyAliasBreakdown: keyAliasBreakdown}, nil
+	return &dto.AnalyticsSummarySnapshot{
+		Summary:           summary,
+		Trend:             trend,
+		KeyAliasBreakdown: keyAliasBreakdown,
+		ModelBreakdown:    modelBreakdown,
+		TimeBreakdown:     trend,
+	}, nil
 }
 
 func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsSummaryRecord, error) {
@@ -131,8 +156,16 @@ func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.Analyt
 }
 
 func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	return applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter).
+	return applyAnalyticsQueryFilter(db.Model(&entities.UsageEvent{}), filter).
 		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_events.model)")
+}
+
+func applyAnalyticsQueryFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+	query = applyUsageOverviewQuery(query, filter)
+	if provider := strings.TrimSpace(filter.Provider); provider != "" {
+		query = query.Where("TRIM(usage_events.provider) = ?", provider)
+	}
+	return query
 }
 
 func analyticsIdentityEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
@@ -242,6 +275,39 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys
 		})
 	}
 	return trends, nil
+}
+
+func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsModelBreakdownRecord, error) {
+	var rows []analyticsModelAggregateRow
+	if err := analyticsEventsWithPricingQuery(db, filter).
+		Select(`
+			TRIM(usage_events.model) AS model,
+			COALESCE(MIN(NULLIF(TRIM(usage_events.provider), '')), '') AS provider,
+			COUNT(DISTINCT NULLIF(TRIM(usage_events.provider), '')) AS provider_count,
+			COUNT(*) AS request_count,
+			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
+			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END), 0) AS total_latency_ms,
+			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END), 0) AS latency_sample_count,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
+		Where("TRIM(usage_events.model) <> ''").
+		Group("TRIM(usage_events.model)").
+		Order("total_cost DESC").
+		Order("COALESCE(SUM(usage_events.total_tokens), 0) DESC").
+		Order("model ASC").
+		Limit(20).
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("build analytics model breakdown: %w", err)
+	}
+
+	breakdown := make([]dto.AnalyticsModelBreakdownRecord, 0, len(rows))
+	for _, row := range rows {
+		breakdown = append(breakdown, mapAnalyticsModelBreakdown(row))
+	}
+	return breakdown, nil
 }
 
 func applyAnalyticsIdentityKeyFilter(query *gorm.DB, keys []analyticsIdentityKey, authTypeExpr string, identityExpr string) *gorm.DB {
@@ -375,6 +441,31 @@ func mapAnalyticsKeyAliasBreakdown(row analyticsIdentityAggregateRow) dto.Analyt
 	}
 	if row.RequestCount > 0 {
 		record.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
+	}
+	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	return record
+}
+
+func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsModelBreakdownRecord {
+	record := dto.AnalyticsModelBreakdownRecord{
+		Model:              row.Model,
+		Provider:           row.Provider,
+		TotalCost:          row.TotalCost,
+		TotalTokens:        row.TotalTokens,
+		RequestCount:       row.RequestCount,
+		SuccessCount:       row.SuccessCount,
+		FailureCount:       row.FailureCount,
+		TotalLatencyMS:     row.TotalLatencyMS,
+		LatencySampleCount: row.LatencySampleCount,
+	}
+	if row.ProviderCount > 1 {
+		record.Provider = "Multiple providers"
+	}
+	if row.RequestCount > 0 {
+		record.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
+	}
+	if row.LatencySampleCount > 0 {
+		record.AverageLatencyMS = float64(row.TotalLatencyMS) / float64(row.LatencySampleCount)
 	}
 	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
 	return record

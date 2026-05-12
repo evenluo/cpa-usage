@@ -12,6 +12,7 @@ type UsageQueryFilter struct {
 	PageSize  int
 	Offset    int
 	Model     string
+	Provider  string
 	Source    string
 	AuthIndex string
 	Result    string

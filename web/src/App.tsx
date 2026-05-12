@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsTrigger } from '@/components/ui/tabs'
-import { type AliasRow, type TrendPoint, healthBlocks, insightChips, modelRows } from '@/data/analyticsPrototype'
+import { type AliasRow, type ModelRow, type TrendPoint, healthBlocks, insightChips } from '@/data/analyticsPrototype'
 
 import './index.css'
 
@@ -121,16 +121,36 @@ type AnalyticsKeyAliasPayload = {
   trend: AnalyticsKeyAliasTrendPointPayload[]
 }
 
+type AnalyticsModelPayload = {
+  model: string
+  provider: string
+  total_cost: number
+  total_tokens: number
+  request_count: number
+  success_count: number
+  failure_count: number
+  success_rate: number
+  total_latency_ms: number
+  latency_sample_count: number
+  average_latency_ms: number
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
 type AnalyticsSummaryResponse = {
   summary: AnalyticsSummaryPayload
   trend: AnalyticsTrendPointPayload[]
   key_alias_breakdown?: AnalyticsKeyAliasPayload[]
+  model_distribution?: AnalyticsModelPayload[]
+  time_breakdown?: AnalyticsTrendPointPayload[]
 }
 
 type AnalyticsState = {
   summary: AnalyticsSummaryPayload
   trend: TrendPoint[]
   keyAliases: AliasRow[]
+  models: ModelRow[]
+  timeBreakdown: TrendPoint[]
 }
 
 const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
@@ -145,7 +165,7 @@ const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
 }
 
 function useAnalyticsSummary(enabled: boolean) {
-  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [] })
+  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [] })
 
   useEffect(() => {
     if (!enabled) {
@@ -186,11 +206,30 @@ function useAnalyticsSummary(enabled: boolean) {
             costStatus: row.cost_status,
             trend: row.trend.map((point) => (point.cost_status === 'unavailable' ? point.total_tokens : point.total_cost)),
           })),
+          models: (payload.model_distribution ?? []).map((row, index) => ({
+            model: row.model,
+            provider: row.provider,
+            cost: row.total_cost,
+            tokens: row.total_tokens,
+            requests: row.request_count,
+            successRate: row.success_rate,
+            averageLatencyMS: row.average_latency_ms,
+            costAvailable: row.cost_available,
+            costStatus: row.cost_status,
+            color: modelPalette[index % modelPalette.length],
+          })),
+          timeBreakdown: (payload.time_breakdown ?? payload.trend ?? []).map((point) => ({
+            label: point.label,
+            cost: point.total_cost,
+            tokens: point.total_tokens,
+            requests: point.request_count,
+            failures: point.failure_count,
+          })),
         })
       })
       .catch(() => {
         if (active) {
-          setAnalytics({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [] })
+          setAnalytics({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [] })
         }
       })
     return () => {
@@ -201,12 +240,18 @@ function useAnalyticsSummary(enabled: boolean) {
   return analytics
 }
 
+const modelPalette = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#0891b2', '#be123c']
+type BreakdownMode = 'key_alias' | 'model' | 'time'
+
 function App() {
   const route = currentRoute()
+  const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
   const analytics = useAnalyticsSummary(route !== '/keys')
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
   const analyticsAliases = analytics.keyAliases
+  const analyticsModels = analytics.models
+  const analyticsTimeBreakdown = analytics.timeBreakdown
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -321,9 +366,9 @@ function App() {
                   <span className="text-sm text-muted-foreground">Search alias or masked CPA Key</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <Button variant="subtle" size="sm">Key Alias</Button>
-                  <Button variant="outline" size="sm">Model</Button>
-                  <Button variant="outline" size="sm">Time</Button>
+                  <Button variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
+                  <Button variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
+                  <Button variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline">Provider: All</Badge>
@@ -343,7 +388,8 @@ function App() {
             </Card>
           </div>
 
-          <section className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+          <section className="mt-4">
+            {breakdownMode === 'key_alias' ? (
             <Card>
               <CardHeader className="flex flex-row items-start justify-between gap-3">
                 <div>
@@ -385,32 +431,76 @@ function App() {
                 </div>
               </CardContent>
             </Card>
-
+            ) : null}
+            {breakdownMode === 'model' ? (
             <Card>
               <CardHeader>
                 <CardTitle>Model Distribution</CardTitle>
-                <CardDescription>Model impact is shown by Cost with token volume preserved beside it.</CardDescription>
+                <CardDescription>Provider remains a secondary dimension while model impact is shown by Cost and tokens.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-1 2xl:grid-cols-[180px_minmax(0,1fr)]">
                   <div className="h-[190px] min-w-0">
-                    <ModelDistributionChart rows={modelRows} />
+                    <ModelDistributionChart rows={analyticsModels} />
                   </div>
                   <div className="grid gap-2">
-                    {modelRows.map((row) => (
+                    {analyticsModels.length === 0 ? (
+                      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                        No model usage in this range
+                      </div>
+                    ) : analyticsModels.map((row) => (
                       <div className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-3" key={row.model}>
                         <span className="h-10 rounded-full" style={{ backgroundColor: row.color }} />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold">{row.model}</p>
-                          <p className="text-xs text-muted-foreground">{Intl.NumberFormat('en', { notation: 'compact' }).format(row.tokens)} tokens</p>
+                          <p className="text-xs text-muted-foreground">
+                            {row.provider || 'Provider unknown'} · {Intl.NumberFormat('en', { notation: 'compact' }).format(row.tokens)} tokens · {formatCompact(row.requests, 1)} requests
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold">${row.cost.toFixed(0)}</p>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold">{row.costAvailable === false ? 'Cost unavailable' : formatCost(row.cost)}</p>
+                          <p className="text-xs text-muted-foreground">{row.averageLatencyMS ? `${row.averageLatencyMS.toFixed(0)}ms avg` : 'No latency samples'}</p>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               </CardContent>
             </Card>
+            ) : null}
+            {breakdownMode === 'time' ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Time Breakdown</CardTitle>
+                <CardDescription>Time buckets keep Cost and tokens visible over the selected range.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+                  <div className="h-[250px] min-w-0">
+                    <TokenCostCompareChart data={analyticsTimeBreakdown} />
+                  </div>
+                  <div className="grid gap-2">
+                    {analyticsTimeBreakdown.length === 0 ? (
+                      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                        No time bucket usage in this range
+                      </div>
+                    ) : analyticsTimeBreakdown.map((row) => (
+                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border p-3" key={row.label}>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{row.label}</p>
+                          <p className="text-xs text-muted-foreground">{formatCompact(row.requests, 1)} requests · {row.failures} failures</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-semibold">{formatCost(row.cost)}</p>
+                          <p className="text-xs text-muted-foreground">{formatCompact(row.tokens, 2)} tokens</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            ) : null}
           </section>
 
           <Card className="mt-4">

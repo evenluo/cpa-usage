@@ -79,11 +79,38 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 				CostStatus:    "partial",
 			}},
 		}},
+		ModelBreakdown: []servicedto.AnalyticsModelBreakdown{{
+			Model:              "priced-model",
+			Provider:           "OpenAI",
+			TotalCost:          2.45,
+			TotalTokens:        2_100_100,
+			RequestCount:       3,
+			SuccessCount:       2,
+			FailureCount:       1,
+			SuccessRate:        66.6666666667,
+			TotalLatencyMS:     600,
+			LatencySampleCount: 3,
+			AverageLatencyMS:   200,
+			CostAvailable:      false,
+			CostStatus:         "partial",
+		}},
+		TimeBreakdown: []servicedto.AnalyticsTrendPoint{{
+			Label:         "2026-05-11",
+			BucketStart:   start,
+			BucketEnd:     end,
+			TotalCost:     1.95,
+			TotalTokens:   1_600_000,
+			RequestCount:  1,
+			SuccessCount:  1,
+			FailureCount:  0,
+			CostAvailable: true,
+			CostStatus:    "available",
+		}},
 	}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
 
-	req := httptest.NewRequest(http.MethodGet, "/analytics/summary?range=custom&start=2026-05-11&end=2026-05-12", nil)
+	req := httptest.NewRequest(http.MethodGet, "/analytics/summary?range=custom&start=2026-05-11&end=2026-05-12&provider=OpenAI", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -93,6 +120,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	body := rec.Body.String()
 	for _, expected := range []string{
 		`"range":"custom"`,
+		`"provider":"OpenAI"`,
 		`"range_start":"2026-05-11T00:00:00Z"`,
 		`"range_end":"2026-05-12T23:59:59.999999999Z"`,
 		`"total_cost":2.45`,
@@ -106,6 +134,10 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"traceability":"sk-a*******3456 · OpenAI"`,
 		`"identity":"sk-a*******3456"`,
 		`"last_used_at":"2026-05-12T23:59:59Z"`,
+		`"model_distribution":[`,
+		`"model":"priced-model"`,
+		`"average_latency_ms":200`,
+		`"time_breakdown":[`,
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected response to contain %s, got %s", expected, body)
@@ -116,6 +148,9 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	}
 	if provider.filter.Range != "custom" || provider.filter.StartTime == nil || provider.filter.EndTime == nil {
 		t.Fatalf("expected custom range filter, got %+v", provider.filter)
+	}
+	if provider.filter.Provider != "OpenAI" {
+		t.Fatalf("expected provider filter to be passed through, got %+v", provider.filter)
 	}
 }
 
@@ -131,7 +166,7 @@ func TestAnalyticsSummaryRouteReturnsEmptyPayloadWithoutProvider(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !contains(body, `"trend":[]`) || !contains(body, `"cost_status":"available"`) {
+	if !contains(body, `"trend":[]`) || !contains(body, `"model_distribution":[]`) || !contains(body, `"time_breakdown":[]`) || !contains(body, `"cost_status":"available"`) {
 		t.Fatalf("expected empty analytics payload, got %s", body)
 	}
 }

@@ -63,8 +63,26 @@ type AnalyticsKeyAliasBreakdownRecord struct {
 	Trend         []AnalyticsKeyAliasTrendPointRecord
 }
 
+type AnalyticsModelBreakdownRecord struct {
+	Model              string
+	Provider           string
+	TotalCost          float64
+	TotalTokens        int64
+	RequestCount       int64
+	SuccessCount       int64
+	FailureCount       int64
+	SuccessRate        float64
+	TotalLatencyMS     int64
+	LatencySampleCount int64
+	AverageLatencyMS   float64
+	CostAvailable      bool
+	CostStatus         string
+}
+
 type AnalyticsSummarySnapshot struct {
 	Summary           AnalyticsSummaryRecord
 	Trend             []AnalyticsTrendPointRecord
 	KeyAliasBreakdown []AnalyticsKeyAliasBreakdownRecord
+	ModelBreakdown    []AnalyticsModelBreakdownRecord
+	TimeBreakdown     []AnalyticsTrendPointRecord
 }

@@ -26,6 +26,7 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 		Range:     filter.Range,
 		StartTime: filter.StartTime,
 		EndTime:   filter.EndTime,
+		Provider:  filter.Provider,
 	})
 	if err != nil {
 		return nil, err
@@ -80,6 +81,39 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			Trend:         trend,
 		})
 	}
+	modelBreakdown := make([]servicedto.AnalyticsModelBreakdown, 0, len(snapshot.ModelBreakdown))
+	for _, row := range snapshot.ModelBreakdown {
+		modelBreakdown = append(modelBreakdown, servicedto.AnalyticsModelBreakdown{
+			Model:              row.Model,
+			Provider:           row.Provider,
+			TotalCost:          row.TotalCost,
+			TotalTokens:        row.TotalTokens,
+			RequestCount:       row.RequestCount,
+			SuccessCount:       row.SuccessCount,
+			FailureCount:       row.FailureCount,
+			SuccessRate:        row.SuccessRate,
+			TotalLatencyMS:     row.TotalLatencyMS,
+			LatencySampleCount: row.LatencySampleCount,
+			AverageLatencyMS:   row.AverageLatencyMS,
+			CostAvailable:      row.CostAvailable,
+			CostStatus:         row.CostStatus,
+		})
+	}
+	timeBreakdown := make([]servicedto.AnalyticsTrendPoint, 0, len(snapshot.TimeBreakdown))
+	for _, point := range snapshot.TimeBreakdown {
+		timeBreakdown = append(timeBreakdown, servicedto.AnalyticsTrendPoint{
+			Label:         point.Label,
+			BucketStart:   point.BucketStart,
+			BucketEnd:     point.BucketEnd,
+			TotalCost:     point.TotalCost,
+			TotalTokens:   point.TotalTokens,
+			RequestCount:  point.RequestCount,
+			SuccessCount:  point.SuccessCount,
+			FailureCount:  point.FailureCount,
+			CostAvailable: point.CostAvailable,
+			CostStatus:    point.CostStatus,
+		})
+	}
 	return &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
 			TotalCost:     snapshot.Summary.TotalCost,
@@ -93,5 +127,7 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 		},
 		Trend:             trend,
 		KeyAliasBreakdown: keyAliasBreakdown,
+		ModelBreakdown:    modelBreakdown,
+		TimeBreakdown:     timeBreakdown,
 	}, nil
 }

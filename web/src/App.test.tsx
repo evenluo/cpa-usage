@@ -117,6 +117,42 @@ describe('App', () => {
               trend: [{ label: '05-12', total_cost: 0, total_tokens: 3000000, cost_available: false, cost_status: 'unavailable' }],
             },
           ],
+          model_distribution: [
+            {
+              model: 'gpt-5.5',
+              provider: 'OpenAI',
+              total_cost: 4.5,
+              total_tokens: 2500000,
+              request_count: 80,
+              success_count: 79,
+              failure_count: 1,
+              success_rate: 98.75,
+              total_latency_ms: 16000,
+              latency_sample_count: 80,
+              average_latency_ms: 200,
+              cost_available: true,
+              cost_status: 'available',
+            },
+            {
+              model: 'missing-price-model',
+              provider: 'Anthropic',
+              total_cost: 0,
+              total_tokens: 1800000,
+              request_count: 40,
+              success_count: 38,
+              failure_count: 2,
+              success_rate: 95,
+              total_latency_ms: 0,
+              latency_sample_count: 0,
+              average_latency_ms: 0,
+              cost_available: false,
+              cost_status: 'unavailable',
+            },
+          ],
+          time_breakdown: [
+            { label: '05-11', total_cost: 2.25, total_tokens: 1200000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
+            { label: '05-12', total_cost: 2.25, total_tokens: 3100000, request_count: 221, success_count: 215, failure_count: 6, cost_available: false, cost_status: 'partial' },
+          ],
         }))
       }
       return new Response(null, { status: 404 })
@@ -133,7 +169,6 @@ describe('App', () => {
     expect(screen.getByText('98.3%')).toBeInTheDocument()
     expect(screen.getByText('Cost partial')).toBeInTheDocument()
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
-    expect(screen.getByText('Model Distribution')).toBeInTheDocument()
     expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
     expect(screen.getAllByText('Shared Alias')).toHaveLength(2)
     expect(screen.getByText('sk-a*******3456 · OpenAI')).toBeInTheDocument()
@@ -141,6 +176,15 @@ describe('App', () => {
     expect(screen.getByText('Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout')).toBeInTheDocument()
     expect(screen.getByText('Cost unavailable')).toBeInTheDocument()
     expect(screen.getByText('Deleted')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Model' }))
+    expect(screen.getByText('Model Distribution')).toBeInTheDocument()
+    expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
+    expect(screen.getByText(/OpenAI/)).toBeInTheDocument()
+    expect(screen.getByText('200ms avg')).toBeInTheDocument()
+    expect(screen.getByText('missing-price-model')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Time' }))
+    expect(screen.getByText('Time Breakdown')).toBeInTheDocument()
+    expect(screen.getByText('221 requests · 6 failures')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d')
   })
 
@@ -161,6 +205,8 @@ describe('App', () => {
           },
           trend: [],
           key_alias_breakdown: [],
+          model_distribution: [],
+          time_breakdown: [],
         }))
       }
       return new Response(null, { status: 404 })
@@ -170,6 +216,10 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('No key alias usage in this range')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Model' }))
+    expect(screen.getByText('No model usage in this range')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Time' }))
+    expect(screen.getByText('No time bucket usage in this range')).toBeInTheDocument()
   })
 
   it('renders unavailable analytics cost as unknown instead of zero currency', async () => {
