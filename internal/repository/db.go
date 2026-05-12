@@ -21,6 +21,9 @@ func OpenDatabase(cfg config.Config) (*gorm.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := ensureSQLiteParentDir(cfg.SQLitePath); err != nil {
+		return nil, err
+	}
 	dsn := sqliteDSN(cfg.SQLitePath)
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
@@ -89,6 +92,24 @@ func sqliteDatabaseFileExists(path string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("check sqlite database %s: %w", filepath.Clean(trimmed), err)
+}
+
+func ensureSQLiteParentDir(path string) error {
+	trimmed := strings.TrimSpace(path)
+	if before, _, ok := strings.Cut(trimmed, "?"); ok {
+		trimmed = before
+	}
+	if trimmed == "" || trimmed == ":memory:" {
+		return nil
+	}
+	dir := filepath.Dir(trimmed)
+	if dir == "." || dir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create sqlite directory %s: %w", filepath.Clean(dir), err)
+	}
+	return nil
 }
 
 func sqliteDatabaseHasTables(db *gorm.DB) (bool, error) {

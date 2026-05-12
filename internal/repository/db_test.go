@@ -60,6 +60,20 @@ func TestOpenDatabaseCreatesFreshDatabaseFromCurrentSchemaWithoutRunningMigratio
 	}
 }
 
+func TestOpenDatabaseCreatesMissingSQLiteParentDir(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "data", "nested", "app.db")
+
+	db, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	if !db.Migrator().HasTable("usage_events") {
+		t.Fatal("expected usage_events table to exist")
+	}
+}
+
 func TestOpenDatabaseConfiguresSQLiteRuntime(t *testing.T) {
 	db := openTestDatabase(t)
 
