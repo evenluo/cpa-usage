@@ -1,3 +1,16 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f6f7f9;
+  --color-foreground: #18181b;
+  --color-card: #ffffff;
+  --color-card-foreground: #18181b;
+  --color-muted: #f1f3f5;
+  --color-muted-foreground: #71717a;
+  --color-border: #e4e4e7;
+  --color-ring: #059669;
+}
+
 :root {
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -13,6 +26,10 @@
   box-sizing: border-box;
 }
 
+html {
+  background: #f6f7f9;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -24,127 +41,16 @@ a {
   text-decoration: none;
 }
 
-.shell {
-  display: grid;
-  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
-  min-height: 100vh;
+button,
+input {
+  font: inherit;
 }
 
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-  border-right: 1px solid #e4e4e7;
-  background: #ffffff;
-  padding: 28px;
-}
-
-.sidebar h1,
-.workspace-header h2 {
-  margin: 0;
-  font-size: 24px;
-  line-height: 1.2;
-}
-
-.eyebrow,
-.summary-grid span {
-  margin: 0 0 8px;
-  color: #71717a;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
-}
-
-nav {
-  display: grid;
-  gap: 8px;
-}
-
-nav a {
-  border-radius: 8px;
-  padding: 10px 12px;
-  color: #3f3f46;
-  font-weight: 600;
-}
-
-nav a:first-child,
-nav a:hover {
-  background: #eef6f3;
-  color: #116149;
-}
-
-.workspace {
-  display: grid;
-  align-content: start;
-  gap: 24px;
-  padding: 32px;
-}
-
-.workspace-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.status {
-  border: 1px solid #d4d4d8;
-  border-radius: 999px;
-  background: #ffffff;
-  padding: 8px 12px;
-  color: #52525b;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.summary-grid article,
-.panel {
-  border: 1px solid #e4e4e7;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 20px;
-}
-
-.summary-grid strong {
+svg {
   display: block;
-  font-size: 18px;
-  line-height: 1.3;
 }
 
-.panel p {
-  max-width: 760px;
-  margin: 0;
-  color: #3f3f46;
-  line-height: 1.7;
-}
-
-@media (max-width: 760px) {
-  .shell {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    border-right: 0;
-    border-bottom: 1px solid #e4e4e7;
-  }
-
-  .workspace {
-    padding: 20px;
-  }
-
-  .workspace-header,
-  .summary-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-header {
-    display: grid;
-  }
+.recharts-wrapper,
+.recharts-surface {
+  outline: none;
 }

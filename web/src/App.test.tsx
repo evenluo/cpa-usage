@@ -22,6 +22,18 @@ describe('App', () => {
     expect(screen.getByRole('link', { name: '系统设置 Settings' })).toBeInTheDocument()
   })
 
+  it('renders the HITL analytics prototype sections', () => {
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: 'Usage and Cost workspace' })).toBeInTheDocument()
+    expect(screen.getByText('Cost and Token Trend')).toBeInTheDocument()
+    expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
+    expect(screen.getByText('Model Distribution')).toBeInTheDocument()
+    expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
+    expect(screen.getAllByText('Agent Research')).toHaveLength(2)
+    expect(screen.getByText('sk-cpa...7A91 · codex')).toBeInTheDocument()
+  })
+
   it('prefixes navigation links with the configured application base path', () => {
     window.__APP_BASE_PATH__ = '/cpa'
 
