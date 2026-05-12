@@ -1,0 +1,20 @@
+# local env and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# runtime data
+/data/
+*.db
+*.db-*
+backups/
+
+# frontend deps and build cache
+web/node_modules/
+web/dist/
+!web/dist/.gitkeep
+
+# local test artifacts
+.tmp-test.db
+coverage/
