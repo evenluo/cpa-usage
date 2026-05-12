@@ -8,6 +8,18 @@ const navItems = [
   { label: '系统设置 Settings', href: '/settings' },
 ]
 
+function appBasePath() {
+  const value = window.__APP_BASE_PATH__
+  if (!value || value === '__APP_BASE_PATH__' || value === '/') {
+    return ''
+  }
+  return value.endsWith('/') ? value.slice(0, -1) : value
+}
+
+function withBasePath(path: string) {
+  return `${appBasePath()}${path}`
+}
+
 function App() {
   return (
     <main className="shell">
@@ -18,7 +30,7 @@ function App() {
         </div>
         <nav>
           {navItems.map((item) => (
-            <a key={item.href} href={item.href}>
+            <a key={item.href} href={withBasePath(item.href)}>
               {item.label}
             </a>
           ))}
