@@ -18,6 +18,7 @@ type analyticsAggregateRow struct {
 	TotalTokens          int64
 	TotalCost            float64
 	MissingPricingEvents int64
+	PricedBillableEvents int64
 }
 
 func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
@@ -46,7 +47,8 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 			COALESCE(SUM(CASE WHEN failed THEN 1 ELSE 0 END), 0) AS failure_count,
 			COALESCE(SUM(total_tokens), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events`).
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
 		Scan(&row).Error; err != nil {
 		return dto.AnalyticsSummaryRecord{}, fmt.Errorf("build analytics summary: %w", err)
 	}
@@ -66,7 +68,8 @@ func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.Analyt
 			COALESCE(SUM(CASE WHEN failed THEN 1 ELSE 0 END), 0) AS failure_count,
 			COALESCE(SUM(total_tokens), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events`).
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
 		Group("bucket").
 		Order("bucket ASC").
 		Scan(&rows).Error; err != nil {
@@ -90,13 +93,21 @@ func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *
 }
 
 func analyticsCostSQLExpression() string {
+	inputTokens := analyticsPositiveTokenSQLExpression("usage_events.input_tokens")
+	outputTokens := analyticsPositiveTokenSQLExpression("usage_events.output_tokens")
+	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	promptTokens := "(CASE WHEN " + inputTokens + " - " + cachedTokens + " > 0 THEN " + inputTokens + " - " + cachedTokens + " ELSE 0 END)"
 	return `CASE
 		WHEN model_price_settings.id IS NULL THEN 0
 		ELSE
-			((CASE WHEN usage_events.input_tokens - usage_events.cached_tokens > 0 THEN usage_events.input_tokens - usage_events.cached_tokens ELSE 0 END) / 1000000.0) * model_price_settings.prompt_price_per1_m +
-			((CASE WHEN usage_events.output_tokens > 0 THEN usage_events.output_tokens ELSE 0 END) / 1000000.0) * model_price_settings.completion_price_per1_m +
-			((CASE WHEN usage_events.cached_tokens > 0 THEN usage_events.cached_tokens ELSE 0 END) / 1000000.0) * model_price_settings.cache_price_per1_m
+			(` + promptTokens + ` / 1000000.0) * model_price_settings.prompt_price_per1_m +
+			(` + outputTokens + ` / 1000000.0) * model_price_settings.completion_price_per1_m +
+			(` + cachedTokens + ` / 1000000.0) * model_price_settings.cache_price_per1_m
 	END`
+}
+
+func analyticsPositiveTokenSQLExpression(column string) string {
+	return "(CASE WHEN " + column + " > 0 THEN " + column + " ELSE 0 END)"
 }
 
 func analyticsMissingPricingSQLExpression() string {
@@ -108,9 +119,18 @@ func analyticsMissingPricingSQLExpression() string {
 	END`
 }
 
+func analyticsPricedBillableSQLExpression() string {
+	return `CASE
+		WHEN model_price_settings.id IS NOT NULL
+			AND (usage_events.input_tokens > 0 OR usage_events.output_tokens > 0 OR usage_events.cached_tokens > 0)
+		THEN 1
+		ELSE 0
+	END`
+}
+
 func analyticsBucketSQLExpression(bucketByDay bool) string {
 	if bucketByDay {
-		return "strftime('%Y-%m-%d', usage_events.timestamp)"
+		return "strftime('%Y-%m-%d', usage_events.timestamp, 'localtime')"
 	}
 	return "strftime('%Y-%m-%dT%H:00:00Z', usage_events.timestamp)"
 }
@@ -126,7 +146,7 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {
 	if row.RequestCount > 0 {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
-	summary.CostAvailable, summary.CostStatus = analyticsCostAvailability(row.TotalCost, row.MissingPricingEvents)
+	summary.CostAvailable, summary.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
 	return summary
 }
 
@@ -144,7 +164,7 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 	if err != nil {
 		return dto.AnalyticsTrendPointRecord{}, fmt.Errorf("parse analytics trend bucket %q: %w", row.Bucket, err)
 	}
-	costAvailable, costStatus := analyticsCostAvailability(row.TotalCost, row.MissingPricingEvents)
+	costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
 	return dto.AnalyticsTrendPointRecord{
 		Label:         row.Bucket,
 		BucketStart:   bucketStart.UTC(),
@@ -159,11 +179,11 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 	}, nil
 }
 
-func analyticsCostAvailability(totalCost float64, missingPricingEvents int64) (bool, string) {
+func analyticsCostAvailability(missingPricingEvents int64, pricedBillableEvents int64) (bool, string) {
 	if missingPricingEvents == 0 {
 		return true, dto.AnalyticsCostStatusAvailable
 	}
-	if totalCost > 0 {
+	if pricedBillableEvents > 0 {
 		return false, dto.AnalyticsCostStatusPartial
 	}
 	return false, dto.AnalyticsCostStatusUnavailable

@@ -62,12 +62,149 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendByLocalDay(t *testing.T) {
+	t.Setenv("TZ", "Asia/Shanghai")
+	withRepositoryTestLocation(t, "Asia/Shanghai")
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 12, 23, 59, 59, 0, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "local-day-event", Model: "priced-model",
+		Timestamp:   time.Date(2026, 5, 11, 16, 30, 0, 0, time.UTC),
+		InputTokens: 1000, TotalTokens: 1000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.Trend) != 1 {
+		t.Fatalf("expected one trend point, got %+v", snapshot.Trend)
+	}
+	if snapshot.Trend[0].Label != "2026-05-12" {
+		t.Fatalf("expected local day bucket 2026-05-12, got %+v", snapshot.Trend[0])
+	}
+	if !snapshot.Trend[0].BucketStart.Equal(time.Date(2026, 5, 11, 16, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected bucket start at local midnight, got %+v", snapshot.Trend[0])
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendAcrossDSTChange(t *testing.T) {
+	t.Setenv("TZ", "America/New_York")
+	withRepositoryTestLocation(t, "America/New_York")
+	db := openTestDatabase(t)
+	start := time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 3, 10, 23, 59, 59, 0, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "after-dst-change", Model: "priced-model",
+		Timestamp:   time.Date(2026, 3, 9, 4, 30, 0, 0, time.UTC),
+		InputTokens: 1000, TotalTokens: 1000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.Trend) != 1 {
+		t.Fatalf("expected one trend point, got %+v", snapshot.Trend)
+	}
+	if snapshot.Trend[0].Label != "2026-03-09" {
+		t.Fatalf("expected event after DST change to use its local day, got %+v", snapshot.Trend[0])
+	}
+	if !snapshot.Trend[0].BucketStart.Equal(time.Date(2026, 3, 9, 4, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected bucket start at DST local midnight, got %+v", snapshot.Trend[0])
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterMarksCostUnavailableWhenNoPricedCostExists(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	end := start.Add(24 * time.Hour)
+	end := start.Add(7 * 24 * time.Hour)
 	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
 		EventKey: "unpriced-only", Model: "missing-model", Timestamp: start.Add(time.Hour), InputTokens: 100, TotalTokens: 100,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "unavailable" || snapshot.Summary.TotalCost != 0 {
+		t.Fatalf("expected unavailable cost status, got %+v", snapshot.Summary)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterMarksCostPartialWhenPricedRowsHaveZeroRates(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(7 * 24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "zero-rate-model",
+		PromptPricePer1M:     0,
+		CompletionPricePer1M: 0,
+		CachePricePer1M:      0,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "priced-zero-rate", Model: "zero-rate-model", Timestamp: start.Add(time.Hour), InputTokens: 1000, TotalTokens: 1000},
+		{EventKey: "unpriced", Model: "missing-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1000, TotalTokens: 1000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.Summary.TotalCost != 0 || snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "partial" {
+		t.Fatalf("expected partial cost status with zero-rate priced row, got %+v", snapshot.Summary)
+	}
+	if len(snapshot.Trend) != 1 || snapshot.Trend[0].CostStatus != "partial" {
+		t.Fatalf("expected partial trend status, got %+v", snapshot.Trend)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterClampsTokenFieldsBeforeCostCalculation(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "negative-cached", Model: "priced-model", Timestamp: start.Add(time.Hour),
+		InputTokens: 100, OutputTokens: -20, CachedTokens: -50, TotalTokens: 30,
 	}}); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
@@ -77,8 +214,8 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostUnavailableWhenNoPricedCostExis
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
 
-	if snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "unavailable" || snapshot.Summary.TotalCost != 0 {
-		t.Fatalf("expected unavailable cost status, got %+v", snapshot.Summary)
+	if math.Abs(snapshot.Summary.TotalCost-0.0001) > 0.000000001 {
+		t.Fatalf("expected independently clamped token cost, got %+v", snapshot.Summary)
 	}
 }
 

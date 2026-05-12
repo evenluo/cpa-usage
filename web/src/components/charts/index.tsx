@@ -27,7 +27,7 @@ function compactNumber(value: number) {
 }
 
 function formatCurrency(value: number) {
-  return `$${value.toFixed(0)}`
+  return `$${value.toLocaleString('en', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
 }
 
 export function MetricTrendChart({ data }: { data: TrendPoint[] }) {

@@ -39,7 +39,11 @@ function formatCompact(value: number, maximumFractionDigits = 1) {
 }
 
 function formatCurrency(value: number) {
-  return `$${value.toLocaleString('en', { maximumFractionDigits: 0 })}`
+  return `$${value.toLocaleString('en', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
+}
+
+function formatAnalyticsCost(summary: AnalyticsSummaryPayload) {
+  return summary.cost_status === 'unavailable' ? 'Unavailable' : formatCurrency(summary.total_cost)
 }
 
 function appBasePath() {
@@ -217,7 +221,7 @@ function App() {
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
             <section className="grid gap-4">
               <div className="grid gap-3 md:grid-cols-4">
-                <MetricCard label="Total Cost" value={formatCurrency(analyticsSummary.total_cost)} caption={`Cost ${analyticsSummary.cost_status}`} tone="green" />
+                <MetricCard label="Total Cost" value={formatAnalyticsCost(analyticsSummary)} caption={`Cost ${analyticsSummary.cost_status}`} tone="green" />
                 <MetricCard label="Total Tokens" value={formatCompact(analyticsSummary.total_tokens, 2)} caption="Cost peer measure" tone="blue" />
                 <MetricCard label="Requests" value={analyticsSummary.request_count.toLocaleString('en')} caption="Selected range total" tone="violet" />
                 <MetricCard label="Success Rate" value={`${analyticsSummary.success_rate.toFixed(1)}%`} caption={`${analyticsSummary.failure_count} failures in range`} tone="amber" />
