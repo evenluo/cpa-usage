@@ -29,19 +29,51 @@ describe('App', () => {
     expect(screen.getByRole('link', { name: '系统设置 Settings' })).toBeInTheDocument()
   })
 
-  it('renders the HITL analytics prototype sections', () => {
+  it('renders analytics KPI and trend data from the analytics API', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/analytics/summary')) {
+        return new Response(JSON.stringify({
+          range: '7d',
+          range_start: '2026-05-06T00:00:00Z',
+          range_end: '2026-05-13T00:00:00Z',
+          timezone: 'UTC',
+          summary: {
+            total_cost: 245.5,
+            total_tokens: 2100100,
+            request_count: 301,
+            success_count: 296,
+            failure_count: 5,
+            success_rate: 98.338,
+            cost_available: false,
+            cost_status: 'partial',
+          },
+          trend: [
+            { label: '05-11', total_cost: 120.25, total_tokens: 1000000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
+            { label: '05-12', total_cost: 125.25, total_tokens: 1100100, request_count: 181, success_count: 177, failure_count: 4, cost_available: false, cost_status: 'partial' },
+          ],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
     render(<App />)
 
     expect(screen.getByRole('heading', { name: 'Usage and Cost workspace' })).toBeInTheDocument()
     expect(screen.getByText('Cost and Token Trend')).toBeInTheDocument()
+    expect(await screen.findByText('$246')).toBeInTheDocument()
+    expect(screen.getByText('2.1M')).toBeInTheDocument()
+    expect(screen.getByText('301')).toBeInTheDocument()
+    expect(screen.getByText('98.3%')).toBeInTheDocument()
+    expect(screen.getByText('Cost partial')).toBeInTheDocument()
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
     expect(screen.getByText('Model Distribution')).toBeInTheDocument()
     expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
     expect(screen.getAllByText('Agent Research')).toHaveLength(2)
     expect(screen.getByText('sk-cpa...7A91 · codex')).toBeInTheDocument()
-    expect(screen.getByText('$1,006')).toBeInTheDocument()
-    expect(screen.getByText('12.27M')).toBeInTheDocument()
     expect(screen.getByText('4.92M tokens')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d')
   })
 
   it('prefixes navigation links with the configured application base path', () => {

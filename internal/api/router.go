@@ -57,6 +57,7 @@ type QuotaProvider interface {
 }
 
 type OptionalProviders struct {
+	Analytics     service.AnalyticsProvider
 	UsageIdentity service.UsageIdentityProvider
 	KeyAlias      service.KeyAliasProvider
 	Quota         QuotaProvider
@@ -95,9 +96,11 @@ func NewRouter(
 	authHandler.registerRoutes(authGroup)
 
 	var usageIdentityProvider service.UsageIdentityProvider
+	var analyticsProvider service.AnalyticsProvider
 	var keyAliasProvider service.KeyAliasProvider
 	var quotaProvider QuotaProvider
 	if len(optionalProviders) > 0 {
+		analyticsProvider = optionalProviders[0].Analytics
 		usageIdentityProvider = optionalProviders[0].UsageIdentity
 		keyAliasProvider = optionalProviders[0].KeyAlias
 		quotaProvider = optionalProviders[0].Quota
@@ -110,6 +113,7 @@ func NewRouter(
 	registerSyncRoutes(protected, statusProvider, &syncLimiter{window: manualSyncRateLimitWindow})
 	registerUsageOverviewRoute(protected, usageProvider)
 	registerUsageAnalysisRoute(protected, usageProvider)
+	registerAnalyticsRoutes(protected, analyticsProvider)
 	registerUsageEventsRoute(protected, usageProvider, usageIdentityProvider)
 	registerUsageIdentityRoutes(protected, usageIdentityProvider, keyAliasProvider)
 	registerPricingRoutes(protected, pricingProvider)

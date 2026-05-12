@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsTrigger } from '@/components/ui/tabs'
-import { aliasRows, healthBlocks, insightChips, modelRows, trendData } from '@/data/analyticsPrototype'
+import { type TrendPoint, aliasRows, healthBlocks, insightChips, modelRows } from '@/data/analyticsPrototype'
 
 import './index.css'
 
@@ -40,23 +40,6 @@ function formatCompact(value: number, maximumFractionDigits = 1) {
 
 function formatCurrency(value: number) {
   return `$${value.toLocaleString('en', { maximumFractionDigits: 0 })}`
-}
-
-const totals = trendData.reduce(
-  (result, point) => ({
-    cost: result.cost + point.cost,
-    tokens: result.tokens + point.tokens,
-    requests: result.requests + point.requests,
-    failures: result.failures + point.failures,
-  }),
-  { cost: 0, tokens: 0, requests: 0, failures: 0 },
-)
-
-const kpis = {
-  cost: formatCurrency(totals.cost),
-  tokens: formatCompact(totals.tokens, 2),
-  requests: totals.requests.toLocaleString('en'),
-  successRate: `${(((totals.requests - totals.failures) / totals.requests) * 100).toFixed(1)}%`,
 }
 
 function appBasePath() {
@@ -82,8 +65,97 @@ function apiPath(path: string) {
   return withBasePath(`/api/v1${path}`)
 }
 
+type AnalyticsSummaryPayload = {
+  total_cost: number
+  total_tokens: number
+  request_count: number
+  success_count: number
+  failure_count: number
+  success_rate: number
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
+type AnalyticsTrendPointPayload = {
+  label: string
+  total_cost: number
+  total_tokens: number
+  request_count: number
+  success_count: number
+  failure_count: number
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
+type AnalyticsSummaryResponse = {
+  summary: AnalyticsSummaryPayload
+  trend: AnalyticsTrendPointPayload[]
+}
+
+type AnalyticsState = {
+  summary: AnalyticsSummaryPayload
+  trend: TrendPoint[]
+}
+
+const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
+  total_cost: 0,
+  total_tokens: 0,
+  request_count: 0,
+  success_count: 0,
+  failure_count: 0,
+  success_rate: 0,
+  cost_available: true,
+  cost_status: 'available',
+}
+
+function useAnalyticsSummary(enabled: boolean) {
+  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [] })
+
+  useEffect(() => {
+    if (!enabled) {
+      return
+    }
+    let active = true
+    fetch(apiPath('/analytics/summary?range=7d'))
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('load analytics failed')
+        }
+        return response.json() as Promise<AnalyticsSummaryResponse>
+      })
+      .then((payload) => {
+        if (!active) {
+          return
+        }
+        setAnalytics({
+          summary: payload.summary ?? emptyAnalyticsSummary,
+          trend: (payload.trend ?? []).map((point) => ({
+            label: point.label,
+            cost: point.total_cost,
+            tokens: point.total_tokens,
+            requests: point.request_count,
+            failures: point.failure_count,
+          })),
+        })
+      })
+      .catch(() => {
+        if (active) {
+          setAnalytics({ summary: emptyAnalyticsSummary, trend: [] })
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [enabled])
+
+  return analytics
+}
+
 function App() {
   const route = currentRoute()
+  const analytics = useAnalyticsSummary(route !== '/keys')
+  const analyticsSummary = analytics.summary
+  const analyticsTrend = analytics.trend
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -145,10 +217,10 @@ function App() {
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
             <section className="grid gap-4">
               <div className="grid gap-3 md:grid-cols-4">
-                <MetricCard label="Total Cost" value={kpis.cost} caption="Partial: 2 unpriced models" tone="green" />
-                <MetricCard label="Total Tokens" value={kpis.tokens} caption="Cost peer measure" tone="blue" />
-                <MetricCard label="Requests" value={kpis.requests} caption="+14.8% vs previous" tone="violet" />
-                <MetricCard label="Success Rate" value={kpis.successRate} caption={`${totals.failures} failures in range`} tone="amber" />
+                <MetricCard label="Total Cost" value={formatCurrency(analyticsSummary.total_cost)} caption={`Cost ${analyticsSummary.cost_status}`} tone="green" />
+                <MetricCard label="Total Tokens" value={formatCompact(analyticsSummary.total_tokens, 2)} caption="Cost peer measure" tone="blue" />
+                <MetricCard label="Requests" value={analyticsSummary.request_count.toLocaleString('en')} caption="Selected range total" tone="violet" />
+                <MetricCard label="Success Rate" value={`${analyticsSummary.success_rate.toFixed(1)}%`} caption={`${analyticsSummary.failure_count} failures in range`} tone="amber" />
               </div>
 
               <Card>
@@ -166,10 +238,10 @@ function App() {
                 <CardContent>
                   <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                     <div className="h-[270px] min-w-0">
-                      <MetricTrendChart data={trendData} />
+                      <MetricTrendChart data={analyticsTrend} />
                     </div>
                     <div className="h-[270px] min-w-0 rounded-lg border border-border bg-muted/40 p-3">
-                      <TokenCostCompareChart data={trendData} />
+                      <TokenCostCompareChart data={analyticsTrend} />
                     </div>
                   </div>
                 </CardContent>
