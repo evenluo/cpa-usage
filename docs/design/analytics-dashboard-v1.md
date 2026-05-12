@@ -84,6 +84,16 @@ Rules:
 - When alias exists, alias is the primary label and masked key is secondary traceability text.
 - Alias edits should take effect immediately in current UI state after save.
 
+Storage:
+
+- Store aliases in a dedicated CPA Usage table, not on the synced usage identity row.
+- Key the alias by `auth_type + identity`.
+- Do not key aliases by provider, base URL, or source display metadata.
+- Keep alias rows independent from `usage_identities.is_deleted` so historical usage remains readable.
+- Treat `usage_identities` as synchronized CPA metadata and `key_aliases` as user-owned local display data.
+- Users can clear an alias; clearing only removes the local display name and does not delete the key or historical usage.
+- Alias text is trimmed, can use any human-readable characters, and is limited to 80 characters.
+
 ## Keys Page
 
 The Keys page is the editing surface for aliases.
@@ -166,6 +176,30 @@ The new analytics direction needs more direct key-centric aggregation:
 
 The existing `api_group_key` analysis is not enough because it is not the same as a user-facing **CPA Key** / **Key Alias** dimension.
 
+## Backend Reuse and Enhancement Strategy
+
+The backend should inherit stable keeper capabilities instead of being rewritten from scratch:
+
+- CPA usage queue consumption.
+- SQLite persistence and migrations.
+- Pricing settings and cost calculation semantics.
+- Request event listing and filtering.
+- Auth/session, backup, update check, and deployment support.
+
+The backend should also improve areas that are not a good fit for the new product direction:
+
+- Split key-centric analytics out from the existing broad usage aggregation path.
+- Avoid adding more responsibilities to the current mixed overview/analysis repository module.
+- Add explicit **CPA Key** / **Key Alias** aggregation APIs instead of relying on `api_group_key`.
+- Keep deterministic insight generation in a testable backend module.
+- Review memory-heavy in-process aggregation paths before expanding them for alias analytics.
+
+The key-centric analytics implementation should be a new independent backend module, not an extension of the current broad `usage.go` aggregation file. The module should expose focused operations such as analytics summary, key breakdowns, key trends, alias-model drill-downs, and deterministic insights.
+
+The module should prefer SQL aggregation for key/model/time-bucket statistics. In-memory processing should be limited to shaping query results for the frontend or producing small UI-specific derived values.
+
+This means v1 is a productized enhancement of keeper's backend, not a full backend rewrite and not a front-end-only reskin.
+
 ## Compatibility Decisions
 
 - **CPA compatibility**: keep compatible. CPA is not changed and aliases are not written back.
@@ -187,6 +221,59 @@ The UI should reference the Magic dashboard style without copying its exact stru
 - dense but readable operational layout
 - no decorative blobs or marketing hero sections
 - no one-note purple or dark-blue palette
+
+### Selected Direction
+
+The selected direction combines the two generated visual options:
+
+- Use the upper structure from **Executive Analytics** for the analytics first screen: header, time controls, peer Cost/Tokens KPI emphasis, combined Cost/Tokens trend, and deterministic insight strip.
+- Use the middle and lower structure from **Analyst Console** for repeated analysis: Key Alias / Model / Time breakdown workspace, alias ranking, model distribution, filters, and secondary Request Health Timeline.
+
+Reference design board:
+
+![CPA Usage analytics dashboard v1 options](./assets/analytics-dashboard-v1-options.png)
+
+## Frontend Stack Decision
+
+The v1 frontend should use React, TypeScript, Vite, Tailwind CSS, and shadcn/ui.
+
+Decision details:
+
+- shadcn/ui provides the baseline component layer for buttons, inputs, selects, tabs, dialogs, popovers, tables, tooltips, badges, and command/search surfaces.
+- Tailwind CSS is the main styling system for the redesigned frontend.
+- Existing keeper SCSS modules are not the main design-system path for v1.
+- shadcn/ui is not the visual style by itself; components must be styled toward the Magic-like direction defined above.
+- Charts should use Recharts as the v1 rendering engine with custom or Tremor-style chart primitives for visual polish.
+- ECharts is not the v1 primary chart system.
+- Chart primitives are first-class frontend modules, not page-local one-off chart code.
+
+Rationale:
+
+- The old keeper UI uses hand-rolled components and SCSS modules, which are functional but expensive to evolve into a polished and consistent analytics workspace.
+- shadcn/ui keeps component source in the project, which makes it easier to customize toward the desired visual language than a heavier closed theme system.
+- Tailwind and shadcn/ui are a frontend-layer decision only; backend data collection, SQLite storage, pricing semantics, and CPA compatibility remain unchanged.
+- Recharts keeps the chart stack light and compatible with shadcn/Tailwind; custom chart primitives prevent the UI from inheriting default Recharts aesthetics.
+
+Recommended chart primitives:
+
+- `MetricTrendChart`
+- `TokenCostCompareChart`
+- `AliasRankingChart`
+- `ModelDistributionChart`
+- `HealthTimeline`
+- `Sparkline`
+
+## Repository Migration Strategy
+
+The implementation repository should migrate the stable keeper backend and deployment pieces, then rebuild the frontend around the new stack and IA.
+
+Migration approach:
+
+- Bring over backend and deployment foundations such as `cmd/`, `internal/`, migrations, Dockerfile, and Makefile.
+- Rebuild `web/` with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui.
+- Treat the old keeper frontend as a reference for API usage and field semantics, not as the component or styling baseline.
+- Keep backend compatibility where it protects CPA data collection and deployment behavior.
+- Do not preserve old frontend component compatibility.
 
 ## Plan Review
 
