@@ -221,6 +221,41 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	}
 }
 
+func TestAnalyticsSummaryRouteOmitsUnavailableComparisonDeltas(t *testing.T) {
+	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{
+		Comparison: servicedto.AnalyticsComparison{HasPreviousPeriod: false},
+	}}
+	router := gin.New()
+	registerAnalyticsRoutes(router, provider)
+
+	req := httptest.NewRequest(http.MethodGet, "/analytics/summary?range=7d", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, expected := range []string{
+		`"comparison":{`,
+		`"has_previous_period":false`,
+	} {
+		if !contains(body, expected) {
+			t.Fatalf("expected response to contain %s, got %s", expected, body)
+		}
+	}
+	for _, unexpected := range []string{
+		`"total_cost_change_pct"`,
+		`"total_tokens_change_pct"`,
+		`"request_count_change_pct"`,
+		`"success_rate_change_pp"`,
+	} {
+		if contains(body, unexpected) {
+			t.Fatalf("expected response to omit %s, got %s", unexpected, body)
+		}
+	}
+}
+
 func TestAnalyticsSummaryRouteAcceptsDayGranularity(t *testing.T) {
 	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{}}
 	router := gin.New()

@@ -200,11 +200,18 @@ func mapAnalyticsComparison(current dto.AnalyticsSummaryRecord, previous dto.Ana
 	}
 	return dto.AnalyticsComparisonRecord{
 		HasPreviousPeriod:     true,
-		TotalCostChangePct:    analyticsPercentChange(current.TotalCost, previous.TotalCost),
+		TotalCostChangePct:    analyticsCostPercentChange(current, previous),
 		TotalTokensChangePct:  analyticsPercentChange(float64(current.TotalTokens), float64(previous.TotalTokens)),
 		RequestCountChangePct: analyticsPercentChange(float64(current.RequestCount), float64(previous.RequestCount)),
 		SuccessRateChangePP:   analyticsPointChange(current.SuccessRate, previous.SuccessRate),
 	}
+}
+
+func analyticsCostPercentChange(current dto.AnalyticsSummaryRecord, previous dto.AnalyticsSummaryRecord) *float64 {
+	if current.CostStatus != dto.AnalyticsCostStatusAvailable || previous.CostStatus != dto.AnalyticsCostStatusAvailable {
+		return nil
+	}
+	return analyticsPercentChange(current.TotalCost, previous.TotalCost)
 }
 
 func analyticsPercentChange(current float64, previous float64) *float64 {

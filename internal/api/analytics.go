@@ -136,10 +136,10 @@ type analyticsProviderOption struct {
 
 type analyticsComparisonPayload struct {
 	HasPreviousPeriod     bool     `json:"has_previous_period"`
-	TotalCostChangePct    *float64 `json:"total_cost_change_pct"`
-	TotalTokensChangePct  *float64 `json:"total_tokens_change_pct"`
-	RequestCountChangePct *float64 `json:"request_count_change_pct"`
-	SuccessRateChangePP   *float64 `json:"success_rate_change_pp"`
+	TotalCostChangePct    *float64 `json:"total_cost_change_pct,omitempty"`
+	TotalTokensChangePct  *float64 `json:"total_tokens_change_pct,omitempty"`
+	RequestCountChangePct *float64 `json:"request_count_change_pct,omitempty"`
+	SuccessRateChangePP   *float64 `json:"success_rate_change_pp,omitempty"`
 }
 
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
