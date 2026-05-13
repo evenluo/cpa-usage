@@ -1659,7 +1659,7 @@ function formatUsageMeasureValue(value: number, measure: UsageMeasure) {
 function KeyAliasLeaderboard({ aliases, measure }: { aliases: AliasRow[]; measure: UsageMeasure }) {
   const rows = [...aliases].sort((left, right) => usageMeasureValue(right, measure) - usageMeasureValue(left, measure)).slice(0, 5)
   const total = aliases.reduce((sum, row) => sum + usageMeasureValue(row, measure), 0)
-  if (rows.length === 0 || total <= 0) {
+  if (rows.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
         No key alias usage in this range
@@ -1670,7 +1670,7 @@ function KeyAliasLeaderboard({ aliases, measure }: { aliases: AliasRow[]; measur
     <div className="grid gap-2">
       {rows.map((row, index) => {
         const value = usageMeasureValue(row, measure)
-        const percent = (value / total) * 100
+        const percent = total > 0 ? (value / total) * 100 : 0
         return (
           <div className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-background p-2" key={row.key}>
             <span className="text-xs font-semibold text-muted-foreground">#{index + 1}</span>

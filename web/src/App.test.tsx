@@ -580,6 +580,66 @@ describe('App', () => {
     expect(screen.getByText('No heatmap data in this range')).toBeInTheDocument()
   })
 
+  it('keeps zero-cost key alias usage in the leaderboard', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
+      if (url.includes('/api/v1/analytics/summary')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 0,
+            total_tokens: 1800,
+            request_count: 2,
+            success_count: 2,
+            failure_count: 0,
+            success_rate: 100,
+            cost_available: true,
+            cost_status: 'available',
+          },
+          comparison: {
+            has_previous_period: false,
+            total_cost_change_pct: null,
+            total_tokens_change_pct: null,
+            request_count_change_pct: null,
+            success_rate_change_pp: null,
+          },
+          trend: [],
+          key_alias_breakdown: [{
+            label: 'Free Tier Alias',
+            traceability: 'sk-free',
+            identity: 'sk-free',
+            provider: 'OpenAI',
+            type: 'openai',
+            auth_type_name: 'apikey',
+            total_cost: 0,
+            total_tokens: 1800,
+            request_count: 2,
+            success_rate: 100,
+            failure_count: 0,
+            cost_available: true,
+            cost_status: 'available',
+            trend: [],
+          }],
+          model_distribution: [],
+          time_breakdown: [],
+          heatmap: { measure: 'tokens', max_tokens: 0, max_cost: 0, max_requests: 0, max_failures: 0, rows: [] },
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    const leaderboard = await screen.findByLabelText('Key Alias leaderboard')
+    expect(within(leaderboard).getByText('Free Tier Alias')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('$0.00')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('0.0% of total')).toBeInTheDocument()
+    expect(within(leaderboard).queryByText('No key alias usage in this range')).not.toBeInTheDocument()
+  })
+
   it('renders unavailable analytics cost as unknown instead of zero currency', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
