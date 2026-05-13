@@ -858,6 +858,9 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	if heatmap.Rows[0].Date != "2026-05-11" || heatmap.Rows[0].Cells[9].TotalTokens != 120 || heatmap.Rows[0].Cells[9].RequestCount != 1 {
 		t.Fatalf("expected priced event in first row hour 9, got %+v", heatmap.Rows[0])
 	}
+	if !heatmap.Rows[0].Cells[9].InRange {
+		t.Fatalf("expected populated cell to be in range, got %+v", heatmap.Rows[0].Cells[9])
+	}
 	if !heatmap.Rows[0].Cells[8].CostAvailable || heatmap.Rows[0].Cells[8].CostStatus != dto.AnalyticsCostStatusAvailable || heatmap.Rows[0].Cells[8].TotalTokens != 0 {
 		t.Fatalf("expected empty bucket to be explicit available zero cell, got %+v", heatmap.Rows[0].Cells[8])
 	}
@@ -867,6 +870,37 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	}
 	if !heatmap.Rows[0].Cells[9].BucketStart.Equal(start.Add(9*time.Hour)) || !heatmap.Rows[0].Cells[9].BucketEnd.Equal(start.Add(10*time.Hour)) {
 		t.Fatalf("unexpected bucket boundaries: %+v", heatmap.Rows[0].Cells[9])
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterHeatmapMarksRollingRangeBoundaryCells(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previousLocal })
+
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 10, 30, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 12, 12, 15, 0, 0, time.UTC)
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.Heatmap.Rows) != 2 {
+		t.Fatalf("expected two boundary date rows, got %+v", snapshot.Heatmap.Rows)
+	}
+	if snapshot.Heatmap.Rows[0].Cells[9].InRange {
+		t.Fatalf("expected hour before rolling start to be out of range, got %+v", snapshot.Heatmap.Rows[0].Cells[9])
+	}
+	if !snapshot.Heatmap.Rows[0].Cells[10].InRange {
+		t.Fatalf("expected overlapping start hour to be in range, got %+v", snapshot.Heatmap.Rows[0].Cells[10])
+	}
+	if !snapshot.Heatmap.Rows[1].Cells[12].InRange {
+		t.Fatalf("expected overlapping end hour to be in range, got %+v", snapshot.Heatmap.Rows[1].Cells[12])
+	}
+	if snapshot.Heatmap.Rows[1].Cells[13].InRange {
+		t.Fatalf("expected hour after rolling end to be out of range, got %+v", snapshot.Heatmap.Rows[1].Cells[13])
 	}
 }
 

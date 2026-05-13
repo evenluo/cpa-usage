@@ -9,6 +9,7 @@ function buildHeatmapRow(date: string, label: string, activeHour: number, overri
     label,
     cells: Array.from({ length: 24 }, (_, hour) => ({
       hour,
+      in_range: true,
       bucket_start: `${date}T${String(hour).padStart(2, '0')}:00:00Z`,
       bucket_end: `${date}T${String(hour + 1).padStart(2, '0')}:00:00Z`,
       total_tokens: hour === activeHour ? 1100100 : 0,
@@ -389,10 +390,10 @@ describe('App', () => {
     const heatmap = screen.getByLabelText('Date by hour token heatmap')
     expect(within(heatmap).getByText('Mon 05/11')).toBeInTheDocument()
     expect(within(heatmap).getByText('Tue 05/12')).toBeInTheDocument()
-    expect(within(heatmap).getByRole('button', { name: /Tue 05\/12 10:00, 1.1M tokens, Cost partial, 181 requests, 4 failures/ })).toBeInTheDocument()
-	    expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=hour')
-	    fireEvent.click(screen.getByRole('button', { name: 'Day' }))
-	    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=day'))
+    expect(within(heatmap).getByRole('button', { name: /Tue 05\/12 10:00, in selected range, 1.1M tokens, Cost partial, 181 requests, 4 failures/ })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=hour')
+    fireEvent.click(screen.getByRole('button', { name: 'Day' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=day'))
   })
 
   it('queries provider-scoped analytics from response-driven provider options', async () => {

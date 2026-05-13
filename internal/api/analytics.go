@@ -160,6 +160,7 @@ type analyticsHeatmapRow struct {
 
 type analyticsHeatmapCell struct {
 	Hour          int       `json:"hour"`
+	InRange       bool      `json:"in_range"`
 	BucketStart   time.Time `json:"bucket_start"`
 	BucketEnd     time.Time `json:"bucket_end"`
 	TotalTokens   int64     `json:"total_tokens"`
@@ -352,6 +353,7 @@ func mapAnalyticsHeatmap(heatmap servicedto.AnalyticsHeatmap) analyticsHeatmapPa
 		for _, cell := range row.Cells {
 			cells = append(cells, analyticsHeatmapCell{
 				Hour:          cell.Hour,
+				InRange:       cell.InRange,
 				BucketStart:   cell.BucketStart,
 				BucketEnd:     cell.BucketEnd,
 				TotalTokens:   cell.TotalTokens,

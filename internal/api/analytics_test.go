@@ -159,6 +159,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 				Label: "Mon 05/11",
 				Cells: []servicedto.AnalyticsHeatmapCell{{
 					Hour:          9,
+					InRange:       true,
 					BucketStart:   start.Add(9 * time.Hour),
 					BucketEnd:     start.Add(10 * time.Hour),
 					TotalTokens:   1_600_000,
@@ -204,6 +205,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"max_failures":1`,
 		`"date":"2026-05-11"`,
 		`"hour":9`,
+		`"in_range":true`,
 		`"bucket_start":"2026-05-11T09:00:00Z"`,
 		`"total_cost":2.45`,
 		`"total_tokens":2100100`,

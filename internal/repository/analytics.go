@@ -93,21 +93,6 @@ type analyticsIdentityKey struct {
 	Identity string
 }
 
-type analyticsHeatmapCellAccumulator struct {
-	cell                 dto.AnalyticsHeatmapCellRecord
-	missingPricingEvents int64
-	pricedBillableEvents int64
-}
-
-type analyticsHeatmapEventRow struct {
-	Timestamp            time.Time
-	FailureCount         int64
-	TotalTokens          int64
-	TotalCost            float64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
-}
-
 const analyticsKeyAliasBreakdownLimit = 20
 
 func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
@@ -253,8 +238,8 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		return heatmap, nil
 	}
 
-	rowIndexes := make(map[string]int)
-	cellAccumulators := make(map[string]*analyticsHeatmapCellAccumulator)
+	windowStart := filter.StartTime.UTC()
+	windowEnd := filter.EndTime.UTC()
 	startDay := localDateStart(filter.StartTime.In(time.Local))
 	endDay := localDateStart(filter.EndTime.In(time.Local))
 	for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
@@ -265,56 +250,23 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		}
 		for hour := 0; hour < 24; hour++ {
 			bucketStart := time.Date(day.Year(), day.Month(), day.Day(), hour, 0, 0, 0, time.Local)
+			bucketEnd := bucketStart.Add(time.Hour)
 			cell := dto.AnalyticsHeatmapCellRecord{
 				Hour:          hour,
+				InRange:       analyticsHeatmapCellInRange(bucketStart.UTC(), bucketEnd.UTC(), windowStart, windowEnd),
 				BucketStart:   bucketStart.UTC(),
-				BucketEnd:     bucketStart.Add(time.Hour).UTC(),
+				BucketEnd:     bucketEnd.UTC(),
 				CostAvailable: true,
 				CostStatus:    dto.AnalyticsCostStatusAvailable,
 			}
+			if cell.InRange {
+				if err := fillAnalyticsHeatmapCell(db, filter, &cell); err != nil {
+					return dto.AnalyticsHeatmapRecord{}, err
+				}
+			}
 			row.Cells = append(row.Cells, cell)
 		}
-		rowIndexes[row.Date] = len(heatmap.Rows)
 		heatmap.Rows = append(heatmap.Rows, row)
-	}
-
-	var rows []analyticsHeatmapEventRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
-		Select(`
-			usage_events.timestamp AS timestamp,
-			CASE WHEN usage_events.failed THEN 1 ELSE 0 END AS failure_count,
-			usage_events.total_tokens AS total_tokens,
-			` + analyticsCostSQLExpression() + ` AS total_cost,
-			` + analyticsMissingPricingSQLExpression() + ` AS missing_pricing_events,
-			` + analyticsPricedBillableSQLExpression() + ` AS priced_billable_events`).
-		Order("usage_events.timestamp ASC").
-		Scan(&rows).Error; err != nil {
-		return dto.AnalyticsHeatmapRecord{}, fmt.Errorf("build analytics heatmap: %w", err)
-	}
-
-	for _, row := range rows {
-		localBucket := row.Timestamp.In(time.Local)
-		date := localDateStart(localBucket).Format(time.DateOnly)
-		rowIndex, ok := rowIndexes[date]
-		if !ok {
-			continue
-		}
-		hour := localBucket.Hour()
-		key := fmt.Sprintf("%s:%02d", date, hour)
-		accumulator := cellAccumulators[key]
-		if accumulator == nil {
-			cell := heatmap.Rows[rowIndex].Cells[hour]
-			accumulator = &analyticsHeatmapCellAccumulator{cell: cell}
-			cellAccumulators[key] = accumulator
-		}
-		accumulator.cell.TotalTokens += row.TotalTokens
-		accumulator.cell.TotalCost += row.TotalCost
-		accumulator.cell.RequestCount++
-		accumulator.cell.FailureCount += row.FailureCount
-		accumulator.missingPricingEvents += row.MissingPricingEvents
-		accumulator.pricedBillableEvents += row.PricedBillableEvents
-		accumulator.cell.CostAvailable, accumulator.cell.CostStatus = analyticsCostAvailability(accumulator.missingPricingEvents, accumulator.pricedBillableEvents)
-		heatmap.Rows[rowIndex].Cells[hour] = accumulator.cell
 	}
 
 	for _, row := range heatmap.Rows {
@@ -334,6 +286,46 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		}
 	}
 	return heatmap, nil
+}
+
+func analyticsHeatmapCellInRange(bucketStart time.Time, bucketEnd time.Time, windowStart time.Time, windowEnd time.Time) bool {
+	return bucketEnd.After(windowStart) && !bucketStart.After(windowEnd)
+}
+
+func fillAnalyticsHeatmapCell(db *gorm.DB, filter dto.UsageQueryFilter, cell *dto.AnalyticsHeatmapCellRecord) error {
+	cellStart := cell.BucketStart
+	if filter.StartTime != nil && filter.StartTime.UTC().After(cellStart) {
+		cellStart = filter.StartTime.UTC()
+	}
+	cellEnd := cell.BucketEnd.Add(-time.Nanosecond)
+	if filter.EndTime != nil && filter.EndTime.UTC().Before(cellEnd) {
+		cellEnd = filter.EndTime.UTC()
+	}
+	if cellEnd.Before(cellStart) {
+		return nil
+	}
+
+	cellFilter := filter
+	cellFilter.StartTime = &cellStart
+	cellFilter.EndTime = &cellEnd
+	var row analyticsAggregateRow
+	if err := analyticsEventsWithPricingQuery(db, cellFilter).
+		Select(`
+			COUNT(*) AS request_count,
+			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
+		Scan(&row).Error; err != nil {
+		return fmt.Errorf("build analytics heatmap cell: %w", err)
+	}
+	cell.TotalTokens = row.TotalTokens
+	cell.TotalCost = row.TotalCost
+	cell.RequestCount = row.RequestCount
+	cell.FailureCount = row.FailureCount
+	cell.CostAvailable, cell.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	return nil
 }
 
 func localDateStart(value time.Time) time.Time {

@@ -125,6 +125,7 @@ type AnalyticsComparisonRecord struct {
 
 type AnalyticsHeatmapCellRecord struct {
 	Hour          int
+	InRange       bool
 	BucketStart   time.Time
 	BucketEnd     time.Time
 	TotalTokens   int64

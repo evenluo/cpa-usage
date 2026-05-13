@@ -226,6 +226,7 @@ type AnalyticsComparisonPayload = {
 
 type AnalyticsHeatmapCellPayload = {
   hour: number
+  in_range: boolean
   bucket_start: string
   bucket_end: string
   total_tokens: number
@@ -1656,13 +1657,13 @@ function TokenHeatmap({ heatmap }: { heatmap: AnalyticsHeatmapPayload }) {
           <Fragment key={row.date}>
             <div className="flex h-7 items-center truncate text-xs font-semibold text-muted-foreground">{row.label}</div>
             {row.cells.map((cell) => {
-              const intensity = Math.min(cell.total_tokens / maxTokens, 1)
+              const intensity = cell.in_range ? Math.min(cell.total_tokens / maxTokens, 1) : 0
               return (
                 <button
-                  aria-label={`${row.label} ${cell.hour}:00, ${formatCompact(cell.total_tokens, 2)} tokens, ${formatHeatmapCost(cell)}, ${cell.request_count} requests, ${cell.failure_count} failures`}
+                  aria-label={`${row.label} ${cell.hour}:00, ${cell.in_range ? 'in selected range' : 'outside selected range'}, ${formatCompact(cell.total_tokens, 2)} tokens, ${formatHeatmapCost(cell)}, ${cell.request_count} requests, ${cell.failure_count} failures`}
                   className="h-7 rounded-sm border border-border text-[0px] outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-600"
                   key={`${row.date}-${cell.hour}`}
-                  style={{ backgroundColor: `rgba(16, 185, 129, ${0.08 + intensity * 0.72})` }}
+                  style={{ backgroundColor: cell.in_range ? `rgba(16, 185, 129, ${0.08 + intensity * 0.72})` : 'rgba(113, 113, 122, 0.08)' }}
                   type="button"
                 >
                   {cell.total_tokens}

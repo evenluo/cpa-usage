@@ -151,6 +151,7 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 		for _, cell := range row.Cells {
 			cells = append(cells, servicedto.AnalyticsHeatmapCell{
 				Hour:          cell.Hour,
+				InRange:       cell.InRange,
 				BucketStart:   cell.BucketStart,
 				BucketEnd:     cell.BucketEnd,
 				TotalTokens:   cell.TotalTokens,
