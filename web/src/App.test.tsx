@@ -304,10 +304,18 @@ describe('App', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/usage/events?range=24h&page_size=20')
   })
 
-  it('renders the Pricing workspace with configured and missing models', async () => {
+  it('renders the Pricing workspace with editable configured and missing models', async () => {
     window.history.replaceState({}, '', '/pricing')
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      if (url.includes('/api/v1/pricing/missing-model') && init?.method === 'PUT') {
+        return new Response(JSON.stringify({
+          model: 'missing-model',
+          prompt_price_per_1m: 1.5,
+          completion_price_per_1m: 6,
+          cache_price_per_1m: 0.15,
+        }))
+      }
       if (url.includes('/api/v1/pricing')) {
         return new Response(JSON.stringify({
           pricing: [{ model: 'gpt-5.5', prompt_price_per_1m: 3, completion_price_per_1m: 12, cache_price_per_1m: 0.3 }],
@@ -323,9 +331,26 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Model Unit Pricing' })).toBeInTheDocument()
-    expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
-    expect(screen.getByText('Prompt $3.00')).toBeInTheDocument()
+    expect(await screen.findByText('gpt-5.5')).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByLabelText('gpt-5.5 prompt price per 1M')).toHaveValue(3))
     expect(screen.getByText('missing-model')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('missing-model prompt price per 1M'), { target: { value: '1.5' } })
+    fireEvent.change(screen.getByLabelText('missing-model completion price per 1M'), { target: { value: '6' } })
+    fireEvent.change(screen.getByLabelText('missing-model cache price per 1M'), { target: { value: '0.15' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save pricing for missing-model' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/pricing/missing-model', expect.objectContaining({
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+    })))
+    const saveCall = fetchMock.mock.calls.find(([input, init]) => String(input) === '/api/v1/pricing/missing-model' && init?.method === 'PUT')
+    expect(JSON.parse(String(saveCall?.[1]?.body))).toEqual({
+      model: 'missing-model',
+      prompt_price_per_1m: 1.5,
+      completion_price_per_1m: 6,
+      cache_price_per_1m: 0.15,
+    })
+    expect(await screen.findByText('missing-model pricing saved')).toBeInTheDocument()
   })
 
   it('renders the Settings workspace with operational status and auth state', async () => {

@@ -618,6 +618,12 @@ type UsedModelsPayload = {
   models: string[]
 }
 
+type PricingDraft = {
+  prompt: string
+  completion: string
+  cache: string
+}
+
 type StatusPayload = {
   running?: boolean
   sync_running?: boolean
@@ -900,6 +906,9 @@ function EventsWorkspace() {
 function PricingWorkspace() {
   const [pricing, setPricing] = useState<PricingEntry[]>([])
   const [usedModels, setUsedModels] = useState<string[]>([])
+  const [pricingDrafts, setPricingDrafts] = useState<Record<string, PricingDraft>>({})
+  const [savingModel, setSavingModel] = useState<string | null>(null)
+  const [pricingStatus, setPricingStatus] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -924,8 +933,69 @@ function PricingWorkspace() {
     }
   }, [])
 
-  const pricedModels = new Set(pricing.map((entry) => entry.model))
-  const missingModels = usedModels.filter((model) => !pricedModels.has(model))
+  const pricingByModel = new Map(pricing.map((entry) => [entry.model, entry]))
+  const modelRows = Array.from(new Set([...usedModels, ...pricing.map((entry) => entry.model)])).sort()
+  const missingModels = modelRows.filter((model) => !pricingByModel.has(model))
+
+  function pricingDraftFromEntry(entry?: PricingEntry): PricingDraft {
+    return {
+      prompt: String(entry?.prompt_price_per_1m ?? 0),
+      completion: String(entry?.completion_price_per_1m ?? 0),
+      cache: String(entry?.cache_price_per_1m ?? 0),
+    }
+  }
+
+  function updatePricingDraft(model: string, field: keyof PricingDraft, value: string) {
+    setPricingDrafts((current) => ({
+      ...current,
+      [model]: {
+        ...pricingDraftFromEntry(pricingByModel.get(model)),
+        ...current[model],
+        [field]: value,
+      },
+    }))
+  }
+
+  async function savePricing(model: string) {
+    const draft = pricingDrafts[model] ?? pricingDraftFromEntry(pricingByModel.get(model))
+    const promptPrice = Number(draft.prompt)
+    const completionPrice = Number(draft.completion)
+    const cachePrice = Number(draft.cache)
+    if (![promptPrice, completionPrice, cachePrice].every((value) => Number.isFinite(value) && value >= 0)) {
+      setPricingStatus('Prices must be non-negative numbers')
+      return
+    }
+
+    setSavingModel(model)
+    setPricingStatus(null)
+    try {
+      const response = await fetch(apiPath(`/pricing/${encodeURIComponent(model)}`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          prompt_price_per_1m: promptPrice,
+          completion_price_per_1m: completionPrice,
+          cache_price_per_1m: cachePrice,
+        }),
+      })
+      if (!response.ok) {
+        throw new Error('save pricing failed')
+      }
+      const saved = await response.json() as PricingEntry
+      setPricing((current) => {
+        const withoutSaved = current.filter((entry) => entry.model !== saved.model)
+        return [...withoutSaved, saved].sort((a, b) => a.model.localeCompare(b.model))
+      })
+      setPricingDrafts((current) => ({ ...current, [saved.model]: pricingDraftFromEntry(saved) }))
+      setUsedModels((current) => current.includes(saved.model) ? current : [...current, saved.model])
+      setPricingStatus(`${saved.model} pricing saved`)
+    } catch {
+      setPricingStatus('Pricing save failed')
+    } finally {
+      setSavingModel(null)
+    }
+  }
 
   return (
     <>
@@ -946,22 +1016,61 @@ function PricingWorkspace() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-2">
-            {pricing.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">No pricing configured</div>
-            ) : pricing.map((entry) => (
-              <div className="grid grid-cols-[minmax(0,1fr)_120px_120px_120px] items-center gap-3 rounded-md border border-border p-3 max-lg:grid-cols-1" key={entry.model}>
-                <p className="truncate text-sm font-semibold">{entry.model}</p>
-                <p className="text-sm">Prompt {formatCost(entry.prompt_price_per_1m)}</p>
-                <p className="text-sm">Completion {formatCost(entry.completion_price_per_1m)}</p>
-                <p className="text-sm">Cache {formatCost(entry.cache_price_per_1m)}</p>
-              </div>
-            ))}
+            {modelRows.length === 0 ? (
+              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">No models available for pricing</div>
+            ) : modelRows.map((model) => {
+              const draft = pricingDrafts[model] ?? pricingDraftFromEntry(pricingByModel.get(model))
+              const configured = pricingByModel.has(model)
+              return (
+                <div className="grid grid-cols-[minmax(0,1fr)_140px_140px_140px_96px] items-end gap-3 rounded-md border border-border p-3 max-xl:grid-cols-1" key={model}>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{model}</p>
+                    <Badge variant={configured ? 'green' : 'amber'}>{configured ? 'Configured' : 'Missing price'}</Badge>
+                  </div>
+                  <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                    Prompt
+                    <input
+                      aria-label={`${model} prompt price per 1M`}
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                      min="0"
+                      onChange={(event) => updatePricingDraft(model, 'prompt', event.target.value)}
+                      step="0.000001"
+                      type="number"
+                      value={draft.prompt}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                    Completion
+                    <input
+                      aria-label={`${model} completion price per 1M`}
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                      min="0"
+                      onChange={(event) => updatePricingDraft(model, 'completion', event.target.value)}
+                      step="0.000001"
+                      type="number"
+                      value={draft.completion}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                    Cache
+                    <input
+                      aria-label={`${model} cache price per 1M`}
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                      min="0"
+                      onChange={(event) => updatePricingDraft(model, 'cache', event.target.value)}
+                      step="0.000001"
+                      type="number"
+                      value={draft.cache}
+                    />
+                  </label>
+                  <Button aria-label={`Save pricing for ${model}`} disabled={savingModel === model} onClick={() => void savePricing(model)} size="sm" variant="outline">
+                    Save
+                  </Button>
+                </div>
+              )
+            })}
           </div>
-          {missingModels.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {missingModels.map((model) => <Badge key={model} variant="amber">{model}</Badge>)}
-            </div>
-          ) : null}
+          {pricingStatus ? <p className="mt-3 text-sm text-muted-foreground">{pricingStatus}</p> : null}
         </CardContent>
       </Card>
     </>
