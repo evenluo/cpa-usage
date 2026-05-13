@@ -659,7 +659,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsEmptyState(t *testing.T) {
 func TestBuildAnalyticsSummaryWithFilterReturnsPreviousPeriodComparison(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)
-	end := start.Add(7 * 24 * time.Hour)
+	end := start.Add(7 * 24 * time.Hour).Add(-time.Nanosecond)
 	previousStart := start.Add(-7 * 24 * time.Hour)
 	previousEnd := start.Add(-time.Nanosecond)
 	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
@@ -711,7 +711,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsPreviousPeriodComparison(t *testi
 func TestBuildAnalyticsSummaryWithFilterReturnsMissingPreviousPeriodComparison(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)
-	end := start.Add(7 * 24 * time.Hour)
+	end := start.Add(7 * 24 * time.Hour).Add(-time.Nanosecond)
 	previousStart := start.Add(-7 * 24 * time.Hour)
 	previousEnd := start.Add(-time.Nanosecond)
 	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
@@ -742,6 +742,40 @@ func TestBuildAnalyticsSummaryWithFilterReturnsMissingPreviousPeriodComparison(t
 	}
 	if snapshot.Comparison.TotalCostChangePct != nil || snapshot.Comparison.TotalTokensChangePct != nil || snapshot.Comparison.RequestCountChangePct != nil || snapshot.Comparison.SuccessRateChangePP != nil {
 		t.Fatalf("expected nil comparison deltas for missing previous period, got %+v", snapshot.Comparison)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterIncludesPreviousPeriodStartBoundary(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 12, 23, 59, 59, 999999999, time.UTC)
+	previousStart := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:            "priced-model",
+		PromptPricePer1M: 1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "previous-boundary", Provider: "OpenAI", Model: "priced-model", Timestamp: previousStart, InputTokens: 1_000_000, TotalTokens: 1_000_000},
+		{EventKey: "current-boundary", Provider: "OpenAI", Model: "priced-model", Timestamp: start, InputTokens: 1_000_000, TotalTokens: 1_000_000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.PreviousRangeStart == nil || !snapshot.PreviousRangeStart.Equal(previousStart) {
+		t.Fatalf("expected previous range start %s, got %v", previousStart, snapshot.PreviousRangeStart)
+	}
+	if !snapshot.Comparison.HasPreviousPeriod {
+		t.Fatalf("expected previous boundary event to count, got %+v", snapshot.Comparison)
+	}
+	if snapshot.Comparison.RequestCountChangePct == nil || math.Abs(*snapshot.Comparison.RequestCountChangePct) > 0.000000001 {
+		t.Fatalf("expected boundary comparison to use previous event, got %+v", snapshot.Comparison)
 	}
 }
 

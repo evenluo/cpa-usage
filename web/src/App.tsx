@@ -411,7 +411,7 @@ function App() {
   const analyticsTimeBreakdown = analytics.timeBreakdown
   const analyticsInsights = analytics.insights
   const kpiSparklines = {
-    cost: analyticsTrend.map((point) => (point.costStatus === 'unavailable' ? 0 : point.cost)),
+    cost: analyticsTrend.map((point) => (point.costStatus === 'unavailable' ? null : point.cost)),
     tokens: analyticsTrend.map((point) => point.tokens),
     requests: analyticsTrend.map((point) => point.requests),
     successRate: analyticsTrend.map((point) => {
@@ -1646,7 +1646,7 @@ function MetricCard({
   value: string
   caption: string
   comparison: string
-  sparklineValues: number[]
+  sparklineValues: Array<number | null>
   tone: 'green' | 'blue' | 'violet' | 'amber'
 }) {
   const toneClass = {

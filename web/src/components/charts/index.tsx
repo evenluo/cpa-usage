@@ -158,7 +158,7 @@ export function HealthTimeline({ data }: { data: Array<{ label: string; success:
   )
 }
 
-export function Sparkline({ values }: { values: number[] }) {
+export function Sparkline({ values }: { values: Array<number | null> }) {
   const data = values.map((value, index) => ({ index, value }))
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={compactInitialDimension}>

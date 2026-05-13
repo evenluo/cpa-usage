@@ -185,7 +185,7 @@ func analyticsPreviousPeriodFilter(filter dto.UsageQueryFilter) (dto.UsageQueryF
 	if !end.After(start) {
 		return dto.UsageQueryFilter{}, false
 	}
-	duration := end.Sub(start)
+	duration := end.Sub(start) + time.Nanosecond
 	previousStart := start.Add(-duration)
 	previousEnd := start.Add(-time.Nanosecond)
 	previousFilter := filter
