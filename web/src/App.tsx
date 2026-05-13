@@ -216,9 +216,18 @@ type AnalyticsProviderOptionPayload = {
   cost_status: 'available' | 'partial' | 'unavailable'
 }
 
+type AnalyticsComparisonPayload = {
+  has_previous_period: boolean
+  total_cost_change_pct?: number | null
+  total_tokens_change_pct?: number | null
+  request_count_change_pct?: number | null
+  success_rate_change_pp?: number | null
+}
+
 type AnalyticsSummaryResponse = {
   granularity?: TimeGranularity
   summary: AnalyticsSummaryPayload
+  comparison?: AnalyticsComparisonPayload
   trend: AnalyticsTrendPointPayload[]
   key_alias_breakdown?: AnalyticsKeyAliasPayload[]
   model_distribution?: AnalyticsModelPayload[]
@@ -236,6 +245,7 @@ type AnalyticsState = {
   timeBreakdown: TrendPoint[]
   insights: AnalyticsInsightPayload[]
   providerOptions: AnalyticsProviderOptionPayload[]
+  comparison: AnalyticsComparisonPayload
 }
 
 type TimeGranularity = 'hour' | 'day'
@@ -259,7 +269,29 @@ function normalizeAnalyticsSummary(summary: AnalyticsSummaryPayload | undefined)
   return { ...emptyAnalyticsSummary, ...(summary ?? {}) }
 }
 
-const emptyAnalyticsState: AnalyticsState = { provider: '', summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [], providerOptions: [] }
+const emptyAnalyticsComparison: AnalyticsComparisonPayload = {
+  has_previous_period: false,
+  total_cost_change_pct: null,
+  total_tokens_change_pct: null,
+  request_count_change_pct: null,
+  success_rate_change_pp: null,
+}
+
+function normalizeAnalyticsComparison(comparison: AnalyticsComparisonPayload | undefined) {
+  return { ...emptyAnalyticsComparison, ...(comparison ?? {}) }
+}
+
+const emptyAnalyticsState: AnalyticsState = {
+  provider: '',
+  summary: emptyAnalyticsSummary,
+  trend: [],
+  keyAliases: [],
+  models: [],
+  timeBreakdown: [],
+  insights: [],
+  providerOptions: [],
+  comparison: emptyAnalyticsComparison,
+}
 
 function useAnalyticsSummary(enabled: boolean, provider: string, granularity: TimeGranularity) {
   const [analytics, setAnalytics] = useState<AnalyticsState>(emptyAnalyticsState)
@@ -286,6 +318,7 @@ function useAnalyticsSummary(enabled: boolean, provider: string, granularity: Ti
           return
         }
         const summary = normalizeAnalyticsSummary(payload.summary)
+        const comparison = normalizeAnalyticsComparison(payload.comparison)
         setAnalytics({
           provider: scopedProvider,
           summary,
@@ -340,6 +373,7 @@ function useAnalyticsSummary(enabled: boolean, provider: string, granularity: Ti
           })),
           insights: payload.insights ?? [],
           providerOptions: payload.provider_options ?? [],
+          comparison,
         })
       })
       .catch(() => {
@@ -371,10 +405,20 @@ function App() {
   const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking, selectedProvider, timeGranularity)
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
+  const analyticsComparison = analytics.comparison
   const analyticsAliases = analytics.keyAliases
   const analyticsModels = analytics.models
   const analyticsTimeBreakdown = analytics.timeBreakdown
   const analyticsInsights = analytics.insights
+  const kpiSparklines = {
+    cost: analyticsTrend.map((point) => (point.costStatus === 'unavailable' ? 0 : point.cost)),
+    tokens: analyticsTrend.map((point) => point.tokens),
+    requests: analyticsTrend.map((point) => point.requests),
+    successRate: analyticsTrend.map((point) => {
+      const success = Math.max(point.requests - point.failures, 0)
+      return point.requests > 0 ? (success / point.requests) * 100 : 0
+    }),
+  }
   const analyticsHealthBlocks = analyticsTrend.map((point) => {
     const success = Math.max(point.requests - point.failures, 0)
     return {
@@ -469,10 +513,38 @@ function App() {
           <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
             <section className="grid gap-4">
               <div className="grid gap-3 md:grid-cols-4">
-                <MetricCard label="Total Cost" value={formatAnalyticsCost(analyticsSummary)} caption={`Cost ${analyticsSummary.cost_status}`} tone="green" />
-                <MetricCard label="Total Tokens" value={formatCompact(analyticsSummary.total_tokens, 2)} caption="Cost peer measure" tone="blue" />
-                <MetricCard label="Requests" value={analyticsSummary.request_count.toLocaleString('en')} caption="Selected range total" tone="violet" />
-                <MetricCard label="Success Rate" value={`${analyticsSummary.success_rate.toFixed(1)}%`} caption={`${analyticsSummary.failure_count} failures in range`} tone="amber" />
+                <MetricCard
+                  label="Total Cost"
+                  value={formatAnalyticsCost(analyticsSummary)}
+                  caption={`Cost ${analyticsSummary.cost_status}`}
+                  comparison={formatComparisonDelta(analyticsComparison, 'total_cost_change_pct', '%')}
+                  sparklineValues={kpiSparklines.cost}
+                  tone="green"
+                />
+                <MetricCard
+                  label="Total Tokens"
+                  value={formatCompact(analyticsSummary.total_tokens, 2)}
+                  caption="Cost peer measure"
+                  comparison={formatComparisonDelta(analyticsComparison, 'total_tokens_change_pct', '%')}
+                  sparklineValues={kpiSparklines.tokens}
+                  tone="blue"
+                />
+                <MetricCard
+                  label="Requests"
+                  value={analyticsSummary.request_count.toLocaleString('en')}
+                  caption="Selected range total"
+                  comparison={formatComparisonDelta(analyticsComparison, 'request_count_change_pct', '%')}
+                  sparklineValues={kpiSparklines.requests}
+                  tone="violet"
+                />
+                <MetricCard
+                  label="Success Rate"
+                  value={`${analyticsSummary.success_rate.toFixed(1)}%`}
+                  caption={`${analyticsSummary.failure_count} failures in range`}
+                  comparison={formatComparisonDelta(analyticsComparison, 'success_rate_change_pp', 'pp')}
+                  sparklineValues={kpiSparklines.successRate}
+                  tone="amber"
+                />
               </div>
 
               <Card>
@@ -1549,7 +1621,34 @@ function formatLastUsed(value: string | null) {
   }).format(new Date(value))
 }
 
-function MetricCard({ label, value, caption, tone }: { label: string; value: string; caption: string; tone: 'green' | 'blue' | 'violet' | 'amber' }) {
+function formatComparisonDelta(
+  comparison: AnalyticsComparisonPayload,
+  field: 'total_cost_change_pct' | 'total_tokens_change_pct' | 'request_count_change_pct' | 'success_rate_change_pp',
+  unit: '%' | 'pp',
+) {
+  const value = comparison[field]
+  if (!comparison.has_previous_period || value === null || value === undefined) {
+    return 'No previous data'
+  }
+  const sign = value > 0 ? '+' : ''
+  return `${sign}${value.toFixed(1)}${unit} vs previous`
+}
+
+function MetricCard({
+  label,
+  value,
+  caption,
+  comparison,
+  sparklineValues,
+  tone,
+}: {
+  label: string
+  value: string
+  caption: string
+  comparison: string
+  sparklineValues: number[]
+  tone: 'green' | 'blue' | 'violet' | 'amber'
+}) {
   const toneClass = {
     green: 'text-emerald-700 bg-emerald-50 border-emerald-200',
     blue: 'text-blue-700 bg-blue-50 border-blue-200',
@@ -1562,6 +1661,10 @@ function MetricCard({ label, value, caption, tone }: { label: string; value: str
       <CardContent className="p-4">
         <div className={`mb-3 inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${toneClass}`}>{label}</div>
         <p className="text-2xl font-semibold tracking-normal">{value}</p>
+        <p className="mt-1 text-xs font-semibold text-foreground">{comparison}</p>
+        <div className="mt-3 h-9" aria-label={`${label} KPI sparkline`}>
+          <Sparkline values={sparklineValues} />
+        </div>
         <p className="mt-1 text-xs text-muted-foreground">{caption}</p>
       </CardContent>
     </Card>

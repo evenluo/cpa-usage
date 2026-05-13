@@ -31,6 +31,12 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 12, 23, 59, 59, 0, time.UTC)
+	previousStart := time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
+	previousEnd := time.Date(2026, 5, 10, 23, 59, 59, 999999999, time.UTC)
+	costChange := 12.5
+	tokenChange := -4.25
+	requestChange := 8.0
+	successRateChange := 1.75
 	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
 			TotalCost:           2.45,
@@ -133,6 +139,15 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CostAvailable: false,
 			CostStatus:    "partial",
 		}},
+		PreviousRangeStart: &previousStart,
+		PreviousRangeEnd:   &previousEnd,
+		Comparison: servicedto.AnalyticsComparison{
+			HasPreviousPeriod:     true,
+			TotalCostChangePct:    &costChange,
+			TotalTokensChangePct:  &tokenChange,
+			RequestCountChangePct: &requestChange,
+			SuccessRateChangePP:   &successRateChange,
+		},
 	}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
@@ -151,6 +166,14 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"provider":"OpenAI"`,
 		`"range_start":"2026-05-11T00:00:00Z"`,
 		`"range_end":"2026-05-12T23:59:59.999999999Z"`,
+		`"previous_range_start":"2026-05-09T00:00:00Z"`,
+		`"previous_range_end":"2026-05-10T23:59:59.999999999Z"`,
+		`"comparison":{`,
+		`"has_previous_period":true`,
+		`"total_cost_change_pct":12.5`,
+		`"total_tokens_change_pct":-4.25`,
+		`"request_count_change_pct":8`,
+		`"success_rate_change_pp":1.75`,
 		`"total_cost":2.45`,
 		`"total_tokens":2100100`,
 		`"request_count":3`,

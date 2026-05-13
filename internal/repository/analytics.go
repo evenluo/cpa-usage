@@ -120,15 +120,22 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 	if err != nil {
 		return nil, err
 	}
+	previousRangeStart, previousRangeEnd, comparison, err := buildAnalyticsComparison(db, filter, summary)
+	if err != nil {
+		return nil, err
+	}
 
 	return &dto.AnalyticsSummarySnapshot{
-		Summary:           summary,
-		Trend:             trend,
-		KeyAliasBreakdown: keyAliasBreakdown,
-		ModelBreakdown:    modelBreakdown,
-		TimeBreakdown:     trend,
-		Insights:          buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
-		ProviderOptions:   providerOptions,
+		Summary:            summary,
+		Trend:              trend,
+		KeyAliasBreakdown:  keyAliasBreakdown,
+		ModelBreakdown:     modelBreakdown,
+		TimeBreakdown:      trend,
+		Insights:           buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
+		ProviderOptions:    providerOptions,
+		PreviousRangeStart: previousRangeStart,
+		PreviousRangeEnd:   previousRangeEnd,
+		Comparison:         comparison,
 	}, nil
 }
 
@@ -154,6 +161,63 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	}
 
 	return mapAnalyticsSummary(row), nil
+}
+
+func buildAnalyticsComparison(db *gorm.DB, filter dto.UsageQueryFilter, current dto.AnalyticsSummaryRecord) (*time.Time, *time.Time, dto.AnalyticsComparisonRecord, error) {
+	previousFilter, ok := analyticsPreviousPeriodFilter(filter)
+	if !ok {
+		return nil, nil, dto.AnalyticsComparisonRecord{}, nil
+	}
+	previous, err := buildAnalyticsSummary(db, previousFilter)
+	if err != nil {
+		return nil, nil, dto.AnalyticsComparisonRecord{}, err
+	}
+	comparison := mapAnalyticsComparison(current, previous)
+	return previousFilter.StartTime, previousFilter.EndTime, comparison, nil
+}
+
+func analyticsPreviousPeriodFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
+	if filter.StartTime == nil || filter.EndTime == nil {
+		return dto.UsageQueryFilter{}, false
+	}
+	start := filter.StartTime.UTC()
+	end := filter.EndTime.UTC()
+	if !end.After(start) {
+		return dto.UsageQueryFilter{}, false
+	}
+	duration := end.Sub(start)
+	previousStart := start.Add(-duration)
+	previousEnd := start.Add(-time.Nanosecond)
+	previousFilter := filter
+	previousFilter.StartTime = &previousStart
+	previousFilter.EndTime = &previousEnd
+	return previousFilter, true
+}
+
+func mapAnalyticsComparison(current dto.AnalyticsSummaryRecord, previous dto.AnalyticsSummaryRecord) dto.AnalyticsComparisonRecord {
+	if previous.RequestCount <= 0 {
+		return dto.AnalyticsComparisonRecord{HasPreviousPeriod: false}
+	}
+	return dto.AnalyticsComparisonRecord{
+		HasPreviousPeriod:     true,
+		TotalCostChangePct:    analyticsPercentChange(current.TotalCost, previous.TotalCost),
+		TotalTokensChangePct:  analyticsPercentChange(float64(current.TotalTokens), float64(previous.TotalTokens)),
+		RequestCountChangePct: analyticsPercentChange(float64(current.RequestCount), float64(previous.RequestCount)),
+		SuccessRateChangePP:   analyticsPointChange(current.SuccessRate, previous.SuccessRate),
+	}
+}
+
+func analyticsPercentChange(current float64, previous float64) *float64 {
+	if previous == 0 {
+		return nil
+	}
+	change := ((current - previous) / previous) * 100
+	return &change
+}
+
+func analyticsPointChange(current float64, previous float64) *float64 {
+	change := current - previous
+	return &change
 }
 
 func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPointRecord, error) {

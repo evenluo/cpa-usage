@@ -127,7 +127,16 @@ describe('App', () => {
           range: '7d',
           range_start: '2026-05-06T00:00:00Z',
           range_end: '2026-05-13T00:00:00Z',
+          previous_range_start: '2026-04-29T00:00:00Z',
+          previous_range_end: '2026-05-05T23:59:59.999999999Z',
           timezone: 'UTC',
+          comparison: {
+            has_previous_period: true,
+            total_cost_change_pct: 12.5,
+            total_tokens_change_pct: -4.2,
+            request_count_change_pct: 8.1,
+            success_rate_change_pp: 1.2,
+          },
           summary: {
             total_cost: 0.49,
             total_tokens: 2100100,
@@ -281,6 +290,11 @@ describe('App', () => {
     expect(screen.getByText('2.1M')).toBeInTheDocument()
     expect(screen.getByText('301')).toBeInTheDocument()
     expect(screen.getByText('98.3%')).toBeInTheDocument()
+    expect(screen.getByText('+12.5% vs previous')).toBeInTheDocument()
+    expect(screen.getByText('-4.2% vs previous')).toBeInTheDocument()
+    expect(screen.getByText('+8.1% vs previous')).toBeInTheDocument()
+    expect(screen.getByText('+1.2pp vs previous')).toBeInTheDocument()
+    expect(screen.getAllByLabelText(/KPI sparkline/)).toHaveLength(4)
     expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
     const insightRail = screen.getByLabelText('Insight rail')
     expect(within(insightRail).getByText('Metric Completeness')).toBeInTheDocument()
@@ -487,6 +501,13 @@ describe('App', () => {
             cost_available: true,
             cost_status: 'available',
           },
+          comparison: {
+            has_previous_period: false,
+            total_cost_change_pct: null,
+            total_tokens_change_pct: null,
+            request_count_change_pct: null,
+            success_rate_change_pp: null,
+          },
           trend: [],
           key_alias_breakdown: [],
           model_distribution: [],
@@ -500,6 +521,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('No key alias usage in this range')).toBeInTheDocument()
+    expect(screen.getAllByText('No previous data')).toHaveLength(4)
     expect(within(screen.getByLabelText('Request health stability strip')).getByText('No failures')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Model' }))
     expect(screen.getByText('No model usage in this range')).toBeInTheDocument()

@@ -15,19 +15,22 @@ import (
 )
 
 type analyticsSummaryResponse struct {
-	Range       string                    `json:"range"`
-	Granularity string                    `json:"granularity"`
-	RangeStart  *time.Time                `json:"range_start,omitempty"`
-	RangeEnd    *time.Time                `json:"range_end,omitempty"`
-	Provider    string                    `json:"provider,omitempty"`
-	Timezone    string                    `json:"timezone"`
-	Summary     analyticsSummaryPayload   `json:"summary"`
-	Trend       []analyticsTrendPoint     `json:"trend"`
-	KeyAliases  []analyticsKeyAliasRow    `json:"key_alias_breakdown"`
-	Models      []analyticsModelRow       `json:"model_distribution"`
-	Time        []analyticsTrendPoint     `json:"time_breakdown"`
-	Insights    []analyticsInsight        `json:"insights"`
-	Providers   []analyticsProviderOption `json:"provider_options"`
+	Range              string                     `json:"range"`
+	Granularity        string                     `json:"granularity"`
+	RangeStart         *time.Time                 `json:"range_start,omitempty"`
+	RangeEnd           *time.Time                 `json:"range_end,omitempty"`
+	PreviousRangeStart *time.Time                 `json:"previous_range_start,omitempty"`
+	PreviousRangeEnd   *time.Time                 `json:"previous_range_end,omitempty"`
+	Provider           string                     `json:"provider,omitempty"`
+	Timezone           string                     `json:"timezone"`
+	Summary            analyticsSummaryPayload    `json:"summary"`
+	Comparison         analyticsComparisonPayload `json:"comparison"`
+	Trend              []analyticsTrendPoint      `json:"trend"`
+	KeyAliases         []analyticsKeyAliasRow     `json:"key_alias_breakdown"`
+	Models             []analyticsModelRow        `json:"model_distribution"`
+	Time               []analyticsTrendPoint      `json:"time_breakdown"`
+	Insights           []analyticsInsight         `json:"insights"`
+	Providers          []analyticsProviderOption  `json:"provider_options"`
 }
 
 type analyticsSummaryPayload struct {
@@ -131,6 +134,14 @@ type analyticsProviderOption struct {
 	CostStatus    string  `json:"cost_status"`
 }
 
+type analyticsComparisonPayload struct {
+	HasPreviousPeriod     bool     `json:"has_previous_period"`
+	TotalCostChangePct    *float64 `json:"total_cost_change_pct"`
+	TotalTokensChangePct  *float64 `json:"total_tokens_change_pct"`
+	RequestCountChangePct *float64 `json:"request_count_change_pct"`
+	SuccessRateChangePP   *float64 `json:"success_rate_change_pp"`
+}
+
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
 	router.GET("/analytics/summary", func(c *gin.Context) {
 		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
@@ -195,6 +206,8 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 	if snapshot == nil {
 		return response
 	}
+	response.PreviousRangeStart = snapshot.PreviousRangeStart
+	response.PreviousRangeEnd = snapshot.PreviousRangeEnd
 	response.Summary = analyticsSummaryPayload{
 		TotalCost:             snapshot.Summary.TotalCost,
 		TotalTokens:           snapshot.Summary.TotalTokens,
@@ -209,6 +222,13 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 		CacheReadShare:        snapshot.Summary.CacheReadShare,
 		CacheReadShareState:   snapshot.Summary.CacheReadShareState,
 		EstimatedCacheSavings: snapshot.Summary.EstimatedCacheSavings,
+	}
+	response.Comparison = analyticsComparisonPayload{
+		HasPreviousPeriod:     snapshot.Comparison.HasPreviousPeriod,
+		TotalCostChangePct:    snapshot.Comparison.TotalCostChangePct,
+		TotalTokensChangePct:  snapshot.Comparison.TotalTokensChangePct,
+		RequestCountChangePct: snapshot.Comparison.RequestCountChangePct,
+		SuccessRateChangePP:   snapshot.Comparison.SuccessRateChangePP,
 	}
 	response.Trend = make([]analyticsTrendPoint, 0, len(snapshot.Trend))
 	for _, point := range snapshot.Trend {

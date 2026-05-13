@@ -656,6 +656,95 @@ func TestBuildAnalyticsSummaryWithFilterReturnsEmptyState(t *testing.T) {
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterReturnsPreviousPeriodComparison(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)
+	end := start.Add(7 * 24 * time.Hour)
+	previousStart := start.Add(-7 * 24 * time.Hour)
+	previousEnd := start.Add(-time.Nanosecond)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "previous-success", Provider: "OpenAI", Model: "priced-model", Timestamp: previousStart.Add(24 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
+		{EventKey: "previous-failure", Provider: "OpenAI", Model: "priced-model", Timestamp: previousStart.Add(48 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000, Failed: true},
+		{EventKey: "previous-other-provider", Provider: "Anthropic", Model: "priced-model", Timestamp: previousStart.Add(72 * time.Hour), InputTokens: 20_000_000, TotalTokens: 20_000_000},
+		{EventKey: "current-success-1", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(24 * time.Hour), InputTokens: 1_500_000, TotalTokens: 1_500_000},
+		{EventKey: "current-success-2", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(48 * time.Hour), InputTokens: 1_500_000, TotalTokens: 1_500_000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.PreviousRangeStart == nil || !snapshot.PreviousRangeStart.Equal(previousStart) {
+		t.Fatalf("expected previous range start %s, got %v", previousStart, snapshot.PreviousRangeStart)
+	}
+	if snapshot.PreviousRangeEnd == nil || !snapshot.PreviousRangeEnd.Equal(previousEnd) {
+		t.Fatalf("expected previous range end %s, got %v", previousEnd, snapshot.PreviousRangeEnd)
+	}
+	if !snapshot.Comparison.HasPreviousPeriod {
+		t.Fatalf("expected previous period comparison to be available, got %+v", snapshot.Comparison)
+	}
+	if snapshot.Comparison.TotalCostChangePct == nil || math.Abs(*snapshot.Comparison.TotalCostChangePct-50) > 0.000000001 {
+		t.Fatalf("expected 50%% cost change, got %+v", snapshot.Comparison)
+	}
+	if snapshot.Comparison.TotalTokensChangePct == nil || math.Abs(*snapshot.Comparison.TotalTokensChangePct-50) > 0.000000001 {
+		t.Fatalf("expected 50%% token change, got %+v", snapshot.Comparison)
+	}
+	if snapshot.Comparison.RequestCountChangePct == nil || math.Abs(*snapshot.Comparison.RequestCountChangePct) > 0.000000001 {
+		t.Fatalf("expected 0%% request change, got %+v", snapshot.Comparison)
+	}
+	if snapshot.Comparison.SuccessRateChangePP == nil || math.Abs(*snapshot.Comparison.SuccessRateChangePP-50) > 0.000000001 {
+		t.Fatalf("expected 50pp success rate change, got %+v", snapshot.Comparison)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterReturnsMissingPreviousPeriodComparison(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 8, 0, 0, 0, 0, time.UTC)
+	end := start.Add(7 * 24 * time.Hour)
+	previousStart := start.Add(-7 * 24 * time.Hour)
+	previousEnd := start.Add(-time.Nanosecond)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:            "priced-model",
+		PromptPricePer1M: 1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "current-only", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(24 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.PreviousRangeStart == nil || !snapshot.PreviousRangeStart.Equal(previousStart) {
+		t.Fatalf("expected previous range start %s, got %v", previousStart, snapshot.PreviousRangeStart)
+	}
+	if snapshot.PreviousRangeEnd == nil || !snapshot.PreviousRangeEnd.Equal(previousEnd) {
+		t.Fatalf("expected previous range end %s, got %v", previousEnd, snapshot.PreviousRangeEnd)
+	}
+	if snapshot.Comparison.HasPreviousPeriod {
+		t.Fatalf("expected missing previous period, got %+v", snapshot.Comparison)
+	}
+	if snapshot.Comparison.TotalCostChangePct != nil || snapshot.Comparison.TotalTokensChangePct != nil || snapshot.Comparison.RequestCountChangePct != nil || snapshot.Comparison.SuccessRateChangePP != nil {
+		t.Fatalf("expected nil comparison deltas for missing previous period, got %+v", snapshot.Comparison)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterAggregatesKeyAliasBreakdownByStableIdentity(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

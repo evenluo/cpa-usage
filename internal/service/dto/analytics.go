@@ -105,12 +105,23 @@ type AnalyticsProviderOption struct {
 	CostStatus    string
 }
 
+type AnalyticsComparison struct {
+	HasPreviousPeriod     bool
+	TotalCostChangePct    *float64
+	TotalTokensChangePct  *float64
+	RequestCountChangePct *float64
+	SuccessRateChangePP   *float64
+}
+
 type AnalyticsSummarySnapshot struct {
-	Summary           AnalyticsSummary
-	Trend             []AnalyticsTrendPoint
-	KeyAliasBreakdown []AnalyticsKeyAliasBreakdown
-	ModelBreakdown    []AnalyticsModelBreakdown
-	TimeBreakdown     []AnalyticsTrendPoint
-	Insights          []AnalyticsInsight
-	ProviderOptions   []AnalyticsProviderOption
+	Summary            AnalyticsSummary
+	Trend              []AnalyticsTrendPoint
+	KeyAliasBreakdown  []AnalyticsKeyAliasBreakdown
+	ModelBreakdown     []AnalyticsModelBreakdown
+	TimeBreakdown      []AnalyticsTrendPoint
+	Insights           []AnalyticsInsight
+	ProviderOptions    []AnalyticsProviderOption
+	PreviousRangeStart *time.Time
+	PreviousRangeEnd   *time.Time
+	Comparison         AnalyticsComparison
 }
