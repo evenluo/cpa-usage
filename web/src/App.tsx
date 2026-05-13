@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   BarChart3,
@@ -70,6 +70,35 @@ function currentRoute(): AppRoute {
 
 function apiPath(path: string) {
   return withBasePath(`/api/v1${path}`)
+}
+
+function useAuthSession() {
+  const [checking, setChecking] = useState(true)
+  const [authenticated, setAuthenticated] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    fetch(apiPath('/auth/session'))
+      .then((response) => response.ok ? response.json() as Promise<AuthSessionPayload> : { authenticated: true })
+      .then((payload) => {
+        if (!active) {
+          return
+        }
+        setAuthenticated(payload.authenticated !== false)
+        setChecking(false)
+      })
+      .catch(() => {
+        if (active) {
+          setAuthenticated(true)
+          setChecking(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return { checking, authenticated, setAuthenticated }
 }
 
 type AnalyticsSummaryPayload = {
@@ -268,13 +297,26 @@ type BreakdownMode = 'key_alias' | 'model' | 'time'
 function App() {
   const route = currentRoute()
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
-  const analytics = useAnalyticsSummary(route === '/')
+  const authSession = useAuthSession()
+  const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking)
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
   const analyticsAliases = analytics.keyAliases
   const analyticsModels = analytics.models
   const analyticsTimeBreakdown = analytics.timeBreakdown
   const analyticsInsights = analytics.insights
+
+  if (authSession.checking) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-background px-4 text-foreground">
+        <p className="text-sm text-muted-foreground">Checking session</p>
+      </main>
+    )
+  }
+
+  if (!authSession.authenticated) {
+    return <LoginWorkspace onAuthenticated={() => authSession.setAuthenticated(true)} />
+  }
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -561,6 +603,63 @@ function App() {
           )}
         </section>
       </div>
+    </main>
+  )
+}
+
+function LoginWorkspace({ onAuthenticated }: { onAuthenticated: () => void }) {
+  const [password, setPassword] = useState('')
+  const [status, setStatus] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function submitLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSubmitting(true)
+    setStatus(null)
+    try {
+      const response = await fetch(apiPath('/auth/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      if (!response.ok) {
+        setStatus(response.status === 429 ? 'Too many failed attempts' : 'Invalid password')
+        return
+      }
+      onAuthenticated()
+    } catch {
+      setStatus('Login failed')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <main className="grid min-h-screen place-items-center bg-background px-4 text-foreground">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <CardTitle>Sign in to CPA Usage</CardTitle>
+          <CardDescription>Use the configured dashboard password to continue.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="grid gap-4" onSubmit={(event) => void submitLogin(event)}>
+            <label className="grid gap-2 text-sm font-medium text-foreground">
+              Password
+              <input
+                aria-label="Password"
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none"
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                value={password}
+              />
+            </label>
+            <Button disabled={submitting || password.trim() === ''} type="submit" variant="default">
+              Sign in
+            </Button>
+          </form>
+          {status ? <p className="mt-3 text-sm text-red-600">{status}</p> : null}
+        </CardContent>
+      </Card>
     </main>
   )
 }

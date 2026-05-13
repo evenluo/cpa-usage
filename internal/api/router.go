@@ -155,6 +155,8 @@ func NewRouter(
 				appGroup.HEAD("", redirectBasePath)
 			}
 			appGroup.GET("/", serveIndex)
+			appGroup.GET("/index.html", serveIndex)
+			appGroup.HEAD("/index.html", serveIndex)
 			appGroup.GET("/assets/*filepath", serveAsset)
 			appGroup.HEAD("/assets/*filepath", serveAsset)
 			router.NoRoute(func(c *gin.Context) {

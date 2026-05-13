@@ -315,6 +315,7 @@ func TestSubpathStaticRoutesServeOnlyUnderPrefix(t *testing.T) {
 		contains   string
 	}{
 		{path: "/cpa/", statusCode: http.StatusOK, contains: `window.__APP_BASE_PATH__ = "/cpa";`},
+		{path: "/cpa/index.html", statusCode: http.StatusOK, contains: `window.__APP_BASE_PATH__ = "/cpa";`},
 		{path: "/cpa/dashboard", statusCode: http.StatusOK, contains: `window.__APP_BASE_PATH__ = "/cpa";`},
 		{path: "/cpa/assets/app.js", statusCode: http.StatusOK, contains: "console.log('ok')"},
 		{path: "/cpa/missing.html", statusCode: http.StatusOK, contains: `window.__APP_BASE_PATH__ = "/cpa";`},
@@ -330,6 +331,9 @@ func TestSubpathStaticRoutesServeOnlyUnderPrefix(t *testing.T) {
 		}
 		if testCase.contains != "" && !contains(resp.Body.String(), testCase.contains) {
 			t.Fatalf("expected %s response to contain %q, got %s", testCase.path, testCase.contains, resp.Body.String())
+		}
+		if testCase.path == "/cpa/index.html" && resp.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("expected index.html to use HTML cache headers, got %q", resp.Header().Get("Cache-Control"))
 		}
 	}
 }

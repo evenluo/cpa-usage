@@ -18,15 +18,61 @@ describe('App', () => {
     cleanup()
   })
 
-  it('renders the CPA Usage shell with primary navigation', () => {
+  it('renders the CPA Usage shell with primary navigation', async () => {
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: 'CPA Usage' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'CPA Usage' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '数据分析 Analytics' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Key 管理 Keys' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '请求明细 Events' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '计价配置 Pricing' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '系统设置 Settings' })).toBeInTheDocument()
+  })
+
+  it('renders an authentication gate before protected workspaces when no session exists', async () => {
+    let authenticated = false
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated }))
+      }
+      if (url.includes('/api/v1/auth/login') && init?.method === 'POST') {
+        authenticated = true
+        return new Response(null, { status: 204 })
+      }
+      if (url.includes('/api/v1/analytics/summary')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 0,
+            total_tokens: 0,
+            request_count: 0,
+            success_count: 0,
+            failure_count: 0,
+            success_rate: 0,
+            cost_available: true,
+            cost_status: 'available',
+          },
+          trend: [],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to CPA Usage' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Usage and Cost workspace' })).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: 'secret' }),
+    })))
+    expect(await screen.findByRole('heading', { name: 'Usage and Cost workspace' })).toBeInTheDocument()
   })
 
   it('renders analytics KPI and trend data from the analytics API', async () => {
@@ -165,7 +211,7 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: 'Usage and Cost workspace' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Usage and Cost workspace' })).toBeInTheDocument()
     expect(screen.getByText('Cost and Token Trend')).toBeInTheDocument()
     expect(await screen.findByText('$0.49')).toBeInTheDocument()
     expect(screen.getByText('2.1M')).toBeInTheDocument()
@@ -262,12 +308,12 @@ describe('App', () => {
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
   })
 
-  it('prefixes navigation links with the configured application base path', () => {
+  it('prefixes navigation links with the configured application base path', async () => {
     window.__APP_BASE_PATH__ = '/cpa'
 
     render(<App />)
 
-    expect(screen.getByRole('link', { name: 'Key 管理 Keys' })).toHaveAttribute('href', '/cpa/keys')
+    expect(await screen.findByRole('link', { name: 'Key 管理 Keys' })).toHaveAttribute('href', '/cpa/keys')
     expect(screen.getByRole('link', { name: '请求明细 Events' })).toHaveAttribute('href', '/cpa/events')
     expect(screen.getByRole('link', { name: '计价配置 Pricing' })).toHaveAttribute('href', '/cpa/pricing')
     expect(screen.getByRole('link', { name: '系统设置 Settings' })).toHaveAttribute('href', '/cpa/settings')
@@ -298,7 +344,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Request Events' })).toBeInTheDocument()
-    expect(screen.getByText('OpenAI Team(Team Prefix)')).toBeInTheDocument()
+    expect(await screen.findByText('OpenAI Team(Team Prefix)')).toBeInTheDocument()
     expect(screen.getByText('sk-masked-source')).toBeInTheDocument()
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/usage/events?range=24h&page_size=20')
@@ -383,7 +429,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Operational Settings' })).toBeInTheDocument()
-    expect(screen.getByText('completed_with_warnings')).toBeInTheDocument()
+    expect(await screen.findByText('completed_with_warnings')).toBeInTheDocument()
     expect(screen.getByText('metadata unavailable')).toBeInTheDocument()
     expect(screen.getByText('v1.2.3')).toBeInTheDocument()
     expect(screen.getByText('Authenticated')).toBeInTheDocument()
@@ -456,7 +502,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Key Management' })).toBeInTheDocument()
-    expect(screen.getByText('Agent Research')).toBeInTheDocument()
+    expect(await screen.findByText('Agent Research')).toBeInTheDocument()
     expect(screen.getByText('sk-cpa...7A91')).toBeInTheDocument()
     expect(screen.getByText('OpenAI')).toBeInTheDocument()
     expect(screen.getByText('Claude Desktop')).toBeInTheDocument()
