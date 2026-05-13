@@ -89,7 +89,7 @@ type analyticsProviderOptionRow struct {
 }
 
 type analyticsHeatmapAggregateRow struct {
-	Timestamp            time.Time
+	BucketKey            string
 	RequestCount         int64
 	FailureCount         int64
 	TotalTokens          int64
@@ -248,14 +248,14 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		return heatmap, nil
 	}
 
-	aggregates, err := buildAnalyticsHeatmapAggregates(db, filter)
-	if err != nil {
-		return dto.AnalyticsHeatmapRecord{}, err
-	}
 	windowStart := filter.StartTime.UTC()
 	windowEnd := filter.EndTime.UTC()
 	startDay := localDateStart(filter.StartTime.In(time.Local))
 	endDay := localDateStart(filter.EndTime.In(time.Local))
+	aggregates, err := buildAnalyticsHeatmapAggregates(db, filter, startDay, endDay)
+	if err != nil {
+		return dto.AnalyticsHeatmapRecord{}, err
+	}
 	for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
 		row := dto.AnalyticsHeatmapRowRecord{
 			Date:  day.Format(time.DateOnly),
@@ -303,34 +303,66 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	return heatmap, nil
 }
 
-func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter) (map[string]analyticsHeatmapAggregateRow, error) {
+func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
 	var rows []analyticsHeatmapAggregateRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
-		Select(`
-			usage_events.timestamp AS timestamp,
-			1 AS request_count,
-			CASE WHEN usage_events.failed THEN 1 ELSE 0 END AS failure_count,
-			usage_events.total_tokens AS total_tokens,
-			` + analyticsCostSQLExpression() + ` AS total_cost,
-			` + analyticsMissingPricingSQLExpression() + ` AS missing_pricing_events,
-			` + analyticsPricedBillableSQLExpression() + ` AS priced_billable_events`).
-		Scan(&rows).Error; err != nil {
+	query := `
+		WITH heatmap_buckets(bucket_key, bucket_start_epoch, bucket_end_epoch) AS (VALUES ` + analyticsHeatmapBucketValues(startDay, endDay) + `)
+		SELECT
+			heatmap_buckets.bucket_key AS bucket_key,
+			COUNT(*) AS request_count,
+			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events
+		FROM usage_events
+		JOIN heatmap_buckets
+			ON unixepoch(usage_events.timestamp) >= heatmap_buckets.bucket_start_epoch
+			AND unixepoch(usage_events.timestamp) < heatmap_buckets.bucket_end_epoch
+		LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_events.model)
+		WHERE usage_events.timestamp >= ? AND usage_events.timestamp <= ?`
+	args := []any{filter.StartTime.UTC(), filter.EndTime.UTC()}
+	if provider := strings.TrimSpace(filter.Provider); provider != "" {
+		query += " AND TRIM(usage_events.provider) = ?"
+		args = append(args, provider)
+	}
+	query += " GROUP BY heatmap_buckets.bucket_key"
+	if err := db.Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics heatmap aggregates: %w", err)
 	}
 	aggregates := make(map[string]analyticsHeatmapAggregateRow, len(rows))
 	for _, row := range rows {
-		localBucket := row.Timestamp.In(time.Local)
-		key := analyticsHeatmapCellKey(localBucket.Format(time.DateOnly), localBucket.Hour())
-		aggregate := aggregates[key]
+		aggregate := aggregates[row.BucketKey]
 		aggregate.RequestCount += row.RequestCount
 		aggregate.FailureCount += row.FailureCount
 		aggregate.TotalTokens += row.TotalTokens
 		aggregate.TotalCost += row.TotalCost
 		aggregate.MissingPricingEvents += row.MissingPricingEvents
 		aggregate.PricedBillableEvents += row.PricedBillableEvents
-		aggregates[key] = aggregate
+		aggregates[row.BucketKey] = aggregate
 	}
 	return aggregates, nil
+}
+
+func analyticsHeatmapBucketValues(startDay time.Time, endDay time.Time) string {
+	values := make([]string, 0, 24)
+	for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
+		date := day.Format(time.DateOnly)
+		for hour := 0; hour < 24; hour++ {
+			bucketStart, bucketEnd := localHourBucket(day, hour)
+			values = append(values, fmt.Sprintf(
+				"(%s, %d, %d)",
+				analyticsSQLString(analyticsHeatmapCellKey(date, hour)),
+				bucketStart.UTC().Unix(),
+				bucketEnd.UTC().Unix(),
+			))
+		}
+	}
+	return strings.Join(values, ", ")
+}
+
+func analyticsSQLString(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
 func analyticsHeatmapCellKey(date string, hour int) string {
@@ -338,7 +370,7 @@ func analyticsHeatmapCellKey(date string, hour int) string {
 }
 
 func analyticsHeatmapCellInRange(bucketStart time.Time, bucketEnd time.Time, windowStart time.Time, windowEnd time.Time) bool {
-	return bucketEnd.After(windowStart) && !bucketStart.After(windowEnd)
+	return bucketEnd.After(bucketStart) && bucketEnd.After(windowStart) && !bucketStart.After(windowEnd)
 }
 
 func localDateStart(value time.Time) time.Time {
@@ -347,9 +379,47 @@ func localDateStart(value time.Time) time.Time {
 }
 
 func localHourBucket(day time.Time, hour int) (time.Time, time.Time) {
-	start := time.Date(day.Year(), day.Month(), day.Day(), hour, 0, 0, 0, time.Local)
-	end := time.Date(day.Year(), day.Month(), day.Day(), hour+1, 0, 0, 0, time.Local)
+	start := localHourBoundary(day, hour)
+	end := localHourBoundary(day, hour+1)
 	return start, end
+}
+
+func localHourBoundary(day time.Time, hour int) time.Time {
+	localDay := day.In(time.Local)
+	dayStart := time.Date(localDay.Year(), localDay.Month(), localDay.Day(), 0, 0, 0, 0, time.Local)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	targetYear, targetMonth, targetDay := localDay.Date()
+	targetHour := hour
+	if hour >= 24 {
+		nextDay := dayStart.AddDate(0, 0, 1)
+		targetYear, targetMonth, targetDay = nextDay.Date()
+		targetHour = hour - 24
+	}
+	low := dayStart.UTC().UnixNano()
+	high := dayEnd.UTC().UnixNano()
+	for low < high {
+		mid := low + (high-low)/2
+		if localDateTimeAtOrAfter(time.Unix(0, mid).In(time.Local), targetYear, targetMonth, targetDay, targetHour) {
+			high = mid
+		} else {
+			low = mid + 1
+		}
+	}
+	return time.Unix(0, low).In(time.Local)
+}
+
+func localDateTimeAtOrAfter(value time.Time, targetYear int, targetMonth time.Month, targetDay int, targetHour int) bool {
+	year, month, day := value.Date()
+	if year != targetYear {
+		return year > targetYear
+	}
+	if month != targetMonth {
+		return month > targetMonth
+	}
+	if day != targetDay {
+		return day > targetDay
+	}
+	return value.Hour() >= targetHour
 }
 
 func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPointRecord, error) {

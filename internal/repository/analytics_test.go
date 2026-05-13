@@ -339,6 +339,50 @@ func TestBuildAnalyticsSummaryWithFilterKeepsRepeatedDSTHoursSeparate(t *testing
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterHandlesSpringForwardHeatmapHour(t *testing.T) {
+	t.Setenv("TZ", "America/New_York")
+	withRepositoryTestLocation(t, "America/New_York")
+	db := openTestDatabase(t)
+	localStart := time.Date(2026, 3, 8, 0, 0, 0, 0, time.Local)
+	localEnd := time.Date(2026, 3, 8, 23, 59, 59, 999999999, time.Local)
+	start := localStart.UTC()
+	end := localEnd.UTC()
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey:    "spring-forward-hour",
+		Model:       "missing-model",
+		Timestamp:   time.Date(2026, 3, 8, 3, 30, 0, 0, time.Local).UTC(),
+		TotalTokens: 90,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	var springRow *dto.AnalyticsHeatmapRowRecord
+	for index := range snapshot.Heatmap.Rows {
+		if snapshot.Heatmap.Rows[index].Date == "2026-03-08" {
+			springRow = &snapshot.Heatmap.Rows[index]
+		}
+	}
+	if springRow == nil {
+		t.Fatalf("expected local spring-forward heatmap row, got %+v", snapshot.Heatmap.Rows)
+	}
+	missingHour := springRow.Cells[2]
+	if !missingHour.BucketStart.Equal(missingHour.BucketEnd) || missingHour.InRange || missingHour.TotalTokens != 0 {
+		t.Fatalf("expected nonexistent 02:00 hour to be a zero-duration empty cell, got %+v", missingHour)
+	}
+	activeHour := springRow.Cells[3]
+	if !activeHour.BucketStart.Equal(time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC)) || !activeHour.BucketEnd.Equal(time.Date(2026, 3, 8, 8, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected 03:00 hour to start at DST transition, got %+v", activeHour)
+	}
+	if activeHour.TotalTokens != 90 || activeHour.RequestCount != 1 {
+		t.Fatalf("expected 03:30 event in hour 3 cell, got %+v", activeHour)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendAcrossDSTChange(t *testing.T) {
 	t.Setenv("TZ", "America/New_York")
 	withRepositoryTestLocation(t, "America/New_York")
