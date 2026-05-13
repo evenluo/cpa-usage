@@ -113,6 +113,33 @@ type AnalyticsComparison struct {
 	SuccessRateChangePP   *float64
 }
 
+type AnalyticsHeatmapCell struct {
+	Hour          int
+	BucketStart   time.Time
+	BucketEnd     time.Time
+	TotalTokens   int64
+	TotalCost     float64
+	RequestCount  int64
+	FailureCount  int64
+	CostAvailable bool
+	CostStatus    string
+}
+
+type AnalyticsHeatmapRow struct {
+	Date  string
+	Label string
+	Cells []AnalyticsHeatmapCell
+}
+
+type AnalyticsHeatmap struct {
+	Measure     string
+	MaxTokens   int64
+	MaxCost     float64
+	MaxRequests int64
+	MaxFailures int64
+	Rows        []AnalyticsHeatmapRow
+}
+
 type AnalyticsSummarySnapshot struct {
 	Summary            AnalyticsSummary
 	Trend              []AnalyticsTrendPoint
@@ -124,4 +151,5 @@ type AnalyticsSummarySnapshot struct {
 	PreviousRangeStart *time.Time
 	PreviousRangeEnd   *time.Time
 	Comparison         AnalyticsComparison
+	Heatmap            AnalyticsHeatmap
 }

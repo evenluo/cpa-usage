@@ -25,6 +25,7 @@ type analyticsSummaryResponse struct {
 	Timezone           string                     `json:"timezone"`
 	Summary            analyticsSummaryPayload    `json:"summary"`
 	Comparison         analyticsComparisonPayload `json:"comparison"`
+	Heatmap            analyticsHeatmapPayload    `json:"heatmap"`
 	Trend              []analyticsTrendPoint      `json:"trend"`
 	KeyAliases         []analyticsKeyAliasRow     `json:"key_alias_breakdown"`
 	Models             []analyticsModelRow        `json:"model_distribution"`
@@ -142,6 +143,33 @@ type analyticsComparisonPayload struct {
 	SuccessRateChangePP   *float64 `json:"success_rate_change_pp,omitempty"`
 }
 
+type analyticsHeatmapPayload struct {
+	Measure     string                `json:"measure"`
+	MaxTokens   int64                 `json:"max_tokens"`
+	MaxCost     float64               `json:"max_cost"`
+	MaxRequests int64                 `json:"max_requests"`
+	MaxFailures int64                 `json:"max_failures"`
+	Rows        []analyticsHeatmapRow `json:"rows"`
+}
+
+type analyticsHeatmapRow struct {
+	Date  string                 `json:"date"`
+	Label string                 `json:"label"`
+	Cells []analyticsHeatmapCell `json:"cells"`
+}
+
+type analyticsHeatmapCell struct {
+	Hour          int       `json:"hour"`
+	BucketStart   time.Time `json:"bucket_start"`
+	BucketEnd     time.Time `json:"bucket_end"`
+	TotalTokens   int64     `json:"total_tokens"`
+	TotalCost     float64   `json:"total_cost"`
+	RequestCount  int64     `json:"request_count"`
+	FailureCount  int64     `json:"failure_count"`
+	CostAvailable bool      `json:"cost_available"`
+	CostStatus    string    `json:"cost_status"`
+}
+
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
 	router.GET("/analytics/summary", func(c *gin.Context) {
 		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
@@ -197,6 +225,7 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 			CacheReadShareState: dto.AnalyticsCacheReadShareStateNoPromptInput,
 		},
 		Trend:      []analyticsTrendPoint{},
+		Heatmap:    analyticsHeatmapPayload{Measure: "tokens", Rows: []analyticsHeatmapRow{}},
 		KeyAliases: []analyticsKeyAliasRow{},
 		Models:     []analyticsModelRow{},
 		Time:       []analyticsTrendPoint{},
@@ -230,6 +259,7 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 		RequestCountChangePct: snapshot.Comparison.RequestCountChangePct,
 		SuccessRateChangePP:   snapshot.Comparison.SuccessRateChangePP,
 	}
+	response.Heatmap = mapAnalyticsHeatmap(snapshot.Heatmap)
 	response.Trend = make([]analyticsTrendPoint, 0, len(snapshot.Trend))
 	for _, point := range snapshot.Trend {
 		response.Trend = append(response.Trend, analyticsTrendPoint{
@@ -313,6 +343,39 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 		})
 	}
 	return response
+}
+
+func mapAnalyticsHeatmap(heatmap servicedto.AnalyticsHeatmap) analyticsHeatmapPayload {
+	rows := make([]analyticsHeatmapRow, 0, len(heatmap.Rows))
+	for _, row := range heatmap.Rows {
+		cells := make([]analyticsHeatmapCell, 0, len(row.Cells))
+		for _, cell := range row.Cells {
+			cells = append(cells, analyticsHeatmapCell{
+				Hour:          cell.Hour,
+				BucketStart:   cell.BucketStart,
+				BucketEnd:     cell.BucketEnd,
+				TotalTokens:   cell.TotalTokens,
+				TotalCost:     cell.TotalCost,
+				RequestCount:  cell.RequestCount,
+				FailureCount:  cell.FailureCount,
+				CostAvailable: cell.CostAvailable,
+				CostStatus:    cell.CostStatus,
+			})
+		}
+		rows = append(rows, analyticsHeatmapRow{
+			Date:  row.Date,
+			Label: row.Label,
+			Cells: cells,
+		})
+	}
+	return analyticsHeatmapPayload{
+		Measure:     heatmap.Measure,
+		MaxTokens:   heatmap.MaxTokens,
+		MaxCost:     heatmap.MaxCost,
+		MaxRequests: heatmap.MaxRequests,
+		MaxFailures: heatmap.MaxFailures,
+		Rows:        rows,
+	}
 }
 
 func mapAnalyticsKeyAliasRow(row servicedto.AnalyticsKeyAliasBreakdown) analyticsKeyAliasRow {

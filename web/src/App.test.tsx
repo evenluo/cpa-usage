@@ -3,6 +3,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 
+function buildHeatmapRow(date: string, label: string, activeHour: number, overrides: Record<string, unknown> = {}) {
+  return {
+    date,
+    label,
+    cells: Array.from({ length: 24 }, (_, hour) => ({
+      hour,
+      bucket_start: `${date}T${String(hour).padStart(2, '0')}:00:00Z`,
+      bucket_end: `${date}T${String(hour + 1).padStart(2, '0')}:00:00Z`,
+      total_tokens: hour === activeHour ? 1100100 : 0,
+      total_cost: hour === activeHour ? 2.25 : 0,
+      request_count: hour === activeHour ? 181 : 0,
+      failure_count: hour === activeHour ? 4 : 0,
+      cost_available: true,
+      cost_status: 'available',
+      ...(hour === activeHour ? overrides : {}),
+    })),
+  }
+}
+
 describe('App', () => {
   const originalBasePath = window.__APP_BASE_PATH__
   const originalPath = window.location.pathname
@@ -265,6 +284,17 @@ describe('App', () => {
             { label: '05-11', total_cost: 2.25, total_tokens: 1200000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
             { label: '05-12', total_cost: 2.25, total_tokens: 3100000, request_count: 221, success_count: 215, failure_count: 6, cost_available: false, cost_status: 'partial' },
           ],
+          heatmap: {
+            measure: 'tokens',
+            max_tokens: 1100100,
+            max_cost: 2.25,
+            max_requests: 181,
+            max_failures: 4,
+            rows: [
+              buildHeatmapRow('2026-05-11', 'Mon 05/11', 9, { total_tokens: 1200000, request_count: 120, failure_count: 1 }),
+              buildHeatmapRow('2026-05-12', 'Tue 05/12', 10, { cost_available: false, cost_status: 'partial' }),
+            ],
+          },
           insights: [
             { type: 'metric_completeness', severity: 'amber', title: 'Metric Completeness', detail: 'Some derived metrics are incomplete, but usage events remain valid.', subject: 'Cost partial', metric_label: 'Metric Completeness', metric_value: 1, count: 1, cost_status: 'partial' },
             { type: 'cache_efficiency', severity: 'green', title: 'Cache Read Share', detail: 'Prompt cache reads are measured separately from reasoning tokens.', subject: 'Prompt input cache', metric_label: 'Cache Read Share', metric_value: 6.666222251849877, count: 100000, cost_status: 'partial' },
@@ -353,11 +383,13 @@ describe('App', () => {
     expect(screen.getByText('missing-price-model')).toBeInTheDocument()
     expect(screen.getByText('Cache Read Share: No cache data')).toBeInTheDocument()
     fireEvent.click(within(breakdownView).getByRole('button', { name: 'Time' }))
-    expect(screen.getByText('Time Breakdown')).toBeInTheDocument()
+    expect(screen.getByText('Token Heatmap')).toBeInTheDocument()
     expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'false')
     expect(within(breakdownView).getByRole('button', { name: 'Time' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText('221 requests · 6 failures')).toBeInTheDocument()
-    expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(2)
+    const heatmap = screen.getByLabelText('Date by hour token heatmap')
+    expect(within(heatmap).getByText('Mon 05/11')).toBeInTheDocument()
+    expect(within(heatmap).getByText('Tue 05/12')).toBeInTheDocument()
+    expect(within(heatmap).getByRole('button', { name: /Tue 05\/12 10:00, 1.1M tokens, Cost partial, 181 requests, 4 failures/ })).toBeInTheDocument()
 	    expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=hour')
 	    fireEvent.click(screen.getByRole('button', { name: 'Day' }))
 	    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=day'))
@@ -512,6 +544,7 @@ describe('App', () => {
           key_alias_breakdown: [],
           model_distribution: [],
           time_breakdown: [],
+          heatmap: { measure: 'tokens', max_tokens: 0, max_cost: 0, max_requests: 0, max_failures: 0, rows: [] },
         }))
       }
       return new Response(null, { status: 404 })
@@ -526,7 +559,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Model' }))
     expect(screen.getByText('No model usage in this range')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Time' }))
-    expect(screen.getByText('No time bucket usage in this range')).toBeInTheDocument()
+    expect(screen.getByText('No heatmap data in this range')).toBeInTheDocument()
   })
 
   it('renders unavailable analytics cost as unknown instead of zero currency', async () => {

@@ -817,6 +817,59 @@ func TestBuildAnalyticsSummaryWithFilterOmitsCostComparisonWhenPricingIsIncomple
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previousLocal })
+
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 12, 23, 59, 59, 999999999, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:            "priced-model",
+		PromptPricePer1M: 1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "priced-cell", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(9 * time.Hour), InputTokens: 120, TotalTokens: 120},
+		{EventKey: "unpriced-cell", Provider: "OpenAI", Model: "missing-model", Timestamp: start.AddDate(0, 0, 1).Add(10 * time.Hour), InputTokens: 80, TotalTokens: 80, Failed: true},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	heatmap := snapshot.Heatmap
+	if heatmap.Measure != "tokens" || heatmap.MaxTokens != 120 || heatmap.MaxRequests != 1 || heatmap.MaxFailures != 1 {
+		t.Fatalf("unexpected heatmap max values: %+v", heatmap)
+	}
+	if len(heatmap.Rows) != 2 {
+		t.Fatalf("expected two heatmap rows, got %+v", heatmap.Rows)
+	}
+	for _, row := range heatmap.Rows {
+		if len(row.Cells) != 24 {
+			t.Fatalf("expected 24 cells for row %+v", row)
+		}
+	}
+	if heatmap.Rows[0].Date != "2026-05-11" || heatmap.Rows[0].Cells[9].TotalTokens != 120 || heatmap.Rows[0].Cells[9].RequestCount != 1 {
+		t.Fatalf("expected priced event in first row hour 9, got %+v", heatmap.Rows[0])
+	}
+	if !heatmap.Rows[0].Cells[8].CostAvailable || heatmap.Rows[0].Cells[8].CostStatus != dto.AnalyticsCostStatusAvailable || heatmap.Rows[0].Cells[8].TotalTokens != 0 {
+		t.Fatalf("expected empty bucket to be explicit available zero cell, got %+v", heatmap.Rows[0].Cells[8])
+	}
+	unpriced := heatmap.Rows[1].Cells[10]
+	if unpriced.TotalTokens != 80 || unpriced.RequestCount != 1 || unpriced.FailureCount != 1 || unpriced.CostStatus != dto.AnalyticsCostStatusUnavailable {
+		t.Fatalf("expected unpriced failed event to preserve cost completeness, got %+v", unpriced)
+	}
+	if !heatmap.Rows[0].Cells[9].BucketStart.Equal(start.Add(9*time.Hour)) || !heatmap.Rows[0].Cells[9].BucketEnd.Equal(start.Add(10*time.Hour)) {
+		t.Fatalf("unexpected bucket boundaries: %+v", heatmap.Rows[0].Cells[9])
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterAggregatesKeyAliasBreakdownByStableIdentity(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

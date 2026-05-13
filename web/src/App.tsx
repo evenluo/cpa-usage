@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { Fragment, type FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   BarChart3,
@@ -224,10 +224,38 @@ type AnalyticsComparisonPayload = {
   success_rate_change_pp?: number | null
 }
 
+type AnalyticsHeatmapCellPayload = {
+  hour: number
+  bucket_start: string
+  bucket_end: string
+  total_tokens: number
+  total_cost: number
+  request_count: number
+  failure_count: number
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
+type AnalyticsHeatmapRowPayload = {
+  date: string
+  label: string
+  cells: AnalyticsHeatmapCellPayload[]
+}
+
+type AnalyticsHeatmapPayload = {
+  measure: 'tokens'
+  max_tokens: number
+  max_cost: number
+  max_requests: number
+  max_failures: number
+  rows: AnalyticsHeatmapRowPayload[]
+}
+
 type AnalyticsSummaryResponse = {
   granularity?: TimeGranularity
   summary: AnalyticsSummaryPayload
   comparison?: AnalyticsComparisonPayload
+  heatmap?: AnalyticsHeatmapPayload
   trend: AnalyticsTrendPointPayload[]
   key_alias_breakdown?: AnalyticsKeyAliasPayload[]
   model_distribution?: AnalyticsModelPayload[]
@@ -246,6 +274,7 @@ type AnalyticsState = {
   insights: AnalyticsInsightPayload[]
   providerOptions: AnalyticsProviderOptionPayload[]
   comparison: AnalyticsComparisonPayload
+  heatmap: AnalyticsHeatmapPayload
 }
 
 type TimeGranularity = 'hour' | 'day'
@@ -277,8 +306,21 @@ const emptyAnalyticsComparison: AnalyticsComparisonPayload = {
   success_rate_change_pp: null,
 }
 
+const emptyAnalyticsHeatmap: AnalyticsHeatmapPayload = {
+  measure: 'tokens',
+  max_tokens: 0,
+  max_cost: 0,
+  max_requests: 0,
+  max_failures: 0,
+  rows: [],
+}
+
 function normalizeAnalyticsComparison(comparison: AnalyticsComparisonPayload | undefined) {
   return { ...emptyAnalyticsComparison, ...(comparison ?? {}) }
+}
+
+function normalizeAnalyticsHeatmap(heatmap: AnalyticsHeatmapPayload | undefined) {
+  return { ...emptyAnalyticsHeatmap, ...(heatmap ?? {}), rows: heatmap?.rows ?? [] }
 }
 
 const emptyAnalyticsState: AnalyticsState = {
@@ -291,6 +333,7 @@ const emptyAnalyticsState: AnalyticsState = {
   insights: [],
   providerOptions: [],
   comparison: emptyAnalyticsComparison,
+  heatmap: emptyAnalyticsHeatmap,
 }
 
 function useAnalyticsSummary(enabled: boolean, provider: string, granularity: TimeGranularity) {
@@ -319,6 +362,7 @@ function useAnalyticsSummary(enabled: boolean, provider: string, granularity: Ti
         }
         const summary = normalizeAnalyticsSummary(payload.summary)
         const comparison = normalizeAnalyticsComparison(payload.comparison)
+        const heatmap = normalizeAnalyticsHeatmap(payload.heatmap)
         setAnalytics({
           provider: scopedProvider,
           summary,
@@ -374,6 +418,7 @@ function useAnalyticsSummary(enabled: boolean, provider: string, granularity: Ti
           insights: payload.insights ?? [],
           providerOptions: payload.provider_options ?? [],
           comparison,
+          heatmap,
         })
       })
       .catch(() => {
@@ -408,8 +453,8 @@ function App() {
   const analyticsComparison = analytics.comparison
   const analyticsAliases = analytics.keyAliases
   const analyticsModels = analytics.models
-  const analyticsTimeBreakdown = analytics.timeBreakdown
   const analyticsInsights = analytics.insights
+  const analyticsHeatmap = analytics.heatmap
   const kpiSparklines = {
     cost: analyticsTrend.map((point) => (point.costStatus === 'unavailable' ? null : point.cost)),
     tokens: analyticsTrend.map((point) => point.tokens),
@@ -705,33 +750,11 @@ function App() {
             {breakdownMode === 'time' ? (
             <Card>
               <CardHeader>
-                <CardTitle>Time Breakdown</CardTitle>
-                <CardDescription>Time buckets keep Cost and tokens visible over the selected range.</CardDescription>
+                <CardTitle>Token Heatmap</CardTitle>
+                <CardDescription>Date rows and local-hour columns expose the selected range without browser regrouping.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
-                  <div className="h-[250px] min-w-0">
-                    <TokenCostCompareChart data={analyticsTimeBreakdown} />
-                  </div>
-                  <div className="grid gap-2">
-                    {analyticsTimeBreakdown.length === 0 ? (
-                      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                        No time bucket usage in this range
-                      </div>
-                    ) : analyticsTimeBreakdown.map((row) => (
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-border p-3" key={row.label}>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{row.label}</p>
-                          <p className="text-xs text-muted-foreground">{formatCompact(row.requests, 1)} requests · {row.failures} failures</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold">{formatBreakdownCost(row)}</p>
-                          <p className="text-xs text-muted-foreground">{formatCompact(row.tokens, 2)} tokens</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <TokenHeatmap heatmap={analyticsHeatmap} />
               </CardContent>
             </Card>
             ) : null}
@@ -1607,6 +1630,57 @@ function InsightRail({ insights }: { insights: AnalyticsInsightPayload[] }) {
       ))}
     </div>
   )
+}
+
+function TokenHeatmap({ heatmap }: { heatmap: AnalyticsHeatmapPayload }) {
+  if (heatmap.rows.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        No heatmap data in this range
+      </div>
+    )
+  }
+  const maxTokens = Math.max(heatmap.max_tokens, 1)
+  const hours = Array.from({ length: 24 }, (_, hour) => hour)
+
+  return (
+    <div className="overflow-x-auto" aria-label="Date by hour token heatmap">
+      <div className="grid min-w-[860px] gap-1" style={{ gridTemplateColumns: '88px repeat(24, minmax(26px, 1fr))' }}>
+        <div aria-hidden="true" />
+        {hours.map((hour) => (
+          <div className="text-center text-[10px] font-semibold text-muted-foreground" key={hour}>
+            {hour}
+          </div>
+        ))}
+        {heatmap.rows.map((row) => (
+          <Fragment key={row.date}>
+            <div className="flex h-7 items-center truncate text-xs font-semibold text-muted-foreground">{row.label}</div>
+            {row.cells.map((cell) => {
+              const intensity = Math.min(cell.total_tokens / maxTokens, 1)
+              return (
+                <button
+                  aria-label={`${row.label} ${cell.hour}:00, ${formatCompact(cell.total_tokens, 2)} tokens, ${formatHeatmapCost(cell)}, ${cell.request_count} requests, ${cell.failure_count} failures`}
+                  className="h-7 rounded-sm border border-border text-[0px] outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-600"
+                  key={`${row.date}-${cell.hour}`}
+                  style={{ backgroundColor: `rgba(16, 185, 129, ${0.08 + intensity * 0.72})` }}
+                  type="button"
+                >
+                  {cell.total_tokens}
+                </button>
+              )
+            })}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function formatHeatmapCost(cell: Pick<AnalyticsHeatmapCellPayload, 'cost_available' | 'cost_status' | 'total_cost'>) {
+  if (!cell.cost_available) {
+    return cell.cost_status === 'partial' ? 'Cost partial' : 'Cost unavailable'
+  }
+  return formatCost(cell.total_cost)
 }
 
 function formatLastUsed(value: string | null) {

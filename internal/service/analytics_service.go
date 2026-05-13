@@ -145,6 +145,28 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			CostStatus:    option.CostStatus,
 		})
 	}
+	heatmapRows := make([]servicedto.AnalyticsHeatmapRow, 0, len(snapshot.Heatmap.Rows))
+	for _, row := range snapshot.Heatmap.Rows {
+		cells := make([]servicedto.AnalyticsHeatmapCell, 0, len(row.Cells))
+		for _, cell := range row.Cells {
+			cells = append(cells, servicedto.AnalyticsHeatmapCell{
+				Hour:          cell.Hour,
+				BucketStart:   cell.BucketStart,
+				BucketEnd:     cell.BucketEnd,
+				TotalTokens:   cell.TotalTokens,
+				TotalCost:     cell.TotalCost,
+				RequestCount:  cell.RequestCount,
+				FailureCount:  cell.FailureCount,
+				CostAvailable: cell.CostAvailable,
+				CostStatus:    cell.CostStatus,
+			})
+		}
+		heatmapRows = append(heatmapRows, servicedto.AnalyticsHeatmapRow{
+			Date:  row.Date,
+			Label: row.Label,
+			Cells: cells,
+		})
+	}
 	return &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
 			TotalCost:             snapshot.Summary.TotalCost,
@@ -176,6 +198,14 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			TotalTokensChangePct:  snapshot.Comparison.TotalTokensChangePct,
 			RequestCountChangePct: snapshot.Comparison.RequestCountChangePct,
 			SuccessRateChangePP:   snapshot.Comparison.SuccessRateChangePP,
+		},
+		Heatmap: servicedto.AnalyticsHeatmap{
+			Measure:     snapshot.Heatmap.Measure,
+			MaxTokens:   snapshot.Heatmap.MaxTokens,
+			MaxCost:     snapshot.Heatmap.MaxCost,
+			MaxRequests: snapshot.Heatmap.MaxRequests,
+			MaxFailures: snapshot.Heatmap.MaxFailures,
+			Rows:        heatmapRows,
 		},
 	}, nil
 }

@@ -123,6 +123,33 @@ type AnalyticsComparisonRecord struct {
 	SuccessRateChangePP   *float64
 }
 
+type AnalyticsHeatmapCellRecord struct {
+	Hour          int
+	BucketStart   time.Time
+	BucketEnd     time.Time
+	TotalTokens   int64
+	TotalCost     float64
+	RequestCount  int64
+	FailureCount  int64
+	CostAvailable bool
+	CostStatus    string
+}
+
+type AnalyticsHeatmapRowRecord struct {
+	Date  string
+	Label string
+	Cells []AnalyticsHeatmapCellRecord
+}
+
+type AnalyticsHeatmapRecord struct {
+	Measure     string
+	MaxTokens   int64
+	MaxCost     float64
+	MaxRequests int64
+	MaxFailures int64
+	Rows        []AnalyticsHeatmapRowRecord
+}
+
 type AnalyticsSummarySnapshot struct {
 	Summary            AnalyticsSummaryRecord
 	Trend              []AnalyticsTrendPointRecord
@@ -134,4 +161,5 @@ type AnalyticsSummarySnapshot struct {
 	PreviousRangeStart *time.Time
 	PreviousRangeEnd   *time.Time
 	Comparison         AnalyticsComparisonRecord
+	Heatmap            AnalyticsHeatmapRecord
 }
