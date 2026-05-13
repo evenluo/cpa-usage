@@ -53,7 +53,7 @@ Stop before implementation if any requirement fails:
    - `gh repo view --json defaultBranchRef,nameWithOwner`
    - or an equivalent reliable command
    - Do not guess from convention alone. If the base branch cannot be determined, stop and report.
-4. Verify the working tree is clean. If there are uncommitted changes, stop and report them instead of continuing.
+4. Verify the working tree is clean before starting the PRD workflow. If there are uncommitted changes at startup, stop and report them instead of continuing.
 5. Verify `setup-matt-pocock-skills` has completed for this repository:
    - `AGENTS.md` or `CLAUDE.md` contains an `## Agent skills` block.
    - `docs/agents/issue-tracker.md` exists.
@@ -107,7 +107,15 @@ For each child issue in the frozen queue:
 10. Run independent review for only this issue range: `ISSUE_BASE_SHA..HEAD`.
 11. Never use uncommitted changes as the per-issue review target.
 
+Working tree rule:
+
+1. A dirty working tree during this loop is allowed only as the in-progress implementation state for the current child issue.
+2. Do not start independent review from a dirty tree.
+3. If the user asks to commit already-discussed in-progress changes, commit them as normal project history for the current child issue; this is not a workflow violation.
+
 ## Independent Review Policy
+
+Independent review means a separate reviewer session evaluates a stable committed range. It does not require cloning the repository or creating a separate worktree. Use a clone or separate worktree only when the current workspace cannot provide an isolated committed range.
 
 Prefer `codex review --base <ref>`. Because `codex review --base` may require a branch-like ref, create a temporary local review ref pointing at `ISSUE_BASE_SHA`; do not switch branches:
 
@@ -144,6 +152,10 @@ Rules:
 2. Never treat a failed, killed, timed-out, or empty review as a pass.
 3. A hard-timeout review is a failed review command and does not count as a completed review round.
 4. Retry a failed review command at most once for the same round.
+5. If a review-run verification command fails, classify the failure before acting:
+   - product or test failure: fix within scope, rerun the relevant repository-required test target, and review again within budget
+   - reviewer command misuse, such as passing unsupported Make arguments: rerun the canonical repository-required command yourself and record the result
+   - environment or access failure: retry once if transient; otherwise record it as a review failure
 
 Review budget:
 
@@ -199,8 +211,14 @@ After all frozen child issues are completed and none are blocked:
    - closed or label-changed frozen children
    - newly discovered ready-for-agent children, reported as out-of-band unless explicitly included
 2. Run the relevant broader test suite for the whole integration branch.
-3. Run a final integration review against the base branch.
-4. Final review prompt:
+3. Run final integration checks for cross-issue generated artifacts and schema invariants where applicable:
+   - generated code is synchronized with source schema or query changes
+   - database migrations preserve existing data invariants or explicitly block unsafe states
+   - rollback behavior is explicit when rollback cannot restore prior data shape
+   - SQL/query models, API DTOs, and frontend types remain aligned
+   - cross-issue data relationships introduced by separate child issues are covered by tests or migration review
+4. Run a final integration review against the base branch.
+5. Final review prompt:
 
 ```text
 Review the full PRD integration diff for PRD issue #PARENT.
@@ -214,12 +232,14 @@ Check:
 - unrelated scope
 ```
 
-5. Apply the same review timeout policy to the final integration review.
-6. Final integration review also has at most 2 completed rounds.
-7. Fix valid final integration review findings, commit fixes, rerun tests, and rerun the final review once.
-8. If final integration review still has non-trivial unresolved findings after Round 2, do not open the PR. Report unresolved findings and stop.
+6. Apply the same review timeout policy to the final integration review.
+7. Final integration review also has at most 2 completed rounds.
+8. Fix valid final integration review findings, commit fixes, rerun tests, and rerun the final review once.
+9. If final integration review still has non-trivial unresolved findings after Round 2, do not open the PR. Report unresolved findings and stop.
 
 ## Final PR
+
+If the user or current permissions explicitly say not to push or not to open a PR, stop after local completion instead of opening a PR. Report the branch, clean working tree status, completed issue IDs, tests, review result, and that no push or PR was created.
 
 Open one ready PR from this worktree branch to the base branch only if:
 
@@ -252,3 +272,4 @@ Report:
 6. final integration review result
 7. drift discovered before final PR
 8. whether parent PRD appears ready for human final review
+9. if no PR was created by instruction or permission boundary, the local branch completion status and whether the working tree is clean
