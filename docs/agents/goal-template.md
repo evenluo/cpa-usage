@@ -11,21 +11,21 @@ Current SoT: this file
 Use this as the prompt for Codex goal, replacing `#PARENT`:
 
 ```text
-Read docs/agents/prd-integration-goal-template.md and execute the PRD integration workflow for GitHub PRD issue #PARENT in the current worktree branch.
+Read docs/agents/goal-template.md and execute the PRD integration workflow for GitHub PRD issue #PARENT in the current worktree branch.
 ```
 
 The prompt is intentionally short. The goal runner should read this file as the execution contract after the goal starts.
 
 ## Goal Contract
 
-Goal: Complete all open ready-for-agent child issues for GitHub PRD issue `#PARENT` in this worktree branch.
+Goal: Complete all open ready-for-agent child issues for GitHub PRD issue `#PARENT` in this worktree branch after the startup gate has established a safe integration branch.
 
 Core model:
 
-1. This worktree branch is the integration branch for the whole PRD.
+1. This worktree branch is the integration branch for the whole PRD after startup. If the goal starts on the repository base branch, the startup gate must first move to a PRD integration branch.
 2. Work in this worktree only.
 3. Do not create per-issue branches unless explicitly instructed later.
-4. Do not switch back to the base branch while the PRD is incomplete.
+4. Do not implement directly on the base branch, and do not switch back to the base branch while the PRD is incomplete.
 5. Do not merge PRs.
 6. Do not manually close GitHub issues.
 7. Do not change issue labels, project fields, milestones, assignees, close state, or issue comments unless explicitly instructed.
@@ -53,16 +53,24 @@ Stop before implementation if any requirement fails:
    - `gh repo view --json defaultBranchRef,nameWithOwner`
    - or an equivalent reliable command
    - Do not guess from convention alone. If the base branch cannot be determined, stop and report.
-4. Verify the working tree is clean before starting the PRD workflow. If there are uncommitted changes at startup, stop and report them instead of continuing.
-5. Verify `setup-matt-pocock-skills` has completed for this repository:
+4. Verify the working tree is clean before creating or using an integration branch. If there are uncommitted changes at startup, stop and report them instead of continuing.
+5. Compare the current branch with the default/base branch:
+   - If the current branch is not the default/base branch, treat the current branch as the PRD integration branch and continue.
+   - If the current branch is the default/base branch, do not implement there.
+   - If the current branch is the default/base branch and the working tree is clean, create or switch to the predictable integration branch `prd-PARENT-integration`, replacing `PARENT` with the numeric PRD issue ID without `#`.
+   - If `prd-PARENT-integration` does not exist, run `git switch -c prd-PARENT-integration`.
+   - If `prd-PARENT-integration` already exists in this worktree, run `git switch prd-PARENT-integration`.
+   - If `prd-PARENT-integration` already exists in another worktree or cannot be checked out cleanly, stop and report the branch/worktree conflict instead of forcing checkout.
+   - After creating or switching to the integration branch, re-run `git branch --show-current` and `git status --short --branch`; the workflow may proceed only from a clean non-base branch.
+6. Verify `setup-matt-pocock-skills` has completed for this repository:
    - `AGENTS.md` or `CLAUDE.md` contains an `## Agent skills` block.
    - `docs/agents/issue-tracker.md` exists.
    - `docs/agents/triage-labels.md` exists.
    - `docs/agents/domain.md` exists.
-6. Read `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`.
-7. Resolve the actual issue tracker and actual label string for canonical role `ready-for-agent` from those docs. Do not infer label vocabulary when setup evidence is missing.
-8. Verify `gh` can read GitHub issues for this repository. If not, stop and report the missing access.
-9. Read repository guidance files if present:
+7. Read `docs/agents/issue-tracker.md` and `docs/agents/triage-labels.md`.
+8. Resolve the actual issue tracker and actual label string for canonical role `ready-for-agent` from those docs. Do not infer label vocabulary when setup evidence is missing.
+9. Verify `gh` can read GitHub issues for this repository. If not, stop and report the missing access.
+10. Read repository guidance files if present:
    - `AGENTS.md`
    - `CLAUDE.md`
    - `CONTEXT.md`
@@ -241,12 +249,13 @@ Check:
 
 If the user or current permissions explicitly say not to push or not to open a PR, stop after local completion instead of opening a PR. Report the branch, clean working tree status, completed issue IDs, tests, review result, and that no push or PR was created.
 
-Open one ready PR from this worktree branch to the base branch only if:
+Open one ready PR from the integration branch to the base branch only if:
 
 1. all frozen ready-for-agent child issues under `#PARENT` are completed
 2. no frozen child issue is blocked or skipped
 3. final integration tests pass
 4. final integration review passes or only has explicitly recorded low-risk residual notes
+5. the PR source branch is not the base branch
 
 PR body must include:
 
