@@ -8,7 +8,6 @@ import {
   Database,
   KeyRound,
   ListFilter,
-  RefreshCw,
   Pencil,
   Search,
   Settings,
@@ -35,8 +34,6 @@ const navItems = [
   { label: '系统设置 Settings', href: '/settings', icon: Settings },
 ]
 
-type AppRoute = '/' | '/keys' | '/events' | '/pricing' | '/settings'
-
 function formatCompact(value: number, maximumFractionDigits = 1) {
   return Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits }).format(value)
 }
@@ -61,11 +58,11 @@ function withBasePath(path: string) {
   return `${appBasePath()}${path}`
 }
 
-function currentRoute(): AppRoute {
+function currentRoute() {
   const base = appBasePath()
   const pathname = window.location.pathname
   const withoutBase = base && pathname.startsWith(base) ? pathname.slice(base.length) || '/' : pathname
-  return withoutBase === '/keys' || withoutBase === '/events' || withoutBase === '/pricing' || withoutBase === '/settings' ? withoutBase : '/'
+  return withoutBase === '/keys' ? '/keys' : '/'
 }
 
 function apiPath(path: string) {
@@ -253,7 +250,7 @@ type BreakdownMode = 'key_alias' | 'model' | 'time'
 function App() {
   const route = currentRoute()
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
-  const analytics = useAnalyticsSummary(route === '/')
+  const analytics = useAnalyticsSummary(route !== '/keys')
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
   const analyticsAliases = analytics.keyAliases
@@ -294,15 +291,9 @@ function App() {
           </nav>
         </aside>
 
-        <section className="min-w-0 px-6 py-5 max-md:px-4" aria-labelledby={routeTitleID(route)}>
+        <section className="min-w-0 px-6 py-5 max-md:px-4" aria-labelledby={route === '/keys' ? 'keys-title' : 'analytics-title'}>
           {route === '/keys' ? (
             <KeysWorkspace />
-          ) : route === '/events' ? (
-            <EventsWorkspace />
-          ) : route === '/pricing' ? (
-            <PricingWorkspace />
-          ) : route === '/settings' ? (
-            <SettingsWorkspace />
           ) : (
             <>
           <header className="flex items-start justify-between gap-4 max-md:grid">
@@ -562,54 +553,6 @@ type KeyIdentityPage = {
   total_pages?: number
 }
 
-type UsageEvent = {
-  id?: number
-  timestamp: string
-  model: string
-  source: string
-  auth_index?: string
-  failed: boolean
-  latency_ms: number
-  tokens: {
-    total_tokens: number
-  }
-}
-
-type UsageEventsPage = {
-  events: UsageEvent[]
-}
-
-type PricingEntry = {
-  model: string
-  prompt_price_per_1m: number
-  completion_price_per_1m: number
-  cache_price_per_1m: number
-}
-
-type PricingPayload = {
-  pricing: PricingEntry[]
-}
-
-type UsedModelsPayload = {
-  models: string[]
-}
-
-type StatusPayload = {
-  running?: boolean
-  sync_running?: boolean
-  last_status?: string
-  last_run_at?: string
-  last_error?: string
-  last_warning?: string
-  timezone?: string
-  version?: string
-  updateCheckEnabled?: boolean
-}
-
-type AuthSessionPayload = {
-  authenticated?: boolean
-}
-
 const keyIdentityPageSize = 100
 
 async function fetchKeyIdentityPage(page: number) {
@@ -801,246 +744,8 @@ function KeysWorkspace() {
   )
 }
 
-function EventsWorkspace() {
-  const [events, setEvents] = useState<UsageEvent[]>([])
-
-  useEffect(() => {
-    let active = true
-    fetch(apiPath('/usage/events?range=24h&page_size=20'))
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('load events failed')
-        }
-        return response.json() as Promise<UsageEventsPage>
-      })
-      .then((payload) => {
-        if (active) {
-          setEvents(payload.events ?? [])
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setEvents([])
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  return (
-    <>
-      <header className="flex items-start justify-between gap-4 max-md:grid">
-        <div>
-          <p className="text-xs font-semibold uppercase text-muted-foreground">Events / 请求明细</p>
-          <h2 id="events-title" className="mt-1 text-2xl font-semibold tracking-normal">
-            Request Events
-          </h2>
-        </div>
-        <Badge variant="outline">Traceability</Badge>
-      </header>
-
-      <Card className="mt-5">
-        <CardHeader>
-          <CardTitle>Request Event Inspection</CardTitle>
-          <CardDescription>Resolved source display remains primary, with auth index kept as secondary traceability.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2">
-            {events.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">No request events in this range</div>
-            ) : events.map((event) => (
-              <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_100px_120px] items-center gap-3 rounded-md border border-border p-3 max-lg:grid-cols-1" key={`${event.id ?? event.timestamp}-${event.auth_index ?? event.source}`}>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{event.source || 'Unknown source'}</p>
-                  <p className="truncate text-xs text-muted-foreground">{event.auth_index || 'No auth index'}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{event.model || 'Unknown model'}</p>
-                  <p className="text-xs text-muted-foreground">{formatLastUsed(event.timestamp)}</p>
-                </div>
-                <Badge variant={event.failed ? 'amber' : 'green'}>{event.failed ? 'Failed' : 'Success'}</Badge>
-                <div className="text-right max-lg:text-left">
-                  <p className="text-sm font-semibold">{formatCompact(event.tokens?.total_tokens ?? 0, 2)} tokens</p>
-                  <p className="text-xs text-muted-foreground">{event.latency_ms > 0 ? `${event.latency_ms}ms` : 'No latency'}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </>
-  )
-}
-
-function PricingWorkspace() {
-  const [pricing, setPricing] = useState<PricingEntry[]>([])
-  const [usedModels, setUsedModels] = useState<string[]>([])
-
-  useEffect(() => {
-    let active = true
-    Promise.all([
-      fetch(apiPath('/pricing')).then((response) => response.ok ? response.json() as Promise<PricingPayload> : { pricing: [] }),
-      fetch(apiPath('/models/used')).then((response) => response.ok ? response.json() as Promise<UsedModelsPayload> : { models: [] }),
-    ])
-      .then(([pricingPayload, usedModelsPayload]) => {
-        if (active) {
-          setPricing(pricingPayload.pricing ?? [])
-          setUsedModels(usedModelsPayload.models ?? [])
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setPricing([])
-          setUsedModels([])
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  const pricedModels = new Set(pricing.map((entry) => entry.model))
-  const missingModels = usedModels.filter((model) => !pricedModels.has(model))
-
-  return (
-    <>
-      <header className="flex items-start justify-between gap-4 max-md:grid">
-        <div>
-          <p className="text-xs font-semibold uppercase text-muted-foreground">Pricing / 计价配置</p>
-          <h2 id="pricing-title" className="mt-1 text-2xl font-semibold tracking-normal">
-            Model Unit Pricing
-          </h2>
-        </div>
-        <Badge variant={missingModels.length > 0 ? 'amber' : 'green'}>{missingModels.length} missing</Badge>
-      </header>
-
-      <Card className="mt-5">
-        <CardHeader>
-          <CardTitle>Configured Cost Rates</CardTitle>
-          <CardDescription>These model unit prices are used by analytics Cost calculations.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-2">
-            {pricing.length === 0 ? (
-              <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">No pricing configured</div>
-            ) : pricing.map((entry) => (
-              <div className="grid grid-cols-[minmax(0,1fr)_120px_120px_120px] items-center gap-3 rounded-md border border-border p-3 max-lg:grid-cols-1" key={entry.model}>
-                <p className="truncate text-sm font-semibold">{entry.model}</p>
-                <p className="text-sm">Prompt {formatCost(entry.prompt_price_per_1m)}</p>
-                <p className="text-sm">Completion {formatCost(entry.completion_price_per_1m)}</p>
-                <p className="text-sm">Cache {formatCost(entry.cache_price_per_1m)}</p>
-              </div>
-            ))}
-          </div>
-          {missingModels.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {missingModels.map((model) => <Badge key={model} variant="amber">{model}</Badge>)}
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-    </>
-  )
-}
-
-function SettingsWorkspace() {
-  const [status, setStatus] = useState<StatusPayload>({})
-  const [session, setSession] = useState<AuthSessionPayload>({})
-
-  useEffect(() => {
-    let active = true
-    Promise.all([
-      fetch(apiPath('/status')).then((response) => response.ok ? response.json() as Promise<StatusPayload> : {}),
-      fetch(apiPath('/auth/session')).then((response) => response.ok ? response.json() as Promise<AuthSessionPayload> : {}),
-    ])
-      .then(([statusPayload, sessionPayload]) => {
-        if (active) {
-          setStatus(statusPayload)
-          setSession(sessionPayload)
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setStatus({})
-          setSession({})
-        }
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  return (
-    <>
-      <header className="flex items-start justify-between gap-4 max-md:grid">
-        <div>
-          <p className="text-xs font-semibold uppercase text-muted-foreground">Settings / 系统设置</p>
-          <h2 id="settings-title" className="mt-1 text-2xl font-semibold tracking-normal">
-            Operational Settings
-          </h2>
-        </div>
-        <Badge variant={status.sync_running ? 'amber' : 'outline'}>{status.sync_running ? 'Syncing' : 'Idle'}</Badge>
-      </header>
-
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Sync Status</CardTitle>
-            <CardDescription>Current ingestion and manual sync state.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <RefreshCw className="size-4 text-muted-foreground" aria-hidden="true" />
-              <p className="text-sm font-semibold">{status.last_status || 'No sync status'}</p>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">{status.last_run_at ? formatLastUsed(status.last_run_at) : 'Never run'}</p>
-            {status.last_error ? <p className="mt-2 text-xs text-red-600">{status.last_error}</p> : null}
-            {status.last_warning ? <p className="mt-2 text-xs text-amber-700">{status.last_warning}</p> : null}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Update Check</CardTitle>
-            <CardDescription>Version and update-check capability inherited from the backend.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm font-semibold">{status.version || 'dev'}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{status.updateCheckEnabled ? 'Update check enabled' : 'Update check disabled'}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Auth Session</CardTitle>
-            <CardDescription>Current UI authentication state.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm font-semibold">{session.authenticated ? 'Authenticated' : 'Not authenticated'}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{status.timezone || 'Local timezone'}</p>
-          </CardContent>
-        </Card>
-      </div>
-    </>
-  )
-}
-
 function keyLabel(key: KeyIdentity) {
   return key.alias.trim() || key.displayName || key.name || key.identity
-}
-
-function routeTitleID(route: AppRoute) {
-  switch (route) {
-    case '/keys':
-      return 'keys-title'
-    case '/events':
-      return 'events-title'
-    case '/pricing':
-      return 'pricing-title'
-    case '/settings':
-      return 'settings-title'
-    default:
-      return 'analytics-title'
-  }
 }
 
 function formatCost(value: number) {
