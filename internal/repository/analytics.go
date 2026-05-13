@@ -99,6 +99,15 @@ type analyticsHeatmapCellAccumulator struct {
 	pricedBillableEvents int64
 }
 
+type analyticsHeatmapEventRow struct {
+	Timestamp            time.Time
+	FailureCount         int64
+	TotalTokens          int64
+	TotalCost            float64
+	MissingPricingEvents int64
+	PricedBillableEvents int64
+}
+
 const analyticsKeyAliasBreakdownLimit = 20
 
 func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
@@ -269,28 +278,22 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		heatmap.Rows = append(heatmap.Rows, row)
 	}
 
-	var rows []analyticsAggregateRow
+	var rows []analyticsHeatmapEventRow
 	if err := analyticsEventsWithPricingQuery(db, filter).
 		Select(`
-			strftime('%Y-%m-%dT%H:00:00Z', usage_events.timestamp) AS bucket,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
-		Group("bucket").
-		Order("bucket ASC").
+			usage_events.timestamp AS timestamp,
+			CASE WHEN usage_events.failed THEN 1 ELSE 0 END AS failure_count,
+			usage_events.total_tokens AS total_tokens,
+			` + analyticsCostSQLExpression() + ` AS total_cost,
+			` + analyticsMissingPricingSQLExpression() + ` AS missing_pricing_events,
+			` + analyticsPricedBillableSQLExpression() + ` AS priced_billable_events`).
+		Order("usage_events.timestamp ASC").
 		Scan(&rows).Error; err != nil {
 		return dto.AnalyticsHeatmapRecord{}, fmt.Errorf("build analytics heatmap: %w", err)
 	}
 
 	for _, row := range rows {
-		bucketStart, err := time.Parse(time.RFC3339, row.Bucket)
-		if err != nil {
-			return dto.AnalyticsHeatmapRecord{}, fmt.Errorf("parse analytics heatmap bucket %q: %w", row.Bucket, err)
-		}
-		localBucket := bucketStart.In(time.Local)
+		localBucket := row.Timestamp.In(time.Local)
 		date := localDateStart(localBucket).Format(time.DateOnly)
 		rowIndex, ok := rowIndexes[date]
 		if !ok {
@@ -306,7 +309,7 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		}
 		accumulator.cell.TotalTokens += row.TotalTokens
 		accumulator.cell.TotalCost += row.TotalCost
-		accumulator.cell.RequestCount += row.RequestCount
+		accumulator.cell.RequestCount++
 		accumulator.cell.FailureCount += row.FailureCount
 		accumulator.missingPricingEvents += row.MissingPricingEvents
 		accumulator.pricedBillableEvents += row.PricedBillableEvents

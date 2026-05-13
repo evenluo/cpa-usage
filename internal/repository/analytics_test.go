@@ -870,6 +870,47 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterHeatmapBucketsFractionalOffsetLocalHour(t *testing.T) {
+	previousLocal := time.Local
+	location, err := time.LoadLocation("Asia/Kathmandu")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	time.Local = location
+	t.Cleanup(func() { time.Local = previousLocal })
+
+	db := openTestDatabase(t)
+	localStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.Local)
+	localEnd := time.Date(2026, 5, 11, 23, 59, 59, 999999999, time.Local)
+	start := localStart.UTC()
+	end := localEnd.UTC()
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey:    "fractional-offset-local-midnight",
+		Provider:    "OpenAI",
+		Model:       "missing-model",
+		Timestamp:   time.Date(2026, 5, 11, 0, 30, 0, 0, time.Local).UTC(),
+		TotalTokens: 75,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.Heatmap.Rows) != 1 || snapshot.Heatmap.Rows[0].Date != "2026-05-11" {
+		t.Fatalf("expected one local heatmap row, got %+v", snapshot.Heatmap.Rows)
+	}
+	cell := snapshot.Heatmap.Rows[0].Cells[0]
+	if cell.TotalTokens != 75 || cell.RequestCount != 1 {
+		t.Fatalf("expected local 00:30 event in hour 0 cell, got %+v", cell)
+	}
+	if snapshot.Heatmap.Rows[0].Cells[23].TotalTokens != 0 {
+		t.Fatalf("expected event not to be shifted into another local hour, got %+v", snapshot.Heatmap.Rows[0].Cells[23])
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterAggregatesKeyAliasBreakdownByStableIdentity(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
