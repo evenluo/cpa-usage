@@ -147,6 +147,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	body := rec.Body.String()
 	for _, expected := range []string{
 		`"range":"custom"`,
+		`"granularity":"hour"`,
 		`"provider":"OpenAI"`,
 		`"range_start":"2026-05-11T00:00:00Z"`,
 		`"range_end":"2026-05-12T23:59:59.999999999Z"`,
@@ -191,6 +192,49 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	}
 	if provider.filter.Provider != "OpenAI" {
 		t.Fatalf("expected provider filter to be passed through, got %+v", provider.filter)
+	}
+	if provider.filter.Granularity != "hour" {
+		t.Fatalf("expected default hour granularity to be passed through, got %+v", provider.filter)
+	}
+}
+
+func TestAnalyticsSummaryRouteAcceptsDayGranularity(t *testing.T) {
+	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{}}
+	router := gin.New()
+	registerAnalyticsRoutes(router, provider)
+
+	req := httptest.NewRequest(http.MethodGet, "/analytics/summary?range=7d&granularity=day", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !contains(rec.Body.String(), `"granularity":"day"`) {
+		t.Fatalf("expected day granularity in response, got %s", rec.Body.String())
+	}
+	if provider.filter.Granularity != "day" {
+		t.Fatalf("expected day granularity to be passed through, got %+v", provider.filter)
+	}
+}
+
+func TestAnalyticsSummaryRouteRejectsUnsupportedGranularity(t *testing.T) {
+	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{}}
+	router := gin.New()
+	registerAnalyticsRoutes(router, provider)
+
+	req := httptest.NewRequest(http.MethodGet, "/analytics/summary?range=7d&granularity=week", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !contains(rec.Body.String(), `unsupported granularity \"week\"`) {
+		t.Fatalf("expected unsupported granularity error, got %s", rec.Body.String())
+	}
+	if provider.calls != 0 {
+		t.Fatalf("expected provider not to be called, got %d calls", provider.calls)
 	}
 }
 

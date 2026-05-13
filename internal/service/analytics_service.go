@@ -23,10 +23,11 @@ func NewAnalyticsService(db *gorm.DB) AnalyticsProvider {
 
 func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter servicedto.UsageFilter) (*servicedto.AnalyticsSummarySnapshot, error) {
 	snapshot, err := repository.BuildAnalyticsSummaryWithFilter(s.db, repodto.UsageQueryFilter{
-		Range:     filter.Range,
-		StartTime: filter.StartTime,
-		EndTime:   filter.EndTime,
-		Provider:  filter.Provider,
+		Range:       filter.Range,
+		StartTime:   filter.StartTime,
+		EndTime:     filter.EndTime,
+		Granularity: filter.Granularity,
+		Provider:    filter.Provider,
 	})
 	if err != nil {
 		return nil, err

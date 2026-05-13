@@ -217,6 +217,7 @@ type AnalyticsProviderOptionPayload = {
 }
 
 type AnalyticsSummaryResponse = {
+  granularity?: TimeGranularity
   summary: AnalyticsSummaryPayload
   trend: AnalyticsTrendPointPayload[]
   key_alias_breakdown?: AnalyticsKeyAliasPayload[]
@@ -236,6 +237,8 @@ type AnalyticsState = {
   insights: AnalyticsInsightPayload[]
   providerOptions: AnalyticsProviderOptionPayload[]
 }
+
+type TimeGranularity = 'hour' | 'day'
 
 const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
   total_cost: 0,
@@ -258,7 +261,7 @@ function normalizeAnalyticsSummary(summary: AnalyticsSummaryPayload | undefined)
 
 const emptyAnalyticsState: AnalyticsState = { provider: '', summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [], providerOptions: [] }
 
-function useAnalyticsSummary(enabled: boolean, provider: string) {
+function useAnalyticsSummary(enabled: boolean, provider: string, granularity: TimeGranularity) {
   const [analytics, setAnalytics] = useState<AnalyticsState>(emptyAnalyticsState)
   const scopedProvider = provider.trim()
 
@@ -267,7 +270,7 @@ function useAnalyticsSummary(enabled: boolean, provider: string) {
       return
     }
     let active = true
-    const params = new URLSearchParams({ range: '7d' })
+    const params = new URLSearchParams({ range: '7d', granularity })
     if (scopedProvider !== '') {
       params.set('provider', scopedProvider)
     }
@@ -347,7 +350,7 @@ function useAnalyticsSummary(enabled: boolean, provider: string) {
     return () => {
       active = false
     }
-  }, [enabled, scopedProvider])
+  }, [enabled, scopedProvider, granularity])
 
   if (analytics.provider !== scopedProvider) {
     return { ...emptyAnalyticsState, provider: scopedProvider, providerOptions: analytics.providerOptions }
@@ -362,9 +365,10 @@ function App() {
   const route = currentRoute()
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
   const [selectedProvider, setSelectedProvider] = useState('')
+  const [timeGranularity, setTimeGranularity] = useState<TimeGranularity>('hour')
   const [activeTrendLabel, setActiveTrendLabel] = useState('')
   const authSession = useAuthSession()
-  const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking, selectedProvider)
+  const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking, selectedProvider, timeGranularity)
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
   const analyticsAliases = analytics.keyAliases
@@ -477,10 +481,13 @@ function App() {
                     <CardTitle>Cost and Token Trend</CardTitle>
                     <CardDescription>Cost and tokens stay visible as peer measures across the primary trend.</CardDescription>
                   </div>
-                  <Tabs aria-label="Trend measure">
-                    <TabsTrigger aria-selected>Cost</TabsTrigger>
-                    <TabsTrigger>Tokens</TabsTrigger>
-                    <TabsTrigger>Both</TabsTrigger>
+                  <Tabs aria-label="Time granularity">
+                    <TabsTrigger aria-selected={timeGranularity === 'hour'} onClick={() => setTimeGranularity('hour')}>
+                      Hour
+                    </TabsTrigger>
+                    <TabsTrigger aria-selected={timeGranularity === 'day'} onClick={() => setTimeGranularity('day')}>
+                      Day
+                    </TabsTrigger>
                   </Tabs>
                 </CardHeader>
                 <CardContent>

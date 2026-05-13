@@ -157,7 +157,7 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 }
 
 func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPointRecord, error) {
-	bucketByDay := shouldBucketUsageOverviewByDay(filter, computeWindowMinutes(filter))
+	bucketByDay := analyticsTrendBucketsByDay(filter)
 	bucketExpr := analyticsBucketSQLExpression(bucketByDay)
 	var rows []analyticsAggregateRow
 	if err := analyticsEventsWithPricingQuery(db, filter).
@@ -276,7 +276,7 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys
 	}
 	authTypeExpr := analyticsUsageIdentityAuthTypeSQLExpression()
 	identityExpr := analyticsUsageIdentitySQLExpression()
-	bucketByDay := shouldBucketUsageOverviewByDay(filter, computeWindowMinutes(filter))
+	bucketByDay := analyticsTrendBucketsByDay(filter)
 	bucketExpr := analyticsBucketSQLExpression(bucketByDay)
 	var rows []analyticsIdentityTrendRow
 	if err := applyAnalyticsIdentityKeyFilter(analyticsIdentityEventsWithPricingQuery(db, filter), keys, authTypeExpr, identityExpr).
@@ -466,7 +466,11 @@ func analyticsBucketSQLExpression(bucketByDay bool) string {
 	if bucketByDay {
 		return "strftime('%Y-%m-%d', usage_events.timestamp, 'localtime')"
 	}
-	return "strftime('%Y-%m-%dT%H:00:00Z', usage_events.timestamp)"
+	return "strftime('%Y-%m-%d %H:00', usage_events.timestamp, 'localtime')"
+}
+
+func analyticsTrendBucketsByDay(filter dto.UsageQueryFilter) bool {
+	return strings.TrimSpace(filter.Granularity) == "day"
 }
 
 func analyticsUsageIdentityAuthTypeSQLExpression() string {
@@ -515,7 +519,7 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 		bucketStart, err = time.ParseInLocation(time.DateOnly, row.Bucket, time.Local)
 		bucketEnd = bucketStart.AddDate(0, 0, 1)
 	} else {
-		bucketStart, err = time.Parse(time.RFC3339, row.Bucket)
+		bucketStart, err = time.ParseInLocation("2006-01-02 15:04", row.Bucket, time.Local)
 		bucketEnd = bucketStart.Add(time.Hour)
 	}
 	if err != nil {

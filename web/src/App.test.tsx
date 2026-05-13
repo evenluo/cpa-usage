@@ -344,7 +344,9 @@ describe('App', () => {
     expect(within(breakdownView).getByRole('button', { name: 'Time' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('221 requests · 6 failures')).toBeInTheDocument()
     expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(2)
-    expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d')
+	    expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=hour')
+	    fireEvent.click(screen.getByRole('button', { name: 'Day' }))
+	    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=day'))
   })
 
   it('queries provider-scoped analytics from response-driven provider options', async () => {
@@ -449,7 +451,7 @@ describe('App', () => {
     expect((await screen.findAllByText('$21.00')).length).toBeGreaterThanOrEqual(1)
     fireEvent.click(screen.getByRole('button', { name: /OpenAI/ }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&provider=OpenAI'))
+	    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&granularity=hour&provider=OpenAI'))
     expect((await screen.findAllByText('$8.00')).length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('$21.00')).not.toBeInTheDocument()
     expect(within(screen.getByLabelText('Request health stability strip')).getByText('1 failure')).toBeInTheDocument()
@@ -459,7 +461,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: /All providers/ }))
 
     await waitFor(() => {
-      const allProviderCalls = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/analytics/summary?range=7d')
+	      const allProviderCalls = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/analytics/summary?range=7d&granularity=hour')
       expect(allProviderCalls.length).toBeGreaterThanOrEqual(2)
     })
     expect((await screen.findAllByText('$21.00')).length).toBeGreaterThanOrEqual(1)

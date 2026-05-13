@@ -32,7 +32,7 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendByLocalDay(t *testing.T
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -233,6 +233,51 @@ func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendByLocalDay(t *testing.T
 	}
 	if !snapshot.Trend[0].BucketStart.Equal(time.Date(2026, 5, 11, 16, 0, 0, 0, time.UTC)) {
 		t.Fatalf("expected bucket start at local midnight, got %+v", snapshot.Trend[0])
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterBucketsHourlyTrendWhenRequested(t *testing.T) {
+	t.Setenv("TZ", "Asia/Shanghai")
+	withRepositoryTestLocation(t, "Asia/Shanghai")
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 12, 23, 59, 59, 0, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{
+			EventKey: "local-hour-0", Model: "priced-model",
+			Timestamp:   time.Date(2026, 5, 11, 16, 30, 0, 0, time.UTC),
+			InputTokens: 1000, TotalTokens: 1000,
+		},
+		{
+			EventKey: "local-hour-1", Model: "priced-model",
+			Timestamp:   time.Date(2026, 5, 11, 17, 15, 0, 0, time.UTC),
+			InputTokens: 2000, TotalTokens: 2000,
+		},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "hour", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.Trend) != 2 {
+		t.Fatalf("expected two hourly trend points, got %+v", snapshot.Trend)
+	}
+	if snapshot.Trend[0].Label != "2026-05-12 00:00" || !snapshot.Trend[0].BucketStart.Equal(time.Date(2026, 5, 11, 16, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected first local hour bucket, got %+v", snapshot.Trend[0])
+	}
+	if snapshot.Trend[1].Label != "2026-05-12 01:00" || !snapshot.Trend[1].BucketStart.Equal(time.Date(2026, 5, 11, 17, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected second local hour bucket, got %+v", snapshot.Trend[1])
 	}
 }
 
@@ -258,7 +303,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendAcrossDSTChange(t *test
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -284,7 +329,7 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostUnavailableWhenNoPricedCostExis
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -315,7 +360,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsModelAndTimeBreakdowns(t *testing
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -416,7 +461,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -503,7 +548,7 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostPartialWhenPricedRowsHaveZeroRa
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}

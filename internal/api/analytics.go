@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -14,18 +15,19 @@ import (
 )
 
 type analyticsSummaryResponse struct {
-	Range      string                    `json:"range"`
-	RangeStart *time.Time                `json:"range_start,omitempty"`
-	RangeEnd   *time.Time                `json:"range_end,omitempty"`
-	Provider   string                    `json:"provider,omitempty"`
-	Timezone   string                    `json:"timezone"`
-	Summary    analyticsSummaryPayload   `json:"summary"`
-	Trend      []analyticsTrendPoint     `json:"trend"`
-	KeyAliases []analyticsKeyAliasRow    `json:"key_alias_breakdown"`
-	Models     []analyticsModelRow       `json:"model_distribution"`
-	Time       []analyticsTrendPoint     `json:"time_breakdown"`
-	Insights   []analyticsInsight        `json:"insights"`
-	Providers  []analyticsProviderOption `json:"provider_options"`
+	Range       string                    `json:"range"`
+	Granularity string                    `json:"granularity"`
+	RangeStart  *time.Time                `json:"range_start,omitempty"`
+	RangeEnd    *time.Time                `json:"range_end,omitempty"`
+	Provider    string                    `json:"provider,omitempty"`
+	Timezone    string                    `json:"timezone"`
+	Summary     analyticsSummaryPayload   `json:"summary"`
+	Trend       []analyticsTrendPoint     `json:"trend"`
+	KeyAliases  []analyticsKeyAliasRow    `json:"key_alias_breakdown"`
+	Models      []analyticsModelRow       `json:"model_distribution"`
+	Time        []analyticsTrendPoint     `json:"time_breakdown"`
+	Insights    []analyticsInsight        `json:"insights"`
+	Providers   []analyticsProviderOption `json:"provider_options"`
 }
 
 type analyticsSummaryPayload struct {
@@ -155,19 +157,29 @@ func parseAnalyticsSummaryFilterQuery(req *http.Request, anchor time.Time) (serv
 	if err != nil {
 		return servicedto.UsageFilter{}, err
 	}
+	filter.Granularity = "hour"
 	if req != nil {
 		filter.Provider = strings.TrimSpace(req.URL.Query().Get("provider"))
+		if value := strings.TrimSpace(req.URL.Query().Get("granularity")); value != "" {
+			switch value {
+			case "hour", "day":
+				filter.Granularity = value
+			default:
+				return servicedto.UsageFilter{}, fmt.Errorf("unsupported granularity %q", value)
+			}
+		}
 	}
 	return filter, nil
 }
 
 func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *servicedto.AnalyticsSummarySnapshot) analyticsSummaryResponse {
 	response := analyticsSummaryResponse{
-		Range:      filter.Range,
-		RangeStart: filter.StartTime,
-		RangeEnd:   filter.EndTime,
-		Provider:   filter.Provider,
-		Timezone:   time.Local.String(),
+		Range:       filter.Range,
+		Granularity: filter.Granularity,
+		RangeStart:  filter.StartTime,
+		RangeEnd:    filter.EndTime,
+		Provider:    filter.Provider,
+		Timezone:    time.Local.String(),
 		Summary: analyticsSummaryPayload{
 			CostAvailable:       true,
 			CostStatus:          dto.AnalyticsCostStatusAvailable,
