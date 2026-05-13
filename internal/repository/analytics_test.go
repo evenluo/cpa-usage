@@ -208,6 +208,60 @@ func TestBuildAnalyticsSummaryWithFilterReturnsModelAndTimeBreakdowns(t *testing
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(48 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	identities := []entities.UsageIdentity{
+		{Name: "Alpha Team", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "sk-alpha-123456", Type: "openai", Provider: "OpenAI"},
+		{Name: "Beta Team", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "sk-beta-123456", Type: "openai", Provider: "OpenAI"},
+	}
+	if err := db.Create(&identities).Error; err != nil {
+		t.Fatalf("create identities: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha-123456", "Alpha Ops", start); err != nil {
+		t.Fatalf("set alias: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "alpha-priced", AuthType: "apikey", AuthIndex: "sk-alpha-123456", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, CachedTokens: 200_000, ReasoningTokens: 300_000, TotalTokens: 1_500_000},
+		{EventKey: "beta-unpriced", AuthType: "apikey", AuthIndex: "sk-beta-123456", Model: "missing-model", Timestamp: start.Add(26 * time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000, Failed: true},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	insights := map[string]dto.AnalyticsInsightRecord{}
+	for _, insight := range snapshot.Insights {
+		insights[insight.Type] = insight
+	}
+	for _, expectedType := range []string{"top_cost_key", "top_token_key", "token_spike", "pricing_missing", "failure_concentration", "cache_reasoning_share"} {
+		if _, ok := insights[expectedType]; !ok {
+			t.Fatalf("expected insight %q in %+v", expectedType, snapshot.Insights)
+		}
+	}
+	if insights["top_cost_key"].Subject != "Alpha Ops" || insights["top_cost_key"].MetricValue <= 0 {
+		t.Fatalf("expected top cost key to use alias and configured cost, got %+v", insights["top_cost_key"])
+	}
+	if insights["top_token_key"].Subject != "Beta Team" || insights["pricing_missing"].CostStatus != dto.AnalyticsCostStatusPartial {
+		t.Fatalf("expected token and pricing insights to expose context, got %+v", snapshot.Insights)
+	}
+	if insights["cache_reasoning_share"].Count != 500_000 || insights["failure_concentration"].Count != 1 {
+		t.Fatalf("expected token-mix and failure counts, got %+v", snapshot.Insights)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterMarksCostPartialWhenPricedRowsHaveZeroRates(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

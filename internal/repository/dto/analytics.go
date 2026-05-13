@@ -9,14 +9,16 @@ const (
 )
 
 type AnalyticsSummaryRecord struct {
-	TotalCost     float64
-	TotalTokens   int64
-	RequestCount  int64
-	SuccessCount  int64
-	FailureCount  int64
-	SuccessRate   float64
-	CostAvailable bool
-	CostStatus    string
+	TotalCost       float64
+	TotalTokens     int64
+	RequestCount    int64
+	SuccessCount    int64
+	FailureCount    int64
+	CachedTokens    int64
+	ReasoningTokens int64
+	SuccessRate     float64
+	CostAvailable   bool
+	CostStatus      string
 }
 
 type AnalyticsTrendPointRecord struct {
@@ -79,10 +81,23 @@ type AnalyticsModelBreakdownRecord struct {
 	CostStatus         string
 }
 
+type AnalyticsInsightRecord struct {
+	Type        string
+	Severity    string
+	Title       string
+	Detail      string
+	Subject     string
+	MetricLabel string
+	MetricValue float64
+	Count       int64
+	CostStatus  string
+}
+
 type AnalyticsSummarySnapshot struct {
 	Summary           AnalyticsSummaryRecord
 	Trend             []AnalyticsTrendPointRecord
 	KeyAliasBreakdown []AnalyticsKeyAliasBreakdownRecord
 	ModelBreakdown    []AnalyticsModelBreakdownRecord
 	TimeBreakdown     []AnalyticsTrendPointRecord
+	Insights          []AnalyticsInsightRecord
 }

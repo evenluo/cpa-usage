@@ -106,6 +106,17 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CostAvailable: true,
 			CostStatus:    "available",
 		}},
+		Insights: []servicedto.AnalyticsInsight{{
+			Type:        "pricing_missing",
+			Severity:    "amber",
+			Title:       "Pricing Missing",
+			Detail:      "Some Cost values are partial.",
+			Subject:     "1 model",
+			MetricLabel: "Cost status",
+			MetricValue: 1,
+			Count:       1,
+			CostStatus:  "partial",
+		}},
 	}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
@@ -138,6 +149,9 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"model":"priced-model"`,
 		`"average_latency_ms":200`,
 		`"time_breakdown":[`,
+		`"insights":[`,
+		`"type":"pricing_missing"`,
+		`"subject":"1 model"`,
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected response to contain %s, got %s", expected, body)

@@ -24,6 +24,7 @@ type analyticsSummaryResponse struct {
 	KeyAliases []analyticsKeyAliasRow  `json:"key_alias_breakdown"`
 	Models     []analyticsModelRow     `json:"model_distribution"`
 	Time       []analyticsTrendPoint   `json:"time_breakdown"`
+	Insights   []analyticsInsight      `json:"insights"`
 }
 
 type analyticsSummaryPayload struct {
@@ -96,6 +97,18 @@ type analyticsModelRow struct {
 	CostStatus         string  `json:"cost_status"`
 }
 
+type analyticsInsight struct {
+	Type        string  `json:"type"`
+	Severity    string  `json:"severity"`
+	Title       string  `json:"title"`
+	Detail      string  `json:"detail"`
+	Subject     string  `json:"subject"`
+	MetricLabel string  `json:"metric_label"`
+	MetricValue float64 `json:"metric_value"`
+	Count       int64   `json:"count"`
+	CostStatus  string  `json:"cost_status"`
+}
+
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
 	router.GET("/analytics/summary", func(c *gin.Context) {
 		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
@@ -143,6 +156,7 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 		KeyAliases: []analyticsKeyAliasRow{},
 		Models:     []analyticsModelRow{},
 		Time:       []analyticsTrendPoint{},
+		Insights:   []analyticsInsight{},
 	}
 	if snapshot == nil {
 		return response
@@ -207,6 +221,20 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 			FailureCount:  point.FailureCount,
 			CostAvailable: point.CostAvailable,
 			CostStatus:    point.CostStatus,
+		})
+	}
+	response.Insights = make([]analyticsInsight, 0, len(snapshot.Insights))
+	for _, insight := range snapshot.Insights {
+		response.Insights = append(response.Insights, analyticsInsight{
+			Type:        insight.Type,
+			Severity:    insight.Severity,
+			Title:       insight.Title,
+			Detail:      insight.Detail,
+			Subject:     insight.Subject,
+			MetricLabel: insight.MetricLabel,
+			MetricValue: insight.MetricValue,
+			Count:       insight.Count,
+			CostStatus:  insight.CostStatus,
 		})
 	}
 	return response

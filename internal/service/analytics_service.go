@@ -114,20 +114,37 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			CostStatus:    point.CostStatus,
 		})
 	}
+	insights := make([]servicedto.AnalyticsInsight, 0, len(snapshot.Insights))
+	for _, insight := range snapshot.Insights {
+		insights = append(insights, servicedto.AnalyticsInsight{
+			Type:        insight.Type,
+			Severity:    insight.Severity,
+			Title:       insight.Title,
+			Detail:      insight.Detail,
+			Subject:     insight.Subject,
+			MetricLabel: insight.MetricLabel,
+			MetricValue: insight.MetricValue,
+			Count:       insight.Count,
+			CostStatus:  insight.CostStatus,
+		})
+	}
 	return &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
-			TotalCost:     snapshot.Summary.TotalCost,
-			TotalTokens:   snapshot.Summary.TotalTokens,
-			RequestCount:  snapshot.Summary.RequestCount,
-			SuccessCount:  snapshot.Summary.SuccessCount,
-			FailureCount:  snapshot.Summary.FailureCount,
-			SuccessRate:   snapshot.Summary.SuccessRate,
-			CostAvailable: snapshot.Summary.CostAvailable,
-			CostStatus:    snapshot.Summary.CostStatus,
+			TotalCost:       snapshot.Summary.TotalCost,
+			TotalTokens:     snapshot.Summary.TotalTokens,
+			RequestCount:    snapshot.Summary.RequestCount,
+			SuccessCount:    snapshot.Summary.SuccessCount,
+			FailureCount:    snapshot.Summary.FailureCount,
+			CachedTokens:    snapshot.Summary.CachedTokens,
+			ReasoningTokens: snapshot.Summary.ReasoningTokens,
+			SuccessRate:     snapshot.Summary.SuccessRate,
+			CostAvailable:   snapshot.Summary.CostAvailable,
+			CostStatus:      snapshot.Summary.CostStatus,
 		},
 		Trend:             trend,
 		KeyAliasBreakdown: keyAliasBreakdown,
 		ModelBreakdown:    modelBreakdown,
 		TimeBreakdown:     timeBreakdown,
+		Insights:          insights,
 	}, nil
 }

@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsTrigger } from '@/components/ui/tabs'
-import { type AliasRow, type ModelRow, type TrendPoint, healthBlocks, insightChips } from '@/data/analyticsPrototype'
+import { type AliasRow, type ModelRow, type TrendPoint, healthBlocks } from '@/data/analyticsPrototype'
 
 import './index.css'
 
@@ -137,12 +137,25 @@ type AnalyticsModelPayload = {
   cost_status: 'available' | 'partial' | 'unavailable'
 }
 
+type AnalyticsInsightPayload = {
+  type: string
+  severity: 'green' | 'blue' | 'violet' | 'amber'
+  title: string
+  detail: string
+  subject: string
+  metric_label: string
+  metric_value: number
+  count: number
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
 type AnalyticsSummaryResponse = {
   summary: AnalyticsSummaryPayload
   trend: AnalyticsTrendPointPayload[]
   key_alias_breakdown?: AnalyticsKeyAliasPayload[]
   model_distribution?: AnalyticsModelPayload[]
   time_breakdown?: AnalyticsTrendPointPayload[]
+  insights?: AnalyticsInsightPayload[]
 }
 
 type AnalyticsState = {
@@ -151,6 +164,7 @@ type AnalyticsState = {
   keyAliases: AliasRow[]
   models: ModelRow[]
   timeBreakdown: TrendPoint[]
+  insights: AnalyticsInsightPayload[]
 }
 
 const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
@@ -165,7 +179,7 @@ const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
 }
 
 function useAnalyticsSummary(enabled: boolean) {
-  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [] })
+  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [] })
 
   useEffect(() => {
     if (!enabled) {
@@ -229,11 +243,12 @@ function useAnalyticsSummary(enabled: boolean) {
             costAvailable: point.cost_available,
             costStatus: point.cost_status,
           })),
+          insights: payload.insights ?? [],
         })
       })
       .catch(() => {
         if (active) {
-          setAnalytics({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [] })
+          setAnalytics({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [] })
         }
       })
     return () => {
@@ -256,6 +271,7 @@ function App() {
   const analyticsAliases = analytics.keyAliases
   const analyticsModels = analytics.models
   const analyticsTimeBreakdown = analytics.timeBreakdown
+  const analyticsInsights = analytics.insights
 
   return (
     <main className="min-h-screen bg-background text-foreground">
@@ -348,11 +364,19 @@ function App() {
               </Card>
 
               <div className="grid gap-3 md:grid-cols-4">
-                {insightChips.map((chip) => (
-                  <Card className="shadow-none" key={chip.label}>
+                {analyticsInsights.length === 0 ? (
+                  <Card className="shadow-none">
                     <CardContent className="p-4">
-                      <Badge variant={chip.tone}>{chip.label}</Badge>
-                      <p className="mt-3 text-sm font-semibold">{chip.value}</p>
+                      <Badge variant="outline">Insights</Badge>
+                      <p className="mt-3 text-sm font-semibold">No deterministic insights</p>
+                    </CardContent>
+                  </Card>
+                ) : analyticsInsights.map((insight) => (
+                  <Card className="shadow-none" key={insight.type}>
+                    <CardContent className="p-4">
+                      <Badge variant={insight.severity}>{insight.title}</Badge>
+                      <p className="mt-3 text-sm font-semibold">{insight.subject}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{formatInsightMetric(insight)}</p>
                     </CardContent>
                   </Card>
                 ))}
@@ -757,6 +781,23 @@ function formatBreakdownCost(row: Pick<TrendPoint, 'cost' | 'costAvailable' | 'c
     return row.costStatus === 'partial' ? 'Cost partial' : 'Cost unavailable'
   }
   return formatCost(row.cost)
+}
+
+function formatInsightMetric(insight: AnalyticsInsightPayload) {
+  switch (insight.metric_label) {
+    case 'Cost':
+      return formatCost(insight.metric_value)
+    case 'Tokens':
+      return `${formatCompact(insight.metric_value, 2)} tokens`
+    case 'Failures':
+      return `${insight.count.toLocaleString('en')} failures`
+    case 'Share':
+      return `${insight.metric_value.toFixed(1)}% token share`
+    case 'Cost status':
+      return `Cost ${insight.cost_status}`
+    default:
+      return `${insight.metric_label}: ${formatCompact(insight.metric_value, 2)}`
+  }
 }
 
 function formatLastUsed(value: string | null) {

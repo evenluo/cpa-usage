@@ -153,6 +153,10 @@ describe('App', () => {
             { label: '05-11', total_cost: 2.25, total_tokens: 1200000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
             { label: '05-12', total_cost: 2.25, total_tokens: 3100000, request_count: 221, success_count: 215, failure_count: 6, cost_available: false, cost_status: 'partial' },
           ],
+          insights: [
+            { type: 'top_cost_key', severity: 'green', title: 'Top Cost Key', detail: 'Highest configured Cost contributor.', subject: 'Shared Alias', metric_label: 'Cost', metric_value: 4.5, count: 80, cost_status: 'available' },
+            { type: 'pricing_missing', severity: 'amber', title: 'Pricing Missing', detail: 'Model pricing is incomplete.', subject: '1 model', metric_label: 'Cost status', metric_value: 1, count: 1, cost_status: 'partial' },
+          ],
         }))
       }
       return new Response(null, { status: 404 })
@@ -167,10 +171,13 @@ describe('App', () => {
     expect(screen.getByText('2.1M')).toBeInTheDocument()
     expect(screen.getByText('301')).toBeInTheDocument()
     expect(screen.getByText('98.3%')).toBeInTheDocument()
-    expect(screen.getByText('Cost partial')).toBeInTheDocument()
+    expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Top Cost Key')).toBeInTheDocument()
+    expect(screen.getByText('$4.50')).toBeInTheDocument()
+    expect(screen.getByText('Pricing Missing')).toBeInTheDocument()
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
     expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
-    expect(screen.getAllByText('Shared Alias')).toHaveLength(2)
+    expect(screen.getAllByText('Shared Alias').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('sk-a*******3456 · OpenAI')).toBeInTheDocument()
     expect(screen.getByText('sk-b*******3456 · Anthropic')).toBeInTheDocument()
     expect(screen.getByText('Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout')).toBeInTheDocument()

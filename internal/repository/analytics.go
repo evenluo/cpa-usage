@@ -18,6 +18,8 @@ type analyticsAggregateRow struct {
 	FailureCount         int64
 	TotalTokens          int64
 	TotalCost            float64
+	CachedTokens         int64
+	ReasoningTokens      int64
 	MissingPricingEvents int64
 	PricedBillableEvents int64
 }
@@ -103,6 +105,7 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 		KeyAliasBreakdown: keyAliasBreakdown,
 		ModelBreakdown:    modelBreakdown,
 		TimeBreakdown:     trend,
+		Insights:          buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
 	}, nil
 }
 
@@ -112,11 +115,13 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		Select(`
 			COUNT(*) AS request_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
+				COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+				COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
+				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
+				COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+				COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+				COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
 		Scan(&row).Error; err != nil {
 		return dto.AnalyticsSummaryRecord{}, fmt.Errorf("build analytics summary: %w", err)
 	}
@@ -377,11 +382,13 @@ func analyticsUsageIdentitySQLExpression() string {
 
 func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {
 	summary := dto.AnalyticsSummaryRecord{
-		TotalCost:    row.TotalCost,
-		TotalTokens:  row.TotalTokens,
-		RequestCount: row.RequestCount,
-		SuccessCount: row.SuccessCount,
-		FailureCount: row.FailureCount,
+		TotalCost:       row.TotalCost,
+		TotalTokens:     row.TotalTokens,
+		RequestCount:    row.RequestCount,
+		SuccessCount:    row.SuccessCount,
+		FailureCount:    row.FailureCount,
+		CachedTokens:    row.CachedTokens,
+		ReasoningTokens: row.ReasoningTokens,
 	}
 	if row.RequestCount > 0 {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
@@ -469,6 +476,189 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 	}
 	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
 	return record
+}
+
+func buildAnalyticsInsights(
+	summary dto.AnalyticsSummaryRecord,
+	trend []dto.AnalyticsTrendPointRecord,
+	keyAliases []dto.AnalyticsKeyAliasBreakdownRecord,
+	models []dto.AnalyticsModelBreakdownRecord,
+) []dto.AnalyticsInsightRecord {
+	if summary.RequestCount == 0 {
+		return []dto.AnalyticsInsightRecord{}
+	}
+
+	insights := make([]dto.AnalyticsInsightRecord, 0, 6)
+	if topCost, ok := topCostKeyAlias(keyAliases); ok {
+		insights = append(insights, dto.AnalyticsInsightRecord{
+			Type:        "top_cost_key",
+			Severity:    "green",
+			Title:       "Top Cost Key",
+			Detail:      "Highest configured Cost contributor in this range.",
+			Subject:     analyticsInsightKeyLabel(topCost),
+			MetricLabel: "Cost",
+			MetricValue: topCost.TotalCost,
+			Count:       topCost.RequestCount,
+			CostStatus:  topCost.CostStatus,
+		})
+	}
+	if topTokens, ok := topTokenKeyAlias(keyAliases); ok {
+		insights = append(insights, dto.AnalyticsInsightRecord{
+			Type:        "top_token_key",
+			Severity:    "blue",
+			Title:       "Top Token Key",
+			Detail:      "Largest token contributor in this range.",
+			Subject:     analyticsInsightKeyLabel(topTokens),
+			MetricLabel: "Tokens",
+			MetricValue: float64(topTokens.TotalTokens),
+			Count:       topTokens.RequestCount,
+			CostStatus:  topTokens.CostStatus,
+		})
+	}
+	if spike, ok := topTokenBucket(trend); ok {
+		insights = append(insights, dto.AnalyticsInsightRecord{
+			Type:        "token_spike",
+			Severity:    "violet",
+			Title:       "Token Spike",
+			Detail:      "Highest token bucket in the selected range.",
+			Subject:     spike.Label,
+			MetricLabel: "Tokens",
+			MetricValue: float64(spike.TotalTokens),
+			Count:       spike.RequestCount,
+			CostStatus:  spike.CostStatus,
+		})
+	}
+	if summary.CostStatus != dto.AnalyticsCostStatusAvailable {
+		insights = append(insights, dto.AnalyticsInsightRecord{
+			Type:        "pricing_missing",
+			Severity:    "amber",
+			Title:       "Pricing Missing",
+			Detail:      "Some Cost values are partial or unavailable because model pricing is incomplete.",
+			Subject:     missingPricingSubject(models),
+			MetricLabel: "Cost status",
+			MetricValue: float64(countModelsWithIncompletePricing(models)),
+			Count:       countModelsWithIncompletePricing(models),
+			CostStatus:  summary.CostStatus,
+		})
+	}
+	if failure, ok := failureConcentration(keyAliases); ok {
+		insights = append(insights, dto.AnalyticsInsightRecord{
+			Type:        "failure_concentration",
+			Severity:    "amber",
+			Title:       "Failure Cluster",
+			Detail:      "Largest failure concentration by Key Alias.",
+			Subject:     analyticsInsightKeyLabel(failure),
+			MetricLabel: "Failures",
+			MetricValue: float64(failure.FailureCount),
+			Count:       failure.FailureCount,
+			CostStatus:  failure.CostStatus,
+		})
+	}
+	if share := cacheReasoningShare(summary); share > 0 {
+		insights = append(insights, dto.AnalyticsInsightRecord{
+			Type:        "cache_reasoning_share",
+			Severity:    "green",
+			Title:       "Cache/Reasoning Share",
+			Detail:      "Cached and reasoning tokens as a share of total tokens.",
+			Subject:     "Token mix",
+			MetricLabel: "Share",
+			MetricValue: share,
+			Count:       summary.CachedTokens + summary.ReasoningTokens,
+			CostStatus:  summary.CostStatus,
+		})
+	}
+	return insights
+}
+
+func topCostKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.AnalyticsKeyAliasBreakdownRecord, bool) {
+	var best dto.AnalyticsKeyAliasBreakdownRecord
+	found := false
+	for _, row := range rows {
+		if row.CostAvailable == false || row.CostStatus == dto.AnalyticsCostStatusUnavailable || row.TotalCost <= 0 {
+			continue
+		}
+		if !found || row.TotalCost > best.TotalCost {
+			best = row
+			found = true
+		}
+	}
+	return best, found
+}
+
+func topTokenKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.AnalyticsKeyAliasBreakdownRecord, bool) {
+	var best dto.AnalyticsKeyAliasBreakdownRecord
+	found := false
+	for _, row := range rows {
+		if !found || row.TotalTokens > best.TotalTokens {
+			best = row
+			found = true
+		}
+	}
+	return best, found
+}
+
+func topTokenBucket(points []dto.AnalyticsTrendPointRecord) (dto.AnalyticsTrendPointRecord, bool) {
+	var best dto.AnalyticsTrendPointRecord
+	found := false
+	for _, point := range points {
+		if !found || point.TotalTokens > best.TotalTokens {
+			best = point
+			found = true
+		}
+	}
+	return best, found && best.TotalTokens > 0
+}
+
+func failureConcentration(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.AnalyticsKeyAliasBreakdownRecord, bool) {
+	var best dto.AnalyticsKeyAliasBreakdownRecord
+	found := false
+	for _, row := range rows {
+		if row.FailureCount == 0 {
+			continue
+		}
+		if !found || row.FailureCount > best.FailureCount {
+			best = row
+			found = true
+		}
+	}
+	return best, found
+}
+
+func analyticsInsightKeyLabel(row dto.AnalyticsKeyAliasBreakdownRecord) string {
+	for _, value := range []string{row.Alias, row.Name, row.Identity} {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return "Unknown key"
+}
+
+func countModelsWithIncompletePricing(models []dto.AnalyticsModelBreakdownRecord) int64 {
+	var count int64
+	for _, model := range models {
+		if model.CostStatus != dto.AnalyticsCostStatusAvailable {
+			count++
+		}
+	}
+	return count
+}
+
+func missingPricingSubject(models []dto.AnalyticsModelBreakdownRecord) string {
+	count := countModelsWithIncompletePricing(models)
+	if count == 0 {
+		return "Cost " + dto.AnalyticsCostStatusPartial
+	}
+	if count == 1 {
+		return "1 model"
+	}
+	return fmt.Sprintf("%d models", count)
+}
+
+func cacheReasoningShare(summary dto.AnalyticsSummaryRecord) float64 {
+	if summary.TotalTokens <= 0 {
+		return 0
+	}
+	return (float64(summary.CachedTokens+summary.ReasoningTokens) / float64(summary.TotalTokens)) * 100
 }
 
 func parseAnalyticsTimestamp(value string) *time.Time {
