@@ -133,6 +133,17 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			CostStatus:  insight.CostStatus,
 		})
 	}
+	providerOptions := make([]servicedto.AnalyticsProviderOption, 0, len(snapshot.ProviderOptions))
+	for _, option := range snapshot.ProviderOptions {
+		providerOptions = append(providerOptions, servicedto.AnalyticsProviderOption{
+			Provider:      option.Provider,
+			RequestCount:  option.RequestCount,
+			TotalTokens:   option.TotalTokens,
+			TotalCost:     option.TotalCost,
+			CostAvailable: option.CostAvailable,
+			CostStatus:    option.CostStatus,
+		})
+	}
 	return &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
 			TotalCost:             snapshot.Summary.TotalCost,
@@ -155,5 +166,6 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 		ModelBreakdown:    modelBreakdown,
 		TimeBreakdown:     timeBreakdown,
 		Insights:          insights,
+		ProviderOptions:   providerOptions,
 	}, nil
 }

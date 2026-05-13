@@ -263,6 +263,10 @@ describe('App', () => {
             { type: 'token_spike', severity: 'violet', title: 'Token Spike', detail: 'Highest token bucket.', subject: '05-12', metric_label: 'Tokens', metric_value: 1100100, count: 181, cost_status: 'partial' },
             { type: 'failure_concentration', severity: 'amber', title: 'Failure Cluster', detail: 'Largest failure concentration.', subject: 'Shared Alias', metric_label: 'Failures', metric_value: 1, count: 1, cost_status: 'available' },
           ],
+          provider_options: [
+            { provider: 'OpenAI', request_count: 220, total_tokens: 3500000, total_cost: 6.5, cost_available: true, cost_status: 'available' },
+            { provider: 'Anthropic', request_count: 121, total_tokens: 800100, total_cost: 0, cost_available: false, cost_status: 'unavailable' },
+          ],
         }))
       }
       return new Response(null, { status: 404 })
@@ -299,6 +303,9 @@ describe('App', () => {
     expect(screen.queryByText('Pricing Missing')).not.toBeInTheDocument()
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
     expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /All providers/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /OpenAI/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Anthropic/ })).toBeInTheDocument()
     expect(screen.getAllByText('Shared Alias').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('sk-a*******3456 · OpenAI')).toBeInTheDocument()
     expect(screen.getByText('sk-b*******3456 · Anthropic')).toBeInTheDocument()
@@ -308,7 +315,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Model' }))
     expect(screen.getByText('Model Distribution')).toBeInTheDocument()
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
-    expect(screen.getByText(/OpenAI/)).toBeInTheDocument()
+    expect(screen.getAllByText(/OpenAI/).length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Cache Read Share: 25.0%')).toBeInTheDocument()
     expect(screen.getByText('$0.68 estimated savings')).toBeInTheDocument()
     expect(screen.getByText('200ms avg')).toBeInTheDocument()
@@ -319,6 +326,124 @@ describe('App', () => {
     expect(screen.getByText('221 requests · 6 failures')).toBeInTheDocument()
     expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(2)
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d')
+  })
+
+  it('queries provider-scoped analytics from response-driven provider options', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
+      if (url.includes('/api/v1/analytics/summary') && url.includes('provider=OpenAI')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 8,
+            total_tokens: 800000,
+            request_count: 80,
+            success_count: 79,
+            failure_count: 1,
+            input_tokens: 600000,
+            cached_tokens: 120000,
+            success_rate: 98.75,
+            cost_available: true,
+            cost_status: 'available',
+            cache_read_share: 20,
+            cache_read_share_state: 'available',
+          },
+          trend: [{ label: '05-13', total_cost: 8, total_tokens: 800000, request_count: 80, success_count: 79, failure_count: 1, cost_available: true, cost_status: 'available' }],
+          key_alias_breakdown: [],
+          model_distribution: [{
+            model: 'openai-model',
+            provider: 'OpenAI',
+            total_cost: 8,
+            total_tokens: 800000,
+            input_tokens: 600000,
+            cached_tokens: 120000,
+            cache_read_share: 20,
+            cache_read_share_state: 'available',
+            request_count: 80,
+            success_count: 79,
+            failure_count: 1,
+            success_rate: 98.75,
+            total_latency_ms: 8000,
+            latency_sample_count: 80,
+            average_latency_ms: 100,
+            cost_available: true,
+            cost_status: 'available',
+          }],
+          time_breakdown: [{ label: '05-13', total_cost: 8, total_tokens: 800000, request_count: 80, success_count: 79, failure_count: 1, cost_available: true, cost_status: 'available' }],
+          insights: [{ type: 'cache_efficiency', severity: 'green', title: 'Cache Read Share', detail: 'OpenAI cache reads.', subject: 'Prompt input cache', metric_label: 'Cache Read Share', metric_value: 20, count: 120000, cost_status: 'available' }],
+          provider_options: [{ provider: 'OpenAI', request_count: 80, total_tokens: 800000, total_cost: 8, cost_available: true, cost_status: 'available' }],
+        }))
+      }
+      if (url.includes('/api/v1/analytics/summary')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 21,
+            total_tokens: 2100000,
+            request_count: 210,
+            success_count: 207,
+            failure_count: 3,
+            input_tokens: 1800000,
+            cached_tokens: 180000,
+            success_rate: 98.57,
+            cost_available: true,
+            cost_status: 'available',
+            cache_read_share: 10,
+            cache_read_share_state: 'available',
+          },
+          trend: [{ label: '05-13', total_cost: 21, total_tokens: 2100000, request_count: 210, success_count: 207, failure_count: 3, cost_available: true, cost_status: 'available' }],
+          key_alias_breakdown: [],
+          model_distribution: [{
+            model: 'anthropic-model',
+            provider: 'Anthropic',
+            total_cost: 13,
+            total_tokens: 1300000,
+            input_tokens: 1200000,
+            cached_tokens: 60000,
+            cache_read_share: 5,
+            cache_read_share_state: 'available',
+            request_count: 130,
+            success_count: 128,
+            failure_count: 2,
+            success_rate: 98.46,
+            total_latency_ms: 26000,
+            latency_sample_count: 130,
+            average_latency_ms: 200,
+            cost_available: true,
+            cost_status: 'available',
+          }],
+          time_breakdown: [{ label: '05-13', total_cost: 21, total_tokens: 2100000, request_count: 210, success_count: 207, failure_count: 3, cost_available: true, cost_status: 'available' }],
+          insights: [{ type: 'cache_efficiency', severity: 'green', title: 'Cache Read Share', detail: 'All provider cache reads.', subject: 'Prompt input cache', metric_label: 'Cache Read Share', metric_value: 10, count: 180000, cost_status: 'available' }],
+          provider_options: [
+            { provider: 'OpenAI', request_count: 80, total_tokens: 800000, total_cost: 8, cost_available: true, cost_status: 'available' },
+            { provider: 'Anthropic', request_count: 130, total_tokens: 1300000, total_cost: 13, cost_available: true, cost_status: 'available' },
+          ],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByText('$21.00')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI/ }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&provider=OpenAI'))
+    expect(await screen.findByText('$8.00')).toBeInTheDocument()
+    expect(screen.queryByText('$21.00')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /OpenAI/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: /Anthropic/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /All providers/ }))
+
+    await waitFor(() => {
+      const allProviderCalls = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/analytics/summary?range=7d')
+      expect(allProviderCalls.length).toBeGreaterThanOrEqual(2)
+    })
+    expect(await screen.findByText('$21.00')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Anthropic/ })).toBeInTheDocument()
   })
 
   it('renders an empty key alias ranking state', async () => {

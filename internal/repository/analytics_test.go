@@ -343,6 +343,50 @@ func TestBuildAnalyticsSummaryWithFilterReturnsModelAndTimeBreakdowns(t *testing
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterReturnsProviderOptionsForCurrentScope(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "openai-a", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
+		{EventKey: "openai-b", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), OutputTokens: 500_000, TotalTokens: 500_000},
+		{EventKey: "anthropic", Provider: "Anthropic", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 3_000_000, TotalTokens: 3_000_000},
+		{EventKey: "blank-provider", Provider: " ", Model: "priced-model", Timestamp: start.Add(4 * time.Hour), InputTokens: 10_000_000, TotalTokens: 10_000_000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	allProviders, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	if len(allProviders.ProviderOptions) != 2 {
+		t.Fatalf("expected non-empty provider options only, got %+v", allProviders.ProviderOptions)
+	}
+	if allProviders.ProviderOptions[0].Provider != "Anthropic" || allProviders.ProviderOptions[0].RequestCount != 1 || allProviders.ProviderOptions[0].TotalTokens != 3_000_000 {
+		t.Fatalf("expected Anthropic first by cost and tokens, got %+v", allProviders.ProviderOptions)
+	}
+	if allProviders.ProviderOptions[1].Provider != "OpenAI" || allProviders.ProviderOptions[1].RequestCount != 2 || allProviders.ProviderOptions[1].TotalTokens != 1_500_000 {
+		t.Fatalf("expected OpenAI option totals, got %+v", allProviders.ProviderOptions)
+	}
+
+	openAIOnly, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	if len(openAIOnly.ProviderOptions) != 1 || openAIOnly.ProviderOptions[0].Provider != "OpenAI" || openAIOnly.ProviderOptions[0].RequestCount != 2 {
+		t.Fatalf("expected provider options to follow selected provider scope, got %+v", openAIOnly.ProviderOptions)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

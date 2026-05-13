@@ -79,6 +79,15 @@ type analyticsModelAggregateRow struct {
 	PricedBillableEvents       int64
 }
 
+type analyticsProviderOptionRow struct {
+	Provider             string
+	RequestCount         int64
+	TotalTokens          int64
+	TotalCost            float64
+	MissingPricingEvents int64
+	PricedBillableEvents int64
+}
+
 type analyticsIdentityKey struct {
 	AuthType int
 	Identity string
@@ -107,6 +116,10 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 	if err != nil {
 		return nil, err
 	}
+	providerOptions, err := buildAnalyticsProviderOptions(db, filter)
+	if err != nil {
+		return nil, err
+	}
 
 	return &dto.AnalyticsSummarySnapshot{
 		Summary:           summary,
@@ -115,6 +128,7 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 		ModelBreakdown:    modelBreakdown,
 		TimeBreakdown:     trend,
 		Insights:          buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
+		ProviderOptions:   providerOptions,
 	}, nil
 }
 
@@ -331,6 +345,40 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 		breakdown = append(breakdown, mapAnalyticsModelBreakdown(row))
 	}
 	return breakdown, nil
+}
+
+func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsProviderOptionRecord, error) {
+	var rows []analyticsProviderOptionRow
+	if err := analyticsEventsWithPricingQuery(db, filter).
+		Select(`
+			TRIM(usage_events.provider) AS provider,
+			COUNT(*) AS request_count,
+			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
+		Where("TRIM(usage_events.provider) <> ''").
+		Group("TRIM(usage_events.provider)").
+		Order("total_cost DESC").
+		Order("COALESCE(SUM(usage_events.total_tokens), 0) DESC").
+		Order("provider ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("build analytics provider options: %w", err)
+	}
+
+	options := make([]dto.AnalyticsProviderOptionRecord, 0, len(rows))
+	for _, row := range rows {
+		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		options = append(options, dto.AnalyticsProviderOptionRecord{
+			Provider:      row.Provider,
+			RequestCount:  row.RequestCount,
+			TotalTokens:   row.TotalTokens,
+			TotalCost:     row.TotalCost,
+			CostAvailable: costAvailable,
+			CostStatus:    costStatus,
+		})
+	}
+	return options, nil
 }
 
 func applyAnalyticsIdentityKeyFilter(query *gorm.DB, keys []analyticsIdentityKey, authTypeExpr string, identityExpr string) *gorm.DB {

@@ -14,17 +14,18 @@ import (
 )
 
 type analyticsSummaryResponse struct {
-	Range      string                  `json:"range"`
-	RangeStart *time.Time              `json:"range_start,omitempty"`
-	RangeEnd   *time.Time              `json:"range_end,omitempty"`
-	Provider   string                  `json:"provider,omitempty"`
-	Timezone   string                  `json:"timezone"`
-	Summary    analyticsSummaryPayload `json:"summary"`
-	Trend      []analyticsTrendPoint   `json:"trend"`
-	KeyAliases []analyticsKeyAliasRow  `json:"key_alias_breakdown"`
-	Models     []analyticsModelRow     `json:"model_distribution"`
-	Time       []analyticsTrendPoint   `json:"time_breakdown"`
-	Insights   []analyticsInsight      `json:"insights"`
+	Range      string                    `json:"range"`
+	RangeStart *time.Time                `json:"range_start,omitempty"`
+	RangeEnd   *time.Time                `json:"range_end,omitempty"`
+	Provider   string                    `json:"provider,omitempty"`
+	Timezone   string                    `json:"timezone"`
+	Summary    analyticsSummaryPayload   `json:"summary"`
+	Trend      []analyticsTrendPoint     `json:"trend"`
+	KeyAliases []analyticsKeyAliasRow    `json:"key_alias_breakdown"`
+	Models     []analyticsModelRow       `json:"model_distribution"`
+	Time       []analyticsTrendPoint     `json:"time_breakdown"`
+	Insights   []analyticsInsight        `json:"insights"`
+	Providers  []analyticsProviderOption `json:"provider_options"`
 }
 
 type analyticsSummaryPayload struct {
@@ -119,6 +120,15 @@ type analyticsInsight struct {
 	CostStatus  string  `json:"cost_status"`
 }
 
+type analyticsProviderOption struct {
+	Provider      string  `json:"provider"`
+	RequestCount  int64   `json:"request_count"`
+	TotalTokens   int64   `json:"total_tokens"`
+	TotalCost     float64 `json:"total_cost"`
+	CostAvailable bool    `json:"cost_available"`
+	CostStatus    string  `json:"cost_status"`
+}
+
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
 	router.GET("/analytics/summary", func(c *gin.Context) {
 		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
@@ -168,6 +178,7 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 		Models:     []analyticsModelRow{},
 		Time:       []analyticsTrendPoint{},
 		Insights:   []analyticsInsight{},
+		Providers:  []analyticsProviderOption{},
 	}
 	if snapshot == nil {
 		return response
@@ -256,6 +267,17 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 			MetricValue: insight.MetricValue,
 			Count:       insight.Count,
 			CostStatus:  insight.CostStatus,
+		})
+	}
+	response.Providers = make([]analyticsProviderOption, 0, len(snapshot.ProviderOptions))
+	for _, option := range snapshot.ProviderOptions {
+		response.Providers = append(response.Providers, analyticsProviderOption{
+			Provider:      option.Provider,
+			RequestCount:  option.RequestCount,
+			TotalTokens:   option.TotalTokens,
+			TotalCost:     option.TotalCost,
+			CostAvailable: option.CostAvailable,
+			CostStatus:    option.CostStatus,
 		})
 	}
 	return response

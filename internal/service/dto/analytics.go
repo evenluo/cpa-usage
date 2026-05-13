@@ -96,6 +96,15 @@ type AnalyticsInsight struct {
 	CostStatus  string
 }
 
+type AnalyticsProviderOption struct {
+	Provider      string
+	RequestCount  int64
+	TotalTokens   int64
+	TotalCost     float64
+	CostAvailable bool
+	CostStatus    string
+}
+
 type AnalyticsSummarySnapshot struct {
 	Summary           AnalyticsSummary
 	Trend             []AnalyticsTrendPoint
@@ -103,4 +112,5 @@ type AnalyticsSummarySnapshot struct {
 	ModelBreakdown    []AnalyticsModelBreakdown
 	TimeBreakdown     []AnalyticsTrendPoint
 	Insights          []AnalyticsInsight
+	ProviderOptions   []AnalyticsProviderOption
 }

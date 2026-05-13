@@ -125,6 +125,14 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			Count:       1,
 			CostStatus:  "partial",
 		}},
+		ProviderOptions: []servicedto.AnalyticsProviderOption{{
+			Provider:      "OpenAI",
+			RequestCount:  3,
+			TotalTokens:   2_100_100,
+			TotalCost:     2.45,
+			CostAvailable: false,
+			CostStatus:    "partial",
+		}},
 	}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
@@ -164,6 +172,9 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"insights":[`,
 		`"type":"pricing_missing"`,
 		`"subject":"1 model"`,
+		`"provider_options":[`,
+		`"provider":"OpenAI"`,
+		`"request_count":3`,
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected response to contain %s, got %s", expected, body)
@@ -195,7 +206,7 @@ func TestAnalyticsSummaryRouteReturnsEmptyPayloadWithoutProvider(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !contains(body, `"trend":[]`) || !contains(body, `"model_distribution":[]`) || !contains(body, `"time_breakdown":[]`) || !contains(body, `"cost_status":"available"`) {
+	if !contains(body, `"trend":[]`) || !contains(body, `"model_distribution":[]`) || !contains(body, `"time_breakdown":[]`) || !contains(body, `"provider_options":[]`) || !contains(body, `"cost_status":"available"`) {
 		t.Fatalf("expected empty analytics payload, got %s", body)
 	}
 }

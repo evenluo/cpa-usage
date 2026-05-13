@@ -106,6 +106,15 @@ type AnalyticsInsightRecord struct {
 	CostStatus  string
 }
 
+type AnalyticsProviderOptionRecord struct {
+	Provider      string
+	RequestCount  int64
+	TotalTokens   int64
+	TotalCost     float64
+	CostAvailable bool
+	CostStatus    string
+}
+
 type AnalyticsSummarySnapshot struct {
 	Summary           AnalyticsSummaryRecord
 	Trend             []AnalyticsTrendPointRecord
@@ -113,4 +122,5 @@ type AnalyticsSummarySnapshot struct {
 	ModelBreakdown    []AnalyticsModelBreakdownRecord
 	TimeBreakdown     []AnalyticsTrendPointRecord
 	Insights          []AnalyticsInsightRecord
+	ProviderOptions   []AnalyticsProviderOptionRecord
 }

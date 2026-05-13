@@ -6,6 +6,7 @@ import {
   CalendarRange,
   Check,
   Database,
+  Filter,
   KeyRound,
   RefreshCw,
   Pencil,
@@ -22,7 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsTrigger } from '@/components/ui/tabs'
-import { type AliasRow, type ModelRow, type TrendPoint, healthBlocks } from '@/data/analyticsPrototype'
+import { type AliasRow, type ModelRow, type TrendPoint } from '@/data/analyticsPrototype'
 
 import './index.css'
 
@@ -206,6 +207,15 @@ type AnalyticsInsightPayload = {
   cost_status: 'available' | 'partial' | 'unavailable'
 }
 
+type AnalyticsProviderOptionPayload = {
+  provider: string
+  request_count: number
+  total_tokens: number
+  total_cost: number
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
 type AnalyticsSummaryResponse = {
   summary: AnalyticsSummaryPayload
   trend: AnalyticsTrendPointPayload[]
@@ -213,15 +223,18 @@ type AnalyticsSummaryResponse = {
   model_distribution?: AnalyticsModelPayload[]
   time_breakdown?: AnalyticsTrendPointPayload[]
   insights?: AnalyticsInsightPayload[]
+  provider_options?: AnalyticsProviderOptionPayload[]
 }
 
 type AnalyticsState = {
+  provider: string
   summary: AnalyticsSummaryPayload
   trend: TrendPoint[]
   keyAliases: AliasRow[]
   models: ModelRow[]
   timeBreakdown: TrendPoint[]
   insights: AnalyticsInsightPayload[]
+  providerOptions: AnalyticsProviderOptionPayload[]
 }
 
 const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
@@ -243,15 +256,22 @@ function normalizeAnalyticsSummary(summary: AnalyticsSummaryPayload | undefined)
   return { ...emptyAnalyticsSummary, ...(summary ?? {}) }
 }
 
-function useAnalyticsSummary(enabled: boolean) {
-  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [] })
+const emptyAnalyticsState: AnalyticsState = { provider: '', summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [], providerOptions: [] }
+
+function useAnalyticsSummary(enabled: boolean, provider: string) {
+  const [analytics, setAnalytics] = useState<AnalyticsState>(emptyAnalyticsState)
+  const scopedProvider = provider.trim()
 
   useEffect(() => {
     if (!enabled) {
       return
     }
     let active = true
-    fetch(apiPath('/analytics/summary?range=7d'))
+    const params = new URLSearchParams({ range: '7d' })
+    if (scopedProvider !== '') {
+      params.set('provider', scopedProvider)
+    }
+    fetch(apiPath(`/analytics/summary?${params.toString()}`))
       .then((response) => {
         if (!response.ok) {
           throw new Error('load analytics failed')
@@ -264,6 +284,7 @@ function useAnalyticsSummary(enabled: boolean) {
         }
         const summary = normalizeAnalyticsSummary(payload.summary)
         setAnalytics({
+          provider: scopedProvider,
           summary,
           trend: (payload.trend ?? []).map((point) => ({
             label: point.label,
@@ -315,18 +336,22 @@ function useAnalyticsSummary(enabled: boolean) {
             costStatus: point.cost_status,
           })),
           insights: payload.insights ?? [],
+          providerOptions: payload.provider_options ?? [],
         })
       })
       .catch(() => {
         if (active) {
-          setAnalytics({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [] })
+          setAnalytics((current) => ({ ...emptyAnalyticsState, provider: scopedProvider, providerOptions: current.providerOptions }))
         }
       })
     return () => {
       active = false
     }
-  }, [enabled])
+  }, [enabled, scopedProvider])
 
+  if (analytics.provider !== scopedProvider) {
+    return { ...emptyAnalyticsState, provider: scopedProvider, providerOptions: analytics.providerOptions }
+  }
   return analytics
 }
 
@@ -336,14 +361,24 @@ type BreakdownMode = 'key_alias' | 'model' | 'time'
 function App() {
   const route = currentRoute()
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
+  const [selectedProvider, setSelectedProvider] = useState('')
   const authSession = useAuthSession()
-  const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking)
+  const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking, selectedProvider)
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
   const analyticsAliases = analytics.keyAliases
   const analyticsModels = analytics.models
   const analyticsTimeBreakdown = analytics.timeBreakdown
   const analyticsInsights = analytics.insights
+  const analyticsHealthBlocks = analyticsTrend.map((point) => {
+    const success = Math.max(point.requests - point.failures, 0)
+    return {
+      label: point.label,
+      success,
+      failure: point.failures,
+      rate: point.requests > 0 ? Number(((success / point.requests) * 100).toFixed(1)) : 0,
+    }
+  })
 
   if (authSession.checking) {
     return (
@@ -410,6 +445,11 @@ function App() {
               </h2>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <ProviderFilter
+                onChange={setSelectedProvider}
+                options={analytics.providerOptions}
+                selectedProvider={selectedProvider}
+              />
               <Button variant="outline" size="sm">
                 <CalendarRange className="size-4" aria-hidden="true" />
                 Last 7 days
@@ -627,7 +667,7 @@ function App() {
             </CardHeader>
             <CardContent>
               <div className="h-[170px] min-w-0">
-                <HealthTimeline data={healthBlocks} />
+                <HealthTimeline data={analyticsHealthBlocks} />
               </div>
             </CardContent>
           </Card>
@@ -636,6 +676,45 @@ function App() {
         </section>
       </div>
     </main>
+  )
+}
+
+function ProviderFilter({
+  onChange,
+  options,
+  selectedProvider,
+}: {
+  onChange: (provider: string) => void
+  options: AnalyticsProviderOptionPayload[]
+  selectedProvider: string
+}) {
+  return (
+    <div aria-label="Provider filter" className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-border bg-card p-1">
+      <Button
+        aria-pressed={selectedProvider === ''}
+        onClick={() => onChange('')}
+        size="sm"
+        type="button"
+        variant={selectedProvider === '' ? 'subtle' : 'ghost'}
+      >
+        <Filter className="size-3.5" aria-hidden="true" />
+        All providers
+      </Button>
+      {options.map((option) => (
+        <Button
+          aria-pressed={selectedProvider === option.provider}
+          key={option.provider}
+          onClick={() => onChange(option.provider)}
+          size="sm"
+          title={`${option.request_count.toLocaleString('en')} requests`}
+          type="button"
+          variant={selectedProvider === option.provider ? 'subtle' : 'ghost'}
+        >
+          {option.provider}
+          <span className="text-[11px] font-medium text-muted-foreground">{formatCompact(option.request_count, 1)}</span>
+        </Button>
+      ))}
+    </div>
   )
 }
 
