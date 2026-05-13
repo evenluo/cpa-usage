@@ -380,6 +380,7 @@ function App() {
       rate: point.requests > 0 ? Number(((success / point.requests) * 100).toFixed(1)) : 0,
     }
   })
+  const requestHealthStatus = formatRequestHealthStatus(analyticsSummary.failure_count)
 
   if (authSession.checking) {
     return (
@@ -663,9 +664,9 @@ function App() {
                 <CardTitle>Request Health</CardTitle>
                 <CardDescription>Compact stability strip aligned to the active analytics scope.</CardDescription>
               </div>
-              <Badge variant="amber">
+              <Badge variant={requestHealthStatus.variant}>
                 <Activity className="mr-1 size-3" aria-hidden="true" />
-                {analyticsSummary.failure_count.toLocaleString('en')} failures
+                {requestHealthStatus.label}
               </Badge>
             </CardHeader>
             <CardContent>
@@ -1466,6 +1467,16 @@ function formatBreakdownCost(row: Pick<TrendPoint, 'cost' | 'costAvailable' | 'c
     return row.costStatus === 'partial' ? 'Cost partial' : 'Cost unavailable'
   }
   return formatCost(row.cost)
+}
+
+function formatRequestHealthStatus(failureCount: number) {
+  if (failureCount <= 0) {
+    return { label: 'No failures', variant: 'green' as const }
+  }
+  if (failureCount === 1) {
+    return { label: '1 failure', variant: 'amber' as const }
+  }
+  return { label: `${failureCount.toLocaleString('en')} failures`, variant: 'amber' as const }
 }
 
 function formatInsightMetric(insight: AnalyticsInsightPayload) {

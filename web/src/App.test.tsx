@@ -452,7 +452,7 @@ describe('App', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&provider=OpenAI'))
     expect((await screen.findAllByText('$8.00')).length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('$21.00')).not.toBeInTheDocument()
-    expect(within(screen.getByLabelText('Request health stability strip')).getByText('1 failures')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Request health stability strip')).getByText('1 failure')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /OpenAI/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('button', { name: /Anthropic/ })).not.toBeInTheDocument()
 
@@ -498,6 +498,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('No key alias usage in this range')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Request health stability strip')).getByText('No failures')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Model' }))
     expect(screen.getByText('No model usage in this range')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Time' }))
