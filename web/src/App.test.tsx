@@ -10,6 +10,13 @@ describe('App', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/')
     vi.restoreAllMocks()
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
+      return new Response(null, { status: 404 })
+    }))
   })
 
   afterEach(() => {
@@ -75,9 +82,46 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Usage and Cost workspace' })).toBeInTheDocument()
   })
 
+  it.each([
+    ['non-2xx response', async () => new Response(null, { status: 500 })],
+    ['network error', async () => { throw new Error('session unavailable') }],
+  ])('treats auth session check %s as unauthenticated', async (_label, sessionResult) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return sessionResult()
+      }
+      if (url.includes('/api/v1/analytics/summary')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 0,
+            total_tokens: 0,
+            request_count: 0,
+            success_count: 0,
+            failure_count: 0,
+            success_rate: 0,
+            cost_available: true,
+            cost_status: 'available',
+          },
+          trend: [],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Sign in to CPA Usage' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Usage and Cost workspace' })).not.toBeInTheDocument()
+  })
+
   it('renders analytics KPI and trend data from the analytics API', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
       if (url.includes('/api/v1/analytics/summary')) {
         return new Response(JSON.stringify({
           range: '7d',
@@ -245,6 +289,9 @@ describe('App', () => {
   it('renders an empty key alias ranking state', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
       if (url.includes('/api/v1/analytics/summary')) {
         return new Response(JSON.stringify({
           summary: {
@@ -279,6 +326,9 @@ describe('App', () => {
   it('renders unavailable analytics cost as unknown instead of zero currency', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
       if (url.includes('/api/v1/analytics/summary')) {
         return new Response(JSON.stringify({
           range: '7d',
@@ -323,6 +373,9 @@ describe('App', () => {
     window.history.replaceState({}, '', '/events')
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
       if (url.includes('/api/v1/usage/events')) {
         return new Response(JSON.stringify({
           events: [{
@@ -354,6 +407,9 @@ describe('App', () => {
     window.history.replaceState({}, '', '/pricing')
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
       if (url === '/api/v1/pricing' && init?.method === 'PUT') {
         return new Response(JSON.stringify({
           model: 'openai/gpt-4.1',
@@ -439,6 +495,9 @@ describe('App', () => {
     window.history.replaceState({}, '', '/keys')
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
       if (url.includes('/api/v1/usage/identities/page') && url.includes('page=1')) {
         return new Response(JSON.stringify({
           identities: [

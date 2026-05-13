@@ -79,7 +79,7 @@ function useAuthSession() {
   useEffect(() => {
     let active = true
     fetch(apiPath('/auth/session'))
-      .then((response) => response.ok ? response.json() as Promise<AuthSessionPayload> : { authenticated: true })
+      .then((response) => response.ok ? response.json() as Promise<AuthSessionPayload> : { authenticated: false })
       .then((payload) => {
         if (!active) {
           return
@@ -89,7 +89,7 @@ function useAuthSession() {
       })
       .catch(() => {
         if (active) {
-          setAuthenticated(true)
+          setAuthenticated(false)
           setChecking(false)
         }
       })
