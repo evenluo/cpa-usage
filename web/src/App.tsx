@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react'
 
-import { AliasRankingChart, HealthTimeline, MetricTrendChart, ModelDistributionChart, Sparkline, TokenCostCompareChart } from '@/components/charts'
+import { AliasRankingChart, HealthTimeline, ModelDistributionChart, Sparkline, TokenCostCompareChart } from '@/components/charts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -362,6 +362,7 @@ function App() {
   const route = currentRoute()
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
   const [selectedProvider, setSelectedProvider] = useState('')
+  const [activeTrendLabel, setActiveTrendLabel] = useState('')
   const authSession = useAuthSession()
   const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking, selectedProvider)
   const analyticsSummary = analytics.summary
@@ -484,12 +485,14 @@ function App() {
                 <CardContent>
                   <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                     <div className="h-[270px] min-w-0">
-                      <MetricTrendChart data={analyticsTrend} />
+                      <TokenCostCompareChart data={analyticsTrend} />
                     </div>
                     <div className="grid min-h-[270px] min-w-0 gap-3 rounded-lg border border-border bg-muted/40 p-3">
-                      <div className="h-[176px] min-w-0">
-                        <TokenCostCompareChart data={analyticsTrend} />
-                      </div>
+                      <TrendPointDetail
+                        activeLabel={activeTrendLabel}
+                        data={analyticsTrend}
+                        onActiveLabelChange={setActiveTrendLabel}
+                      />
                       <div className="rounded-md border border-border bg-background p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
@@ -676,6 +679,70 @@ function App() {
         </section>
       </div>
     </main>
+  )
+}
+
+function TrendPointDetail({
+  activeLabel,
+  data,
+  onActiveLabelChange,
+}: {
+  activeLabel: string
+  data: TrendPoint[]
+  onActiveLabelChange: (label: string) => void
+}) {
+  const activePoint = data.find((point) => point.label === activeLabel) ?? data.at(-1)
+  if (!activePoint) {
+    return (
+      <div aria-label="Trend point detail" className="grid min-h-[176px] place-items-center rounded-md border border-dashed border-border bg-background p-3 text-sm text-muted-foreground">
+        No trend data
+      </div>
+    )
+  }
+
+  return (
+    <div aria-label="Trend point detail" className="grid min-h-[176px] gap-3 rounded-md border border-border bg-background p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Active Point</p>
+          <p className="mt-1 text-lg font-semibold tracking-normal">{activePoint.label}</p>
+        </div>
+        <Badge variant={activePoint.costAvailable === false ? 'outline' : 'green'}>{formatBreakdownCost(activePoint)}</Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <p className="font-semibold">{formatCompact(activePoint.tokens, 2)}</p>
+          <p className="text-muted-foreground">tokens</p>
+        </div>
+        <div>
+          <p className="font-semibold">{formatCompact(activePoint.requests, 1)}</p>
+          <p className="text-muted-foreground">requests</p>
+        </div>
+        <div>
+          <p className="font-semibold">{activePoint.failures.toLocaleString('en')}</p>
+          <p className="text-muted-foreground">failures</p>
+        </div>
+      </div>
+      <div className="flex min-h-8 flex-wrap gap-1">
+        {data.map((point) => {
+          const selected = point.label === activePoint.label
+          return (
+            <button
+              aria-label={`Show trend details for ${point.label}`}
+              aria-pressed={selected}
+              className={`rounded-md border px-2 py-1 text-xs font-semibold ${selected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border text-muted-foreground hover:bg-muted'}`}
+              key={point.label}
+              onClick={() => onActiveLabelChange(point.label)}
+              onFocus={() => onActiveLabelChange(point.label)}
+              onMouseEnter={() => onActiveLabelChange(point.label)}
+              type="button"
+            >
+              {point.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
