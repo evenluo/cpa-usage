@@ -407,6 +407,39 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterDoesNotRenderUnavailableCacheInsightAsZeroShare(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "no-cache-data", Model: "priced-model", Timestamp: start.Add(time.Hour),
+		InputTokens: 1000, TotalTokens: 1000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.Insights) < 2 || snapshot.Insights[1].Type != "cache_efficiency" {
+		t.Fatalf("expected cache insight after completeness, got %+v", snapshot.Insights)
+	}
+	cacheInsight := snapshot.Insights[1]
+	if cacheInsight.Subject != "No cache data" || cacheInsight.MetricLabel != "Cache state" || cacheInsight.MetricValue != 0 {
+		t.Fatalf("expected unavailable cache state instead of zero share, got %+v", cacheInsight)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterMarksCostPartialWhenPricedRowsHaveZeroRates(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

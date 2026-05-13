@@ -381,6 +381,10 @@ describe('App', () => {
             cost_status: 'unavailable',
           },
           trend: [],
+          insights: [
+            { type: 'metric_completeness', severity: 'amber', title: 'Metric Completeness', detail: 'Prompt input is missing.', subject: 'No prompt input', metric_label: 'Metric Completeness', metric_value: 0, count: 0, cost_status: 'unavailable' },
+            { type: 'cache_efficiency', severity: 'amber', title: 'Cache Read Share', detail: 'Prompt input is zero for this range.', subject: 'No prompt input', metric_label: 'Cache state', metric_value: 0, count: 0, cost_status: 'unavailable' },
+          ],
         }))
       }
       return new Response(null, { status: 404 })
@@ -390,7 +394,9 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('Cost unavailable')).toBeInTheDocument()
-    expect(screen.getByText('No prompt input')).toBeInTheDocument()
+    const insightRail = screen.getByLabelText('Insight rail')
+    expect(within(insightRail).getAllByText('No prompt input').length).toBeGreaterThanOrEqual(2)
+    expect(within(insightRail).queryByText('0.0%')).not.toBeInTheDocument()
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
   })
 

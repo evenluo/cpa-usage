@@ -692,10 +692,12 @@ func cacheEfficiencyInsight(summary dto.AnalyticsSummaryRecord) dto.AnalyticsIns
 	case dto.AnalyticsCacheReadShareStateNoCacheData:
 		insight.Severity = "amber"
 		insight.Subject = "No cache data"
+		insight.MetricLabel = "Cache state"
 		insight.Detail = "Cached-token evidence is unavailable for this range; reasoning tokens are not counted as cache reads."
 	case dto.AnalyticsCacheReadShareStateNoPromptInput:
 		insight.Severity = "amber"
 		insight.Subject = "No prompt input"
+		insight.MetricLabel = "Cache state"
 		insight.Detail = "Prompt input is zero for this range, so Cache Read Share has no denominator."
 	}
 	return insight
@@ -709,18 +711,6 @@ func topCostKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.Analytics
 			continue
 		}
 		if !found || row.TotalCost > best.TotalCost {
-			best = row
-			found = true
-		}
-	}
-	return best, found
-}
-
-func topTokenKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.AnalyticsKeyAliasBreakdownRecord, bool) {
-	var best dto.AnalyticsKeyAliasBreakdownRecord
-	found := false
-	for _, row := range rows {
-		if !found || row.TotalTokens > best.TotalTokens {
 			best = row
 			found = true
 		}
@@ -772,24 +762,6 @@ func countModelsWithIncompletePricing(models []dto.AnalyticsModelBreakdownRecord
 		}
 	}
 	return count
-}
-
-func missingPricingSubject(models []dto.AnalyticsModelBreakdownRecord) string {
-	count := countModelsWithIncompletePricing(models)
-	if count == 0 {
-		return "Cost " + dto.AnalyticsCostStatusPartial
-	}
-	if count == 1 {
-		return "1 model"
-	}
-	return fmt.Sprintf("%d models", count)
-}
-
-func cacheReasoningShare(summary dto.AnalyticsSummaryRecord) float64 {
-	if summary.TotalTokens <= 0 {
-		return 0
-	}
-	return (float64(summary.CachedTokens+summary.ReasoningTokens) / float64(summary.TotalTokens)) * 100
 }
 
 func parseAnalyticsTimestamp(value string) *time.Time {

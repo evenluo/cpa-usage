@@ -1336,6 +1336,8 @@ function formatInsightMetric(insight: AnalyticsInsightPayload) {
       return `${insight.metric_value.toFixed(1)}%`
     case 'Metric Completeness':
       return insight.subject
+    case 'Cache state':
+      return insight.subject
     case 'Cost status':
       return `Cost ${insight.cost_status}`
     default:
