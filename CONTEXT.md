@@ -16,6 +16,14 @@ _Avoid_: Credential alias, model alias, redacted alias
 The calculated spend derived from token usage and local model pricing.
 _Avoid_: Price
 
+**Cache Read Share**:
+The share of provider-normalized prompt input tokens served from cache reads, calculated as cached tokens divided by input tokens.
+_Avoid_: Cache hit rate, cache/reasoning share
+
+**Metric Completeness**:
+The degree to which a dashboard metric has the required supporting data to be read as a complete conclusion.
+_Avoid_: Data trust, data truth
+
 ## Relationships
 
 - A **CPA Key** may have zero or one global **Key Alias**
@@ -31,6 +39,8 @@ _Avoid_: Price
 - When a **Key Alias** exists, it is the primary display label and the masked **CPA Key** is secondary traceability text.
 - The analytics page is organized around total usage first, then breakdowns by dimensions such as **Key Alias**, model, provider, and health.
 - Token volume and **Cost** are peer measurement categories in the dashboard.
+- **Cache Read Share** is an efficiency metric for prompt input tokens, not a replacement for **Cost**, token volume, requests, or success rate.
+- **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
 - Request health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - First-version insights are deterministic metrics and warnings, not AI-generated summaries.
@@ -39,7 +49,12 @@ _Avoid_: Price
 
 > **Dev:** "When usage events show a raw **CPA Key**, should the dashboard display the **Key Alias** instead?"
 > **Domain expert:** "Yes, the key is still the source of truth, but humans should read the alias."
+>
+> **Dev:** "Should cached output tokens count toward **Cache Read Share**?"
+> **Domain expert:** "No — cache reads are measured against provider-normalized prompt input tokens."
 
 ## Flagged ambiguities
 
 - "key alias" means a human-readable label for a **CPA Key**, not a generated redaction token or a model alias.
+- "cache hit rate" means **Cache Read Share** in CPA Usage, not cached tokens divided by total tokens and not the combined cache/reasoning token share.
+- "data trust" should be expressed as **Metric Completeness** when the issue is missing pricing, missing cache-token support, or a zero denominator for a derived metric.

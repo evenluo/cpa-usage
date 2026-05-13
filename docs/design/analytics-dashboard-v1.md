@@ -49,6 +49,7 @@ The analytics page should be compact, not a long report. It should have one prim
    - Cost and tokens should be switchable or shown side by side.
    - Cost is the default sorting measure when pricing is complete.
    - If pricing is incomplete, token volume remains authoritative and cost should be marked partial or unavailable.
+   - The signature module should include an efficiency rail for **Cache Read Share** without making it a fifth top-level KPI.
 
 3. **Deterministic Insights**
    - Top cost key
@@ -56,17 +57,25 @@ The analytics page should be compact, not a long report. It should have one prim
    - Cost or token spike
    - Pricing missing warning
    - Failure concentration
-   - Cache or reasoning token share
+   - Cache read share warning or improvement
+   - Reasoning token share when relevant
+   - First-stage placement is a right-side vertical insight rail, not a horizontal chip strip.
+   - Right-side rail ordering should lead with **Metric Completeness** warnings, then cache efficiency, top cost key, token spike, and failure cluster.
 
 4. **Breakdowns**
    - Key Alias
    - Model
    - Time
    - Provider as filter or secondary dimension
+   - Keep a single active breakdown workbench controlled by a compact segmented control; do not show all breakdowns at once in the first stage.
+   - Add a lightweight Provider filter in the first screen, but keep provider as a secondary filter rather than a primary analytics axis.
+   - Provider filtering must drive the analytics API query so summary, trend, breakdowns, insights, and cache efficiency use the same filter scope; do not implement it as front-end-only local filtering.
+   - First-stage provider filter options may be derived from providers visible in the current analytics response; do not add a separate provider-list API unless a later requirement needs empty-provider discovery or a global provider catalog.
 
 5. **Request Health Timeline**
    - Secondary stability strip.
    - Useful for spotting failure clusters, not the headline story.
+   - Keep it visible as a compact bottom stability strip in the first screen, around 120-160px tall, so it supports the Cost/Token trend without competing with it.
 
 ## Key Alias Model
 
@@ -173,6 +182,7 @@ The new analytics direction needs more direct key-centric aggregation:
 - Key Alias plus model drill-down.
 - Deterministic insight payloads.
 - Alias update API.
+- Cache efficiency fields for summary and model breakdowns: input tokens, cached tokens, **Cache Read Share**, and estimated cache savings when model pricing is complete.
 
 The existing `api_group_key` analysis is not enough because it is not the same as a user-facing **CPA Key** / **Key Alias** dimension.
 
@@ -206,6 +216,7 @@ This means v1 is a productized enhancement of keeper's backend, not a full backe
 - **Usage event compatibility**: keep compatible. Existing events remain valid.
 - **Alias compatibility**: additive. Missing alias falls back to existing display name or masked key.
 - **Cost compatibility**: keep existing local pricing calculation. If model pricing is missing, show partial or unavailable cost instead of inventing values.
+- **Cache metric compatibility**: additive API extension. Existing usage events already carry cached token data; the visual upgrade should expose cache efficiency through new summary and model fields without changing existing event ingestion semantics.
 - **UI compatibility**: not preserving old information hierarchy. Existing capabilities remain, but navigation and visual hierarchy change.
 
 ## Visual Direction
@@ -228,6 +239,75 @@ The selected direction combines the two generated visual options:
 
 - Use the upper structure from **Executive Analytics** for the analytics first screen: header, time controls, peer Cost/Tokens KPI emphasis, combined Cost/Tokens trend, and deterministic insight strip.
 - Use the middle and lower structure from **Analyst Console** for repeated analysis: Key Alias / Model / Time breakdown workspace, alias ranking, model distribution, filters, and secondary Request Health Timeline.
+
+### Resolved First-Screen Signature Module
+
+The first-screen signature module is the combined **Cost and Token Trend**. This should be the strongest visual element in the analytics workspace because total usage is the primary product story, and **Cost** and token volume are peer measurement categories.
+
+The signature module should feel like a premium data cockpit rather than a decorative hero:
+
+- Cost and token movement should be visible in the same analytical region.
+- **Cache Read Share** should appear as an efficiency rail around the main trend, using `cached_tokens / input_tokens` over provider-normalized prompt input tokens.
+- Deterministic insights should sit in a right-side vertical rail next to the main trend so status cards do not reduce the chart's vertical space.
+- The insight rail should use **Metric Completeness** for pricing-missing, cost-partial, cache-data-unavailable, and zero-denominator states; avoid describing these as data truth or event validity problems.
+- In the compact UI, the card title can be `Completeness`; reserve the full **Metric Completeness** term for documentation, tooltips, or expanded detail.
+- The module may use stronger chart styling, richer hover states, and subtle motion than surrounding cards.
+- The module must remain data-first: it should not introduce decorative imagery, fake metrics, or purely atmospheric effects.
+- Key Alias ranking, model distribution, time breakdown, and request health remain supporting analysis surfaces.
+
+### Resolved Cache Metric
+
+The cache efficiency metric is **Cache Read Share**, not a generic cache hit rate. It is calculated as cached tokens divided by provider-normalized prompt input tokens.
+
+UI placement:
+
+- Show **Cache Read Share** in the first-screen signature module as a supporting efficiency rail.
+- Show estimated cache savings only when the relevant model pricing is complete; if pricing is partial or unavailable, show cached tokens and **Cache Read Share** without inventing a savings amount.
+- Estimated cache savings uses local pricing only: `cached_tokens * (prompt_price_per_1m - cache_price_per_1m) / 1_000_000`. Show it only when both prices exist and prompt price is greater than or equal to cache price; present it as an estimate, not as a provider billing fact.
+- Keep **Cache Read Share** out of the four primary KPI cards unless a later product decision explicitly makes cache optimization the page's main story.
+- Add cache read share to model-level breakdowns so users can see which models or providers are not benefiting from prompt caching.
+- Split cache and reasoning token insights; do not keep the current combined cache/reasoning share as the primary user-facing metric.
+
+Implementation boundary:
+
+- Do not ship a cache efficiency UI backed by placeholder or mocked values.
+- Extend the analytics API with real `input_tokens`, `cached_tokens`, and `cache_read_share` fields for the summary and model breakdown.
+- Add `estimated_cache_savings` only when pricing is complete enough to compute it honestly.
+- When cache data or pricing is unavailable, render an unavailable state rather than a fabricated zero or savings amount.
+- Split cache-share unavailable states into `No cache data` when cached-token data is not available from the source, and `No prompt input` when input tokens are zero so the share has no denominator.
+
+### Motion and Interaction Decision
+
+The first visual upgrade should not add a dedicated motion library. Use CSS transitions, chart hover states, active markers, and polished SVG/Recharts primitives first. A library such as `framer-motion` should only be introduced later if the product needs page-level choreography, number rolling, or complex coordinated chart interactions that cannot be maintained cleanly with the existing stack.
+
+### Visual Upgrade Scope
+
+The first implementation stage should focus on the Analytics first screen only. It should upgrade the signature **Cost and Token Trend** module, KPI cards, insight rail, **Cache Read Share** efficiency rail, and the surrounding breakdown shell. Keys, Pricing, Events, and Settings should not be redesigned in the same stage, except for extracting shared primitives that the upgraded Analytics screen needs.
+
+This keeps the visual direction reviewable and gives the product one high-quality dashboard pattern before applying the style across configuration pages.
+
+Dark mode is not part of the first visual upgrade stage. The first stage should make the light Magic-like premium cockpit direction work before adding a second theme with separate chart, contrast, and status-color tuning.
+
+### First-Stage Implementation Boundary
+
+The first implementation stage is not a front-end-only reskin. It should include the additive analytics API fields needed to render **Cache Read Share** honestly, then upgrade the Analytics first-screen UI against those real fields.
+
+In scope:
+
+- Add real cache efficiency fields to analytics summary and model breakdown responses.
+- Replace the current horizontal deterministic insight strip with a right-side vertical insight rail.
+- Upgrade the combined **Cost and Token Trend** into the first-screen signature module.
+- Add the **Cache Read Share** efficiency rail, using unavailable states when source data or pricing is incomplete.
+- Keep the breakdown area as a single active workbench with a compact segmented control.
+- Keep request health visible as a compact bottom stability strip.
+
+Out of scope:
+
+- Redesigning Keys, Pricing, Events, or Settings.
+- Introducing dark mode.
+- Adding a dedicated motion library.
+- Rendering cache efficiency from placeholder or mocked values.
+- Promoting provider into the primary analytics axis.
 
 Reference design board:
 
