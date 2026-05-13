@@ -30,6 +30,50 @@ function formatCurrency(value: number) {
   return `$${value.toLocaleString('en', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
 }
 
+function formatTrendCost(point: TrendPoint) {
+  if (point.costStatus === 'unavailable' || (point.costAvailable === false && point.costStatus !== 'partial')) {
+    return 'Cost unavailable'
+  }
+  if (point.costStatus === 'partial') {
+    return `${formatCurrency(point.cost)} partial`
+  }
+  return formatCurrency(point.cost)
+}
+
+type TrendTooltipPayload = {
+  payload?: TrendPoint
+}
+
+export function TrendBucketTooltip({
+  active,
+  label,
+  payload,
+}: {
+  active?: boolean
+  label?: string | number
+  payload?: TrendTooltipPayload[]
+}) {
+  const point = payload?.[0]?.payload
+  if (!active || !point) {
+    return null
+  }
+  return (
+    <div
+      aria-label="Trend bucket detail"
+      className="rounded-md border border-border bg-background px-3 py-2 text-xs shadow-lg"
+      role="tooltip"
+    >
+      <p className="font-semibold text-foreground">{label ?? point.label}</p>
+      <div className="mt-2 grid gap-1 text-muted-foreground">
+        <p>Cost <span className="font-semibold text-foreground">{formatTrendCost(point)}</span></p>
+        <p>{compactNumber(point.tokens)} tokens</p>
+        <p>{point.requests.toLocaleString('en')} requests</p>
+        <p>{point.failures.toLocaleString('en')} failures</p>
+      </div>
+    </div>
+  )
+}
+
 export function MetricTrendChart({ data }: { data: TrendPoint[] }) {
   const chartData = data.map((point) => ({
     ...point,
@@ -85,6 +129,7 @@ export function TokenCostCompareChart({ data }: { data: TrendPoint[] }) {
           width={42}
         />
         <Tooltip
+          content={<TrendBucketTooltip />}
           contentStyle={{ borderColor: '#e4e4e7', borderRadius: 8, boxShadow: '0 8px 24px rgba(24,24,27,0.08)' }}
           formatter={(value, name) => [name === 'tokens' ? compactNumber(Number(value)) : `$${Number(value).toFixed(2)}`, name]}
         />

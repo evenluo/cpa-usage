@@ -446,7 +446,6 @@ function App() {
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
   const [selectedProvider, setSelectedProvider] = useState('')
   const [timeGranularity, setTimeGranularity] = useState<TimeGranularity>('hour')
-  const [activeTrendLabel, setActiveTrendLabel] = useState('')
   const authSession = useAuthSession()
   const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking, selectedProvider, timeGranularity)
   const analyticsSummary = analytics.summary
@@ -614,11 +613,7 @@ function App() {
                       <TokenCostCompareChart data={analyticsTrend} />
                     </div>
                     <div className="grid min-h-[270px] min-w-0 gap-3 rounded-lg border border-border bg-muted/40 p-3">
-                      <TrendPointDetail
-                        activeLabel={activeTrendLabel}
-                        data={analyticsTrend}
-                        onActiveLabelChange={setActiveTrendLabel}
-                      />
+                      <TrendSummaryStrip data={analyticsTrend} granularity={timeGranularity} />
                       <div className="rounded-md border border-border bg-background p-3">
                         <div className="flex items-center justify-between gap-3">
                           <div>
@@ -786,66 +781,45 @@ function App() {
   )
 }
 
-function TrendPointDetail({
-  activeLabel,
-  data,
-  onActiveLabelChange,
-}: {
-  activeLabel: string
-  data: TrendPoint[]
-  onActiveLabelChange: (label: string) => void
-}) {
-  const activePoint = data.find((point) => point.label === activeLabel) ?? data.at(-1)
-  if (!activePoint) {
+function TrendSummaryStrip({ data, granularity }: { data: TrendPoint[]; granularity: TimeGranularity }) {
+  const bucketLabel = granularity === 'hour' ? 'Hour' : 'Day'
+  const bucketDetail = granularity === 'hour' ? 'hourly buckets' : 'daily buckets'
+  const costPoints = data.filter((point) => point.costStatus !== 'unavailable' && !(point.costAvailable === false && point.costStatus !== 'partial'))
+  const costIsPartial = data.some((point) => point.costStatus === 'partial') || costPoints.length !== data.length
+  const totalCost = costPoints.reduce((sum, point) => sum + point.cost, 0)
+  const averageCost = costPoints.length > 0 ? totalCost / costPoints.length : null
+  const peakCost = costPoints.length > 0 ? Math.max(...costPoints.map((point) => point.cost)) : null
+  const totalTokens = data.reduce((sum, point) => sum + point.tokens, 0)
+  const averageTokens = data.length > 0 ? totalTokens / data.length : 0
+  const peakTokens = data.length > 0 ? Math.max(...data.map((point) => point.tokens)) : 0
+  const costDetail = costPoints.length > 0 ? (costIsPartial ? 'Cost partial' : 'Cost complete') : 'Cost unavailable'
+  const countDetail = `${data.length.toLocaleString('en')} ${bucketDetail}`
+  const items = [
+    { label: `Avg Cost / ${bucketLabel}`, value: averageCost === null ? 'Unavailable' : formatCost(averageCost), detail: costDetail },
+    { label: `Avg tokens / ${bucketLabel}`, value: formatCompact(averageTokens, 2), detail: countDetail },
+    { label: `Peak Cost / ${bucketLabel}`, value: peakCost === null ? 'Unavailable' : formatCost(peakCost), detail: costDetail },
+    { label: `Peak tokens / ${bucketLabel}`, value: formatCompact(peakTokens, 2), detail: countDetail },
+    { label: 'Total Cost', value: costPoints.length === 0 ? 'Unavailable' : formatCost(totalCost), detail: costDetail },
+    { label: 'Total tokens', value: formatCompact(totalTokens, 2), detail: countDetail },
+  ]
+
+  if (data.length === 0) {
     return (
-      <div aria-label="Trend point detail" className="grid min-h-[176px] place-items-center rounded-md border border-dashed border-border bg-background p-3 text-sm text-muted-foreground">
+      <div aria-label="Trend summary strip" className="grid min-h-[176px] place-items-center rounded-md border border-dashed border-border bg-background p-3 text-sm text-muted-foreground">
         No trend data
       </div>
     )
   }
 
   return (
-    <div aria-label="Trend point detail" className="grid min-h-[176px] gap-3 rounded-md border border-border bg-background p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase text-muted-foreground">Active Point</p>
-          <p className="mt-1 text-lg font-semibold tracking-normal">{activePoint.label}</p>
+    <div aria-label="Trend summary strip" className="grid min-h-[176px] grid-cols-2 gap-2 rounded-md border border-border bg-background p-3">
+      {items.map((item) => (
+        <div className="min-w-0 rounded-md bg-muted/50 p-2" key={item.label}>
+          <p className="truncate text-[11px] font-semibold uppercase text-muted-foreground">{item.label}</p>
+          <p className="mt-1 text-lg font-semibold tracking-normal">{item.value}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{item.detail}</p>
         </div>
-        <Badge variant={activePoint.costAvailable === false ? 'outline' : 'green'}>{formatBreakdownCost(activePoint)}</Badge>
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-xs">
-        <div>
-          <p className="font-semibold">{formatCompact(activePoint.tokens, 2)}</p>
-          <p className="text-muted-foreground">tokens</p>
-        </div>
-        <div>
-          <p className="font-semibold">{formatCompact(activePoint.requests, 1)}</p>
-          <p className="text-muted-foreground">requests</p>
-        </div>
-        <div>
-          <p className="font-semibold">{activePoint.failures.toLocaleString('en')}</p>
-          <p className="text-muted-foreground">failures</p>
-        </div>
-      </div>
-      <div className="flex min-h-8 flex-wrap gap-1">
-        {data.map((point) => {
-          const selected = point.label === activePoint.label
-          return (
-            <button
-              aria-label={`Show trend details for ${point.label}`}
-              aria-pressed={selected}
-              className={`rounded-md border px-2 py-1 text-xs font-semibold ${selected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border text-muted-foreground hover:bg-muted'}`}
-              key={point.label}
-              onClick={() => onActiveLabelChange(point.label)}
-              onFocus={() => onActiveLabelChange(point.label)}
-              onMouseEnter={() => onActiveLabelChange(point.label)}
-              type="button"
-            >
-              {point.label}
-            </button>
-          )
-        })}
-      </div>
+      ))}
     </div>
   )
 }
@@ -1563,13 +1537,6 @@ function routeTitleID(route: AppRoute) {
 
 function formatCost(value: number) {
   return `$${value.toLocaleString('en', { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`
-}
-
-function formatBreakdownCost(row: Pick<TrendPoint, 'cost' | 'costAvailable' | 'costStatus'>) {
-  if (row.costAvailable === false) {
-    return row.costStatus === 'partial' ? 'Cost partial' : 'Cost unavailable'
-  }
-  return formatCost(row.cost)
 }
 
 function formatRequestHealthStatus(failureCount: number) {

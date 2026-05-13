@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { AliasRankingChart, MetricTrendChart, TokenCostCompareChart } from './index'
+import { AliasRankingChart, MetricTrendChart, TokenCostCompareChart, TrendBucketTooltip } from './index'
 
 const subDollarTrend = [
   {
@@ -47,5 +47,33 @@ describe('analytics charts', () => {
 
     expect(screen.getByText('No available alias cost data')).toBeInTheDocument()
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
+  it('renders trend tooltip bucket values without treating partial cost as zero', () => {
+    render(
+      <TrendBucketTooltip
+        active
+        label="05-12 10:00"
+        payload={[{
+          payload: {
+            label: '05-12 10:00',
+            cost: 0.25,
+            tokens: 1100100,
+            requests: 181,
+            failures: 4,
+            costAvailable: false,
+            costStatus: 'partial',
+          },
+        }]}
+      />,
+    )
+
+    const tooltip = screen.getByRole('tooltip', { name: 'Trend bucket detail' })
+    expect(within(tooltip).getByText('05-12 10:00')).toBeInTheDocument()
+    expect(within(tooltip).getByText('$0.25 partial')).toBeInTheDocument()
+    expect(within(tooltip).getByText('1.1M tokens')).toBeInTheDocument()
+    expect(within(tooltip).getByText('181 requests')).toBeInTheDocument()
+    expect(within(tooltip).getByText('4 failures')).toBeInTheDocument()
+    expect(within(tooltip).queryByText('$0.00')).not.toBeInTheDocument()
   })
 })
