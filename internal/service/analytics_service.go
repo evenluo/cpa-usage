@@ -84,19 +84,24 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 	modelBreakdown := make([]servicedto.AnalyticsModelBreakdown, 0, len(snapshot.ModelBreakdown))
 	for _, row := range snapshot.ModelBreakdown {
 		modelBreakdown = append(modelBreakdown, servicedto.AnalyticsModelBreakdown{
-			Model:              row.Model,
-			Provider:           row.Provider,
-			TotalCost:          row.TotalCost,
-			TotalTokens:        row.TotalTokens,
-			RequestCount:       row.RequestCount,
-			SuccessCount:       row.SuccessCount,
-			FailureCount:       row.FailureCount,
-			SuccessRate:        row.SuccessRate,
-			TotalLatencyMS:     row.TotalLatencyMS,
-			LatencySampleCount: row.LatencySampleCount,
-			AverageLatencyMS:   row.AverageLatencyMS,
-			CostAvailable:      row.CostAvailable,
-			CostStatus:         row.CostStatus,
+			Model:                 row.Model,
+			Provider:              row.Provider,
+			TotalCost:             row.TotalCost,
+			TotalTokens:           row.TotalTokens,
+			RequestCount:          row.RequestCount,
+			SuccessCount:          row.SuccessCount,
+			FailureCount:          row.FailureCount,
+			InputTokens:           row.InputTokens,
+			CachedTokens:          row.CachedTokens,
+			SuccessRate:           row.SuccessRate,
+			TotalLatencyMS:        row.TotalLatencyMS,
+			LatencySampleCount:    row.LatencySampleCount,
+			AverageLatencyMS:      row.AverageLatencyMS,
+			CostAvailable:         row.CostAvailable,
+			CostStatus:            row.CostStatus,
+			CacheReadShare:        row.CacheReadShare,
+			CacheReadShareState:   row.CacheReadShareState,
+			EstimatedCacheSavings: row.EstimatedCacheSavings,
 		})
 	}
 	timeBreakdown := make([]servicedto.AnalyticsTrendPoint, 0, len(snapshot.TimeBreakdown))
@@ -128,23 +133,39 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			CostStatus:  insight.CostStatus,
 		})
 	}
+	providerOptions := make([]servicedto.AnalyticsProviderOption, 0, len(snapshot.ProviderOptions))
+	for _, option := range snapshot.ProviderOptions {
+		providerOptions = append(providerOptions, servicedto.AnalyticsProviderOption{
+			Provider:      option.Provider,
+			RequestCount:  option.RequestCount,
+			TotalTokens:   option.TotalTokens,
+			TotalCost:     option.TotalCost,
+			CostAvailable: option.CostAvailable,
+			CostStatus:    option.CostStatus,
+		})
+	}
 	return &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
-			TotalCost:       snapshot.Summary.TotalCost,
-			TotalTokens:     snapshot.Summary.TotalTokens,
-			RequestCount:    snapshot.Summary.RequestCount,
-			SuccessCount:    snapshot.Summary.SuccessCount,
-			FailureCount:    snapshot.Summary.FailureCount,
-			CachedTokens:    snapshot.Summary.CachedTokens,
-			ReasoningTokens: snapshot.Summary.ReasoningTokens,
-			SuccessRate:     snapshot.Summary.SuccessRate,
-			CostAvailable:   snapshot.Summary.CostAvailable,
-			CostStatus:      snapshot.Summary.CostStatus,
+			TotalCost:             snapshot.Summary.TotalCost,
+			TotalTokens:           snapshot.Summary.TotalTokens,
+			RequestCount:          snapshot.Summary.RequestCount,
+			SuccessCount:          snapshot.Summary.SuccessCount,
+			FailureCount:          snapshot.Summary.FailureCount,
+			InputTokens:           snapshot.Summary.InputTokens,
+			CachedTokens:          snapshot.Summary.CachedTokens,
+			ReasoningTokens:       snapshot.Summary.ReasoningTokens,
+			SuccessRate:           snapshot.Summary.SuccessRate,
+			CostAvailable:         snapshot.Summary.CostAvailable,
+			CostStatus:            snapshot.Summary.CostStatus,
+			CacheReadShare:        snapshot.Summary.CacheReadShare,
+			CacheReadShareState:   snapshot.Summary.CacheReadShareState,
+			EstimatedCacheSavings: snapshot.Summary.EstimatedCacheSavings,
 		},
 		Trend:             trend,
 		KeyAliasBreakdown: keyAliasBreakdown,
 		ModelBreakdown:    modelBreakdown,
 		TimeBreakdown:     timeBreakdown,
 		Insights:          insights,
+		ProviderOptions:   providerOptions,
 	}, nil
 }

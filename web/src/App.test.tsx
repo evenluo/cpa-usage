@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -134,9 +134,13 @@ describe('App', () => {
             request_count: 301,
             success_count: 296,
             failure_count: 5,
+            input_tokens: 1500100,
+            cached_tokens: 100000,
             success_rate: 98.338,
             cost_available: false,
             cost_status: 'partial',
+            cache_read_share: 6.666222251849877,
+            cache_read_share_state: 'available',
           },
           trend: [
             { label: '05-11', total_cost: 0.24, total_tokens: 1000000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
@@ -213,6 +217,11 @@ describe('App', () => {
               provider: 'OpenAI',
               total_cost: 4.5,
               total_tokens: 2500000,
+              input_tokens: 1800000,
+              cached_tokens: 450000,
+              cache_read_share: 25,
+              cache_read_share_state: 'available',
+              estimated_cache_savings: 0.675,
               request_count: 80,
               success_count: 79,
               failure_count: 1,
@@ -228,6 +237,10 @@ describe('App', () => {
               provider: 'Anthropic',
               total_cost: 0,
               total_tokens: 1800000,
+              input_tokens: 1800000,
+              cached_tokens: 0,
+              cache_read_share: 0,
+              cache_read_share_state: 'no_cache_data',
               request_count: 40,
               success_count: 38,
               failure_count: 2,
@@ -244,8 +257,15 @@ describe('App', () => {
             { label: '05-12', total_cost: 2.25, total_tokens: 3100000, request_count: 221, success_count: 215, failure_count: 6, cost_available: false, cost_status: 'partial' },
           ],
           insights: [
+            { type: 'metric_completeness', severity: 'amber', title: 'Metric Completeness', detail: 'Some derived metrics are incomplete, but usage events remain valid.', subject: 'Cost partial', metric_label: 'Metric Completeness', metric_value: 1, count: 1, cost_status: 'partial' },
+            { type: 'cache_efficiency', severity: 'green', title: 'Cache Read Share', detail: 'Prompt cache reads are measured separately from reasoning tokens.', subject: 'Prompt input cache', metric_label: 'Cache Read Share', metric_value: 6.666222251849877, count: 100000, cost_status: 'partial' },
             { type: 'top_cost_key', severity: 'green', title: 'Top Cost Key', detail: 'Highest configured Cost contributor.', subject: 'Shared Alias', metric_label: 'Cost', metric_value: 4.5, count: 80, cost_status: 'available' },
-            { type: 'pricing_missing', severity: 'amber', title: 'Pricing Missing', detail: 'Model pricing is incomplete.', subject: '1 model', metric_label: 'Cost status', metric_value: 1, count: 1, cost_status: 'partial' },
+            { type: 'token_spike', severity: 'violet', title: 'Token Spike', detail: 'Highest token bucket.', subject: '05-12', metric_label: 'Tokens', metric_value: 1100100, count: 181, cost_status: 'partial' },
+            { type: 'failure_concentration', severity: 'amber', title: 'Failure Cluster', detail: 'Largest failure concentration.', subject: 'Shared Alias', metric_label: 'Failures', metric_value: 1, count: 1, cost_status: 'available' },
+          ],
+          provider_options: [
+            { provider: 'OpenAI', request_count: 220, total_tokens: 3500000, total_cost: 6.5, cost_available: true, cost_status: 'available' },
+            { provider: 'Anthropic', request_count: 121, total_tokens: 800100, total_cost: 0, cost_available: false, cost_status: 'unavailable' },
           ],
         }))
       }
@@ -262,28 +282,189 @@ describe('App', () => {
     expect(screen.getByText('301')).toBeInTheDocument()
     expect(screen.getByText('98.3%')).toBeInTheDocument()
     expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Top Cost Key')).toBeInTheDocument()
+    const insightRail = screen.getByLabelText('Insight rail')
+    expect(within(insightRail).getByText('Metric Completeness')).toBeInTheDocument()
+    expect(within(insightRail).getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
+    expect(within(insightRail).getByText('Cache Read Share')).toBeInTheDocument()
+    expect(within(insightRail).getByText('Top Cost Key')).toBeInTheDocument()
+    expect(within(insightRail).getByText('Token Spike')).toBeInTheDocument()
+    expect(within(insightRail).getByText('Failure Cluster')).toBeInTheDocument()
+    expect(within(insightRail).getAllByRole('article').map((item) => item.getAttribute('data-insight-type'))).toEqual([
+      'metric_completeness',
+      'cache_efficiency',
+      'top_cost_key',
+      'token_spike',
+      'failure_concentration',
+    ])
+    expect(screen.getAllByText('Cache Read Share').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('6.7%').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText('1.5M prompt input · No estimated savings')).toBeInTheDocument()
     expect(screen.getByText('$4.50')).toBeInTheDocument()
-    expect(screen.getByText('Pricing Missing')).toBeInTheDocument()
+    expect(screen.queryByText('Pricing Missing')).not.toBeInTheDocument()
+    const trendDetail = screen.getByLabelText('Trend point detail')
+    expect(within(trendDetail).getAllByText('05-12').length).toBeGreaterThanOrEqual(1)
+    expect(within(trendDetail).getByText('1.1M')).toBeInTheDocument()
+    expect(within(trendDetail).getByText('181')).toBeInTheDocument()
+    expect(within(trendDetail).getByText('4')).toBeInTheDocument()
+    fireEvent.mouseEnter(within(trendDetail).getByRole('button', { name: 'Show trend details for 05-11' }))
+    expect(within(trendDetail).getByRole('button', { name: 'Show trend details for 05-11' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(trendDetail).getByText('120')).toBeInTheDocument()
+    fireEvent.focus(within(trendDetail).getByRole('button', { name: 'Show trend details for 05-12' }))
+    expect(within(trendDetail).getByRole('button', { name: 'Show trend details for 05-12' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
-    expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
+    const breakdownView = screen.getByRole('group', { name: 'Breakdown view' })
+    expect(within(breakdownView).getByRole('button', { name: 'Key Alias' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'false')
+    const healthStrip = screen.getByLabelText('Request health stability strip')
+    expect(within(healthStrip).getByText('Request Health')).toBeInTheDocument()
+    expect(within(healthStrip).getByText('5 failures')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /All providers/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /OpenAI/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Anthropic/ })).toBeInTheDocument()
     expect(screen.getAllByText('Shared Alias').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('sk-a*******3456 · OpenAI')).toBeInTheDocument()
     expect(screen.getByText('sk-b*******3456 · Anthropic')).toBeInTheDocument()
     expect(screen.getByText('Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout')).toBeInTheDocument()
     expect(screen.getByText('Cost unavailable')).toBeInTheDocument()
     expect(screen.getByText('Deleted')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Model' }))
+    fireEvent.click(within(breakdownView).getByRole('button', { name: 'Model' }))
     expect(screen.getByText('Model Distribution')).toBeInTheDocument()
+    expect(within(breakdownView).getByRole('button', { name: 'Key Alias' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
-    expect(screen.getByText(/OpenAI/)).toBeInTheDocument()
+    expect(screen.getAllByText(/OpenAI/).length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Cache Read Share: 25.0%')).toBeInTheDocument()
+    expect(screen.getByText('$0.68 estimated savings')).toBeInTheDocument()
     expect(screen.getByText('200ms avg')).toBeInTheDocument()
     expect(screen.getByText('missing-price-model')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Time' }))
+    expect(screen.getByText('Cache Read Share: No cache data')).toBeInTheDocument()
+    fireEvent.click(within(breakdownView).getByRole('button', { name: 'Time' }))
     expect(screen.getByText('Time Breakdown')).toBeInTheDocument()
+    expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(breakdownView).getByRole('button', { name: 'Time' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('221 requests · 6 failures')).toBeInTheDocument()
     expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(2)
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d')
+  })
+
+  it('queries provider-scoped analytics from response-driven provider options', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
+      if (url.includes('/api/v1/analytics/summary') && url.includes('provider=OpenAI')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 8,
+            total_tokens: 800000,
+            request_count: 80,
+            success_count: 79,
+            failure_count: 1,
+            input_tokens: 600000,
+            cached_tokens: 120000,
+            success_rate: 98.75,
+            cost_available: true,
+            cost_status: 'available',
+            cache_read_share: 20,
+            cache_read_share_state: 'available',
+          },
+          trend: [{ label: '05-13', total_cost: 8, total_tokens: 800000, request_count: 80, success_count: 79, failure_count: 1, cost_available: true, cost_status: 'available' }],
+          key_alias_breakdown: [],
+          model_distribution: [{
+            model: 'openai-model',
+            provider: 'OpenAI',
+            total_cost: 8,
+            total_tokens: 800000,
+            input_tokens: 600000,
+            cached_tokens: 120000,
+            cache_read_share: 20,
+            cache_read_share_state: 'available',
+            request_count: 80,
+            success_count: 79,
+            failure_count: 1,
+            success_rate: 98.75,
+            total_latency_ms: 8000,
+            latency_sample_count: 80,
+            average_latency_ms: 100,
+            cost_available: true,
+            cost_status: 'available',
+          }],
+          time_breakdown: [{ label: '05-13', total_cost: 8, total_tokens: 800000, request_count: 80, success_count: 79, failure_count: 1, cost_available: true, cost_status: 'available' }],
+          insights: [{ type: 'cache_efficiency', severity: 'green', title: 'Cache Read Share', detail: 'OpenAI cache reads.', subject: 'Prompt input cache', metric_label: 'Cache Read Share', metric_value: 20, count: 120000, cost_status: 'available' }],
+          provider_options: [{ provider: 'OpenAI', request_count: 80, total_tokens: 800000, total_cost: 8, cost_available: true, cost_status: 'available' }],
+        }))
+      }
+      if (url.includes('/api/v1/analytics/summary')) {
+        return new Response(JSON.stringify({
+          summary: {
+            total_cost: 21,
+            total_tokens: 2100000,
+            request_count: 210,
+            success_count: 207,
+            failure_count: 3,
+            input_tokens: 1800000,
+            cached_tokens: 180000,
+            success_rate: 98.57,
+            cost_available: true,
+            cost_status: 'available',
+            cache_read_share: 10,
+            cache_read_share_state: 'available',
+          },
+          trend: [{ label: '05-13', total_cost: 21, total_tokens: 2100000, request_count: 210, success_count: 207, failure_count: 3, cost_available: true, cost_status: 'available' }],
+          key_alias_breakdown: [],
+          model_distribution: [{
+            model: 'anthropic-model',
+            provider: 'Anthropic',
+            total_cost: 13,
+            total_tokens: 1300000,
+            input_tokens: 1200000,
+            cached_tokens: 60000,
+            cache_read_share: 5,
+            cache_read_share_state: 'available',
+            request_count: 130,
+            success_count: 128,
+            failure_count: 2,
+            success_rate: 98.46,
+            total_latency_ms: 26000,
+            latency_sample_count: 130,
+            average_latency_ms: 200,
+            cost_available: true,
+            cost_status: 'available',
+          }],
+          time_breakdown: [{ label: '05-13', total_cost: 21, total_tokens: 2100000, request_count: 210, success_count: 207, failure_count: 3, cost_available: true, cost_status: 'available' }],
+          insights: [{ type: 'cache_efficiency', severity: 'green', title: 'Cache Read Share', detail: 'All provider cache reads.', subject: 'Prompt input cache', metric_label: 'Cache Read Share', metric_value: 10, count: 180000, cost_status: 'available' }],
+          provider_options: [
+            { provider: 'OpenAI', request_count: 80, total_tokens: 800000, total_cost: 8, cost_available: true, cost_status: 'available' },
+            { provider: 'Anthropic', request_count: 130, total_tokens: 1300000, total_cost: 13, cost_available: true, cost_status: 'available' },
+          ],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect((await screen.findAllByText('$21.00')).length).toBeGreaterThanOrEqual(1)
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI/ }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&provider=OpenAI'))
+    expect((await screen.findAllByText('$8.00')).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText('$21.00')).not.toBeInTheDocument()
+    expect(within(screen.getByLabelText('Request health stability strip')).getByText('1 failure')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /OpenAI/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: /Anthropic/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /All providers/ }))
+
+    await waitFor(() => {
+      const allProviderCalls = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/analytics/summary?range=7d')
+      expect(allProviderCalls.length).toBeGreaterThanOrEqual(2)
+    })
+    expect((await screen.findAllByText('$21.00')).length).toBeGreaterThanOrEqual(1)
+    expect(within(screen.getByLabelText('Request health stability strip')).getByText('3 failures')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Anthropic/ })).toBeInTheDocument()
   })
 
   it('renders an empty key alias ranking state', async () => {
@@ -317,6 +498,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('No key alias usage in this range')).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Request health stability strip')).getByText('No failures')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Model' }))
     expect(screen.getByText('No model usage in this range')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Time' }))
@@ -346,6 +528,10 @@ describe('App', () => {
             cost_status: 'unavailable',
           },
           trend: [],
+          insights: [
+            { type: 'metric_completeness', severity: 'amber', title: 'Metric Completeness', detail: 'Prompt input is missing.', subject: 'No prompt input', metric_label: 'Metric Completeness', metric_value: 0, count: 0, cost_status: 'unavailable' },
+            { type: 'cache_efficiency', severity: 'amber', title: 'Cache Read Share', detail: 'Prompt input is zero for this range.', subject: 'No prompt input', metric_label: 'Cache state', metric_value: 0, count: 0, cost_status: 'unavailable' },
+          ],
         }))
       }
       return new Response(null, { status: 404 })
@@ -355,6 +541,9 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('Cost unavailable')).toBeInTheDocument()
+    const insightRail = screen.getByLabelText('Insight rail')
+    expect(within(insightRail).getAllByText('No prompt input').length).toBeGreaterThanOrEqual(2)
+    expect(within(insightRail).queryByText('0.0%')).not.toBeInTheDocument()
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
   })
 

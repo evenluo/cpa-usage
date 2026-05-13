@@ -6,8 +6,8 @@ import {
   CalendarRange,
   Check,
   Database,
+  Filter,
   KeyRound,
-  ListFilter,
   RefreshCw,
   Pencil,
   Search,
@@ -18,12 +18,12 @@ import {
   X,
 } from 'lucide-react'
 
-import { AliasRankingChart, HealthTimeline, MetricTrendChart, ModelDistributionChart, Sparkline, TokenCostCompareChart } from '@/components/charts'
+import { AliasRankingChart, HealthTimeline, ModelDistributionChart, Sparkline, TokenCostCompareChart } from '@/components/charts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsTrigger } from '@/components/ui/tabs'
-import { type AliasRow, type ModelRow, type TrendPoint, healthBlocks } from '@/data/analyticsPrototype'
+import { type AliasRow, type ModelRow, type TrendPoint } from '@/data/analyticsPrototype'
 
 import './index.css'
 
@@ -47,6 +47,20 @@ function formatCurrency(value: number) {
 
 function formatAnalyticsCost(summary: AnalyticsSummaryPayload) {
   return summary.cost_status === 'unavailable' ? 'Unavailable' : formatCurrency(summary.total_cost)
+}
+
+function formatCacheReadShare(state: CacheReadShareState, value: number) {
+  if (state === 'no_cache_data') {
+    return 'No cache data'
+  }
+  if (state === 'no_prompt_input') {
+    return 'No prompt input'
+  }
+  return `${value.toFixed(1)}%`
+}
+
+function formatEstimatedCacheSavings(value: number | undefined) {
+  return typeof value === 'number' ? `${formatCurrency(value)} estimated savings` : 'No estimated savings'
 }
 
 function appBasePath() {
@@ -107,9 +121,14 @@ type AnalyticsSummaryPayload = {
   request_count: number
   success_count: number
   failure_count: number
+  input_tokens: number
+  cached_tokens: number
   success_rate: number
   cost_available: boolean
   cost_status: 'available' | 'partial' | 'unavailable'
+  cache_read_share: number
+  cache_read_share_state: CacheReadShareState
+  estimated_cache_savings?: number
 }
 
 type AnalyticsTrendPointPayload = {
@@ -158,6 +177,11 @@ type AnalyticsModelPayload = {
   provider: string
   total_cost: number
   total_tokens: number
+  input_tokens: number
+  cached_tokens: number
+  cache_read_share: number
+  cache_read_share_state: CacheReadShareState
+  estimated_cache_savings?: number
   request_count: number
   success_count: number
   failure_count: number
@@ -168,6 +192,8 @@ type AnalyticsModelPayload = {
   cost_available: boolean
   cost_status: 'available' | 'partial' | 'unavailable'
 }
+
+type CacheReadShareState = 'available' | 'no_cache_data' | 'no_prompt_input'
 
 type AnalyticsInsightPayload = {
   type: string
@@ -181,6 +207,15 @@ type AnalyticsInsightPayload = {
   cost_status: 'available' | 'partial' | 'unavailable'
 }
 
+type AnalyticsProviderOptionPayload = {
+  provider: string
+  request_count: number
+  total_tokens: number
+  total_cost: number
+  cost_available: boolean
+  cost_status: 'available' | 'partial' | 'unavailable'
+}
+
 type AnalyticsSummaryResponse = {
   summary: AnalyticsSummaryPayload
   trend: AnalyticsTrendPointPayload[]
@@ -188,15 +223,18 @@ type AnalyticsSummaryResponse = {
   model_distribution?: AnalyticsModelPayload[]
   time_breakdown?: AnalyticsTrendPointPayload[]
   insights?: AnalyticsInsightPayload[]
+  provider_options?: AnalyticsProviderOptionPayload[]
 }
 
 type AnalyticsState = {
+  provider: string
   summary: AnalyticsSummaryPayload
   trend: TrendPoint[]
   keyAliases: AliasRow[]
   models: ModelRow[]
   timeBreakdown: TrendPoint[]
   insights: AnalyticsInsightPayload[]
+  providerOptions: AnalyticsProviderOptionPayload[]
 }
 
 const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
@@ -205,20 +243,35 @@ const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
   request_count: 0,
   success_count: 0,
   failure_count: 0,
+  input_tokens: 0,
+  cached_tokens: 0,
   success_rate: 0,
   cost_available: true,
   cost_status: 'available',
+  cache_read_share: 0,
+  cache_read_share_state: 'no_prompt_input',
 }
 
-function useAnalyticsSummary(enabled: boolean) {
-  const [analytics, setAnalytics] = useState<AnalyticsState>({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [] })
+function normalizeAnalyticsSummary(summary: AnalyticsSummaryPayload | undefined) {
+  return { ...emptyAnalyticsSummary, ...(summary ?? {}) }
+}
+
+const emptyAnalyticsState: AnalyticsState = { provider: '', summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [], providerOptions: [] }
+
+function useAnalyticsSummary(enabled: boolean, provider: string) {
+  const [analytics, setAnalytics] = useState<AnalyticsState>(emptyAnalyticsState)
+  const scopedProvider = provider.trim()
 
   useEffect(() => {
     if (!enabled) {
       return
     }
     let active = true
-    fetch(apiPath('/analytics/summary?range=7d'))
+    const params = new URLSearchParams({ range: '7d' })
+    if (scopedProvider !== '') {
+      params.set('provider', scopedProvider)
+    }
+    fetch(apiPath(`/analytics/summary?${params.toString()}`))
       .then((response) => {
         if (!response.ok) {
           throw new Error('load analytics failed')
@@ -229,8 +282,10 @@ function useAnalyticsSummary(enabled: boolean) {
         if (!active) {
           return
         }
+        const summary = normalizeAnalyticsSummary(payload.summary)
         setAnalytics({
-          summary: payload.summary ?? emptyAnalyticsSummary,
+          provider: scopedProvider,
+          summary,
           trend: (payload.trend ?? []).map((point) => ({
             label: point.label,
             cost: point.total_cost,
@@ -259,6 +314,11 @@ function useAnalyticsSummary(enabled: boolean) {
             provider: row.provider,
             cost: row.total_cost,
             tokens: row.total_tokens,
+            inputTokens: row.input_tokens ?? 0,
+            cachedTokens: row.cached_tokens ?? 0,
+            cacheReadShare: row.cache_read_share ?? 0,
+            cacheReadShareState: row.cache_read_share_state ?? 'no_prompt_input',
+            estimatedCacheSavings: row.estimated_cache_savings,
             requests: row.request_count,
             successRate: row.success_rate,
             averageLatencyMS: row.average_latency_ms,
@@ -276,18 +336,22 @@ function useAnalyticsSummary(enabled: boolean) {
             costStatus: point.cost_status,
           })),
           insights: payload.insights ?? [],
+          providerOptions: payload.provider_options ?? [],
         })
       })
       .catch(() => {
         if (active) {
-          setAnalytics({ summary: emptyAnalyticsSummary, trend: [], keyAliases: [], models: [], timeBreakdown: [], insights: [] })
+          setAnalytics((current) => ({ ...emptyAnalyticsState, provider: scopedProvider, providerOptions: current.providerOptions }))
         }
       })
     return () => {
       active = false
     }
-  }, [enabled])
+  }, [enabled, scopedProvider])
 
+  if (analytics.provider !== scopedProvider) {
+    return { ...emptyAnalyticsState, provider: scopedProvider, providerOptions: analytics.providerOptions }
+  }
   return analytics
 }
 
@@ -297,14 +361,26 @@ type BreakdownMode = 'key_alias' | 'model' | 'time'
 function App() {
   const route = currentRoute()
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
+  const [selectedProvider, setSelectedProvider] = useState('')
+  const [activeTrendLabel, setActiveTrendLabel] = useState('')
   const authSession = useAuthSession()
-  const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking)
+  const analytics = useAnalyticsSummary(route === '/' && authSession.authenticated && !authSession.checking, selectedProvider)
   const analyticsSummary = analytics.summary
   const analyticsTrend = analytics.trend
   const analyticsAliases = analytics.keyAliases
   const analyticsModels = analytics.models
   const analyticsTimeBreakdown = analytics.timeBreakdown
   const analyticsInsights = analytics.insights
+  const analyticsHealthBlocks = analyticsTrend.map((point) => {
+    const success = Math.max(point.requests - point.failures, 0)
+    return {
+      label: point.label,
+      success,
+      failure: point.failures,
+      rate: point.requests > 0 ? Number(((success / point.requests) * 100).toFixed(1)) : 0,
+    }
+  })
+  const requestHealthStatus = formatRequestHealthStatus(analyticsSummary.failure_count)
 
   if (authSession.checking) {
     return (
@@ -371,6 +447,11 @@ function App() {
               </h2>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <ProviderFilter
+                onChange={setSelectedProvider}
+                options={analytics.providerOptions}
+                selectedProvider={selectedProvider}
+              />
               <Button variant="outline" size="sm">
                 <CalendarRange className="size-4" aria-hidden="true" />
                 Last 7 days
@@ -405,69 +486,60 @@ function App() {
                 <CardContent>
                   <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                     <div className="h-[270px] min-w-0">
-                      <MetricTrendChart data={analyticsTrend} />
-                    </div>
-                    <div className="h-[270px] min-w-0 rounded-lg border border-border bg-muted/40 p-3">
                       <TokenCostCompareChart data={analyticsTrend} />
+                    </div>
+                    <div className="grid min-h-[270px] min-w-0 gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                      <TrendPointDetail
+                        activeLabel={activeTrendLabel}
+                        data={analyticsTrend}
+                        onActiveLabelChange={setActiveTrendLabel}
+                      />
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">Cache Read Share</p>
+                            <p className="mt-1 text-2xl font-semibold tracking-normal">
+                              {formatCacheReadShare(analyticsSummary.cache_read_share_state, analyticsSummary.cache_read_share)}
+                            </p>
+                          </div>
+                          <Badge variant={analyticsSummary.cache_read_share_state === 'available' ? 'green' : 'outline'}>
+                            {formatCompact(analyticsSummary.cached_tokens, 2)} cached
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {formatCompact(analyticsSummary.input_tokens, 2)} prompt input · {formatEstimatedCacheSavings(analyticsSummary.estimated_cache_savings)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <div className="grid gap-3 md:grid-cols-4">
-                {analyticsInsights.length === 0 ? (
-                  <Card className="shadow-none">
-                    <CardContent className="p-4">
-                      <Badge variant="outline">Insights</Badge>
-                      <p className="mt-3 text-sm font-semibold">No deterministic insights</p>
-                    </CardContent>
-                  </Card>
-                ) : analyticsInsights.map((insight) => (
-                  <Card className="shadow-none" key={insight.type}>
-                    <CardContent className="p-4">
-                      <Badge variant={insight.severity}>{insight.title}</Badge>
-                      <p className="mt-3 text-sm font-semibold">{insight.subject}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatInsightMetric(insight)}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
             </section>
 
-            <Card>
+            <Card aria-label="Insight rail">
               <CardHeader>
-                <CardTitle>Breakdown Controls</CardTitle>
-                <CardDescription>Key Alias, model, and time are the default analysis dimensions.</CardDescription>
+                <CardTitle>Insight Rail</CardTitle>
+                <CardDescription>Deterministic checkpoints ordered before conclusions.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2">
-                  <Search className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <span className="text-sm text-muted-foreground">Search alias or masked CPA Key</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
-                  <Button variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
-                  <Button variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Provider: All</Badge>
-                  <Badge variant="outline">Cost: Partial</Badge>
-                  <Badge variant="outline">Health: Visible</Badge>
-                </div>
-                <div className="rounded-lg border border-border bg-muted/40 p-4">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                    <ListFilter className="size-4 text-muted-foreground" aria-hidden="true" />
-                    Active workspace
-                  </div>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    Repeated analysis stays dense: ranking, model mix, time trend, and request health are available without turning the page into a long report.
-                  </p>
-                </div>
+              <CardContent>
+                <InsightRail insights={analyticsInsights} />
               </CardContent>
             </Card>
           </div>
 
-          <section className="mt-4">
+          <section aria-labelledby="breakdown-workbench-title" className="mt-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 id="breakdown-workbench-title" className="text-base font-semibold">Breakdown Workbench</h3>
+                <p className="text-sm text-muted-foreground">Key Alias, model, and time stay available as one active view.</p>
+              </div>
+              <div aria-label="Breakdown view" className="grid grid-cols-3 gap-2" role="group">
+                <Button aria-pressed={breakdownMode === 'key_alias'} type="button" variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
+                <Button aria-pressed={breakdownMode === 'model'} type="button" variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
+                <Button aria-pressed={breakdownMode === 'time'} type="button" variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
+              </div>
+            </div>
             {breakdownMode === 'key_alias' ? (
             <Card>
               <CardHeader className="flex flex-row items-start justify-between gap-3">
@@ -535,9 +607,13 @@ function App() {
                           <p className="text-xs text-muted-foreground">
                             {row.provider || 'Provider unknown'} · {Intl.NumberFormat('en', { notation: 'compact' }).format(row.tokens)} tokens · {formatCompact(row.requests, 1)} requests
                           </p>
+                          <p className="text-xs text-muted-foreground">
+                            Cache Read Share: {formatCacheReadShare(row.cacheReadShareState, row.cacheReadShare)}
+                          </p>
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-semibold">{row.costAvailable === false ? 'Cost unavailable' : formatCost(row.cost)}</p>
+                          <p className="text-xs text-muted-foreground">{formatEstimatedCacheSavings(row.estimatedCacheSavings)}</p>
                           <p className="text-xs text-muted-foreground">{row.averageLatencyMS ? `${row.averageLatencyMS.toFixed(0)}ms avg` : 'No latency samples'}</p>
                         </div>
                       </div>
@@ -582,20 +658,20 @@ function App() {
             ) : null}
           </section>
 
-          <Card className="mt-4">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>Request Health Timeline</CardTitle>
-                <CardDescription>Secondary stability strip for connecting usage spikes with failures.</CardDescription>
+          <Card aria-label="Request health stability strip" className="mt-4">
+            <CardHeader className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+              <div className="min-w-0">
+                <CardTitle>Request Health</CardTitle>
+                <CardDescription>Compact stability strip aligned to the active analytics scope.</CardDescription>
               </div>
-              <Badge variant="amber">
+              <Badge variant={requestHealthStatus.variant}>
                 <Activity className="mr-1 size-3" aria-hidden="true" />
-                Secondary
+                {requestHealthStatus.label}
               </Badge>
             </CardHeader>
             <CardContent>
-              <div className="h-[170px] min-w-0">
-                <HealthTimeline data={healthBlocks} />
+              <div className="h-[136px] min-w-0">
+                <HealthTimeline data={analyticsHealthBlocks} />
               </div>
             </CardContent>
           </Card>
@@ -604,6 +680,109 @@ function App() {
         </section>
       </div>
     </main>
+  )
+}
+
+function TrendPointDetail({
+  activeLabel,
+  data,
+  onActiveLabelChange,
+}: {
+  activeLabel: string
+  data: TrendPoint[]
+  onActiveLabelChange: (label: string) => void
+}) {
+  const activePoint = data.find((point) => point.label === activeLabel) ?? data.at(-1)
+  if (!activePoint) {
+    return (
+      <div aria-label="Trend point detail" className="grid min-h-[176px] place-items-center rounded-md border border-dashed border-border bg-background p-3 text-sm text-muted-foreground">
+        No trend data
+      </div>
+    )
+  }
+
+  return (
+    <div aria-label="Trend point detail" className="grid min-h-[176px] gap-3 rounded-md border border-border bg-background p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase text-muted-foreground">Active Point</p>
+          <p className="mt-1 text-lg font-semibold tracking-normal">{activePoint.label}</p>
+        </div>
+        <Badge variant={activePoint.costAvailable === false ? 'outline' : 'green'}>{formatBreakdownCost(activePoint)}</Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <p className="font-semibold">{formatCompact(activePoint.tokens, 2)}</p>
+          <p className="text-muted-foreground">tokens</p>
+        </div>
+        <div>
+          <p className="font-semibold">{formatCompact(activePoint.requests, 1)}</p>
+          <p className="text-muted-foreground">requests</p>
+        </div>
+        <div>
+          <p className="font-semibold">{activePoint.failures.toLocaleString('en')}</p>
+          <p className="text-muted-foreground">failures</p>
+        </div>
+      </div>
+      <div className="flex min-h-8 flex-wrap gap-1">
+        {data.map((point) => {
+          const selected = point.label === activePoint.label
+          return (
+            <button
+              aria-label={`Show trend details for ${point.label}`}
+              aria-pressed={selected}
+              className={`rounded-md border px-2 py-1 text-xs font-semibold ${selected ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-border text-muted-foreground hover:bg-muted'}`}
+              key={point.label}
+              onClick={() => onActiveLabelChange(point.label)}
+              onFocus={() => onActiveLabelChange(point.label)}
+              onMouseEnter={() => onActiveLabelChange(point.label)}
+              type="button"
+            >
+              {point.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function ProviderFilter({
+  onChange,
+  options,
+  selectedProvider,
+}: {
+  onChange: (provider: string) => void
+  options: AnalyticsProviderOptionPayload[]
+  selectedProvider: string
+}) {
+  return (
+    <div aria-label="Provider filter" className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-border bg-card p-1">
+      <Button
+        aria-pressed={selectedProvider === ''}
+        onClick={() => onChange('')}
+        size="sm"
+        type="button"
+        variant={selectedProvider === '' ? 'subtle' : 'ghost'}
+      >
+        <Filter className="size-3.5" aria-hidden="true" />
+        All providers
+      </Button>
+      {options.map((option) => (
+        <Button
+          aria-pressed={selectedProvider === option.provider}
+          key={option.provider}
+          onClick={() => onChange(option.provider)}
+          size="sm"
+          title={`${option.request_count.toLocaleString('en')} requests`}
+          type="button"
+          variant={selectedProvider === option.provider ? 'subtle' : 'ghost'}
+        >
+          {option.provider}
+          <span className="text-[11px] font-medium text-muted-foreground">{formatCompact(option.request_count, 1)}</span>
+        </Button>
+      ))}
+    </div>
   )
 }
 
@@ -1290,6 +1469,16 @@ function formatBreakdownCost(row: Pick<TrendPoint, 'cost' | 'costAvailable' | 'c
   return formatCost(row.cost)
 }
 
+function formatRequestHealthStatus(failureCount: number) {
+  if (failureCount <= 0) {
+    return { label: 'No failures', variant: 'green' as const }
+  }
+  if (failureCount === 1) {
+    return { label: '1 failure', variant: 'amber' as const }
+  }
+  return { label: `${failureCount.toLocaleString('en')} failures`, variant: 'amber' as const }
+}
+
 function formatInsightMetric(insight: AnalyticsInsightPayload) {
   switch (insight.metric_label) {
     case 'Cost':
@@ -1300,11 +1489,45 @@ function formatInsightMetric(insight: AnalyticsInsightPayload) {
       return `${insight.count.toLocaleString('en')} failures`
     case 'Share':
       return `${insight.metric_value.toFixed(1)}% token share`
+    case 'Cache Read Share':
+      return `${insight.metric_value.toFixed(1)}%`
+    case 'Metric Completeness':
+      return insight.subject
+    case 'Cache state':
+      return insight.subject
     case 'Cost status':
       return `Cost ${insight.cost_status}`
     default:
       return `${insight.metric_label}: ${formatCompact(insight.metric_value, 2)}`
   }
+}
+
+function InsightRail({ insights }: { insights: AnalyticsInsightPayload[] }) {
+  if (insights.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        No deterministic insights
+      </div>
+    )
+  }
+  return (
+    <div className="grid gap-3">
+      {insights.map((insight) => (
+        <article
+          className="rounded-md border border-border bg-background p-3"
+          data-insight-type={insight.type}
+          key={insight.type}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <Badge variant={insight.severity}>{insight.title}</Badge>
+            <span className="text-xs font-semibold text-muted-foreground">{formatInsightMetric(insight)}</span>
+          </div>
+          <p className="mt-3 text-sm font-semibold">{insight.subject}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p>
+        </article>
+      ))}
+    </div>
+  )
 }
 
 function formatLastUsed(value: string | null) {

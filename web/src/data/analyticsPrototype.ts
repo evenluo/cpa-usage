@@ -28,6 +28,11 @@ export type ModelRow = {
   provider: string
   cost: number
   tokens: number
+  inputTokens: number
+  cachedTokens: number
+  cacheReadShare: number
+  cacheReadShareState: 'available' | 'no_cache_data' | 'no_prompt_input'
+  estimatedCacheSavings?: number
   requests: number
   successRate: number
   averageLatencyMS: number
@@ -90,10 +95,10 @@ export const aliasRows: AliasRow[] = [
 ]
 
 export const modelRows: ModelRow[] = [
-  { model: 'gpt-5.5', provider: 'openai', cost: 296.3, tokens: 3210000, requests: 1400, successRate: 99.2, averageLatencyMS: 380, color: '#2563eb' },
-  { model: 'claude-sonnet-4.5', provider: 'anthropic', cost: 221.8, tokens: 2420000, requests: 1180, successRate: 98.6, averageLatencyMS: 420, color: '#7c3aed' },
-  { model: 'gemini-3-pro', provider: 'gemini', cost: 144.6, tokens: 3020000, requests: 980, successRate: 97.9, averageLatencyMS: 360, color: '#059669' },
-  { model: 'kimi-k2', provider: 'kimi', cost: 86.1, tokens: 1340000, requests: 510, successRate: 96.4, averageLatencyMS: 520, color: '#d97706' },
+  { model: 'gpt-5.5', provider: 'openai', cost: 296.3, tokens: 3210000, inputTokens: 2400000, cachedTokens: 480000, cacheReadShare: 20, cacheReadShareState: 'available', estimatedCacheSavings: 1.2, requests: 1400, successRate: 99.2, averageLatencyMS: 380, color: '#2563eb' },
+  { model: 'claude-sonnet-4.5', provider: 'anthropic', cost: 221.8, tokens: 2420000, inputTokens: 1800000, cachedTokens: 0, cacheReadShare: 0, cacheReadShareState: 'no_cache_data', requests: 1180, successRate: 98.6, averageLatencyMS: 420, color: '#7c3aed' },
+  { model: 'gemini-3-pro', provider: 'gemini', cost: 144.6, tokens: 3020000, inputTokens: 0, cachedTokens: 0, cacheReadShare: 0, cacheReadShareState: 'no_prompt_input', requests: 980, successRate: 97.9, averageLatencyMS: 360, color: '#059669' },
+  { model: 'kimi-k2', provider: 'kimi', cost: 86.1, tokens: 1340000, inputTokens: 1100000, cachedTokens: 110000, cacheReadShare: 10, cacheReadShareState: 'available', requests: 510, successRate: 96.4, averageLatencyMS: 520, color: '#d97706' },
 ]
 
 export const healthBlocks = trendData.map((point) => ({

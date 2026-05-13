@@ -52,6 +52,15 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 	if snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "partial" {
 		t.Fatalf("expected partial cost status, got %+v", snapshot.Summary)
 	}
+	if snapshot.Summary.InputTokens != 1_500_100 || snapshot.Summary.CachedTokens != 100_000 || snapshot.Summary.CacheReadShareState != "available" {
+		t.Fatalf("expected cache token summary from real fields, got %+v", snapshot.Summary)
+	}
+	if math.Abs(snapshot.Summary.CacheReadShare-6.666222251849877) > 0.000000001 {
+		t.Fatalf("unexpected cache read share: %+v", snapshot.Summary)
+	}
+	if snapshot.Summary.EstimatedCacheSavings != nil {
+		t.Fatalf("expected estimated cache savings to be withheld when pricing is partial, got %+v", *snapshot.Summary.EstimatedCacheSavings)
+	}
 	if len(snapshot.Trend) != 2 {
 		t.Fatalf("expected two trend points, got %+v", snapshot.Trend)
 	}
@@ -60,6 +69,132 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 	}
 	if snapshot.Trend[1].Label != "2026-05-12" || snapshot.Trend[1].CostAvailable || snapshot.Trend[1].CostStatus != "partial" {
 		t.Fatalf("unexpected second trend point: %+v", snapshot.Trend[1])
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsComplete(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     2,
+		CompletionPricePer1M: 4,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "cached", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour),
+		InputTokens: 1_000_000, CachedTokens: 250_000, OutputTokens: 100_000, TotalTokens: 1_350_000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.Summary.InputTokens != 1_000_000 || snapshot.Summary.CachedTokens != 250_000 {
+		t.Fatalf("expected input and cached tokens in summary, got %+v", snapshot.Summary)
+	}
+	if snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
+		t.Fatalf("expected available cache read share, got %+v", snapshot.Summary)
+	}
+	if math.Abs(snapshot.Summary.CacheReadShare-25) > 0.000000001 {
+		t.Fatalf("expected 25%% cache read share, got %+v", snapshot.Summary)
+	}
+	if snapshot.Summary.EstimatedCacheSavings == nil || math.Abs(*snapshot.Summary.EstimatedCacheSavings-0.375) > 0.000000001 {
+		t.Fatalf("expected cache savings estimate, got %+v", snapshot.Summary.EstimatedCacheSavings)
+	}
+	if len(snapshot.ModelBreakdown) != 1 {
+		t.Fatalf("expected one model row, got %+v", snapshot.ModelBreakdown)
+	}
+	model := snapshot.ModelBreakdown[0]
+	if model.InputTokens != 1_000_000 || model.CachedTokens != 250_000 || model.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
+		t.Fatalf("expected model cache fields from same source, got %+v", model)
+	}
+	if model.EstimatedCacheSavings == nil || math.Abs(*model.EstimatedCacheSavings-0.375) > 0.000000001 {
+		t.Fatalf("expected model cache savings estimate, got %+v", model.EstimatedCacheSavings)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterSplitsCacheUnavailableStates(t *testing.T) {
+	tests := []struct {
+		name          string
+		event         entities.UsageEvent
+		expectedState string
+	}{
+		{
+			name: "no cache data",
+			event: entities.UsageEvent{
+				EventKey: "no-cache-data", Model: "priced-model", InputTokens: 1000, TotalTokens: 1000,
+			},
+			expectedState: dto.AnalyticsCacheReadShareStateNoCacheData,
+		},
+		{
+			name: "no prompt input",
+			event: entities.UsageEvent{
+				EventKey: "no-prompt-input", Model: "priced-model", OutputTokens: 1000, TotalTokens: 1000,
+			},
+			expectedState: dto.AnalyticsCacheReadShareStateNoPromptInput,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := openTestDatabase(t)
+			start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+			end := start.Add(24 * time.Hour)
+			if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+				Model:                "priced-model",
+				PromptPricePer1M:     1,
+				CompletionPricePer1M: 1,
+				CachePricePer1M:      0.5,
+			}); err != nil {
+				t.Fatalf("upsert pricing: %v", err)
+			}
+			tt.event.Timestamp = start.Add(time.Hour)
+			if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{tt.event}); err != nil {
+				t.Fatalf("insert events: %v", err)
+			}
+
+			snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+			if err != nil {
+				t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+			}
+			if snapshot.Summary.CacheReadShareState != tt.expectedState || snapshot.Summary.CacheReadShare != 0 || snapshot.Summary.EstimatedCacheSavings != nil {
+				t.Fatalf("unexpected cache state for %s: %+v", tt.name, snapshot.Summary)
+			}
+		})
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterWithholdsCacheSavingsWhenPromptCachePricingIsInvalid(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "inverted-cache-price",
+		PromptPricePer1M:     0.25,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "invalid-savings", Model: "inverted-cache-price", Timestamp: start.Add(time.Hour),
+		InputTokens: 1_000_000, CachedTokens: 250_000, TotalTokens: 1_250_000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	if snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable || snapshot.Summary.EstimatedCacheSavings != nil {
+		t.Fatalf("expected share but no savings estimate for invalid pricing, got %+v", snapshot.Summary)
 	}
 }
 
@@ -208,6 +343,50 @@ func TestBuildAnalyticsSummaryWithFilterReturnsModelAndTimeBreakdowns(t *testing
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterReturnsProviderOptionsForCurrentScope(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "openai-a", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
+		{EventKey: "openai-b", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), OutputTokens: 500_000, TotalTokens: 500_000},
+		{EventKey: "anthropic", Provider: "Anthropic", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 3_000_000, TotalTokens: 3_000_000},
+		{EventKey: "blank-provider", Provider: " ", Model: "priced-model", Timestamp: start.Add(4 * time.Hour), InputTokens: 10_000_000, TotalTokens: 10_000_000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	allProviders, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	if len(allProviders.ProviderOptions) != 2 {
+		t.Fatalf("expected non-empty provider options only, got %+v", allProviders.ProviderOptions)
+	}
+	if allProviders.ProviderOptions[0].Provider != "Anthropic" || allProviders.ProviderOptions[0].RequestCount != 1 || allProviders.ProviderOptions[0].TotalTokens != 3_000_000 {
+		t.Fatalf("expected Anthropic first by cost and tokens, got %+v", allProviders.ProviderOptions)
+	}
+	if allProviders.ProviderOptions[1].Provider != "OpenAI" || allProviders.ProviderOptions[1].RequestCount != 2 || allProviders.ProviderOptions[1].TotalTokens != 1_500_000 {
+		t.Fatalf("expected OpenAI option totals, got %+v", allProviders.ProviderOptions)
+	}
+
+	openAIOnly, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	if len(openAIOnly.ProviderOptions) != 1 || openAIOnly.ProviderOptions[0].Provider != "OpenAI" || openAIOnly.ProviderOptions[0].RequestCount != 2 {
+		t.Fatalf("expected provider options to follow selected provider scope, got %+v", openAIOnly.ProviderOptions)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
@@ -246,7 +425,14 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	for _, insight := range snapshot.Insights {
 		insights[insight.Type] = insight
 	}
-	for _, expectedType := range []string{"top_cost_key", "top_token_key", "token_spike", "pricing_missing", "failure_concentration", "cache_reasoning_share"} {
+	expectedOrder := []string{"metric_completeness", "cache_efficiency", "top_cost_key", "token_spike", "failure_concentration", "reasoning_tokens"}
+	if len(snapshot.Insights) != len(expectedOrder) {
+		t.Fatalf("expected ordered insights %v, got %+v", expectedOrder, snapshot.Insights)
+	}
+	for index, expectedType := range expectedOrder {
+		if snapshot.Insights[index].Type != expectedType {
+			t.Fatalf("expected insight %q at index %d, got %+v", expectedType, index, snapshot.Insights)
+		}
 		if _, ok := insights[expectedType]; !ok {
 			t.Fatalf("expected insight %q in %+v", expectedType, snapshot.Insights)
 		}
@@ -254,11 +440,47 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	if insights["top_cost_key"].Subject != "Alpha Ops" || insights["top_cost_key"].MetricValue <= 0 {
 		t.Fatalf("expected top cost key to use alias and configured cost, got %+v", insights["top_cost_key"])
 	}
-	if insights["top_token_key"].Subject != "Beta Team" || insights["pricing_missing"].CostStatus != dto.AnalyticsCostStatusPartial {
-		t.Fatalf("expected token and pricing insights to expose context, got %+v", snapshot.Insights)
+	if insights["metric_completeness"].Title != "Metric Completeness" || insights["metric_completeness"].CostStatus != dto.AnalyticsCostStatusPartial {
+		t.Fatalf("expected completeness insight to expose partial interpretation, got %+v", snapshot.Insights)
 	}
-	if insights["cache_reasoning_share"].Count != 500_000 || insights["failure_concentration"].Count != 1 {
-		t.Fatalf("expected token-mix and failure counts, got %+v", snapshot.Insights)
+	if insights["cache_efficiency"].Title != "Cache Read Share" || insights["cache_efficiency"].Count != 200_000 {
+		t.Fatalf("expected cache insight to use cache fields, got %+v", snapshot.Insights)
+	}
+	if insights["reasoning_tokens"].Count != 300_000 || insights["failure_concentration"].Count != 1 {
+		t.Fatalf("expected reasoning and failure counts, got %+v", snapshot.Insights)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterDoesNotRenderUnavailableCacheInsightAsZeroShare(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "no-cache-data", Model: "priced-model", Timestamp: start.Add(time.Hour),
+		InputTokens: 1000, TotalTokens: 1000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.Insights) < 2 || snapshot.Insights[1].Type != "cache_efficiency" {
+		t.Fatalf("expected cache insight after completeness, got %+v", snapshot.Insights)
+	}
+	cacheInsight := snapshot.Insights[1]
+	if cacheInsight.Subject != "No cache data" || cacheInsight.MetricLabel != "Cache state" || cacheInsight.MetricValue != 0 {
+		t.Fatalf("expected unavailable cache state instead of zero share, got %+v", cacheInsight)
 	}
 }
 

@@ -6,19 +6,27 @@ const (
 	AnalyticsCostStatusAvailable   = "available"
 	AnalyticsCostStatusPartial     = "partial"
 	AnalyticsCostStatusUnavailable = "unavailable"
+
+	AnalyticsCacheReadShareStateAvailable     = "available"
+	AnalyticsCacheReadShareStateNoCacheData   = "no_cache_data"
+	AnalyticsCacheReadShareStateNoPromptInput = "no_prompt_input"
 )
 
 type AnalyticsSummaryRecord struct {
-	TotalCost       float64
-	TotalTokens     int64
-	RequestCount    int64
-	SuccessCount    int64
-	FailureCount    int64
-	CachedTokens    int64
-	ReasoningTokens int64
-	SuccessRate     float64
-	CostAvailable   bool
-	CostStatus      string
+	TotalCost             float64
+	TotalTokens           int64
+	RequestCount          int64
+	SuccessCount          int64
+	FailureCount          int64
+	InputTokens           int64
+	CachedTokens          int64
+	ReasoningTokens       int64
+	SuccessRate           float64
+	CostAvailable         bool
+	CostStatus            string
+	CacheReadShare        float64
+	CacheReadShareState   string
+	EstimatedCacheSavings *float64
 }
 
 type AnalyticsTrendPointRecord struct {
@@ -66,19 +74,24 @@ type AnalyticsKeyAliasBreakdownRecord struct {
 }
 
 type AnalyticsModelBreakdownRecord struct {
-	Model              string
-	Provider           string
-	TotalCost          float64
-	TotalTokens        int64
-	RequestCount       int64
-	SuccessCount       int64
-	FailureCount       int64
-	SuccessRate        float64
-	TotalLatencyMS     int64
-	LatencySampleCount int64
-	AverageLatencyMS   float64
-	CostAvailable      bool
-	CostStatus         string
+	Model                 string
+	Provider              string
+	TotalCost             float64
+	TotalTokens           int64
+	RequestCount          int64
+	SuccessCount          int64
+	FailureCount          int64
+	InputTokens           int64
+	CachedTokens          int64
+	SuccessRate           float64
+	TotalLatencyMS        int64
+	LatencySampleCount    int64
+	AverageLatencyMS      float64
+	CostAvailable         bool
+	CostStatus            string
+	CacheReadShare        float64
+	CacheReadShareState   string
+	EstimatedCacheSavings *float64
 }
 
 type AnalyticsInsightRecord struct {
@@ -93,6 +106,15 @@ type AnalyticsInsightRecord struct {
 	CostStatus  string
 }
 
+type AnalyticsProviderOptionRecord struct {
+	Provider      string
+	RequestCount  int64
+	TotalTokens   int64
+	TotalCost     float64
+	CostAvailable bool
+	CostStatus    string
+}
+
 type AnalyticsSummarySnapshot struct {
 	Summary           AnalyticsSummaryRecord
 	Trend             []AnalyticsTrendPointRecord
@@ -100,4 +122,5 @@ type AnalyticsSummarySnapshot struct {
 	ModelBreakdown    []AnalyticsModelBreakdownRecord
 	TimeBreakdown     []AnalyticsTrendPointRecord
 	Insights          []AnalyticsInsightRecord
+	ProviderOptions   []AnalyticsProviderOptionRecord
 }

@@ -33,14 +33,18 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	end := time.Date(2026, 5, 12, 23, 59, 59, 0, time.UTC)
 	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{
 		Summary: servicedto.AnalyticsSummary{
-			TotalCost:     2.45,
-			TotalTokens:   2_100_100,
-			RequestCount:  3,
-			SuccessCount:  2,
-			FailureCount:  1,
-			SuccessRate:   66.6666666667,
-			CostAvailable: false,
-			CostStatus:    "partial",
+			TotalCost:           2.45,
+			TotalTokens:         2_100_100,
+			RequestCount:        3,
+			SuccessCount:        2,
+			FailureCount:        1,
+			InputTokens:         1_500_100,
+			CachedTokens:        100_000,
+			SuccessRate:         66.6666666667,
+			CostAvailable:       false,
+			CostStatus:          "partial",
+			CacheReadShare:      6.666222251849877,
+			CacheReadShareState: "available",
 		},
 		Trend: []servicedto.AnalyticsTrendPoint{{
 			Label:         "2026-05-11",
@@ -80,19 +84,23 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			}},
 		}},
 		ModelBreakdown: []servicedto.AnalyticsModelBreakdown{{
-			Model:              "priced-model",
-			Provider:           "OpenAI",
-			TotalCost:          2.45,
-			TotalTokens:        2_100_100,
-			RequestCount:       3,
-			SuccessCount:       2,
-			FailureCount:       1,
-			SuccessRate:        66.6666666667,
-			TotalLatencyMS:     600,
-			LatencySampleCount: 3,
-			AverageLatencyMS:   200,
-			CostAvailable:      false,
-			CostStatus:         "partial",
+			Model:               "priced-model",
+			Provider:            "OpenAI",
+			TotalCost:           2.45,
+			TotalTokens:         2_100_100,
+			RequestCount:        3,
+			SuccessCount:        2,
+			FailureCount:        1,
+			InputTokens:         1_500_100,
+			CachedTokens:        100_000,
+			SuccessRate:         66.6666666667,
+			TotalLatencyMS:      600,
+			LatencySampleCount:  3,
+			AverageLatencyMS:    200,
+			CostAvailable:       false,
+			CostStatus:          "partial",
+			CacheReadShare:      6.666222251849877,
+			CacheReadShareState: "available",
 		}},
 		TimeBreakdown: []servicedto.AnalyticsTrendPoint{{
 			Label:         "2026-05-11",
@@ -117,6 +125,14 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			Count:       1,
 			CostStatus:  "partial",
 		}},
+		ProviderOptions: []servicedto.AnalyticsProviderOption{{
+			Provider:      "OpenAI",
+			RequestCount:  3,
+			TotalTokens:   2_100_100,
+			TotalCost:     2.45,
+			CostAvailable: false,
+			CostStatus:    "partial",
+		}},
 	}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
@@ -137,6 +153,10 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"total_cost":2.45`,
 		`"total_tokens":2100100`,
 		`"request_count":3`,
+		`"input_tokens":1500100`,
+		`"cached_tokens":100000`,
+		`"cache_read_share":6.666222251849877`,
+		`"cache_read_share_state":"available"`,
 		`"cost_available":false`,
 		`"cost_status":"partial"`,
 		`"label":"2026-05-11"`,
@@ -152,10 +172,16 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		`"insights":[`,
 		`"type":"pricing_missing"`,
 		`"subject":"1 model"`,
+		`"provider_options":[`,
+		`"provider":"OpenAI"`,
+		`"request_count":3`,
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected response to contain %s, got %s", expected, body)
 		}
+	}
+	if contains(body, `"estimated_cache_savings"`) {
+		t.Fatalf("expected partial pricing response to withhold estimated cache savings, got %s", body)
 	}
 	if provider.calls != 1 {
 		t.Fatalf("expected provider to be called once, got %d", provider.calls)
@@ -180,7 +206,7 @@ func TestAnalyticsSummaryRouteReturnsEmptyPayloadWithoutProvider(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !contains(body, `"trend":[]`) || !contains(body, `"model_distribution":[]`) || !contains(body, `"time_breakdown":[]`) || !contains(body, `"cost_status":"available"`) {
+	if !contains(body, `"trend":[]`) || !contains(body, `"model_distribution":[]`) || !contains(body, `"time_breakdown":[]`) || !contains(body, `"provider_options":[]`) || !contains(body, `"cost_status":"available"`) {
 		t.Fatalf("expected empty analytics payload, got %s", body)
 	}
 }

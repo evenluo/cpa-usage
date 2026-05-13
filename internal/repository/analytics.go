@@ -12,16 +12,20 @@ import (
 )
 
 type analyticsAggregateRow struct {
-	Bucket               string
-	RequestCount         int64
-	SuccessCount         int64
-	FailureCount         int64
-	TotalTokens          int64
-	TotalCost            float64
-	CachedTokens         int64
-	ReasoningTokens      int64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
+	Bucket                     string
+	RequestCount               int64
+	SuccessCount               int64
+	FailureCount               int64
+	InputTokens                int64
+	TotalTokens                int64
+	TotalCost                  float64
+	CachedTokens               int64
+	ReasoningTokens            int64
+	CacheSavings               float64
+	CacheSavingsEligibleRows   int64
+	CacheSavingsIneligibleRows int64
+	MissingPricingEvents       int64
+	PricedBillableEvents       int64
 }
 
 type analyticsIdentityAggregateRow struct {
@@ -56,16 +60,30 @@ type analyticsIdentityTrendRow struct {
 }
 
 type analyticsModelAggregateRow struct {
-	Model                string
+	Model                      string
+	Provider                   string
+	ProviderCount              int64
+	RequestCount               int64
+	SuccessCount               int64
+	FailureCount               int64
+	InputTokens                int64
+	TotalTokens                int64
+	TotalCost                  float64
+	CachedTokens               int64
+	CacheSavings               float64
+	CacheSavingsEligibleRows   int64
+	CacheSavingsIneligibleRows int64
+	TotalLatencyMS             int64
+	LatencySampleCount         int64
+	MissingPricingEvents       int64
+	PricedBillableEvents       int64
+}
+
+type analyticsProviderOptionRow struct {
 	Provider             string
-	ProviderCount        int64
 	RequestCount         int64
-	SuccessCount         int64
-	FailureCount         int64
 	TotalTokens          int64
 	TotalCost            float64
-	TotalLatencyMS       int64
-	LatencySampleCount   int64
 	MissingPricingEvents int64
 	PricedBillableEvents int64
 }
@@ -98,6 +116,10 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 	if err != nil {
 		return nil, err
 	}
+	providerOptions, err := buildAnalyticsProviderOptions(db, filter)
+	if err != nil {
+		return nil, err
+	}
 
 	return &dto.AnalyticsSummarySnapshot{
 		Summary:           summary,
@@ -106,6 +128,7 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 		ModelBreakdown:    modelBreakdown,
 		TimeBreakdown:     trend,
 		Insights:          buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
+		ProviderOptions:   providerOptions,
 	}, nil
 }
 
@@ -116,9 +139,13 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 			COUNT(*) AS request_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
 				COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
 				COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
 				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
 				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
+				COALESCE(SUM(` + analyticsCacheSavingsSQLExpression() + `), 0) AS cache_savings,
+				COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpression() + `), 0) AS cache_savings_eligible_rows,
+				COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpression() + `), 0) AS cache_savings_ineligible_rows,
 				COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
 				COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
 				COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
@@ -292,7 +319,12 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 			COUNT(*) AS request_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
 			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
+			COALESCE(SUM(` + analyticsCacheSavingsSQLExpression() + `), 0) AS cache_savings,
+			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpression() + `), 0) AS cache_savings_eligible_rows,
+			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpression() + `), 0) AS cache_savings_ineligible_rows,
 			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
 			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END), 0) AS total_latency_ms,
 			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END), 0) AS latency_sample_count,
@@ -313,6 +345,40 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 		breakdown = append(breakdown, mapAnalyticsModelBreakdown(row))
 	}
 	return breakdown, nil
+}
+
+func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsProviderOptionRecord, error) {
+	var rows []analyticsProviderOptionRow
+	if err := analyticsEventsWithPricingQuery(db, filter).
+		Select(`
+			TRIM(usage_events.provider) AS provider,
+			COUNT(*) AS request_count,
+			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
+		Where("TRIM(usage_events.provider) <> ''").
+		Group("TRIM(usage_events.provider)").
+		Order("total_cost DESC").
+		Order("COALESCE(SUM(usage_events.total_tokens), 0) DESC").
+		Order("provider ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("build analytics provider options: %w", err)
+	}
+
+	options := make([]dto.AnalyticsProviderOptionRecord, 0, len(rows))
+	for _, row := range rows {
+		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		options = append(options, dto.AnalyticsProviderOptionRecord{
+			Provider:      row.Provider,
+			RequestCount:  row.RequestCount,
+			TotalTokens:   row.TotalTokens,
+			TotalCost:     row.TotalCost,
+			CostAvailable: costAvailable,
+			CostStatus:    costStatus,
+		})
+	}
+	return options, nil
 }
 
 func applyAnalyticsIdentityKeyFilter(query *gorm.DB, keys []analyticsIdentityKey, authTypeExpr string, identityExpr string) *gorm.DB {
@@ -336,6 +402,41 @@ func analyticsCostSQLExpression() string {
 			(` + promptTokens + ` / 1000000.0) * model_price_settings.prompt_price_per1_m +
 			(` + outputTokens + ` / 1000000.0) * model_price_settings.completion_price_per1_m +
 			(` + cachedTokens + ` / 1000000.0) * model_price_settings.cache_price_per1_m
+	END`
+}
+
+func analyticsCacheSavingsSQLExpression() string {
+	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return `CASE
+		WHEN ` + cachedTokens + ` > 0
+			AND model_price_settings.id IS NOT NULL
+			AND model_price_settings.prompt_price_per1_m >= model_price_settings.cache_price_per1_m
+		THEN (` + cachedTokens + ` / 1000000.0) * (model_price_settings.prompt_price_per1_m - model_price_settings.cache_price_per1_m)
+		ELSE 0
+	END`
+}
+
+func analyticsCacheSavingsEligibleSQLExpression() string {
+	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return `CASE
+		WHEN ` + cachedTokens + ` > 0
+			AND model_price_settings.id IS NOT NULL
+			AND model_price_settings.prompt_price_per1_m >= model_price_settings.cache_price_per1_m
+		THEN 1
+		ELSE 0
+	END`
+}
+
+func analyticsCacheSavingsIneligibleSQLExpression() string {
+	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return `CASE
+		WHEN ` + cachedTokens + ` > 0
+			AND (
+				model_price_settings.id IS NULL
+				OR model_price_settings.prompt_price_per1_m < model_price_settings.cache_price_per1_m
+			)
+		THEN 1
+		ELSE 0
 	END`
 }
 
@@ -387,6 +488,7 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {
 		RequestCount:    row.RequestCount,
 		SuccessCount:    row.SuccessCount,
 		FailureCount:    row.FailureCount,
+		InputTokens:     row.InputTokens,
 		CachedTokens:    row.CachedTokens,
 		ReasoningTokens: row.ReasoningTokens,
 	}
@@ -394,6 +496,14 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
 	summary.CostAvailable, summary.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	summary.CacheReadShare, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
+		row.InputTokens,
+		row.CachedTokens,
+		row.CacheSavings,
+		row.CacheSavingsEligibleRows,
+		row.CacheSavingsIneligibleRows,
+		summary.CostStatus == dto.AnalyticsCostStatusAvailable,
+	)
 	return summary
 }
 
@@ -462,6 +572,8 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 		RequestCount:       row.RequestCount,
 		SuccessCount:       row.SuccessCount,
 		FailureCount:       row.FailureCount,
+		InputTokens:        row.InputTokens,
+		CachedTokens:       row.CachedTokens,
 		TotalLatencyMS:     row.TotalLatencyMS,
 		LatencySampleCount: row.LatencySampleCount,
 	}
@@ -475,7 +587,29 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 		record.AverageLatencyMS = float64(row.TotalLatencyMS) / float64(row.LatencySampleCount)
 	}
 	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	record.CacheReadShare, record.CacheReadShareState, record.EstimatedCacheSavings = analyticsCacheEfficiency(
+		row.InputTokens,
+		row.CachedTokens,
+		row.CacheSavings,
+		row.CacheSavingsEligibleRows,
+		row.CacheSavingsIneligibleRows,
+		record.CostStatus == dto.AnalyticsCostStatusAvailable,
+	)
 	return record
+}
+
+func analyticsCacheEfficiency(inputTokens int64, cachedTokens int64, cacheSavings float64, eligibleRows int64, ineligibleRows int64, pricingComplete bool) (float64, string, *float64) {
+	if inputTokens <= 0 {
+		return 0, dto.AnalyticsCacheReadShareStateNoPromptInput, nil
+	}
+	if cachedTokens <= 0 {
+		return 0, dto.AnalyticsCacheReadShareStateNoCacheData, nil
+	}
+	share := (float64(cachedTokens) / float64(inputTokens)) * 100
+	if !pricingComplete || eligibleRows == 0 || ineligibleRows > 0 {
+		return share, dto.AnalyticsCacheReadShareStateAvailable, nil
+	}
+	return share, dto.AnalyticsCacheReadShareStateAvailable, &cacheSavings
 }
 
 func buildAnalyticsInsights(
@@ -489,6 +623,8 @@ func buildAnalyticsInsights(
 	}
 
 	insights := make([]dto.AnalyticsInsightRecord, 0, 6)
+	insights = append(insights, metricCompletenessInsight(summary, models))
+	insights = append(insights, cacheEfficiencyInsight(summary))
 	if topCost, ok := topCostKeyAlias(keyAliases); ok {
 		insights = append(insights, dto.AnalyticsInsightRecord{
 			Type:        "top_cost_key",
@@ -500,19 +636,6 @@ func buildAnalyticsInsights(
 			MetricValue: topCost.TotalCost,
 			Count:       topCost.RequestCount,
 			CostStatus:  topCost.CostStatus,
-		})
-	}
-	if topTokens, ok := topTokenKeyAlias(keyAliases); ok {
-		insights = append(insights, dto.AnalyticsInsightRecord{
-			Type:        "top_token_key",
-			Severity:    "blue",
-			Title:       "Top Token Key",
-			Detail:      "Largest token contributor in this range.",
-			Subject:     analyticsInsightKeyLabel(topTokens),
-			MetricLabel: "Tokens",
-			MetricValue: float64(topTokens.TotalTokens),
-			Count:       topTokens.RequestCount,
-			CostStatus:  topTokens.CostStatus,
 		})
 	}
 	if spike, ok := topTokenBucket(trend); ok {
@@ -528,19 +651,6 @@ func buildAnalyticsInsights(
 			CostStatus:  spike.CostStatus,
 		})
 	}
-	if summary.CostStatus != dto.AnalyticsCostStatusAvailable {
-		insights = append(insights, dto.AnalyticsInsightRecord{
-			Type:        "pricing_missing",
-			Severity:    "amber",
-			Title:       "Pricing Missing",
-			Detail:      "Some Cost values are partial or unavailable because model pricing is incomplete.",
-			Subject:     missingPricingSubject(models),
-			MetricLabel: "Cost status",
-			MetricValue: float64(countModelsWithIncompletePricing(models)),
-			Count:       countModelsWithIncompletePricing(models),
-			CostStatus:  summary.CostStatus,
-		})
-	}
 	if failure, ok := failureConcentration(keyAliases); ok {
 		insights = append(insights, dto.AnalyticsInsightRecord{
 			Type:        "failure_concentration",
@@ -554,20 +664,91 @@ func buildAnalyticsInsights(
 			CostStatus:  failure.CostStatus,
 		})
 	}
-	if share := cacheReasoningShare(summary); share > 0 {
+	if summary.ReasoningTokens > 0 {
 		insights = append(insights, dto.AnalyticsInsightRecord{
-			Type:        "cache_reasoning_share",
-			Severity:    "green",
-			Title:       "Cache/Reasoning Share",
-			Detail:      "Cached and reasoning tokens as a share of total tokens.",
-			Subject:     "Token mix",
-			MetricLabel: "Share",
-			MetricValue: share,
-			Count:       summary.CachedTokens + summary.ReasoningTokens,
+			Type:        "reasoning_tokens",
+			Severity:    "blue",
+			Title:       "Reasoning Tokens",
+			Detail:      "Reasoning token volume is tracked separately from prompt cache reads.",
+			Subject:     "Reasoning behavior",
+			MetricLabel: "Tokens",
+			MetricValue: float64(summary.ReasoningTokens),
+			Count:       summary.ReasoningTokens,
 			CostStatus:  summary.CostStatus,
 		})
 	}
 	return insights
+}
+
+func metricCompletenessInsight(summary dto.AnalyticsSummaryRecord, models []dto.AnalyticsModelBreakdownRecord) dto.AnalyticsInsightRecord {
+	incompleteModels := countModelsWithIncompletePricing(models)
+	cacheComplete := summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateAvailable
+	costComplete := summary.CostStatus == dto.AnalyticsCostStatusAvailable
+	insight := dto.AnalyticsInsightRecord{
+		Type:        "metric_completeness",
+		Severity:    "green",
+		Title:       "Metric Completeness",
+		Detail:      "Cost and cache efficiency have the supporting data needed for complete interpretation.",
+		Subject:     "Complete",
+		MetricLabel: "Metric Completeness",
+		MetricValue: 0,
+		Count:       incompleteModels,
+		CostStatus:  summary.CostStatus,
+	}
+	if costComplete && cacheComplete {
+		return insight
+	}
+	insight.Severity = "amber"
+	insight.Subject = metricCompletenessSubject(summary, incompleteModels)
+	insight.Detail = "Some derived metrics are incomplete, but the underlying usage events remain valid."
+	insight.MetricValue = float64(incompleteModels)
+	return insight
+}
+
+func metricCompletenessSubject(summary dto.AnalyticsSummaryRecord, incompleteModels int64) string {
+	if summary.CostStatus != dto.AnalyticsCostStatusAvailable {
+		return "Cost " + summary.CostStatus
+	}
+	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoCacheData {
+		return "No cache data"
+	}
+	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoPromptInput {
+		return "No prompt input"
+	}
+	if incompleteModels == 1 {
+		return "1 model"
+	}
+	if incompleteModels > 1 {
+		return fmt.Sprintf("%d models", incompleteModels)
+	}
+	return "Incomplete"
+}
+
+func cacheEfficiencyInsight(summary dto.AnalyticsSummaryRecord) dto.AnalyticsInsightRecord {
+	insight := dto.AnalyticsInsightRecord{
+		Type:        "cache_efficiency",
+		Severity:    "green",
+		Title:       "Cache Read Share",
+		Detail:      "Prompt cache reads are measured against prompt input tokens, separately from reasoning tokens.",
+		Subject:     "Prompt input cache",
+		MetricLabel: "Cache Read Share",
+		MetricValue: summary.CacheReadShare,
+		Count:       summary.CachedTokens,
+		CostStatus:  summary.CostStatus,
+	}
+	switch summary.CacheReadShareState {
+	case dto.AnalyticsCacheReadShareStateNoCacheData:
+		insight.Severity = "amber"
+		insight.Subject = "No cache data"
+		insight.MetricLabel = "Cache state"
+		insight.Detail = "Cached-token evidence is unavailable for this range; reasoning tokens are not counted as cache reads."
+	case dto.AnalyticsCacheReadShareStateNoPromptInput:
+		insight.Severity = "amber"
+		insight.Subject = "No prompt input"
+		insight.MetricLabel = "Cache state"
+		insight.Detail = "Prompt input is zero for this range, so Cache Read Share has no denominator."
+	}
+	return insight
 }
 
 func topCostKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.AnalyticsKeyAliasBreakdownRecord, bool) {
@@ -578,18 +759,6 @@ func topCostKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.Analytics
 			continue
 		}
 		if !found || row.TotalCost > best.TotalCost {
-			best = row
-			found = true
-		}
-	}
-	return best, found
-}
-
-func topTokenKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.AnalyticsKeyAliasBreakdownRecord, bool) {
-	var best dto.AnalyticsKeyAliasBreakdownRecord
-	found := false
-	for _, row := range rows {
-		if !found || row.TotalTokens > best.TotalTokens {
 			best = row
 			found = true
 		}
@@ -641,24 +810,6 @@ func countModelsWithIncompletePricing(models []dto.AnalyticsModelBreakdownRecord
 		}
 	}
 	return count
-}
-
-func missingPricingSubject(models []dto.AnalyticsModelBreakdownRecord) string {
-	count := countModelsWithIncompletePricing(models)
-	if count == 0 {
-		return "Cost " + dto.AnalyticsCostStatusPartial
-	}
-	if count == 1 {
-		return "1 model"
-	}
-	return fmt.Sprintf("%d models", count)
-}
-
-func cacheReasoningShare(summary dto.AnalyticsSummaryRecord) float64 {
-	if summary.TotalTokens <= 0 {
-		return 0
-	}
-	return (float64(summary.CachedTokens+summary.ReasoningTokens) / float64(summary.TotalTokens)) * 100
 }
 
 func parseAnalyticsTimestamp(value string) *time.Time {
