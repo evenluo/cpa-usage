@@ -24,6 +24,14 @@ _Avoid_: Cache hit rate, cache/reasoning share
 The degree to which a dashboard metric has the required supporting data to be read as a complete conclusion.
 _Avoid_: Data trust, data truth
 
+**Usage Intelligence**:
+The primary analytics workspace for understanding aggregate usage, cost, request health, and time patterns before drilling into individual events.
+_Avoid_: Request event log, raw events page
+
+**Time Granularity**:
+The selected aggregation level for time-series analytics, such as hourly or daily buckets, applied consistently across trend charts and time-pattern views.
+_Avoid_: Fixed by-day chart, chart-only grouping
+
 ## Relationships
 
 - A **CPA Key** may have zero or one global **Key Alias**
@@ -38,12 +46,23 @@ _Avoid_: Data trust, data truth
 - Search and filters can match both **Key Alias** and **CPA Key**.
 - When a **Key Alias** exists, it is the primary display label and the masked **CPA Key** is secondary traceability text.
 - The analytics page is organized around total usage first, then breakdowns by dimensions such as **Key Alias**, model, provider, and health.
+- **Usage Intelligence** is the aggregate dashboard surface; request events are supporting drill-down evidence, not the primary dashboard structure.
 - Token volume and **Cost** are peer measurement categories in the dashboard.
+- The primary trend is controlled by **Time Granularity** and must not be limited to a fixed by-day aggregation.
+- The default **Time Granularity** for the primary trend is hourly; daily is an explicit roll-up mode.
+- The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
+- The first heatmap view uses date-by-hour buckets for the selected range, not weekday averages.
+- KPI comparison uses the immediately previous period for the same selected range; missing previous-period data is shown explicitly instead of inferred.
+- The primary trend includes bucket-derived summary stats for average and peak **Cost** and token volume, plus total **Cost** and tokens.
+- The first **Usage Intelligence** refinement keeps the selected range fixed to Last 7 days while adding **Time Granularity** support.
 - **Cache Read Share** is an efficiency metric for prompt input tokens, not a replacement for **Cost**, token volume, requests, or success rate.
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
+- Leaderboards default to **Cost** ordering when cost metrics are complete; token volume becomes the ordering measure when cost is unavailable.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
 - Request health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - First-version insights are deterministic metrics and warnings, not AI-generated summaries.
+- **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.
+- Production rollout for **Usage Intelligence** refinements updates the `/cpa-usage` service only and must leave the existing `/usage` service and CPA root service intact.
 
 ## Example dialogue
 
