@@ -12,16 +12,20 @@ import (
 )
 
 type analyticsAggregateRow struct {
-	Bucket               string
-	RequestCount         int64
-	SuccessCount         int64
-	FailureCount         int64
-	TotalTokens          int64
-	TotalCost            float64
-	CachedTokens         int64
-	ReasoningTokens      int64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
+	Bucket                     string
+	RequestCount               int64
+	SuccessCount               int64
+	FailureCount               int64
+	InputTokens                int64
+	TotalTokens                int64
+	TotalCost                  float64
+	CachedTokens               int64
+	ReasoningTokens            int64
+	CacheSavings               float64
+	CacheSavingsEligibleRows   int64
+	CacheSavingsIneligibleRows int64
+	MissingPricingEvents       int64
+	PricedBillableEvents       int64
 }
 
 type analyticsIdentityAggregateRow struct {
@@ -56,18 +60,23 @@ type analyticsIdentityTrendRow struct {
 }
 
 type analyticsModelAggregateRow struct {
-	Model                string
-	Provider             string
-	ProviderCount        int64
-	RequestCount         int64
-	SuccessCount         int64
-	FailureCount         int64
-	TotalTokens          int64
-	TotalCost            float64
-	TotalLatencyMS       int64
-	LatencySampleCount   int64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
+	Model                      string
+	Provider                   string
+	ProviderCount              int64
+	RequestCount               int64
+	SuccessCount               int64
+	FailureCount               int64
+	InputTokens                int64
+	TotalTokens                int64
+	TotalCost                  float64
+	CachedTokens               int64
+	CacheSavings               float64
+	CacheSavingsEligibleRows   int64
+	CacheSavingsIneligibleRows int64
+	TotalLatencyMS             int64
+	LatencySampleCount         int64
+	MissingPricingEvents       int64
+	PricedBillableEvents       int64
 }
 
 type analyticsIdentityKey struct {
@@ -116,9 +125,13 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 			COUNT(*) AS request_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
 				COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
 				COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
 				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
 				COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
+				COALESCE(SUM(` + analyticsCacheSavingsSQLExpression() + `), 0) AS cache_savings,
+				COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpression() + `), 0) AS cache_savings_eligible_rows,
+				COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpression() + `), 0) AS cache_savings_ineligible_rows,
 				COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
 				COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
 				COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
@@ -292,7 +305,12 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 			COUNT(*) AS request_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
 			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
+			COALESCE(SUM(` + analyticsCacheSavingsSQLExpression() + `), 0) AS cache_savings,
+			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpression() + `), 0) AS cache_savings_eligible_rows,
+			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpression() + `), 0) AS cache_savings_ineligible_rows,
 			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
 			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END), 0) AS total_latency_ms,
 			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END), 0) AS latency_sample_count,
@@ -336,6 +354,41 @@ func analyticsCostSQLExpression() string {
 			(` + promptTokens + ` / 1000000.0) * model_price_settings.prompt_price_per1_m +
 			(` + outputTokens + ` / 1000000.0) * model_price_settings.completion_price_per1_m +
 			(` + cachedTokens + ` / 1000000.0) * model_price_settings.cache_price_per1_m
+	END`
+}
+
+func analyticsCacheSavingsSQLExpression() string {
+	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return `CASE
+		WHEN ` + cachedTokens + ` > 0
+			AND model_price_settings.id IS NOT NULL
+			AND model_price_settings.prompt_price_per1_m >= model_price_settings.cache_price_per1_m
+		THEN (` + cachedTokens + ` / 1000000.0) * (model_price_settings.prompt_price_per1_m - model_price_settings.cache_price_per1_m)
+		ELSE 0
+	END`
+}
+
+func analyticsCacheSavingsEligibleSQLExpression() string {
+	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return `CASE
+		WHEN ` + cachedTokens + ` > 0
+			AND model_price_settings.id IS NOT NULL
+			AND model_price_settings.prompt_price_per1_m >= model_price_settings.cache_price_per1_m
+		THEN 1
+		ELSE 0
+	END`
+}
+
+func analyticsCacheSavingsIneligibleSQLExpression() string {
+	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return `CASE
+		WHEN ` + cachedTokens + ` > 0
+			AND (
+				model_price_settings.id IS NULL
+				OR model_price_settings.prompt_price_per1_m < model_price_settings.cache_price_per1_m
+			)
+		THEN 1
+		ELSE 0
 	END`
 }
 
@@ -387,6 +440,7 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {
 		RequestCount:    row.RequestCount,
 		SuccessCount:    row.SuccessCount,
 		FailureCount:    row.FailureCount,
+		InputTokens:     row.InputTokens,
 		CachedTokens:    row.CachedTokens,
 		ReasoningTokens: row.ReasoningTokens,
 	}
@@ -394,6 +448,14 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
 	summary.CostAvailable, summary.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	summary.CacheReadShare, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
+		row.InputTokens,
+		row.CachedTokens,
+		row.CacheSavings,
+		row.CacheSavingsEligibleRows,
+		row.CacheSavingsIneligibleRows,
+		summary.CostStatus == dto.AnalyticsCostStatusAvailable,
+	)
 	return summary
 }
 
@@ -462,6 +524,8 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 		RequestCount:       row.RequestCount,
 		SuccessCount:       row.SuccessCount,
 		FailureCount:       row.FailureCount,
+		InputTokens:        row.InputTokens,
+		CachedTokens:       row.CachedTokens,
 		TotalLatencyMS:     row.TotalLatencyMS,
 		LatencySampleCount: row.LatencySampleCount,
 	}
@@ -475,7 +539,29 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 		record.AverageLatencyMS = float64(row.TotalLatencyMS) / float64(row.LatencySampleCount)
 	}
 	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	record.CacheReadShare, record.CacheReadShareState, record.EstimatedCacheSavings = analyticsCacheEfficiency(
+		row.InputTokens,
+		row.CachedTokens,
+		row.CacheSavings,
+		row.CacheSavingsEligibleRows,
+		row.CacheSavingsIneligibleRows,
+		record.CostStatus == dto.AnalyticsCostStatusAvailable,
+	)
 	return record
+}
+
+func analyticsCacheEfficiency(inputTokens int64, cachedTokens int64, cacheSavings float64, eligibleRows int64, ineligibleRows int64, pricingComplete bool) (float64, string, *float64) {
+	if inputTokens <= 0 {
+		return 0, dto.AnalyticsCacheReadShareStateNoPromptInput, nil
+	}
+	if cachedTokens <= 0 {
+		return 0, dto.AnalyticsCacheReadShareStateNoCacheData, nil
+	}
+	share := (float64(cachedTokens) / float64(inputTokens)) * 100
+	if !pricingComplete || eligibleRows == 0 || ineligibleRows > 0 {
+		return share, dto.AnalyticsCacheReadShareStateAvailable, nil
+	}
+	return share, dto.AnalyticsCacheReadShareStateAvailable, &cacheSavings
 }
 
 func buildAnalyticsInsights(

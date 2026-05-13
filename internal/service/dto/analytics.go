@@ -3,16 +3,20 @@ package dto
 import "time"
 
 type AnalyticsSummary struct {
-	TotalCost       float64
-	TotalTokens     int64
-	RequestCount    int64
-	SuccessCount    int64
-	FailureCount    int64
-	CachedTokens    int64
-	ReasoningTokens int64
-	SuccessRate     float64
-	CostAvailable   bool
-	CostStatus      string
+	TotalCost             float64
+	TotalTokens           int64
+	RequestCount          int64
+	SuccessCount          int64
+	FailureCount          int64
+	InputTokens           int64
+	CachedTokens          int64
+	ReasoningTokens       int64
+	SuccessRate           float64
+	CostAvailable         bool
+	CostStatus            string
+	CacheReadShare        float64
+	CacheReadShareState   string
+	EstimatedCacheSavings *float64
 }
 
 type AnalyticsTrendPoint struct {
@@ -60,19 +64,24 @@ type AnalyticsKeyAliasBreakdown struct {
 }
 
 type AnalyticsModelBreakdown struct {
-	Model              string
-	Provider           string
-	TotalCost          float64
-	TotalTokens        int64
-	RequestCount       int64
-	SuccessCount       int64
-	FailureCount       int64
-	SuccessRate        float64
-	TotalLatencyMS     int64
-	LatencySampleCount int64
-	AverageLatencyMS   float64
-	CostAvailable      bool
-	CostStatus         string
+	Model                 string
+	Provider              string
+	TotalCost             float64
+	TotalTokens           int64
+	RequestCount          int64
+	SuccessCount          int64
+	FailureCount          int64
+	InputTokens           int64
+	CachedTokens          int64
+	SuccessRate           float64
+	TotalLatencyMS        int64
+	LatencySampleCount    int64
+	AverageLatencyMS      float64
+	CostAvailable         bool
+	CostStatus            string
+	CacheReadShare        float64
+	CacheReadShareState   string
+	EstimatedCacheSavings *float64
 }
 
 type AnalyticsInsight struct {

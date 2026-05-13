@@ -49,6 +49,20 @@ function formatAnalyticsCost(summary: AnalyticsSummaryPayload) {
   return summary.cost_status === 'unavailable' ? 'Unavailable' : formatCurrency(summary.total_cost)
 }
 
+function formatCacheReadShare(state: CacheReadShareState, value: number) {
+  if (state === 'no_cache_data') {
+    return 'No cache data'
+  }
+  if (state === 'no_prompt_input') {
+    return 'No prompt input'
+  }
+  return `${value.toFixed(1)}%`
+}
+
+function formatEstimatedCacheSavings(value: number | undefined) {
+  return typeof value === 'number' ? `${formatCurrency(value)} estimated savings` : 'No estimated savings'
+}
+
 function appBasePath() {
   const value = window.__APP_BASE_PATH__
   if (!value || value === '__APP_BASE_PATH__' || value === '/') {
@@ -107,9 +121,14 @@ type AnalyticsSummaryPayload = {
   request_count: number
   success_count: number
   failure_count: number
+  input_tokens: number
+  cached_tokens: number
   success_rate: number
   cost_available: boolean
   cost_status: 'available' | 'partial' | 'unavailable'
+  cache_read_share: number
+  cache_read_share_state: CacheReadShareState
+  estimated_cache_savings?: number
 }
 
 type AnalyticsTrendPointPayload = {
@@ -158,6 +177,11 @@ type AnalyticsModelPayload = {
   provider: string
   total_cost: number
   total_tokens: number
+  input_tokens: number
+  cached_tokens: number
+  cache_read_share: number
+  cache_read_share_state: CacheReadShareState
+  estimated_cache_savings?: number
   request_count: number
   success_count: number
   failure_count: number
@@ -168,6 +192,8 @@ type AnalyticsModelPayload = {
   cost_available: boolean
   cost_status: 'available' | 'partial' | 'unavailable'
 }
+
+type CacheReadShareState = 'available' | 'no_cache_data' | 'no_prompt_input'
 
 type AnalyticsInsightPayload = {
   type: string
@@ -205,9 +231,17 @@ const emptyAnalyticsSummary: AnalyticsSummaryPayload = {
   request_count: 0,
   success_count: 0,
   failure_count: 0,
+  input_tokens: 0,
+  cached_tokens: 0,
   success_rate: 0,
   cost_available: true,
   cost_status: 'available',
+  cache_read_share: 0,
+  cache_read_share_state: 'no_prompt_input',
+}
+
+function normalizeAnalyticsSummary(summary: AnalyticsSummaryPayload | undefined) {
+  return { ...emptyAnalyticsSummary, ...(summary ?? {}) }
 }
 
 function useAnalyticsSummary(enabled: boolean) {
@@ -229,8 +263,9 @@ function useAnalyticsSummary(enabled: boolean) {
         if (!active) {
           return
         }
+        const summary = normalizeAnalyticsSummary(payload.summary)
         setAnalytics({
-          summary: payload.summary ?? emptyAnalyticsSummary,
+          summary,
           trend: (payload.trend ?? []).map((point) => ({
             label: point.label,
             cost: point.total_cost,
@@ -259,6 +294,11 @@ function useAnalyticsSummary(enabled: boolean) {
             provider: row.provider,
             cost: row.total_cost,
             tokens: row.total_tokens,
+            inputTokens: row.input_tokens ?? 0,
+            cachedTokens: row.cached_tokens ?? 0,
+            cacheReadShare: row.cache_read_share ?? 0,
+            cacheReadShareState: row.cache_read_share_state ?? 'no_prompt_input',
+            estimatedCacheSavings: row.estimated_cache_savings,
             requests: row.request_count,
             successRate: row.success_rate,
             averageLatencyMS: row.average_latency_ms,
@@ -407,8 +447,26 @@ function App() {
                     <div className="h-[270px] min-w-0">
                       <MetricTrendChart data={analyticsTrend} />
                     </div>
-                    <div className="h-[270px] min-w-0 rounded-lg border border-border bg-muted/40 p-3">
-                      <TokenCostCompareChart data={analyticsTrend} />
+                    <div className="grid min-h-[270px] min-w-0 gap-3 rounded-lg border border-border bg-muted/40 p-3">
+                      <div className="h-[176px] min-w-0">
+                        <TokenCostCompareChart data={analyticsTrend} />
+                      </div>
+                      <div className="rounded-md border border-border bg-background p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase text-muted-foreground">Cache Read Share</p>
+                            <p className="mt-1 text-2xl font-semibold tracking-normal">
+                              {formatCacheReadShare(analyticsSummary.cache_read_share_state, analyticsSummary.cache_read_share)}
+                            </p>
+                          </div>
+                          <Badge variant={analyticsSummary.cache_read_share_state === 'available' ? 'green' : 'outline'}>
+                            {formatCompact(analyticsSummary.cached_tokens, 2)} cached
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {formatCompact(analyticsSummary.input_tokens, 2)} prompt input · {formatEstimatedCacheSavings(analyticsSummary.estimated_cache_savings)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -535,9 +593,13 @@ function App() {
                           <p className="text-xs text-muted-foreground">
                             {row.provider || 'Provider unknown'} · {Intl.NumberFormat('en', { notation: 'compact' }).format(row.tokens)} tokens · {formatCompact(row.requests, 1)} requests
                           </p>
+                          <p className="text-xs text-muted-foreground">
+                            Cache Read Share: {formatCacheReadShare(row.cacheReadShareState, row.cacheReadShare)}
+                          </p>
                         </div>
                         <div className="text-right">
                           <p className="text-sm font-semibold">{row.costAvailable === false ? 'Cost unavailable' : formatCost(row.cost)}</p>
+                          <p className="text-xs text-muted-foreground">{formatEstimatedCacheSavings(row.estimatedCacheSavings)}</p>
                           <p className="text-xs text-muted-foreground">{row.averageLatencyMS ? `${row.averageLatencyMS.toFixed(0)}ms avg` : 'No latency samples'}</p>
                         </div>
                       </div>

@@ -52,6 +52,15 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 	if snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "partial" {
 		t.Fatalf("expected partial cost status, got %+v", snapshot.Summary)
 	}
+	if snapshot.Summary.InputTokens != 1_500_100 || snapshot.Summary.CachedTokens != 100_000 || snapshot.Summary.CacheReadShareState != "available" {
+		t.Fatalf("expected cache token summary from real fields, got %+v", snapshot.Summary)
+	}
+	if math.Abs(snapshot.Summary.CacheReadShare-6.666222251849877) > 0.000000001 {
+		t.Fatalf("unexpected cache read share: %+v", snapshot.Summary)
+	}
+	if snapshot.Summary.EstimatedCacheSavings != nil {
+		t.Fatalf("expected estimated cache savings to be withheld when pricing is partial, got %+v", *snapshot.Summary.EstimatedCacheSavings)
+	}
 	if len(snapshot.Trend) != 2 {
 		t.Fatalf("expected two trend points, got %+v", snapshot.Trend)
 	}
@@ -60,6 +69,132 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 	}
 	if snapshot.Trend[1].Label != "2026-05-12" || snapshot.Trend[1].CostAvailable || snapshot.Trend[1].CostStatus != "partial" {
 		t.Fatalf("unexpected second trend point: %+v", snapshot.Trend[1])
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsComplete(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     2,
+		CompletionPricePer1M: 4,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "cached", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour),
+		InputTokens: 1_000_000, CachedTokens: 250_000, OutputTokens: 100_000, TotalTokens: 1_350_000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if snapshot.Summary.InputTokens != 1_000_000 || snapshot.Summary.CachedTokens != 250_000 {
+		t.Fatalf("expected input and cached tokens in summary, got %+v", snapshot.Summary)
+	}
+	if snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
+		t.Fatalf("expected available cache read share, got %+v", snapshot.Summary)
+	}
+	if math.Abs(snapshot.Summary.CacheReadShare-25) > 0.000000001 {
+		t.Fatalf("expected 25%% cache read share, got %+v", snapshot.Summary)
+	}
+	if snapshot.Summary.EstimatedCacheSavings == nil || math.Abs(*snapshot.Summary.EstimatedCacheSavings-0.375) > 0.000000001 {
+		t.Fatalf("expected cache savings estimate, got %+v", snapshot.Summary.EstimatedCacheSavings)
+	}
+	if len(snapshot.ModelBreakdown) != 1 {
+		t.Fatalf("expected one model row, got %+v", snapshot.ModelBreakdown)
+	}
+	model := snapshot.ModelBreakdown[0]
+	if model.InputTokens != 1_000_000 || model.CachedTokens != 250_000 || model.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
+		t.Fatalf("expected model cache fields from same source, got %+v", model)
+	}
+	if model.EstimatedCacheSavings == nil || math.Abs(*model.EstimatedCacheSavings-0.375) > 0.000000001 {
+		t.Fatalf("expected model cache savings estimate, got %+v", model.EstimatedCacheSavings)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterSplitsCacheUnavailableStates(t *testing.T) {
+	tests := []struct {
+		name          string
+		event         entities.UsageEvent
+		expectedState string
+	}{
+		{
+			name: "no cache data",
+			event: entities.UsageEvent{
+				EventKey: "no-cache-data", Model: "priced-model", InputTokens: 1000, TotalTokens: 1000,
+			},
+			expectedState: dto.AnalyticsCacheReadShareStateNoCacheData,
+		},
+		{
+			name: "no prompt input",
+			event: entities.UsageEvent{
+				EventKey: "no-prompt-input", Model: "priced-model", OutputTokens: 1000, TotalTokens: 1000,
+			},
+			expectedState: dto.AnalyticsCacheReadShareStateNoPromptInput,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := openTestDatabase(t)
+			start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+			end := start.Add(24 * time.Hour)
+			if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+				Model:                "priced-model",
+				PromptPricePer1M:     1,
+				CompletionPricePer1M: 1,
+				CachePricePer1M:      0.5,
+			}); err != nil {
+				t.Fatalf("upsert pricing: %v", err)
+			}
+			tt.event.Timestamp = start.Add(time.Hour)
+			if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{tt.event}); err != nil {
+				t.Fatalf("insert events: %v", err)
+			}
+
+			snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+			if err != nil {
+				t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+			}
+			if snapshot.Summary.CacheReadShareState != tt.expectedState || snapshot.Summary.CacheReadShare != 0 || snapshot.Summary.EstimatedCacheSavings != nil {
+				t.Fatalf("unexpected cache state for %s: %+v", tt.name, snapshot.Summary)
+			}
+		})
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterWithholdsCacheSavingsWhenPromptCachePricingIsInvalid(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "inverted-cache-price",
+		PromptPricePer1M:     0.25,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "invalid-savings", Model: "inverted-cache-price", Timestamp: start.Add(time.Hour),
+		InputTokens: 1_000_000, CachedTokens: 250_000, TotalTokens: 1_250_000,
+	}}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	if snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable || snapshot.Summary.EstimatedCacheSavings != nil {
+		t.Fatalf("expected share but no savings estimate for invalid pricing, got %+v", snapshot.Summary)
 	}
 }
 

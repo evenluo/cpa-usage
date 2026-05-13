@@ -134,9 +134,13 @@ describe('App', () => {
             request_count: 301,
             success_count: 296,
             failure_count: 5,
+            input_tokens: 1500100,
+            cached_tokens: 100000,
             success_rate: 98.338,
             cost_available: false,
             cost_status: 'partial',
+            cache_read_share: 6.666222251849877,
+            cache_read_share_state: 'available',
           },
           trend: [
             { label: '05-11', total_cost: 0.24, total_tokens: 1000000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
@@ -213,6 +217,11 @@ describe('App', () => {
               provider: 'OpenAI',
               total_cost: 4.5,
               total_tokens: 2500000,
+              input_tokens: 1800000,
+              cached_tokens: 450000,
+              cache_read_share: 25,
+              cache_read_share_state: 'available',
+              estimated_cache_savings: 0.675,
               request_count: 80,
               success_count: 79,
               failure_count: 1,
@@ -228,6 +237,10 @@ describe('App', () => {
               provider: 'Anthropic',
               total_cost: 0,
               total_tokens: 1800000,
+              input_tokens: 1800000,
+              cached_tokens: 0,
+              cache_read_share: 0,
+              cache_read_share_state: 'no_cache_data',
               request_count: 40,
               success_count: 38,
               failure_count: 2,
@@ -263,6 +276,9 @@ describe('App', () => {
     expect(screen.getByText('98.3%')).toBeInTheDocument()
     expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Top Cost Key')).toBeInTheDocument()
+    expect(screen.getByText('Cache Read Share')).toBeInTheDocument()
+    expect(screen.getByText('6.7%')).toBeInTheDocument()
+    expect(screen.getByText('1.5M prompt input · No estimated savings')).toBeInTheDocument()
     expect(screen.getByText('$4.50')).toBeInTheDocument()
     expect(screen.getByText('Pricing Missing')).toBeInTheDocument()
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
@@ -277,8 +293,11 @@ describe('App', () => {
     expect(screen.getByText('Model Distribution')).toBeInTheDocument()
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
     expect(screen.getByText(/OpenAI/)).toBeInTheDocument()
+    expect(screen.getByText('Cache Read Share: 25.0%')).toBeInTheDocument()
+    expect(screen.getByText('$0.68 estimated savings')).toBeInTheDocument()
     expect(screen.getByText('200ms avg')).toBeInTheDocument()
     expect(screen.getByText('missing-price-model')).toBeInTheDocument()
+    expect(screen.getByText('Cache Read Share: No cache data')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Time' }))
     expect(screen.getByText('Time Breakdown')).toBeInTheDocument()
     expect(screen.getByText('221 requests · 6 failures')).toBeInTheDocument()
@@ -355,6 +374,7 @@ describe('App', () => {
     render(<App />)
 
     expect(await screen.findByText('Cost unavailable')).toBeInTheDocument()
+    expect(screen.getByText('No prompt input')).toBeInTheDocument()
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
   })
 
