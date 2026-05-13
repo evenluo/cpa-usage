@@ -609,8 +609,11 @@ function App() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
-                    <div className="h-[270px] min-w-0">
-                      <TokenCostCompareChart data={analyticsTrend} />
+                    <div className="grid min-w-0 gap-2">
+                      <div className="h-[238px] min-w-0">
+                        <TokenCostCompareChart data={analyticsTrend} />
+                      </div>
+                      <TrendBucketDetailList data={analyticsTrend} />
                     </div>
                     <div className="grid min-h-[270px] min-w-0 gap-3 rounded-lg border border-border bg-muted/40 p-3">
                       <TrendSummaryStrip data={analyticsTrend} granularity={timeGranularity} />
@@ -778,6 +781,53 @@ function App() {
         </section>
       </div>
     </main>
+  )
+}
+
+function formatTrendBucketCost(point: TrendPoint) {
+  if (point.costStatus === 'unavailable' || (point.costAvailable === false && point.costStatus !== 'partial')) {
+    return 'Cost unavailable'
+  }
+  if (point.costStatus === 'partial') {
+    return `${formatCost(point.cost)} partial`
+  }
+  return formatCost(point.cost)
+}
+
+function TrendBucketDetailList({ data }: { data: TrendPoint[] }) {
+  if (data.length === 0) {
+    return null
+  }
+  return (
+    <details aria-label="Trend bucket keyboard details" className="rounded-md border border-border bg-background px-3 py-2 text-xs">
+      <summary className="cursor-pointer font-semibold text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+        Bucket details
+      </summary>
+      <div className="mt-2 max-h-32 overflow-auto">
+        <table className="w-full text-left">
+          <thead className="text-[11px] uppercase text-muted-foreground">
+            <tr>
+              <th className="py-1 pr-2 font-semibold">Bucket</th>
+              <th className="py-1 pr-2 font-semibold">Cost</th>
+              <th className="py-1 pr-2 font-semibold">Tokens</th>
+              <th className="py-1 pr-2 font-semibold">Requests</th>
+              <th className="py-1 font-semibold">Failures</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((point) => (
+              <tr className="border-t border-border" key={point.label}>
+                <td className="py-1 pr-2 font-semibold">{point.label}</td>
+                <td className="py-1 pr-2">{formatTrendBucketCost(point)}</td>
+                <td className="py-1 pr-2">{formatCompact(point.tokens, 2)} tokens</td>
+                <td className="py-1 pr-2">{point.requests.toLocaleString('en')} requests</td>
+                <td className="py-1">{point.failures.toLocaleString('en')} failures</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   )
 }
 
