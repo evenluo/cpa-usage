@@ -996,6 +996,35 @@ func TestSyncMetadataStoresOpenAICompatibilityBaseURL(t *testing.T) {
 	}
 }
 
+func TestSyncMetadataKeepsOpenAICompatibilityStringKeyEntries(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		MetadataFetcher: stubMetadataFetcher{providerConfig: providerconfig.ProviderMetadataConfig{
+			OpenAICompatibility: []providerconfig.OpenAICompatibilityConfig{
+				{
+					Name:          "Custom OpenAI",
+					Prefix:        "custom",
+					APIKeyEntries: []providerconfig.OpenAIApiKeyEntry{{APIKey: "legacy-openai-key"}},
+				},
+			},
+		}},
+	})
+
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	items, err := repository.ListUsageIdentities(context.Background(), db)
+	if err != nil {
+		t.Fatalf("list usage identities: %v", err)
+	}
+	byIdentity := usageIdentitiesByIdentity(items)
+	identity := byIdentity["legacy-openai-key"]
+	if identity.Identity != "legacy-openai-key" || identity.LookupKey != "legacy-openai-key" || identity.Type != "openai" || identity.Provider != "Custom OpenAI" || identity.Prefix != "custom" {
+		t.Fatalf("expected legacy OpenAI string api key entry to be stored, got %+v", identity)
+	}
+}
+
 func TestSyncMetadataKeepsProviderIdentityWhenPrefixEqualsAPIKey(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{

@@ -254,9 +254,17 @@ func ListUsageAnalysisWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) ([]dt
 		return nil, nil, fmt.Errorf("load usage analysis api model stats: %w", err)
 	}
 
+	normalize := func(value string) string {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return "unknown"
+		}
+		return trimmed
+	}
 	modelsByAPI := make(map[string][]dto.UsageAnalysisModelStatRecord, len(apiRows))
 	for _, row := range apiModelRows {
-		modelsByAPI[row.APIGroupKey] = append(modelsByAPI[row.APIGroupKey], dto.UsageAnalysisModelStatRecord{
+		apiKey := normalize(row.APIGroupKey)
+		modelsByAPI[apiKey] = append(modelsByAPI[apiKey], dto.UsageAnalysisModelStatRecord{
 			Model:              row.Model,
 			TotalRequests:      row.TotalRequests,
 			SuccessCount:       row.SuccessCount,
@@ -270,22 +278,12 @@ func ListUsageAnalysisWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) ([]dt
 			LatencySampleCount: row.LatencySampleCount,
 		})
 	}
-	normalize := func(value string) string {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
-			return "unknown"
-		}
-		return trimmed
-	}
 
 	resultAPIs := make([]dto.UsageAnalysisAPIStatRecord, 0, len(apiRows))
 	for _, row := range apiRows {
 		row.APIGroupKey = normalize(row.APIGroupKey)
 		row.DisplayName = row.APIGroupKey
-		models := modelsByAPI[strings.TrimSpace(row.APIGroupKey)]
-		if len(models) == 0 {
-			models = modelsByAPI[row.APIGroupKey]
-		}
+		models := modelsByAPI[row.APIGroupKey]
 		for index := range models {
 			models[index].Model = normalize(models[index].Model)
 		}

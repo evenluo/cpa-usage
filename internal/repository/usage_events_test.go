@@ -214,3 +214,33 @@ func TestListUsageAnalysisWithFilterAggregatesApisAndModels(t *testing.T) {
 		t.Fatalf("unexpected claude-sonnet model row: %+v", row)
 	}
 }
+
+func TestListUsageAnalysisWithFilterKeepsModelsForBlankAPIGroup(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-analysis-blank-api.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	events := []entities.UsageEvent{
+		{
+			EventKey: "blank-api-1", APIGroupKey: "   ", Model: "blank-model",
+			Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), Failed: false, LatencyMS: 100,
+			InputTokens: 10, OutputTokens: 4, ReasoningTokens: 2, CachedTokens: 1, TotalTokens: 17,
+		},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	apiRows, _, err := ListUsageAnalysisWithFilter(db, dto.UsageQueryFilter{})
+	if err != nil {
+		t.Fatalf("ListUsageAnalysisWithFilter returned error: %v", err)
+	}
+	if len(apiRows) != 1 {
+		t.Fatalf("expected one api row, got %d", len(apiRows))
+	}
+	if apiRows[0].APIGroupKey != "unknown" || len(apiRows[0].Models) != 1 || apiRows[0].Models[0].Model != "blank-model" || apiRows[0].Models[0].TotalTokens != 17 {
+		t.Fatalf("expected unknown api row to keep model breakdown, got %+v", apiRows[0])
+	}
+}
