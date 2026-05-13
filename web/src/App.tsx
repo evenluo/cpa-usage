@@ -657,19 +657,19 @@ function App() {
             ) : null}
           </section>
 
-          <Card className="mt-4">
-            <CardHeader className="flex flex-row items-start justify-between gap-4">
-              <div>
-                <CardTitle>Request Health Timeline</CardTitle>
-                <CardDescription>Secondary stability strip for connecting usage spikes with failures.</CardDescription>
+          <Card aria-label="Request health stability strip" className="mt-4">
+            <CardHeader className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+              <div className="min-w-0">
+                <CardTitle>Request Health</CardTitle>
+                <CardDescription>Compact stability strip aligned to the active analytics scope.</CardDescription>
               </div>
               <Badge variant="amber">
                 <Activity className="mr-1 size-3" aria-hidden="true" />
-                Secondary
+                {analyticsSummary.failure_count.toLocaleString('en')} failures
               </Badge>
             </CardHeader>
             <CardContent>
-              <div className="h-[170px] min-w-0">
+              <div className="h-[136px] min-w-0">
                 <HealthTimeline data={analyticsHealthBlocks} />
               </div>
             </CardContent>

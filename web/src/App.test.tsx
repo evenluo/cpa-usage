@@ -315,7 +315,9 @@ describe('App', () => {
     const breakdownView = screen.getByRole('group', { name: 'Breakdown view' })
     expect(within(breakdownView).getByRole('button', { name: 'Key Alias' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
+    const healthStrip = screen.getByLabelText('Request health stability strip')
+    expect(within(healthStrip).getByText('Request Health')).toBeInTheDocument()
+    expect(within(healthStrip).getByText('5 failures')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /All providers/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('button', { name: /OpenAI/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Anthropic/ })).toBeInTheDocument()
@@ -450,6 +452,7 @@ describe('App', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/analytics/summary?range=7d&provider=OpenAI'))
     expect((await screen.findAllByText('$8.00')).length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('$21.00')).not.toBeInTheDocument()
+    expect(within(screen.getByLabelText('Request health stability strip')).getByText('1 failures')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /OpenAI/ })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.queryByRole('button', { name: /Anthropic/ })).not.toBeInTheDocument()
 
@@ -460,6 +463,7 @@ describe('App', () => {
       expect(allProviderCalls.length).toBeGreaterThanOrEqual(2)
     })
     expect((await screen.findAllByText('$21.00')).length).toBeGreaterThanOrEqual(1)
+    expect(within(screen.getByLabelText('Request health stability strip')).getByText('3 failures')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Anthropic/ })).toBeInTheDocument()
   })
 
