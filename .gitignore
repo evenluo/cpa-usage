@@ -12,6 +12,7 @@ backups/
 
 # frontend deps and build cache
 web/node_modules/
+web/.vite/
 web/dist/*
 !web/dist/.gitkeep
 
