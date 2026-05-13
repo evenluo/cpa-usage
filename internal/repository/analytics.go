@@ -575,6 +575,8 @@ func buildAnalyticsInsights(
 	}
 
 	insights := make([]dto.AnalyticsInsightRecord, 0, 6)
+	insights = append(insights, metricCompletenessInsight(summary, models))
+	insights = append(insights, cacheEfficiencyInsight(summary))
 	if topCost, ok := topCostKeyAlias(keyAliases); ok {
 		insights = append(insights, dto.AnalyticsInsightRecord{
 			Type:        "top_cost_key",
@@ -586,19 +588,6 @@ func buildAnalyticsInsights(
 			MetricValue: topCost.TotalCost,
 			Count:       topCost.RequestCount,
 			CostStatus:  topCost.CostStatus,
-		})
-	}
-	if topTokens, ok := topTokenKeyAlias(keyAliases); ok {
-		insights = append(insights, dto.AnalyticsInsightRecord{
-			Type:        "top_token_key",
-			Severity:    "blue",
-			Title:       "Top Token Key",
-			Detail:      "Largest token contributor in this range.",
-			Subject:     analyticsInsightKeyLabel(topTokens),
-			MetricLabel: "Tokens",
-			MetricValue: float64(topTokens.TotalTokens),
-			Count:       topTokens.RequestCount,
-			CostStatus:  topTokens.CostStatus,
 		})
 	}
 	if spike, ok := topTokenBucket(trend); ok {
@@ -614,19 +603,6 @@ func buildAnalyticsInsights(
 			CostStatus:  spike.CostStatus,
 		})
 	}
-	if summary.CostStatus != dto.AnalyticsCostStatusAvailable {
-		insights = append(insights, dto.AnalyticsInsightRecord{
-			Type:        "pricing_missing",
-			Severity:    "amber",
-			Title:       "Pricing Missing",
-			Detail:      "Some Cost values are partial or unavailable because model pricing is incomplete.",
-			Subject:     missingPricingSubject(models),
-			MetricLabel: "Cost status",
-			MetricValue: float64(countModelsWithIncompletePricing(models)),
-			Count:       countModelsWithIncompletePricing(models),
-			CostStatus:  summary.CostStatus,
-		})
-	}
 	if failure, ok := failureConcentration(keyAliases); ok {
 		insights = append(insights, dto.AnalyticsInsightRecord{
 			Type:        "failure_concentration",
@@ -640,20 +616,89 @@ func buildAnalyticsInsights(
 			CostStatus:  failure.CostStatus,
 		})
 	}
-	if share := cacheReasoningShare(summary); share > 0 {
+	if summary.ReasoningTokens > 0 {
 		insights = append(insights, dto.AnalyticsInsightRecord{
-			Type:        "cache_reasoning_share",
-			Severity:    "green",
-			Title:       "Cache/Reasoning Share",
-			Detail:      "Cached and reasoning tokens as a share of total tokens.",
-			Subject:     "Token mix",
-			MetricLabel: "Share",
-			MetricValue: share,
-			Count:       summary.CachedTokens + summary.ReasoningTokens,
+			Type:        "reasoning_tokens",
+			Severity:    "blue",
+			Title:       "Reasoning Tokens",
+			Detail:      "Reasoning token volume is tracked separately from prompt cache reads.",
+			Subject:     "Reasoning behavior",
+			MetricLabel: "Tokens",
+			MetricValue: float64(summary.ReasoningTokens),
+			Count:       summary.ReasoningTokens,
 			CostStatus:  summary.CostStatus,
 		})
 	}
 	return insights
+}
+
+func metricCompletenessInsight(summary dto.AnalyticsSummaryRecord, models []dto.AnalyticsModelBreakdownRecord) dto.AnalyticsInsightRecord {
+	incompleteModels := countModelsWithIncompletePricing(models)
+	cacheComplete := summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateAvailable
+	costComplete := summary.CostStatus == dto.AnalyticsCostStatusAvailable
+	insight := dto.AnalyticsInsightRecord{
+		Type:        "metric_completeness",
+		Severity:    "green",
+		Title:       "Metric Completeness",
+		Detail:      "Cost and cache efficiency have the supporting data needed for complete interpretation.",
+		Subject:     "Complete",
+		MetricLabel: "Metric Completeness",
+		MetricValue: 0,
+		Count:       incompleteModels,
+		CostStatus:  summary.CostStatus,
+	}
+	if costComplete && cacheComplete {
+		return insight
+	}
+	insight.Severity = "amber"
+	insight.Subject = metricCompletenessSubject(summary, incompleteModels)
+	insight.Detail = "Some derived metrics are incomplete, but the underlying usage events remain valid."
+	insight.MetricValue = float64(incompleteModels)
+	return insight
+}
+
+func metricCompletenessSubject(summary dto.AnalyticsSummaryRecord, incompleteModels int64) string {
+	if summary.CostStatus != dto.AnalyticsCostStatusAvailable {
+		return "Cost " + summary.CostStatus
+	}
+	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoCacheData {
+		return "No cache data"
+	}
+	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoPromptInput {
+		return "No prompt input"
+	}
+	if incompleteModels == 1 {
+		return "1 model"
+	}
+	if incompleteModels > 1 {
+		return fmt.Sprintf("%d models", incompleteModels)
+	}
+	return "Incomplete"
+}
+
+func cacheEfficiencyInsight(summary dto.AnalyticsSummaryRecord) dto.AnalyticsInsightRecord {
+	insight := dto.AnalyticsInsightRecord{
+		Type:        "cache_efficiency",
+		Severity:    "green",
+		Title:       "Cache Read Share",
+		Detail:      "Prompt cache reads are measured against prompt input tokens, separately from reasoning tokens.",
+		Subject:     "Prompt input cache",
+		MetricLabel: "Cache Read Share",
+		MetricValue: summary.CacheReadShare,
+		Count:       summary.CachedTokens,
+		CostStatus:  summary.CostStatus,
+	}
+	switch summary.CacheReadShareState {
+	case dto.AnalyticsCacheReadShareStateNoCacheData:
+		insight.Severity = "amber"
+		insight.Subject = "No cache data"
+		insight.Detail = "Cached-token evidence is unavailable for this range; reasoning tokens are not counted as cache reads."
+	case dto.AnalyticsCacheReadShareStateNoPromptInput:
+		insight.Severity = "amber"
+		insight.Subject = "No prompt input"
+		insight.Detail = "Prompt input is zero for this range, so Cache Read Share has no denominator."
+	}
+	return insight
 }
 
 func topCostKeyAlias(rows []dto.AnalyticsKeyAliasBreakdownRecord) (dto.AnalyticsKeyAliasBreakdownRecord, bool) {

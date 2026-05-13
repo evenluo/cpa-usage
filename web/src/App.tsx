@@ -7,7 +7,6 @@ import {
   Check,
   Database,
   KeyRound,
-  ListFilter,
   RefreshCw,
   Pencil,
   Search,
@@ -472,60 +471,31 @@ function App() {
                 </CardContent>
               </Card>
 
-              <div className="grid gap-3 md:grid-cols-4">
-                {analyticsInsights.length === 0 ? (
-                  <Card className="shadow-none">
-                    <CardContent className="p-4">
-                      <Badge variant="outline">Insights</Badge>
-                      <p className="mt-3 text-sm font-semibold">No deterministic insights</p>
-                    </CardContent>
-                  </Card>
-                ) : analyticsInsights.map((insight) => (
-                  <Card className="shadow-none" key={insight.type}>
-                    <CardContent className="p-4">
-                      <Badge variant={insight.severity}>{insight.title}</Badge>
-                      <p className="mt-3 text-sm font-semibold">{insight.subject}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{formatInsightMetric(insight)}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
             </section>
 
-            <Card>
+            <Card aria-label="Insight rail">
               <CardHeader>
-                <CardTitle>Breakdown Controls</CardTitle>
-                <CardDescription>Key Alias, model, and time are the default analysis dimensions.</CardDescription>
+                <CardTitle>Insight Rail</CardTitle>
+                <CardDescription>Deterministic checkpoints ordered before conclusions.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2">
-                  <Search className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <span className="text-sm text-muted-foreground">Search alias or masked CPA Key</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <Button variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
-                  <Button variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
-                  <Button variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Badge variant="outline">Provider: All</Badge>
-                  <Badge variant="outline">Cost: Partial</Badge>
-                  <Badge variant="outline">Health: Visible</Badge>
-                </div>
-                <div className="rounded-lg border border-border bg-muted/40 p-4">
-                  <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-                    <ListFilter className="size-4 text-muted-foreground" aria-hidden="true" />
-                    Active workspace
-                  </div>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    Repeated analysis stays dense: ranking, model mix, time trend, and request health are available without turning the page into a long report.
-                  </p>
-                </div>
+              <CardContent>
+                <InsightRail insights={analyticsInsights} />
               </CardContent>
             </Card>
           </div>
 
           <section className="mt-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold">Breakdown Workbench</h3>
+                <p className="text-sm text-muted-foreground">Key Alias, model, and time stay available as one active view.</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <Button variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
+                <Button variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
+                <Button variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
+              </div>
+            </div>
             {breakdownMode === 'key_alias' ? (
             <Card>
               <CardHeader className="flex flex-row items-start justify-between gap-3">
@@ -1362,11 +1332,43 @@ function formatInsightMetric(insight: AnalyticsInsightPayload) {
       return `${insight.count.toLocaleString('en')} failures`
     case 'Share':
       return `${insight.metric_value.toFixed(1)}% token share`
+    case 'Cache Read Share':
+      return `${insight.metric_value.toFixed(1)}%`
+    case 'Metric Completeness':
+      return insight.subject
     case 'Cost status':
       return `Cost ${insight.cost_status}`
     default:
       return `${insight.metric_label}: ${formatCompact(insight.metric_value, 2)}`
   }
+}
+
+function InsightRail({ insights }: { insights: AnalyticsInsightPayload[] }) {
+  if (insights.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        No deterministic insights
+      </div>
+    )
+  }
+  return (
+    <div className="grid gap-3">
+      {insights.map((insight) => (
+        <article
+          className="rounded-md border border-border bg-background p-3"
+          data-insight-type={insight.type}
+          key={insight.type}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <Badge variant={insight.severity}>{insight.title}</Badge>
+            <span className="text-xs font-semibold text-muted-foreground">{formatInsightMetric(insight)}</span>
+          </div>
+          <p className="mt-3 text-sm font-semibold">{insight.subject}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p>
+        </article>
+      ))}
+    </div>
+  )
 }
 
 function formatLastUsed(value: string | null) {

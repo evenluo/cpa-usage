@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
@@ -257,8 +257,11 @@ describe('App', () => {
             { label: '05-12', total_cost: 2.25, total_tokens: 3100000, request_count: 221, success_count: 215, failure_count: 6, cost_available: false, cost_status: 'partial' },
           ],
           insights: [
+            { type: 'metric_completeness', severity: 'amber', title: 'Metric Completeness', detail: 'Some derived metrics are incomplete, but usage events remain valid.', subject: 'Cost partial', metric_label: 'Metric Completeness', metric_value: 1, count: 1, cost_status: 'partial' },
+            { type: 'cache_efficiency', severity: 'green', title: 'Cache Read Share', detail: 'Prompt cache reads are measured separately from reasoning tokens.', subject: 'Prompt input cache', metric_label: 'Cache Read Share', metric_value: 6.666222251849877, count: 100000, cost_status: 'partial' },
             { type: 'top_cost_key', severity: 'green', title: 'Top Cost Key', detail: 'Highest configured Cost contributor.', subject: 'Shared Alias', metric_label: 'Cost', metric_value: 4.5, count: 80, cost_status: 'available' },
-            { type: 'pricing_missing', severity: 'amber', title: 'Pricing Missing', detail: 'Model pricing is incomplete.', subject: '1 model', metric_label: 'Cost status', metric_value: 1, count: 1, cost_status: 'partial' },
+            { type: 'token_spike', severity: 'violet', title: 'Token Spike', detail: 'Highest token bucket.', subject: '05-12', metric_label: 'Tokens', metric_value: 1100100, count: 181, cost_status: 'partial' },
+            { type: 'failure_concentration', severity: 'amber', title: 'Failure Cluster', detail: 'Largest failure concentration.', subject: 'Shared Alias', metric_label: 'Failures', metric_value: 1, count: 1, cost_status: 'available' },
           ],
         }))
       }
@@ -275,12 +278,25 @@ describe('App', () => {
     expect(screen.getByText('301')).toBeInTheDocument()
     expect(screen.getByText('98.3%')).toBeInTheDocument()
     expect(screen.getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Top Cost Key')).toBeInTheDocument()
-    expect(screen.getByText('Cache Read Share')).toBeInTheDocument()
-    expect(screen.getByText('6.7%')).toBeInTheDocument()
+    const insightRail = screen.getByLabelText('Insight rail')
+    expect(within(insightRail).getByText('Metric Completeness')).toBeInTheDocument()
+    expect(within(insightRail).getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
+    expect(within(insightRail).getByText('Cache Read Share')).toBeInTheDocument()
+    expect(within(insightRail).getByText('Top Cost Key')).toBeInTheDocument()
+    expect(within(insightRail).getByText('Token Spike')).toBeInTheDocument()
+    expect(within(insightRail).getByText('Failure Cluster')).toBeInTheDocument()
+    expect(within(insightRail).getAllByRole('article').map((item) => item.getAttribute('data-insight-type'))).toEqual([
+      'metric_completeness',
+      'cache_efficiency',
+      'top_cost_key',
+      'token_spike',
+      'failure_concentration',
+    ])
+    expect(screen.getAllByText('Cache Read Share').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('6.7%').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('1.5M prompt input · No estimated savings')).toBeInTheDocument()
     expect(screen.getByText('$4.50')).toBeInTheDocument()
-    expect(screen.getByText('Pricing Missing')).toBeInTheDocument()
+    expect(screen.queryByText('Pricing Missing')).not.toBeInTheDocument()
     expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
     expect(screen.getByText('Request Health Timeline')).toBeInTheDocument()
     expect(screen.getAllByText('Shared Alias').length).toBeGreaterThanOrEqual(2)

@@ -381,7 +381,14 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	for _, insight := range snapshot.Insights {
 		insights[insight.Type] = insight
 	}
-	for _, expectedType := range []string{"top_cost_key", "top_token_key", "token_spike", "pricing_missing", "failure_concentration", "cache_reasoning_share"} {
+	expectedOrder := []string{"metric_completeness", "cache_efficiency", "top_cost_key", "token_spike", "failure_concentration", "reasoning_tokens"}
+	if len(snapshot.Insights) != len(expectedOrder) {
+		t.Fatalf("expected ordered insights %v, got %+v", expectedOrder, snapshot.Insights)
+	}
+	for index, expectedType := range expectedOrder {
+		if snapshot.Insights[index].Type != expectedType {
+			t.Fatalf("expected insight %q at index %d, got %+v", expectedType, index, snapshot.Insights)
+		}
 		if _, ok := insights[expectedType]; !ok {
 			t.Fatalf("expected insight %q in %+v", expectedType, snapshot.Insights)
 		}
@@ -389,11 +396,14 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	if insights["top_cost_key"].Subject != "Alpha Ops" || insights["top_cost_key"].MetricValue <= 0 {
 		t.Fatalf("expected top cost key to use alias and configured cost, got %+v", insights["top_cost_key"])
 	}
-	if insights["top_token_key"].Subject != "Beta Team" || insights["pricing_missing"].CostStatus != dto.AnalyticsCostStatusPartial {
-		t.Fatalf("expected token and pricing insights to expose context, got %+v", snapshot.Insights)
+	if insights["metric_completeness"].Title != "Metric Completeness" || insights["metric_completeness"].CostStatus != dto.AnalyticsCostStatusPartial {
+		t.Fatalf("expected completeness insight to expose partial interpretation, got %+v", snapshot.Insights)
 	}
-	if insights["cache_reasoning_share"].Count != 500_000 || insights["failure_concentration"].Count != 1 {
-		t.Fatalf("expected token-mix and failure counts, got %+v", snapshot.Insights)
+	if insights["cache_efficiency"].Title != "Cache Read Share" || insights["cache_efficiency"].Count != 200_000 {
+		t.Fatalf("expected cache insight to use cache fields, got %+v", snapshot.Insights)
+	}
+	if insights["reasoning_tokens"].Count != 300_000 || insights["failure_concentration"].Count != 1 {
+		t.Fatalf("expected reasoning and failure counts, got %+v", snapshot.Insights)
 	}
 }
 
