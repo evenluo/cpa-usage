@@ -958,6 +958,10 @@ function PricingWorkspace() {
 
   async function savePricing(model: string) {
     const draft = pricingDrafts[model] ?? pricingDraftFromEntry(pricingByModel.get(model))
+    if ([draft.prompt, draft.completion, draft.cache].some((value) => value.trim() === '')) {
+      setPricingStatus('Prices must be non-negative numbers')
+      return
+    }
     const promptPrice = Number(draft.prompt)
     const completionPrice = Number(draft.completion)
     const cachePrice = Number(draft.cache)
@@ -969,7 +973,7 @@ function PricingWorkspace() {
     setSavingModel(model)
     setPricingStatus(null)
     try {
-      const response = await fetch(apiPath(`/pricing/${encodeURIComponent(model)}`), {
+      const response = await fetch(apiPath('/pricing'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

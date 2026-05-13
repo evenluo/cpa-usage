@@ -308,9 +308,9 @@ describe('App', () => {
     window.history.replaceState({}, '', '/pricing')
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url.includes('/api/v1/pricing/missing-model') && init?.method === 'PUT') {
+      if (url === '/api/v1/pricing' && init?.method === 'PUT') {
         return new Response(JSON.stringify({
-          model: 'missing-model',
+          model: 'openai/gpt-4.1',
           prompt_price_per_1m: 1.5,
           completion_price_per_1m: 6,
           cache_price_per_1m: 0.15,
@@ -322,7 +322,7 @@ describe('App', () => {
         }))
       }
       if (url.includes('/api/v1/models/used')) {
-        return new Response(JSON.stringify({ models: ['gpt-5.5', 'missing-model'] }))
+        return new Response(JSON.stringify({ models: ['gpt-5.5', 'openai/gpt-4.1'] }))
       }
       return new Response(null, { status: 404 })
     })
@@ -333,24 +333,29 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Model Unit Pricing' })).toBeInTheDocument()
     expect(await screen.findByText('gpt-5.5')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByLabelText('gpt-5.5 prompt price per 1M')).toHaveValue(3))
-    expect(screen.getByText('missing-model')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('missing-model prompt price per 1M'), { target: { value: '1.5' } })
-    fireEvent.change(screen.getByLabelText('missing-model completion price per 1M'), { target: { value: '6' } })
-    fireEvent.change(screen.getByLabelText('missing-model cache price per 1M'), { target: { value: '0.15' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Save pricing for missing-model' }))
+    fireEvent.change(screen.getByLabelText('gpt-5.5 prompt price per 1M'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save pricing for gpt-5.5' }))
+    expect(await screen.findByText('Prices must be non-negative numbers')).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/pricing', expect.objectContaining({ method: 'PUT' }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/pricing/missing-model', expect.objectContaining({
+    expect(screen.getByText('openai/gpt-4.1')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('openai/gpt-4.1 prompt price per 1M'), { target: { value: '1.5' } })
+    fireEvent.change(screen.getByLabelText('openai/gpt-4.1 completion price per 1M'), { target: { value: '6' } })
+    fireEvent.change(screen.getByLabelText('openai/gpt-4.1 cache price per 1M'), { target: { value: '0.15' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save pricing for openai/gpt-4.1' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/pricing', expect.objectContaining({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
     })))
-    const saveCall = fetchMock.mock.calls.find(([input, init]) => String(input) === '/api/v1/pricing/missing-model' && init?.method === 'PUT')
+    const saveCall = fetchMock.mock.calls.find(([input, init]) => String(input) === '/api/v1/pricing' && init?.method === 'PUT')
     expect(JSON.parse(String(saveCall?.[1]?.body))).toEqual({
-      model: 'missing-model',
+      model: 'openai/gpt-4.1',
       prompt_price_per_1m: 1.5,
       completion_price_per_1m: 6,
       cache_price_per_1m: 0.15,
     })
-    expect(await screen.findByText('missing-model pricing saved')).toBeInTheDocument()
+    expect(await screen.findByText('openai/gpt-4.1 pricing saved')).toBeInTheDocument()
   })
 
   it('renders the Settings workspace with operational status and auth state', async () => {
