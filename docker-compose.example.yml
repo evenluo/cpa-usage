@@ -9,6 +9,7 @@ services:
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
       LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       APP_PORT: ${APP_PORT:-8080}
       APP_BASE_PATH: ${APP_BASE_PATH:-}
       TZ: ${TZ:-Asia/Shanghai}

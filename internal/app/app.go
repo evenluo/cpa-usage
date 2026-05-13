@@ -100,10 +100,11 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	quotaService := quota.NewService(db, cpaClient)
 	sessionManager := auth.NewSessionManager(cfg.AuthSessionTTL)
 	authHandler := api.NewAuthHandler(api.AuthConfig{
-		Enabled:       cfg.AuthEnabled,
-		LoginPassword: cfg.LoginPassword,
-		SessionTTL:    cfg.AuthSessionTTL,
-		BasePath:      cfg.AppBasePath,
+		Enabled:        cfg.AuthEnabled,
+		LoginPassword:  cfg.LoginPassword,
+		SessionTTL:     cfg.AuthSessionTTL,
+		BasePath:       cfg.AppBasePath,
+		TrustedProxies: cfg.TrustedProxies,
 	}, sessionManager)
 
 	return &App{
@@ -120,10 +121,11 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 			usageService,
 			pricingService,
 			api.AuthConfig{
-				Enabled:       cfg.AuthEnabled,
-				LoginPassword: cfg.LoginPassword,
-				SessionTTL:    cfg.AuthSessionTTL,
-				BasePath:      cfg.AppBasePath,
+				Enabled:        cfg.AuthEnabled,
+				LoginPassword:  cfg.LoginPassword,
+				SessionTTL:     cfg.AuthSessionTTL,
+				BasePath:       cfg.AppBasePath,
+				TrustedProxies: cfg.TrustedProxies,
 			},
 			authHandler,
 			cfg.AppBasePath,

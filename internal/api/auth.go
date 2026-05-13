@@ -14,12 +14,14 @@ import (
 const sessionCookieName = "cpa_usage_session"
 
 const maxFailedLoginAttempts = 5
+const failedLoginAttemptWindow = 15 * time.Minute
 
 type AuthConfig struct {
-	Enabled       bool
-	LoginPassword string
-	SessionTTL    time.Duration
-	BasePath      string
+	Enabled        bool
+	LoginPassword  string
+	SessionTTL     time.Duration
+	BasePath       string
+	TrustedProxies []string
 }
 
 type authHandler struct {
@@ -27,7 +29,13 @@ type authHandler struct {
 	sessions *auth.SessionManager
 
 	mu             sync.Mutex
-	failedAttempts map[string]int
+	failedAttempts map[string]failedLoginAttempt
+	now            func() time.Time
+}
+
+type failedLoginAttempt struct {
+	count        int
+	lastFailedAt time.Time
 }
 
 type loginRequest struct {
@@ -39,7 +47,7 @@ type sessionResponse struct {
 }
 
 func NewAuthHandler(config AuthConfig, sessions *auth.SessionManager) *authHandler {
-	return &authHandler{config: config, sessions: sessions, failedAttempts: make(map[string]int)}
+	return &authHandler{config: config, sessions: sessions, failedAttempts: make(map[string]failedLoginAttempt), now: time.Now}
 }
 
 func (h *authHandler) registerRoutes(router gin.IRoutes) {
@@ -159,13 +167,20 @@ func (h *authHandler) logout(c *gin.Context) {
 func (h *authHandler) tooManyFailedAttempts(key string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.failedAttempts[key] >= maxFailedLoginAttempts
+	now := h.now()
+	h.pruneExpiredFailedAttemptsLocked(now)
+	return h.failedAttempts[key].count >= maxFailedLoginAttempts
 }
 
 func (h *authHandler) recordFailedAttempt(key string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.failedAttempts[key]++
+	now := h.now()
+	h.pruneExpiredFailedAttemptsLocked(now)
+	attempt := h.failedAttempts[key]
+	attempt.count++
+	attempt.lastFailedAt = now
+	h.failedAttempts[key] = attempt
 }
 
 func (h *authHandler) clearFailedAttempts(key string) {
@@ -174,12 +189,24 @@ func (h *authHandler) clearFailedAttempts(key string) {
 	delete(h.failedAttempts, key)
 }
 
+func (h *authHandler) pruneExpiredFailedAttemptsLocked(now time.Time) {
+	for key, attempt := range h.failedAttempts {
+		if now.Sub(attempt.lastFailedAt) > failedLoginAttemptWindow {
+			delete(h.failedAttempts, key)
+		}
+	}
+}
+
 func loginClientKey(c *gin.Context) string {
+	clientIP := c.ClientIP()
+	if clientIP != "" {
+		return clientIP
+	}
 	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
 	if err == nil && host != "" {
 		return host
 	}
-	return c.ClientIP()
+	return c.Request.RemoteAddr
 }
 
 func clearSessionCookie(c *gin.Context, basePath string) {

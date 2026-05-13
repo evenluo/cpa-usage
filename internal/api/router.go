@@ -78,7 +78,9 @@ func NewRouter(
 	optionalProviders ...OptionalProviders,
 ) *gin.Engine {
 	router := gin.New()
-	_ = router.SetTrustedProxies(nil)
+	if err := router.SetTrustedProxies(authConfig.TrustedProxies); err != nil {
+		panic(err)
+	}
 	router.Use(gin.Recovery())
 
 	appGroup := router.Group(basePath)

@@ -113,6 +113,66 @@ func TestAuthLoginRateLimitsRepeatedFailures(t *testing.T) {
 	}
 }
 
+func TestAuthLoginRateLimitUsesTrustedForwardedClientIP(t *testing.T) {
+	sessions := auth.NewSessionManager(time.Hour)
+	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour, TrustedProxies: []string{"198.51.100.10"}}
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+
+	for i := 0; i < 5; i++ {
+		resp := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"wrong"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Forwarded-For", "203.0.113.7")
+		req.RemoteAddr = "198.51.100.10:1234"
+		router.ServeHTTP(resp, req)
+		if resp.Code != http.StatusUnauthorized {
+			t.Fatalf("expected failed attempt %d to return 401, got %d", i+1, resp.Code)
+		}
+	}
+
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"wrong"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-For", "203.0.113.8")
+	req.RemoteAddr = "198.51.100.10:1234"
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected separate forwarded client IP to remain below the threshold, got %d", resp.Code)
+	}
+}
+
+func TestAuthLoginFailedAttemptsExpire(t *testing.T) {
+	sessions := auth.NewSessionManager(time.Hour)
+	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}
+	handler := NewAuthHandler(config, sessions)
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	handler.now = func() time.Time { return now }
+	router := NewRouter(nil, nil, nil, nil, config, handler, "")
+
+	for i := 0; i < 5; i++ {
+		resp := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"wrong"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "198.51.100.1:1234"
+		router.ServeHTTP(resp, req)
+		if resp.Code != http.StatusUnauthorized {
+			t.Fatalf("expected failed attempt %d to return 401, got %d", i+1, resp.Code)
+		}
+	}
+
+	now = now.Add(failedLoginAttemptWindow + time.Second)
+	resp := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"wrong"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.RemoteAddr = "198.51.100.1:1234"
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("expected expired failed attempts to reset the threshold, got %d", resp.Code)
+	}
+}
+
 func TestAuthLoginAllowsCorrectPasswordAfterRateLimitThreshold(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -84,6 +85,8 @@ type Config struct {
 	LoginPassword string
 	// AuthSessionTTL 是登录 session 有效时长。
 	AuthSessionTTL time.Duration
+	// TrustedProxies 是允许提供 X-Forwarded-For client IP 的反向代理 CIDR/IP 列表。
+	TrustedProxies []string
 }
 
 type LoadOptions struct {
@@ -172,6 +175,10 @@ func Load(options LoadOptions) (*Config, error) {
 	if authSessionTTL <= 0 {
 		return nil, fmt.Errorf("AUTH_SESSION_TTL must be positive")
 	}
+	trustedProxies, err := getTrustedProxies("TRUSTED_PROXIES")
+	if err != nil {
+		return nil, err
+	}
 
 	authEnabled, err := getBool("AUTH_ENABLED", false)
 	if err != nil {
@@ -222,6 +229,7 @@ func Load(options LoadOptions) (*Config, error) {
 		AuthEnabled:            authEnabled,
 		LoginPassword:          strings.TrimSpace(os.Getenv("LOGIN_PASSWORD")),
 		AuthSessionTTL:         authSessionTTL,
+		TrustedProxies:         trustedProxies,
 	}
 	if cfg.CPABaseURL == "" {
 		return nil, fmt.Errorf("CPA_BASE_URL is required")
@@ -363,6 +371,28 @@ func getDuration(key string, fallback time.Duration) (time.Duration, error) {
 		return 0, fmt.Errorf("%s must be a valid duration: %w", key, err)
 	}
 	return duration, nil
+}
+
+func getTrustedProxies(key string) ([]string, error) {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil, nil
+	}
+	parts := strings.Split(value, ",")
+	items := make([]string, 0, len(parts))
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+		if net.ParseIP(item) == nil {
+			if _, _, err := net.ParseCIDR(item); err != nil {
+				return nil, fmt.Errorf("%s must contain only IP addresses or CIDR ranges", key)
+			}
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 func getBool(key string, fallback bool) (bool, error) {

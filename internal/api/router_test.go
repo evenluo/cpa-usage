@@ -87,6 +87,23 @@ func TestRouterDoesNotTrustForwardedClientIPByDefault(t *testing.T) {
 	}
 }
 
+func TestRouterTrustsForwardedClientIPFromConfiguredProxy(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{TrustedProxies: []string{"198.51.100.10"}}, nil, "")
+	router.GET("/client-ip", func(c *gin.Context) {
+		c.String(http.StatusOK, c.ClientIP())
+	})
+	req := httptest.NewRequest(http.MethodGet, "/client-ip", nil)
+	req.RemoteAddr = "198.51.100.10:1234"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Body.String() != "203.0.113.7" {
+		t.Fatalf("expected forwarded client IP from trusted proxy, got %q", resp.Body.String())
+	}
+}
+
 func TestStatusReturnsPollerState(t *testing.T) {
 	lastRunAt := time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC)
 	router := NewRouter(nil, statusStub{status: poller.Status{
