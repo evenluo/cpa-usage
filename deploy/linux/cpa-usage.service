@@ -1,0 +1,17 @@
+[Unit]
+Description=CPA Usage
+Documentation=https://github.com/evenluo/cpa-usage
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Replace this placeholder with the package directory in deployment automation.
+WorkingDirectory=__CPA_USAGE_DIR__
+ExecStart=/bin/sh -c 'exec ./cpa-usage'
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

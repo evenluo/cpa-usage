@@ -1,0 +1,289 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"cpa-usage/internal/entities"
+	"cpa-usage/internal/redact"
+	"cpa-usage/internal/repository"
+	"cpa-usage/internal/service"
+	"github.com/gin-gonic/gin"
+)
+
+type usageIdentitiesResponse struct {
+	Identities []usageIdentityResponse `json:"identities"`
+}
+
+type usageIdentitiesPageResponse struct {
+	Identities []usageIdentityResponse `json:"identities"`
+	TotalCount int64                   `json:"total_count"`
+	Page       int                     `json:"page"`
+	PageSize   int                     `json:"page_size"`
+	TotalPages int                     `json:"total_pages"`
+}
+
+type usageIdentityResponse struct {
+	ID                         uint                           `json:"id"`
+	Name                       string                         `json:"name"`
+	DisplayName                string                         `json:"displayName"`
+	Alias                      string                         `json:"alias"`
+	AuthType                   entities.UsageIdentityAuthType `json:"auth_type"`
+	AuthTypeName               string                         `json:"auth_type_name"`
+	Identity                   string                         `json:"identity"`
+	Type                       string                         `json:"type"`
+	Provider                   string                         `json:"provider"`
+	PlanType                   *string                        `json:"plan_type,omitempty"`
+	ActiveStart                *time.Time                     `json:"active_start,omitempty"`
+	ActiveUntil                *time.Time                     `json:"active_until,omitempty"`
+	TotalRequests              int64                          `json:"total_requests"`
+	SuccessCount               int64                          `json:"success_count"`
+	FailureCount               int64                          `json:"failure_count"`
+	InputTokens                int64                          `json:"input_tokens"`
+	OutputTokens               int64                          `json:"output_tokens"`
+	ReasoningTokens            int64                          `json:"reasoning_tokens"`
+	CachedTokens               int64                          `json:"cached_tokens"`
+	TotalTokens                int64                          `json:"total_tokens"`
+	TotalCost                  float64                        `json:"total_cost"`
+	CostAvailable              bool                           `json:"cost_available"`
+	LastAggregatedUsageEventID uint                           `json:"last_aggregated_usage_event_id"`
+	FirstUsedAt                *time.Time                     `json:"first_used_at,omitempty"`
+	LastUsedAt                 *time.Time                     `json:"last_used_at,omitempty"`
+	StatsUpdatedAt             *time.Time                     `json:"stats_updated_at,omitempty"`
+	IsDeleted                  bool                           `json:"is_deleted"`
+	CreatedAt                  time.Time                      `json:"created_at"`
+	UpdatedAt                  time.Time                      `json:"updated_at"`
+	DeletedAt                  *time.Time                     `json:"deleted_at,omitempty"`
+}
+
+type usageIdentityAliasResponse struct {
+	Alias string `json:"alias"`
+}
+
+func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider service.UsageIdentityProvider, keyAliasProvider service.KeyAliasProvider) {
+	router.GET("/usage/identities/page", func(c *gin.Context) {
+		if usageIdentityProvider == nil {
+			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: 1, PageSize: 10})
+			return
+		}
+
+		// 分页接口专供 Credentials 分区使用，按 auth_type 在服务端过滤后再分页。
+		request, ok := parseUsageIdentitiesPageRequest(c)
+		if !ok {
+			return
+		}
+		result, err := usageIdentityProvider.ListActiveUsageIdentitiesPage(c.Request.Context(), request)
+		if err != nil {
+			writeInternalError(c, "list active usage identities page failed", err)
+			return
+		}
+
+		aliases, err := aliasesForUsageIdentities(c.Request.Context(), keyAliasProvider, result.Items)
+		if err != nil {
+			writeInternalError(c, "list key aliases failed", err)
+			return
+		}
+
+		// 复用统一响应映射，保证分页接口和旧列表接口的字段/脱敏规则一致。
+		response := make([]usageIdentityResponse, 0, len(result.Items))
+		for _, item := range result.Items {
+			response = append(response, mapUsageIdentityResponse(item, aliases))
+		}
+		c.JSON(http.StatusOK, usageIdentitiesPageResponse{
+			Identities: response,
+			TotalCount: result.Total,
+			Page:       request.Page,
+			PageSize:   request.PageSize,
+			TotalPages: totalPages(result.Total, request.PageSize),
+		})
+	})
+
+	router.GET("/usage/identities", func(c *gin.Context) {
+		if usageIdentityProvider == nil {
+			c.JSON(http.StatusOK, usageIdentitiesResponse{Identities: []usageIdentityResponse{}})
+			return
+		}
+
+		items, err := usageIdentityProvider.ListActiveUsageIdentities(c.Request.Context())
+		if err != nil {
+			writeInternalError(c, "list active usage identities failed", err)
+			return
+		}
+
+		aliases, err := aliasesForUsageIdentities(c.Request.Context(), keyAliasProvider, items)
+		if err != nil {
+			writeInternalError(c, "list key aliases failed", err)
+			return
+		}
+
+		response := make([]usageIdentityResponse, 0, len(items))
+		for _, item := range items {
+			response = append(response, mapUsageIdentityResponse(item, aliases))
+		}
+		c.JSON(http.StatusOK, usageIdentitiesResponse{Identities: response})
+	})
+
+	router.GET("/usage/identities/:id/alias", func(c *gin.Context) {
+		if keyAliasProvider == nil {
+			c.JSON(http.StatusOK, usageIdentityAliasResponse{})
+			return
+		}
+		id, ok := parseUsageIdentityID(c)
+		if !ok {
+			return
+		}
+		alias, err := keyAliasProvider.GetUsageIdentityAlias(c.Request.Context(), id)
+		if err != nil {
+			writeKeyAliasError(c, "get key alias failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: alias})
+	})
+
+	router.PUT("/usage/identities/:id/alias", func(c *gin.Context) {
+		id, ok := parseUsageIdentityID(c)
+		if !ok {
+			return
+		}
+		var request usageIdentityAliasResponse
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid alias payload"})
+			return
+		}
+		if _, err := repository.NormalizeKeyAlias(request.Alias); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "alias must be 80 characters or fewer"})
+			return
+		}
+		if keyAliasProvider == nil {
+			c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: strings.TrimSpace(request.Alias)})
+			return
+		}
+		alias, err := keyAliasProvider.SetUsageIdentityAlias(c.Request.Context(), id, request.Alias)
+		if err != nil {
+			writeKeyAliasError(c, "set key alias failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: alias})
+	})
+
+	router.DELETE("/usage/identities/:id/alias", func(c *gin.Context) {
+		if keyAliasProvider == nil {
+			c.Status(http.StatusNoContent)
+			return
+		}
+		id, ok := parseUsageIdentityID(c)
+		if !ok {
+			return
+		}
+		if err := keyAliasProvider.ClearUsageIdentityAlias(c.Request.Context(), id); err != nil {
+			writeKeyAliasError(c, "clear key alias failed", err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+}
+
+func parseUsageIdentitiesPageRequest(c *gin.Context) (service.ListUsageIdentitiesRequest, bool) {
+	// page/page_size 做宽松兜底，auth_type 做严格校验，避免前端分区拿到混合数据。
+	page := positiveQueryInt(c, "page", 1)
+	pageSize := positiveQueryInt(c, "page_size", 10)
+	request := service.ListUsageIdentitiesRequest{Page: page, PageSize: pageSize}
+	if rawAuthType := c.Query("auth_type"); rawAuthType != "" {
+		value, err := strconv.Atoi(rawAuthType)
+		if err != nil || (value != int(entities.UsageIdentityAuthTypeAuthFile) && value != int(entities.UsageIdentityAuthTypeAIProvider)) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_type must be 1 or 2"})
+			return service.ListUsageIdentitiesRequest{}, false
+		}
+		authType := entities.UsageIdentityAuthType(value)
+		request.AuthType = &authType
+	}
+	return request, true
+}
+
+func positiveQueryInt(c *gin.Context, key string, fallback int) int {
+	value, err := strconv.Atoi(c.Query(key))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func totalPages(total int64, pageSize int) int {
+	if total <= 0 || pageSize <= 0 {
+		return 0
+	}
+	return int((total + int64(pageSize) - 1) / int64(pageSize))
+}
+
+func aliasesForUsageIdentities(ctx context.Context, keyAliasProvider service.KeyAliasProvider, items []entities.UsageIdentity) (map[service.UsageIdentityAliasKey]string, error) {
+	if keyAliasProvider == nil || len(items) == 0 {
+		return map[service.UsageIdentityAliasKey]string{}, nil
+	}
+	return keyAliasProvider.ListAliasesForUsageIdentities(ctx, items)
+}
+
+func parseUsageIdentityID(c *gin.Context) (uint, bool) {
+	value, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || value == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "usage identity id must be a positive integer"})
+		return 0, false
+	}
+	return uint(value), true
+}
+
+func writeKeyAliasError(c *gin.Context, message string, err error) {
+	switch {
+	case errors.Is(err, service.ErrInvalidKeyAlias):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "alias must be 80 characters or fewer"})
+	case errors.Is(err, service.ErrUsageIdentityMissing):
+		c.JSON(http.StatusNotFound, gin.H{"error": "usage identity not found"})
+	default:
+		writeInternalError(c, message, err)
+	}
+}
+
+func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.UsageIdentityAliasKey]string) usageIdentityResponse {
+	// AI provider 的 identity 是 API Key，只在返回给前端时脱敏，数据库原值不改。
+	identity := item.Identity
+	if item.AuthType == entities.UsageIdentityAuthTypeAIProvider {
+		identity = redact.APIKeyDisplayName(item.Identity)
+	}
+	alias := aliases[service.UsageIdentityAliasKey{AuthType: item.AuthType, Identity: item.Identity}]
+
+	return usageIdentityResponse{
+		ID:                         item.ID,
+		Name:                       item.Name,
+		DisplayName:                usageIdentityDisplayName(item),
+		Alias:                      alias,
+		AuthType:                   item.AuthType,
+		AuthTypeName:               item.AuthTypeName,
+		Identity:                   identity,
+		Type:                       item.Type,
+		Provider:                   item.Provider,
+		PlanType:                   item.PlanType,
+		ActiveStart:                item.ActiveStart,
+		ActiveUntil:                item.ActiveUntil,
+		TotalRequests:              item.TotalRequests,
+		SuccessCount:               item.SuccessCount,
+		FailureCount:               item.FailureCount,
+		InputTokens:                item.InputTokens,
+		OutputTokens:               item.OutputTokens,
+		ReasoningTokens:            item.ReasoningTokens,
+		CachedTokens:               item.CachedTokens,
+		TotalTokens:                item.TotalTokens,
+		TotalCost:                  item.TotalCost,
+		CostAvailable:              item.CostAvailable,
+		LastAggregatedUsageEventID: item.LastAggregatedUsageEventID,
+		FirstUsedAt:                item.FirstUsedAt,
+		LastUsedAt:                 item.LastUsedAt,
+		StatsUpdatedAt:             item.StatsUpdatedAt,
+		IsDeleted:                  item.IsDeleted,
+		CreatedAt:                  item.CreatedAt,
+		UpdatedAt:                  item.UpdatedAt,
+		DeletedAt:                  item.DeletedAt,
+	}
+}
