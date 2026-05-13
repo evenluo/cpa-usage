@@ -19,6 +19,7 @@ func withRepositoryTestLocation(t *testing.T, name string) {
 	if err != nil {
 		t.Fatalf("load location %s: %v", name, err)
 	}
+	t.Setenv("TZ", name)
 	t.Cleanup(func() { time.Local = previousLocal })
 	time.Local = location
 }

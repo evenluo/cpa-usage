@@ -324,6 +324,19 @@ func TestBuildAnalyticsSummaryWithFilterKeepsRepeatedDSTHoursSeparate(t *testing
 	if snapshot.Trend[1].Label != "2026-11-01 01:00 -0500" || !snapshot.Trend[1].BucketStart.Equal(time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC)) {
 		t.Fatalf("expected second fall-back hour with EST offset, got %+v", snapshot.Trend[1])
 	}
+	var fallBackRow *dto.AnalyticsHeatmapRowRecord
+	for index := range snapshot.Heatmap.Rows {
+		if snapshot.Heatmap.Rows[index].Date == "2026-11-01" {
+			fallBackRow = &snapshot.Heatmap.Rows[index]
+		}
+	}
+	if fallBackRow == nil {
+		t.Fatalf("expected local fall-back heatmap row, got %+v", snapshot.Heatmap.Rows)
+	}
+	fallBackCell := fallBackRow.Cells[1]
+	if fallBackCell.TotalTokens != 3000 || fallBackCell.RequestCount != 2 {
+		t.Fatalf("expected heatmap to aggregate both repeated local 01:00 hours, got %+v", fallBackCell)
+	}
 }
 
 func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendAcrossDSTChange(t *testing.T) {
@@ -818,9 +831,7 @@ func TestBuildAnalyticsSummaryWithFilterOmitsCostComparisonWhenPricingIsIncomple
 }
 
 func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.T) {
-	previousLocal := time.Local
-	time.Local = time.UTC
-	t.Cleanup(func() { time.Local = previousLocal })
+	withRepositoryTestLocation(t, "UTC")
 
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
@@ -874,9 +885,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 }
 
 func TestBuildAnalyticsSummaryWithFilterHeatmapMarksRollingRangeBoundaryCells(t *testing.T) {
-	previousLocal := time.Local
-	time.Local = time.UTC
-	t.Cleanup(func() { time.Local = previousLocal })
+	withRepositoryTestLocation(t, "UTC")
 
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 10, 30, 0, 0, time.UTC)
@@ -905,13 +914,7 @@ func TestBuildAnalyticsSummaryWithFilterHeatmapMarksRollingRangeBoundaryCells(t 
 }
 
 func TestBuildAnalyticsSummaryWithFilterHeatmapBucketsFractionalOffsetLocalHour(t *testing.T) {
-	previousLocal := time.Local
-	location, err := time.LoadLocation("Asia/Kathmandu")
-	if err != nil {
-		t.Fatalf("load location: %v", err)
-	}
-	time.Local = location
-	t.Cleanup(func() { time.Local = previousLocal })
+	withRepositoryTestLocation(t, "Asia/Kathmandu")
 
 	db := openTestDatabase(t)
 	localStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.Local)
