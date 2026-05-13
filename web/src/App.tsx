@@ -18,7 +18,7 @@ import {
   X,
 } from 'lucide-react'
 
-import { AliasRankingChart, HealthTimeline, ModelDistributionChart, Sparkline, TokenCostCompareChart } from '@/components/charts'
+import { HealthTimeline, ModelDistributionChart, Sparkline, TokenCostCompareChart } from '@/components/charts'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -439,11 +439,12 @@ function useAnalyticsSummary(enabled: boolean, provider: string, granularity: Ti
 }
 
 const modelPalette = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#0891b2', '#be123c']
-type BreakdownMode = 'key_alias' | 'model' | 'time'
+type BreakdownMode = 'model' | 'time'
+type UsageMeasure = 'cost' | 'tokens'
 
 function App() {
   const route = currentRoute()
-  const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('key_alias')
+  const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('model')
   const [selectedProvider, setSelectedProvider] = useState('')
   const [timeGranularity, setTimeGranularity] = useState<TimeGranularity>('hour')
   const authSession = useAuthSession()
@@ -455,6 +456,7 @@ function App() {
   const analyticsModels = analytics.models
   const analyticsInsights = analytics.insights
   const analyticsHeatmap = analytics.heatmap
+  const primaryMeasure = analyticsSummary.cost_status === 'available' ? 'cost' : 'tokens'
   const kpiSparklines = {
     cost: analyticsTrend.map((point) => (point.costStatus === 'unavailable' ? null : point.cost)),
     tokens: analyticsTrend.map((point) => point.tokens),
@@ -640,82 +642,55 @@ function App() {
 
             </section>
 
-            <Card aria-label="Insight rail">
-              <CardHeader>
-                <CardTitle>Insight Rail</CardTitle>
-                <CardDescription>Deterministic checkpoints ordered before conclusions.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <InsightRail insights={analyticsInsights} />
-              </CardContent>
-            </Card>
+            <aside aria-label="Usage intelligence right rail" className="grid gap-4">
+              <Card aria-label="Insight rail">
+                <CardHeader>
+                  <CardTitle>Insight Rail</CardTitle>
+                  <CardDescription>Deterministic checkpoints ordered before conclusions.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <InsightRail insights={analyticsInsights} />
+                </CardContent>
+              </Card>
+              <Card aria-label="Key Alias leaderboard">
+                <CardHeader className="flex flex-row items-start justify-between gap-3">
+                  <div>
+                    <CardTitle>Key Alias Leaderboard</CardTitle>
+                    <CardDescription>Compact contributor ranking in the active analytics scope.</CardDescription>
+                  </div>
+                  <Badge variant={primaryMeasure === 'cost' ? 'green' : 'blue'}>{primaryMeasure === 'cost' ? 'Cost' : 'Token volume'}</Badge>
+                </CardHeader>
+                <CardContent>
+                  <KeyAliasLeaderboard aliases={analyticsAliases} measure={primaryMeasure} />
+                </CardContent>
+              </Card>
+            </aside>
           </div>
 
           <section aria-labelledby="breakdown-workbench-title" className="mt-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 id="breakdown-workbench-title" className="text-base font-semibold">Breakdown Workbench</h3>
-                <p className="text-sm text-muted-foreground">Key Alias, model, and time stay available as one active view.</p>
+                <p className="text-sm text-muted-foreground">Model and time stay available as focused supporting views.</p>
               </div>
-              <div aria-label="Breakdown view" className="grid grid-cols-3 gap-2" role="group">
-                <Button aria-pressed={breakdownMode === 'key_alias'} type="button" variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
+              <div aria-label="Breakdown view" className="grid grid-cols-2 gap-2" role="group">
                 <Button aria-pressed={breakdownMode === 'model'} type="button" variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
                 <Button aria-pressed={breakdownMode === 'time'} type="button" variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
               </div>
             </div>
-            {breakdownMode === 'key_alias' ? (
+            {breakdownMode === 'model' ? (
             <Card>
               <CardHeader className="flex flex-row items-start justify-between gap-3">
                 <div>
-                  <CardTitle>Key Alias Ranking</CardTitle>
-                  <CardDescription>Alias is primary; masked CPA Key remains secondary for traceability.</CardDescription>
+                  <CardTitle>Model Mix</CardTitle>
+                  <CardDescription>Provider remains a secondary dimension while model impact is shown by Cost and tokens.</CardDescription>
                 </div>
-                <Badge variant="green">Cost sort</Badge>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                  <div className="h-[250px] min-w-0">
-                    <AliasRankingChart rows={analyticsAliases} />
-                  </div>
-                  <div className="grid gap-2">
-                    {analyticsAliases.length === 0 ? (
-                      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                        No key alias usage in this range
-                      </div>
-                    ) : analyticsAliases.map((row) => (
-                      <div className="grid grid-cols-[minmax(0,1fr)_86px_96px] items-center gap-3 rounded-md border border-border p-3" key={row.key}>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold">{row.alias}</p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {row.key}
-                          </p>
-                          {row.isDeleted ? <Badge variant="outline">Deleted</Badge> : null}
-                        </div>
-                        <div className="h-9">
-                          <Sparkline values={row.trend} />
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold">{row.costAvailable === false ? 'Cost unavailable' : formatCost(row.cost)}</p>
-                          <p className="text-xs text-muted-foreground">{formatCompact(row.tokens, 2)} tokens</p>
-                          <p className="text-xs text-muted-foreground">{row.successRate}% success</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            ) : null}
-            {breakdownMode === 'model' ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>Model Distribution</CardTitle>
-                <CardDescription>Provider remains a secondary dimension while model impact is shown by Cost and tokens.</CardDescription>
+                <Badge variant={primaryMeasure === 'cost' ? 'green' : 'blue'}>{primaryMeasure === 'cost' ? 'Cost share' : 'Token share'}</Badge>
               </CardHeader>
               <CardContent>
                 <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)] xl:grid-cols-1 2xl:grid-cols-[180px_minmax(0,1fr)]">
                   <div className="h-[190px] min-w-0">
-                    <ModelDistributionChart rows={analyticsModels} />
+                    <ModelDistributionChart measure={primaryMeasure} rows={analyticsModels} />
                   </div>
                   <div className="grid gap-2">
                     {analyticsModels.length === 0 ? (
@@ -735,7 +710,8 @@ function App() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-semibold">{row.costAvailable === false ? 'Cost unavailable' : formatCost(row.cost)}</p>
+                          <p className="text-sm font-semibold">{formatUsageMeasureValue(usageMeasureValue(row, primaryMeasure), primaryMeasure)}</p>
+                          <p className="text-xs text-muted-foreground">{primaryMeasure === 'cost' && row.costAvailable === false ? 'Cost unavailable' : `${primaryMeasure === 'cost' ? 'Cost' : 'Token'} basis`}</p>
                           <p className="text-xs text-muted-foreground">{formatEstimatedCacheSavings(row.estimatedCacheSavings)}</p>
                           <p className="text-xs text-muted-foreground">{row.averageLatencyMS ? `${row.averageLatencyMS.toFixed(0)}ms avg` : 'No latency samples'}</p>
                         </div>
@@ -1622,6 +1598,23 @@ function formatInsightMetric(insight: AnalyticsInsightPayload) {
   }
 }
 
+function insightRailPriority(type: string) {
+  switch (type) {
+    case 'metric_completeness':
+      return 0
+    case 'failure_concentration':
+      return 1
+    case 'cache_efficiency':
+      return 2
+    case 'top_cost_key':
+      return 3
+    case 'token_spike':
+      return 4
+    default:
+      return 5
+  }
+}
+
 function InsightRail({ insights }: { insights: AnalyticsInsightPayload[] }) {
   if (insights.length === 0) {
     return (
@@ -1630,9 +1623,14 @@ function InsightRail({ insights }: { insights: AnalyticsInsightPayload[] }) {
       </div>
     )
   }
+  const orderedInsights = insights
+    .map((insight, index) => ({ insight, index }))
+    .sort((left, right) => insightRailPriority(left.insight.type) - insightRailPriority(right.insight.type) || left.index - right.index)
+    .map((entry) => entry.insight)
+
   return (
     <div className="grid gap-3">
-      {insights.map((insight) => (
+      {orderedInsights.map((insight) => (
         <article
           className="rounded-md border border-border bg-background p-3"
           data-insight-type={insight.type}
@@ -1646,6 +1644,47 @@ function InsightRail({ insights }: { insights: AnalyticsInsightPayload[] }) {
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{insight.detail}</p>
         </article>
       ))}
+    </div>
+  )
+}
+
+function usageMeasureValue(row: Pick<AliasRow | ModelRow, 'cost' | 'tokens'>, measure: UsageMeasure) {
+  return measure === 'cost' ? row.cost : row.tokens
+}
+
+function formatUsageMeasureValue(value: number, measure: UsageMeasure) {
+  return measure === 'cost' ? formatCost(value) : `${formatCompact(value, 2)} tokens`
+}
+
+function KeyAliasLeaderboard({ aliases, measure }: { aliases: AliasRow[]; measure: UsageMeasure }) {
+  const rows = [...aliases].sort((left, right) => usageMeasureValue(right, measure) - usageMeasureValue(left, measure)).slice(0, 5)
+  const total = aliases.reduce((sum, row) => sum + usageMeasureValue(row, measure), 0)
+  if (rows.length === 0 || total <= 0) {
+    return (
+      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        No key alias usage in this range
+      </div>
+    )
+  }
+  return (
+    <div className="grid gap-2">
+      {rows.map((row, index) => {
+        const value = usageMeasureValue(row, measure)
+        const percent = (value / total) * 100
+        return (
+          <div className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-background p-2" key={row.key}>
+            <span className="text-xs font-semibold text-muted-foreground">#{index + 1}</span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">{row.alias}</p>
+              <p className="truncate text-[11px] text-muted-foreground">{row.key}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold">{formatUsageMeasureValue(value, measure)}</p>
+              <p className="text-[11px] text-muted-foreground">{percent.toFixed(1)}% of total</p>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

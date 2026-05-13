@@ -337,11 +337,18 @@ describe('App', () => {
     expect(within(insightRail).getByText('Failure Cluster')).toBeInTheDocument()
     expect(within(insightRail).getAllByRole('article').map((item) => item.getAttribute('data-insight-type'))).toEqual([
       'metric_completeness',
+      'failure_concentration',
       'cache_efficiency',
       'top_cost_key',
       'token_spike',
-      'failure_concentration',
     ])
+    const rightRail = screen.getByLabelText('Usage intelligence right rail')
+    const leaderboard = within(rightRail).getByLabelText('Key Alias leaderboard')
+    expect(within(leaderboard).getByText('Token volume')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('#1')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('3M tokens')).toBeInTheDocument()
+    expect(within(leaderboard).getByText('50.0% of total')).toBeInTheDocument()
     expect(screen.getAllByText('Cache Read Share').length).toBeGreaterThanOrEqual(2)
     expect(screen.getAllByText('6.7%').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('1.5M prompt input · No estimated savings')).toBeInTheDocument()
@@ -367,10 +374,10 @@ describe('App', () => {
     expect(within(trendBucketDetails).getByText('$0.25 partial')).toBeInTheDocument()
     expect(within(trendBucketDetails).getByText('181 requests')).toBeInTheDocument()
     expect(within(trendBucketDetails).getByText('4 failures')).toBeInTheDocument()
-    expect(screen.getByText('Key Alias Ranking')).toBeInTheDocument()
+    expect(screen.queryByText('Key Alias Ranking')).not.toBeInTheDocument()
     const breakdownView = screen.getByRole('group', { name: 'Breakdown view' })
-    expect(within(breakdownView).getByRole('button', { name: 'Key Alias' })).toHaveAttribute('aria-pressed', 'true')
-    expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'false')
+    expect(within(breakdownView).queryByRole('button', { name: 'Key Alias' })).not.toBeInTheDocument()
+    expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'true')
     const healthStrip = screen.getByLabelText('Request health stability strip')
     expect(within(healthStrip).getByText('Request Health')).toBeInTheDocument()
     expect(within(healthStrip).getByText('5 failures')).toBeInTheDocument()
@@ -382,10 +389,8 @@ describe('App', () => {
     expect(screen.getByText('sk-b*******3456 · Anthropic')).toBeInTheDocument()
     expect(screen.getByText('Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout')).toBeInTheDocument()
     expect(screen.getAllByText('Cost unavailable').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Deleted')).toBeInTheDocument()
-    fireEvent.click(within(breakdownView).getByRole('button', { name: 'Model' }))
-    expect(screen.getByText('Model Distribution')).toBeInTheDocument()
-    expect(within(breakdownView).getByRole('button', { name: 'Key Alias' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByText('Model Mix')).toBeInTheDocument()
+    expect(screen.getByText('Token share')).toBeInTheDocument()
     expect(within(breakdownView).getByRole('button', { name: 'Model' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
     expect(screen.getAllByText(/OpenAI/).length).toBeGreaterThanOrEqual(1)

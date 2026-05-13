@@ -167,18 +167,22 @@ export function AliasRankingChart({ rows }: { rows: AliasRow[] }) {
   )
 }
 
-export function ModelDistributionChart({ rows }: { rows: ModelRow[] }) {
+export function ModelDistributionChart({ measure = 'cost', rows }: { measure?: 'cost' | 'tokens'; rows: ModelRow[] }) {
+  const data = rows.map((row) => ({
+    ...row,
+    measureValue: measure === 'cost' ? row.cost : row.tokens,
+  }))
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={defaultInitialDimension}>
       <PieChart>
-        <Pie data={rows} dataKey="cost" innerRadius="58%" outerRadius="82%" paddingAngle={3}>
-          {rows.map((row) => (
+        <Pie data={data} dataKey="measureValue" innerRadius="58%" outerRadius="82%" paddingAngle={3}>
+          {data.map((row) => (
             <Cell fill={row.color} key={row.model} />
           ))}
         </Pie>
         <Tooltip
           contentStyle={{ borderColor: '#e4e4e7', borderRadius: 8, boxShadow: '0 8px 24px rgba(24,24,27,0.08)' }}
-          formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Cost']}
+          formatter={(value) => [measure === 'cost' ? `$${Number(value).toFixed(2)}` : compactNumber(Number(value)), measure === 'cost' ? 'Cost' : 'Tokens']}
         />
       </PieChart>
     </ResponsiveContainer>
