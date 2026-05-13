@@ -174,6 +174,7 @@ describe('App', () => {
           trend: [
             { label: '05-11', total_cost: 0.24, total_tokens: 1000000, request_count: 120, success_count: 119, failure_count: 1, cost_available: true, cost_status: 'available' },
             { label: '05-12', total_cost: 0.25, total_tokens: 1100100, request_count: 181, success_count: 177, failure_count: 4, cost_available: false, cost_status: 'partial' },
+            { label: '05-13', total_cost: 0, total_tokens: 0, request_count: 0, success_count: 0, failure_count: 0, cost_available: false, cost_status: 'unavailable' },
           ],
           key_alias_breakdown: [
             {
@@ -353,6 +354,7 @@ describe('App', () => {
     expect(within(trendSummary).getByText('Peak tokens / Hour')).toBeInTheDocument()
     expect(within(trendSummary).getByText('Total Cost')).toBeInTheDocument()
     expect(within(trendSummary).getByText('Total tokens')).toBeInTheDocument()
+    expect(within(trendSummary).getByText('$0.16')).toBeInTheDocument()
     expect(within(trendSummary).getAllByText('$0.25').length).toBeGreaterThanOrEqual(1)
     expect(within(trendSummary).getByText('$0.49')).toBeInTheDocument()
     expect(within(trendSummary).getAllByText('Cost partial').length).toBeGreaterThanOrEqual(1)
@@ -379,7 +381,7 @@ describe('App', () => {
     expect(screen.getByText('sk-a*******3456 · OpenAI')).toBeInTheDocument()
     expect(screen.getByText('sk-b*******3456 · Anthropic')).toBeInTheDocument()
     expect(screen.getByText('Very Long Key Alias Label That Should Stay Inside The Ranking Row Without Breaking Layout')).toBeInTheDocument()
-    expect(screen.getByText('Cost unavailable')).toBeInTheDocument()
+    expect(screen.getAllByText('Cost unavailable').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('Deleted')).toBeInTheDocument()
     fireEvent.click(within(breakdownView).getByRole('button', { name: 'Model' }))
     expect(screen.getByText('Model Distribution')).toBeInTheDocument()

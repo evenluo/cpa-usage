@@ -837,7 +837,7 @@ function TrendSummaryStrip({ data, granularity }: { data: TrendPoint[]; granular
   const costPoints = data.filter((point) => point.costStatus !== 'unavailable' && !(point.costAvailable === false && point.costStatus !== 'partial'))
   const costIsPartial = data.some((point) => point.costStatus === 'partial') || costPoints.length !== data.length
   const totalCost = costPoints.reduce((sum, point) => sum + point.cost, 0)
-  const averageCost = costPoints.length > 0 ? totalCost / costPoints.length : null
+  const averageCost = costPoints.length > 0 ? totalCost / data.length : null
   const peakCost = costPoints.length > 0 ? Math.max(...costPoints.map((point) => point.cost)) : null
   const totalTokens = data.reduce((sum, point) => sum + point.tokens, 0)
   const averageTokens = data.length > 0 ? totalTokens / data.length : 0
