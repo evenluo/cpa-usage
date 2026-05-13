@@ -96,7 +96,16 @@ export function TokenCostCompareChart({ data }: { data: TrendPoint[] }) {
 }
 
 export function AliasRankingChart({ rows }: { rows: AliasRow[] }) {
-  const data = rows.map((row) => ({ name: row.alias, cost: row.cost }))
+  const data = rows
+    .filter((row) => row.costAvailable !== false && row.costStatus !== 'unavailable')
+    .map((row) => ({ name: row.alias, cost: row.cost }))
+  if (data.length === 0) {
+    return (
+      <div className="grid h-full place-items-center rounded-md border border-dashed border-border text-sm text-muted-foreground">
+        No available alias cost data
+      </div>
+    )
+  }
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={defaultInitialDimension}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 12, top: 0, bottom: 0 }}>
