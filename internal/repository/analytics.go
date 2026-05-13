@@ -466,7 +466,7 @@ func analyticsBucketSQLExpression(bucketByDay bool) string {
 	if bucketByDay {
 		return "strftime('%Y-%m-%d', usage_events.timestamp, 'localtime')"
 	}
-	return "strftime('%Y-%m-%d %H:00', usage_events.timestamp, 'localtime')"
+	return "strftime('%Y-%m-%dT%H:00:00Z', usage_events.timestamp)"
 }
 
 func analyticsTrendBucketsByDay(filter dto.UsageQueryFilter) bool {
@@ -519,15 +519,19 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 		bucketStart, err = time.ParseInLocation(time.DateOnly, row.Bucket, time.Local)
 		bucketEnd = bucketStart.AddDate(0, 0, 1)
 	} else {
-		bucketStart, err = time.ParseInLocation("2006-01-02 15:04", row.Bucket, time.Local)
+		bucketStart, err = time.Parse(time.RFC3339, row.Bucket)
 		bucketEnd = bucketStart.Add(time.Hour)
 	}
 	if err != nil {
 		return dto.AnalyticsTrendPointRecord{}, fmt.Errorf("parse analytics trend bucket %q: %w", row.Bucket, err)
 	}
 	costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	label := row.Bucket
+	if !bucketByDay {
+		label = bucketStart.In(time.Local).Format("2006-01-02 15:04 -0700")
+	}
 	return dto.AnalyticsTrendPointRecord{
-		Label:         row.Bucket,
+		Label:         label,
 		BucketStart:   bucketStart.UTC(),
 		BucketEnd:     bucketEnd.UTC(),
 		TotalCost:     row.TotalCost,
