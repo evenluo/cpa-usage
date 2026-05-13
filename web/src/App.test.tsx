@@ -633,7 +633,8 @@ describe('App', () => {
 
     render(<App />)
 
-    const leaderboard = await screen.findByLabelText('Key Alias leaderboard')
+    expect(await screen.findByText('Free Tier Alias')).toBeInTheDocument()
+    const leaderboard = screen.getByLabelText('Key Alias leaderboard')
     expect(within(leaderboard).getByText('Free Tier Alias')).toBeInTheDocument()
     expect(within(leaderboard).getByText('$0.00')).toBeInTheDocument()
     expect(within(leaderboard).getByText('0.0% of total')).toBeInTheDocument()
