@@ -269,6 +269,94 @@ describe('App', () => {
 
     expect(screen.getByRole('link', { name: 'Key 管理 Keys' })).toHaveAttribute('href', '/cpa/keys')
     expect(screen.getByRole('link', { name: '请求明细 Events' })).toHaveAttribute('href', '/cpa/events')
+    expect(screen.getByRole('link', { name: '计价配置 Pricing' })).toHaveAttribute('href', '/cpa/pricing')
+    expect(screen.getByRole('link', { name: '系统设置 Settings' })).toHaveAttribute('href', '/cpa/settings')
+  })
+
+  it('renders the Events workspace with source traceability preserved', async () => {
+    window.history.replaceState({}, '', '/events')
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/usage/events')) {
+        return new Response(JSON.stringify({
+          events: [{
+            id: 7,
+            timestamp: '2026-05-13T08:00:00Z',
+            model: 'gpt-5.5',
+            source: 'OpenAI Team(Team Prefix)',
+            auth_index: 'sk-masked-source',
+            failed: false,
+            latency_ms: 321,
+            tokens: { total_tokens: 123456 },
+          }],
+        }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Request Events' })).toBeInTheDocument()
+    expect(screen.getByText('OpenAI Team(Team Prefix)')).toBeInTheDocument()
+    expect(screen.getByText('sk-masked-source')).toBeInTheDocument()
+    expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/usage/events?range=24h&page_size=20')
+  })
+
+  it('renders the Pricing workspace with configured and missing models', async () => {
+    window.history.replaceState({}, '', '/pricing')
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/pricing')) {
+        return new Response(JSON.stringify({
+          pricing: [{ model: 'gpt-5.5', prompt_price_per_1m: 3, completion_price_per_1m: 12, cache_price_per_1m: 0.3 }],
+        }))
+      }
+      if (url.includes('/api/v1/models/used')) {
+        return new Response(JSON.stringify({ models: ['gpt-5.5', 'missing-model'] }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Model Unit Pricing' })).toBeInTheDocument()
+    expect(screen.getByText('gpt-5.5')).toBeInTheDocument()
+    expect(screen.getByText('Prompt $3.00')).toBeInTheDocument()
+    expect(screen.getByText('missing-model')).toBeInTheDocument()
+  })
+
+  it('renders the Settings workspace with operational status and auth state', async () => {
+    window.history.replaceState({}, '', '/settings')
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/api/v1/status')) {
+        return new Response(JSON.stringify({
+          sync_running: false,
+          last_status: 'completed_with_warnings',
+          last_run_at: '2026-05-13T08:00:00Z',
+          last_warning: 'metadata unavailable',
+          timezone: 'Asia/Shanghai',
+          version: 'v1.2.3',
+          updateCheckEnabled: true,
+        }))
+      }
+      if (url.includes('/api/v1/auth/session')) {
+        return new Response(JSON.stringify({ authenticated: true }))
+      }
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Operational Settings' })).toBeInTheDocument()
+    expect(screen.getByText('completed_with_warnings')).toBeInTheDocument()
+    expect(screen.getByText('metadata unavailable')).toBeInTheDocument()
+    expect(screen.getByText('v1.2.3')).toBeInTheDocument()
+    expect(screen.getByText('Authenticated')).toBeInTheDocument()
   })
 
   it('renders the Keys workspace with alias search and inline editing', async () => {
