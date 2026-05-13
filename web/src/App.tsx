@@ -524,16 +524,16 @@ function App() {
             </Card>
           </div>
 
-          <section className="mt-4">
+          <section aria-labelledby="breakdown-workbench-title" className="mt-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold">Breakdown Workbench</h3>
+                <h3 id="breakdown-workbench-title" className="text-base font-semibold">Breakdown Workbench</h3>
                 <p className="text-sm text-muted-foreground">Key Alias, model, and time stay available as one active view.</p>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                <Button variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
-                <Button variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
-                <Button variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
+              <div aria-label="Breakdown view" className="grid grid-cols-3 gap-2" role="group">
+                <Button aria-pressed={breakdownMode === 'key_alias'} type="button" variant={breakdownMode === 'key_alias' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('key_alias')}>Key Alias</Button>
+                <Button aria-pressed={breakdownMode === 'model'} type="button" variant={breakdownMode === 'model' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('model')}>Model</Button>
+                <Button aria-pressed={breakdownMode === 'time'} type="button" variant={breakdownMode === 'time' ? 'subtle' : 'outline'} size="sm" onClick={() => setBreakdownMode('time')}>Time</Button>
               </div>
             </div>
             {breakdownMode === 'key_alias' ? (
