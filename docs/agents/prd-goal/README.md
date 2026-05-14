@@ -1,19 +1,19 @@
 # PRD Integration Goal
 
-This is a workflow contract for a Codex `/goal` run. It defines the target state, boundaries, checkpoints, and evidence required to complete a PRD integration workflow.
+This is a workflow contract for a Codex `/goal` run. It defines the target state, boundaries, and checkpoints for completing a PRD integration workflow.
 
 ## Goal
 
-Complete all open ready-for-agent child issues for GitHub PRD issue `#PARENT` in the current integration worktree branch, then open one ready PR to the repository base branch.
+Complete all open ready-for-agent child issues for GitHub PRD issue `#PARENT` in the current integration worktree branch, then open one ready PR to the repository base branch or finish through the no-diff terminal path.
 
 Completion requires:
 
-1. frozen child issue queue built from explicit parent-child evidence
+1. frozen child issue queue built from explicit parent-child relationships
 2. every frozen child completed, tested, committed, and independently reviewed
 3. no frozen child blocked or skipped
 4. final integration tests passing
 5. final integration review passing, or only explicitly recorded low-risk residual notes
-6. final PR created unless user instruction or permission boundary forbids push or PR creation
+6. final PR created unless user instruction, permission boundary, or the no-diff terminal path below applies
 
 Low-risk residual notes are limited to spelling, comments, naming nits, or other non-behavioral cleanup. Findings about tests, security, data integrity, compatibility, user-visible behavior, migrations, permissions, or external integrations are not low-risk residual notes.
 
@@ -29,6 +29,7 @@ Low-risk residual notes are limited to spelling, comments, naming nits, or other
 | Issue base | `ISSUE_BASE_SHA`, current `HEAD` before one child starts |
 | Issue range | `ISSUE_BASE_SHA..HEAD`; required per-child review target |
 | Final integration range | Same diff the final PR will present against the resolved base branch |
+| No-diff terminal path | Controlled exception used only when the completed integration is already in the resolved base branch before PR creation |
 | Drift | Child issue state changes after planning; report, do not silently expand scope |
 
 ## Hard Invariants
@@ -42,13 +43,15 @@ Repository:
 3. Do not execute this workflow on the repository default/base branch.
 4. Do not switch branches, create per-issue branches, merge PRs, force-push, rebase, squash, rewrite completed issue commits, or cherry-pick unrelated commits unless explicitly instructed.
 5. Push only the integration branch, and only after all final PR gates pass.
+6. If the resolved base branch already contains the integration branch, do not manufacture a diff, create unrelated commits, rewrite history, or revert base branch only to satisfy the PR requirement.
 
 GitHub:
 
 1. Do not manually close GitHub issues.
 2. Do not change issue labels, project fields, milestones, assignees, close state, or issue comments unless explicitly instructed.
 3. Use `Closes #CHILD_ID` only for completed frozen child issues in the final PR body.
-4. Do not include `Closes #...` for blocked, skipped, unrelated, or parent PRD issues.
+4. Use `Closes #PARENT` in the final PR body only when every completion requirement passes and the PR is the normal terminal artifact for the PRD goal.
+5. Do not include `Closes #...` for blocked, skipped, unrelated, or not-yet-complete issues.
 
 Worktree:
 
@@ -77,10 +80,10 @@ Child eligibility:
 
 1. issue is open
 2. issue has the resolved ready label
-3. issue has explicit parent-child evidence tying it to `#PARENT`
+3. issue has an explicit parent-child relationship tying it to `#PARENT`
 4. issue is not clearly unrelated to the parent PRD
 
-Valid parent-child evidence:
+Valid parent-child relationships:
 
 1. GitHub sub-issue relationship
 2. parent issue task list entry
@@ -90,8 +93,8 @@ Valid parent-child evidence:
 Queue rules:
 
 1. Casual mention of `#PARENT` is not enough.
-2. Respect explicit dependency evidence.
-3. Ambiguous dependency evidence blocks dependent work until reported.
+2. Respect explicit dependency relationships.
+3. Ambiguous dependency relationships block dependent work until reported.
 4. Newly discovered ready-for-agent children after planning are drift; report before final PR, but do not add them unless explicitly instructed.
 5. Closed or label-changed frozen children are drift and count as skipped unless explicitly overridden.
 6. Any blocked or skipped frozen child blocks final PR creation unless explicitly overridden.
@@ -111,7 +114,7 @@ For each frozen child:
 7. Run independent review on `ISSUE_BASE_SHA..HEAD`.
 8. If review finds valid issues, fix within scope, commit fixes, rerun tests, and rerun review on the full issue range.
 
-Per-child evidence must include issue ID, status/label checks, `ISSUE_BASE_SHA`, commit range, tests run, review rounds, review result, and blocker/skipped reason if applicable.
+Per-child status must include issue ID, status/label checks, `ISSUE_BASE_SHA`, commit range, tests run, review rounds, review result, and blocker/skipped reason if applicable.
 
 ## Review Gate
 
@@ -124,7 +127,8 @@ Required:
 3. final integration review target matches the final PR diff
 4. failed, killed, timed-out, or empty review output is not a pass
 5. each child issue and final integration each get at most 2 completed independent review rounds
-6. valid non-trivial Round 2 findings block that scope
+6. valid non-trivial findings from any completed round must be fixed, tested, and recorded before the final PR
+7. fixed Round 2 findings do not require a third pre-PR review round or extra approval
 
 Use `runbook.md` for default `codex review --base` mechanics.
 
@@ -151,7 +155,8 @@ Before final PR:
 2. run relevant broader integration tests
 3. verify generated artifacts, migrations, rollback notes, SQL/API/frontend type alignment, and cross-issue data relationships where applicable; record `checked` or `N/A` with a reason for each category
 4. run final integration review against the same diff the PR will present
-5. stop without PR if final review Round 2 still has valid non-trivial findings
+5. stop without PR if final review has unresolved valid non-trivial findings
+6. if Round 2 valid non-trivial findings were fixed after the second review, record the fix commits and verification, then continue to the Final PR Gate without starting Round 3
 
 ## Final PR Gate
 
@@ -166,8 +171,24 @@ Open one ready PR only if:
 5. working tree is clean
 6. PR diff contains only PRD integration scope
 
-PR body must include parent PRD, completed children with `Closes #CHILD_ID`, tests, review evidence, drift, compatibility impact if any, and a note that the parent PRD is not manually closed.
+PR body must include `Closes #PARENT`, completed children with `Closes #CHILD_ID`, tests, review summary, drift, compatibility impact if any, and a note that merging this PR is the parent PRD closure action.
+
+### No-Diff Terminal Path
+
+Use this path when the completed integration is already present in the resolved base branch before final PR creation.
+
+Do not use this path when there is any remaining PRD diff, dirty working tree state, blocked/skipped frozen child, unresolved non-low-risk review finding, or unrelated change needed only to create a PR.
+
+The goal may be reported complete through this path when:
+
+1. all completion requirements pass except normal PR creation
+2. the resolved base branch and integration branch have no remaining diff
+3. a ready PR cannot be opened because there are no commits between base and head, or an existing PR already merged the same integration head
+
+If any required condition is missing, report the specific incomplete condition rather than complete.
+
+Because this path has no PR merge event, it cannot auto-close the parent PRD through GitHub closing keywords. This does not block goal completion; report the parent PRD issue closure state separately.
 
 ## Final Response
 
-Report completed issues, blocked/skipped issues, PR URL if created, tests, review rounds, final integration review result, drift, compatibility impact, parent PRD readiness for human final review, and clean working tree status.
+Report completed issues, blocked/skipped issues, PR URL if created, no-diff terminal status if used, tests, review rounds, final integration review result, drift, compatibility impact, parent PRD closure state, and clean working tree status.

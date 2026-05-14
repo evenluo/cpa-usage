@@ -61,6 +61,7 @@ Useful checks:
 
 ```bash
 BASE_BRANCH=main
+INTEGRATION_BRANCH=$(git branch --show-current)
 git fetch origin "$BASE_BRANCH"
 git merge-base "origin/$BASE_BRANCH" HEAD
 git diff --stat "origin/$BASE_BRANCH...HEAD"
@@ -83,6 +84,22 @@ Check:
 
 If the repository uses a different PR diff base, record the exact base ref and why it matches the final PR.
 
+## No-Diff Terminal Checks
+
+Use these checks only when final PR creation fails because the integration branch and resolved base branch have no commits between them.
+
+```bash
+BASE_BRANCH=main
+INTEGRATION_BRANCH=$(git branch --show-current)
+git fetch origin "$BASE_BRANCH" "$INTEGRATION_BRANCH"
+git rev-list --left-right --count "origin/$BASE_BRANCH...origin/$INTEGRATION_BRANCH"
+git diff --stat "origin/$BASE_BRANCH...origin/$INTEGRATION_BRANCH"
+git diff --shortstat "origin/$BASE_BRANCH...origin/$INTEGRATION_BRANCH"
+gh pr list --head "$INTEGRATION_BRANCH" --base "$BASE_BRANCH" --state all --json number,state,title,headRefOid,baseRefName,url
+```
+
+If `git rev-list --left-right --count` returns `0 0` and PR creation reports no commits between base and head, do not create unrelated commits just to open a PR. Finish through the no-diff terminal path.
+
 ## Review Timeout Classes
 
 | Class | Diff size | Hard timeout |
@@ -101,7 +118,20 @@ A hard-timeout review is a failed review command and does not count as a complet
 | Reviewer command misuse | Run the canonical repository-required command yourself, record the result, and do not treat reviewer misuse as a product failure. |
 | Environment or access failure | Retry once if transient; otherwise record it as review failure. |
 | Empty, killed, or timed-out review | Not a pass; retry at most once for the same round. |
-| Valid non-trivial Round 2 finding | Stop that scope and record blocked or needs human review. |
+| Valid non-trivial Round 2 finding | Fix within scope, rerun relevant tests and targeted verification, record the fix summary, then continue to the Final PR Gate. |
+
+## Round 2 Fix Recovery
+
+The workflow allows at most 2 completed independent review rounds for each child issue and final integration. A valid non-trivial Round 2 finding does not require Round 3 or extra approval after it is fixed and verified. The PR's own review process handles any later review feedback.
+
+If a valid non-trivial Round 2 finding is fixed after Round 2:
+
+1. commit only the scoped fix
+2. rerun the relevant repository test target and any targeted verification for the finding
+3. record the finding, fix commit, commands, and results
+4. continue to the Final PR Gate
+
+If the finding is not fixed or verification fails, stop without PR and report the unresolved finding.
 
 ## Test Evidence
 
@@ -119,7 +149,8 @@ For final integration, record:
 ## PR Body Skeleton
 
 ```markdown
-Parent PRD: #PARENT
+Parent PRD:
+- Closes #PARENT
 
 Completed child issues:
 - Closes #CHILD_ID
@@ -127,7 +158,7 @@ Completed child issues:
 Tests:
 - ...
 
-Review evidence:
+Review summary:
 - #CHILD_ID: ISSUE_BASE_SHA..HEAD, rounds: N, result: ...
 - Final integration review: base..HEAD, rounds: N, result: ...
 
@@ -147,5 +178,5 @@ Final integration checks:
 Low-risk residual notes:
 - None / spelling-comment-naming-only notes
 
-Note: Parent PRD #PARENT is not manually closed by this PR and should be closed only after human/coordinator final validation if appropriate.
+Note: Merging this PR is the parent PRD #PARENT closure action.
 ```
