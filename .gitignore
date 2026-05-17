@@ -20,3 +20,7 @@ web/dist/*
 .tmp-test.db
 coverage/
 bin/
+web-v2/node_modules/
+
+web-v2/dist/*
+!web-v2/dist/.gitkeep
