@@ -122,6 +122,10 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 	if err != nil {
 		return nil, err
 	}
+	apiKeyBreakdown, err := buildAnalyticsAPIKeyBreakdown(db, filter)
+	if err != nil {
+		return nil, err
+	}
 	modelBreakdown, err := buildAnalyticsModelBreakdown(db, filter)
 	if err != nil {
 		return nil, err
@@ -143,6 +147,7 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 		Summary:            summary,
 		Trend:              trend,
 		KeyAliasBreakdown:  keyAliasBreakdown,
+		APIKeyBreakdown:    apiKeyBreakdown,
 		ModelBreakdown:     modelBreakdown,
 		TimeBreakdown:      trend,
 		Insights:           buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
@@ -575,6 +580,113 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys
 	return trends, nil
 }
 
+func analyticsAPIKeyEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+	identityExpr := analyticsAPIKeyIdentitySQLExpression()
+	return analyticsEventsWithPricingQuery(db, filter).
+		Joins("LEFT JOIN key_aliases ON key_aliases.auth_type = ? AND key_aliases.identity = "+identityExpr, entities.UsageIdentityAuthTypeAIProvider).
+		Where("TRIM(usage_events.auth_type) = ?", "apikey").
+		Where(identityExpr + " <> ''")
+}
+
+func buildAnalyticsAPIKeyBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdownRecord, error) {
+	authTypeExpr := analyticsAPIKeyAuthTypeSQLExpression()
+	identityExpr := analyticsAPIKeyIdentitySQLExpression()
+	var rows []analyticsIdentityAggregateRow
+	if err := analyticsAPIKeyEventsWithPricingQuery(db, filter).
+		Select(`
+			` + authTypeExpr + ` AS auth_type,
+			` + identityExpr + ` AS identity,
+			COALESCE(MAX(key_aliases.alias), '') AS alias,
+			'' AS name,
+			'apikey' AS auth_type_name,
+			'' AS type,
+			COALESCE(MIN(NULLIF(TRIM(usage_events.provider), '')), '') AS provider,
+			'' AS prefix,
+			'' AS base_url,
+			0 AS is_deleted,
+			COUNT(*) AS request_count,
+			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
+			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events,
+			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS last_used_at`).
+		Group(identityExpr).
+		Order("total_cost DESC").
+		Order("COALESCE(SUM(usage_events.total_tokens), 0) DESC").
+		Order("last_used_at DESC").
+		Limit(analyticsKeyAliasBreakdownLimit).
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("build analytics api key breakdown: %w", err)
+	}
+
+	breakdown := make([]dto.AnalyticsKeyAliasBreakdownRecord, 0, len(rows))
+	breakdownIndexes := make(map[analyticsIdentityKey]int, len(rows))
+	breakdownKeys := make([]analyticsIdentityKey, 0, len(rows))
+	for _, row := range rows {
+		key := analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}
+		breakdownIndexes[key] = len(breakdown)
+		breakdownKeys = append(breakdownKeys, key)
+		breakdown = append(breakdown, mapAnalyticsKeyAliasBreakdown(row))
+	}
+	if len(breakdown) == 0 {
+		return breakdown, nil
+	}
+
+	trends, err := buildAnalyticsAPIKeyTrends(db, filter, breakdownKeys)
+	if err != nil {
+		return nil, err
+	}
+	for key, points := range trends {
+		index, ok := breakdownIndexes[key]
+		if !ok {
+			continue
+		}
+		breakdown[index].Trend = points
+	}
+	return breakdown, nil
+}
+
+func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPointRecord, error) {
+	if len(keys) == 0 {
+		return map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPointRecord{}, nil
+	}
+	authTypeExpr := analyticsAPIKeyAuthTypeSQLExpression()
+	identityExpr := analyticsAPIKeyIdentitySQLExpression()
+	bucketByDay := analyticsTrendBucketsByDay(filter)
+	bucketExpr := analyticsBucketSQLExpression(bucketByDay)
+	var rows []analyticsIdentityTrendRow
+	if err := applyAnalyticsIdentityKeyFilter(analyticsAPIKeyEventsWithPricingQuery(db, filter), keys, authTypeExpr, identityExpr).
+		Select(`
+			` + authTypeExpr + ` AS auth_type,
+			` + identityExpr + ` AS identity,
+			` + bucketExpr + ` AS bucket,
+			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
+		Group(identityExpr + ", bucket").
+		Order("bucket ASC").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("build analytics api key trends: %w", err)
+	}
+
+	trends := make(map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPointRecord)
+	for _, row := range rows {
+		key := analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}
+		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPointRecord{
+			Label:         row.Bucket,
+			TotalCost:     row.TotalCost,
+			TotalTokens:   row.TotalTokens,
+			CostAvailable: costAvailable,
+			CostStatus:    costStatus,
+		})
+	}
+	return trends, nil
+}
+
 func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsModelBreakdownRecord, error) {
 	var rows []analyticsModelAggregateRow
 	if err := analyticsEventsWithPricingQuery(db, filter).
@@ -749,6 +861,14 @@ func analyticsUsageIdentityAuthTypeSQLExpression() string {
 
 func analyticsUsageIdentitySQLExpression() string {
 	return "TRIM(usage_events.auth_index)"
+}
+
+func analyticsAPIKeyAuthTypeSQLExpression() string {
+	return "2"
+}
+
+func analyticsAPIKeyIdentitySQLExpression() string {
+	return "TRIM(usage_events.source)"
 }
 
 func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {

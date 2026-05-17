@@ -1,6 +1,7 @@
 import type { HeatmapData, HeatmapCell } from "@/types/api"
 import { formatCompact, formatCost } from "@/lib/format"
 import { useRef, useState, useEffect, useMemo } from "react"
+import type { FocusEvent, MouseEvent } from "react"
 
 interface HeatmapProps {
   data: HeatmapData
@@ -18,6 +19,17 @@ interface FlatCell {
   dateLabel: string
   hour: number
   cell: HeatmapCell | null
+}
+
+interface HeatmapTooltip {
+  label: string
+  x: number
+  y: number
+}
+
+function cellTooltipLabel(fc: FlatCell): string {
+  if (!fc.cell) return ""
+  return `${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}r · ${cellCostLabel(fc.cell)}`
 }
 
 function flattenCells(data: HeatmapData): {
@@ -64,6 +76,7 @@ function computeLayout(containerWidth: number): { daysPerRow: number; cellSize: 
 export function Heatmap({ data }: HeatmapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [tooltip, setTooltip] = useState<HeatmapTooltip | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
@@ -91,6 +104,21 @@ export function Heatmap({ data }: HeatmapProps) {
   }
 
   const colsPerRow = 24 * daysPerRow
+
+  const showPointerTooltip = (event: MouseEvent<HTMLElement>, fc: FlatCell) => {
+    const label = cellTooltipLabel(fc)
+    if (!label) return
+    setTooltip({ label, x: event.clientX + 12, y: event.clientY + 12 })
+  }
+
+  const showFocusTooltip = (event: FocusEvent<HTMLElement>, fc: FlatCell) => {
+    const label = cellTooltipLabel(fc)
+    if (!label) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    setTooltip({ label, x: rect.left + rect.width + 8, y: rect.top + rect.height + 8 })
+  }
+
+  const hideTooltip = () => setTooltip(null)
 
   // Split into rows
   const rows: Array<{ startLabel: string; cells: FlatCell[] }> = []
@@ -166,7 +194,11 @@ export function Heatmap({ data }: HeatmapProps) {
                             ? `rgba(217, 119, 87, ${alpha})`
                             : "rgba(113, 113, 122, 0.04)",
                         }}
-                        title={`${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}r · ${cellCostLabel(fc.cell)}`}
+                        onMouseEnter={(event) => showPointerTooltip(event, fc)}
+                        onMouseMove={(event) => showPointerTooltip(event, fc)}
+                        onMouseLeave={hideTooltip}
+                        onFocus={(event) => showFocusTooltip(event, fc)}
+                        onBlur={hideTooltip}
                       >
                         {intensity > 0.6 && (
                           <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
@@ -175,10 +207,10 @@ export function Heatmap({ data }: HeatmapProps) {
                     )
                   })()
                   return (
-                    <>
+                    <div key={`day-${rowIdx}-${ci}`} className="contents">
                       {sep}
                       {cell}
-                    </>
+                    </div>
                   )
                 }
 
@@ -205,7 +237,11 @@ export function Heatmap({ data }: HeatmapProps) {
                         ? `rgba(217, 119, 87, ${alpha})`
                         : "rgba(113, 113, 122, 0.04)",
                     }}
-                    title={`${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}r · ${cellCostLabel(fc.cell)}`}
+                    onMouseEnter={(event) => showPointerTooltip(event, fc)}
+                    onMouseMove={(event) => showPointerTooltip(event, fc)}
+                    onMouseLeave={hideTooltip}
+                    onFocus={(event) => showFocusTooltip(event, fc)}
+                    onBlur={hideTooltip}
                   >
                     {intensity > 0.6 && (
                       <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
@@ -217,6 +253,14 @@ export function Heatmap({ data }: HeatmapProps) {
           )
         })}
       </div>
+      {tooltip && (
+        <div
+          className="pointer-events-none fixed z-50 rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-lg"
+          style={{ left: tooltip.x, top: tooltip.y }}
+        >
+          {tooltip.label}
+        </div>
+      )}
     </div>
   )
 }

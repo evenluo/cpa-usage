@@ -45,13 +45,19 @@ func (s usageIdentitiesStub) ListActiveUsageIdentitiesPage(_ context.Context, re
 }
 
 type keyAliasStub struct {
-	aliases    map[service.UsageIdentityAliasKey]string
-	setID      uint
-	setAlias   string
-	clearID    uint
-	getID      uint
-	err        error
-	invalidErr error
+	aliases        map[service.UsageIdentityAliasKey]string
+	apiKeyItems    []service.APIKeyAliasTarget
+	apiKeyTotal    int64
+	apiKeyPageReq  *service.ListAPIKeyAliasTargetsRequest
+	setID          uint
+	setAlias       string
+	clearID        uint
+	getID          uint
+	setAPIKeyID    string
+	setAPIKeyAlias string
+	clearAPIKeyID  string
+	err            error
+	invalidErr     error
 }
 
 func (s *keyAliasStub) ListAliasesForUsageIdentities(_ context.Context, identities []entities.UsageIdentity) (map[service.UsageIdentityAliasKey]string, error) {
@@ -69,6 +75,17 @@ func (s *keyAliasStub) GetUsageIdentityAlias(context.Context, uint) (string, err
 	return "Agent Research", s.err
 }
 
+func (s *keyAliasStub) ListAPIKeyAliasTargetsPage(_ context.Context, request service.ListAPIKeyAliasTargetsRequest) (service.ListAPIKeyAliasTargetsResponse, error) {
+	if s.apiKeyPageReq != nil {
+		*s.apiKeyPageReq = request
+	}
+	total := s.apiKeyTotal
+	if total == 0 {
+		total = int64(len(s.apiKeyItems))
+	}
+	return service.ListAPIKeyAliasTargetsResponse{Items: s.apiKeyItems, Total: total}, s.err
+}
+
 func (s *keyAliasStub) SetUsageIdentityAlias(_ context.Context, id uint, alias string) (string, error) {
 	s.setID = id
 	s.setAlias = alias
@@ -80,6 +97,20 @@ func (s *keyAliasStub) SetUsageIdentityAlias(_ context.Context, id uint, alias s
 
 func (s *keyAliasStub) ClearUsageIdentityAlias(_ context.Context, id uint) error {
 	s.clearID = id
+	return s.err
+}
+
+func (s *keyAliasStub) SetAPIKeyAlias(_ context.Context, apiKeyID string, alias string) (string, error) {
+	s.setAPIKeyID = apiKeyID
+	s.setAPIKeyAlias = alias
+	if s.invalidErr != nil {
+		return "", s.invalidErr
+	}
+	return strings.TrimSpace(alias), s.err
+}
+
+func (s *keyAliasStub) ClearAPIKeyAlias(_ context.Context, apiKeyID string) error {
+	s.clearAPIKeyID = apiKeyID
 	return s.err
 }
 
@@ -238,6 +269,78 @@ func TestUsageIdentityAliasRoutesSetReadAndClear(t *testing.T) {
 	}
 	if aliasProvider.clearID != 42 {
 		t.Fatalf("expected clear alias for identity 42, got %d", aliasProvider.clearID)
+	}
+}
+
+func TestUsageAPIKeyAliasRoutesListSetAndClearByOpaqueID(t *testing.T) {
+	lastUsedAt := time.Date(2026, 5, 18, 8, 0, 0, 0, time.UTC)
+	apiKeyID := redact.APIAlias("sk-live-secret-value")
+	request := service.ListAPIKeyAliasTargetsRequest{}
+	aliasProvider := &keyAliasStub{
+		apiKeyPageReq: &request,
+		apiKeyItems: []service.APIKeyAliasTarget{{
+			ID:            apiKeyID,
+			Identity:      redact.APIKeyDisplayName("sk-live-secret-value"),
+			Alias:         "Agent API Key",
+			Provider:      "OpenAI",
+			TotalRequests: 3,
+			TotalTokens:   1234,
+			TotalCost:     1.25,
+			CostAvailable: true,
+			CostStatus:    "available",
+			LastUsedAt:    &lastUsedAt,
+		}},
+		apiKeyTotal: 1,
+	}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{KeyAlias: aliasProvider})
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/usage/api-keys/page?page=2&page_size=10", nil)
+	listResp := httptest.NewRecorder()
+	router.ServeHTTP(listResp, listReq)
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("expected list status 200, got %d: %s", listResp.Code, listResp.Body.String())
+	}
+	body := listResp.Body.String()
+	if request.Page != 2 || request.PageSize != 10 {
+		t.Fatalf("expected page request to be passed through, got %+v", request)
+	}
+	for _, expected := range []string{
+		`"api_keys":[`,
+		`"id":"` + apiKeyID + `"`,
+		`"identity":"sk-l************alue"`,
+		`"displayName":"Agent API Key"`,
+		`"alias":"Agent API Key"`,
+		`"total_tokens":1234`,
+		`"total_cost":1.25`,
+		`"last_used_at":"2026-05-18T08:00:00Z"`,
+	} {
+		if !contains(body, expected) {
+			t.Fatalf("expected response to contain %s, got %s", expected, body)
+		}
+	}
+	if contains(body, "sk-live-secret-value") {
+		t.Fatalf("expected raw api key not to be exposed, got %s", body)
+	}
+
+	putReq := httptest.NewRequest(http.MethodPut, "/api/v1/usage/api-keys/"+apiKeyID+"/alias", strings.NewReader(`{"alias":" Raw Alias "}`))
+	putReq.Header.Set("Content-Type", "application/json")
+	putResp := httptest.NewRecorder()
+	router.ServeHTTP(putResp, putReq)
+	if putResp.Code != http.StatusOK {
+		t.Fatalf("expected PUT status 200, got %d: %s", putResp.Code, putResp.Body.String())
+	}
+	if aliasProvider.setAPIKeyID != apiKeyID || aliasProvider.setAPIKeyAlias != " Raw Alias " || !contains(putResp.Body.String(), `"alias":"Raw Alias"`) {
+		t.Fatalf("expected api key alias set, got id=%q alias=%q body=%s", aliasProvider.setAPIKeyID, aliasProvider.setAPIKeyAlias, putResp.Body.String())
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/usage/api-keys/"+apiKeyID+"/alias", nil)
+	deleteResp := httptest.NewRecorder()
+	router.ServeHTTP(deleteResp, deleteReq)
+	if deleteResp.Code != http.StatusNoContent {
+		t.Fatalf("expected DELETE status 204, got %d: %s", deleteResp.Code, deleteResp.Body.String())
+	}
+	if aliasProvider.clearAPIKeyID != apiKeyID {
+		t.Fatalf("expected api key alias clear for %q, got %q", apiKeyID, aliasProvider.clearAPIKeyID)
 	}
 }
 

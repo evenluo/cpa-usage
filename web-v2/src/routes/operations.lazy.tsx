@@ -15,6 +15,31 @@ export const Route = createLazyFileRoute("/operations")({
   component: OperationsPage,
 })
 
+function syncStatusLabel(status?: string): string {
+  switch (status) {
+    case "empty":
+      return "No new usage events"
+    case "completed":
+      return "Completed"
+    case "completed_with_warnings":
+      return "Completed with warnings"
+    case "failed":
+      return "Failed"
+    case "":
+    case undefined:
+      return "No sync status"
+    default:
+      return status.replace(/_/g, " ")
+  }
+}
+
+function syncStatusDescription(status?: string): string {
+  if (status === "empty") {
+    return "Redis queue was empty at the last manual sync"
+  }
+  return "Last sync result"
+}
+
 function OperationsPage() {
   const { data: status, isLoading } = useStatus()
   const { data: auth } = useAuth()
@@ -86,10 +111,10 @@ function OperationsPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold">
-                      {status?.last_status || "No sync status"}
+                      {syncStatusLabel(status?.last_status)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {status?.last_run_at ? formatDate(status.last_run_at) : "Never run"}
+                      {status?.last_run_at ? `${formatDate(status.last_run_at)} · ${syncStatusDescription(status.last_status)}` : "Never run"}
                     </p>
                   </div>
                 </div>

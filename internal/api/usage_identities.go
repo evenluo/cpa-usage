@@ -27,6 +27,14 @@ type usageIdentitiesPageResponse struct {
 	TotalPages int                     `json:"total_pages"`
 }
 
+type usageAPIKeysPageResponse struct {
+	APIKeys    []usageAPIKeyResponse `json:"api_keys"`
+	TotalCount int64                 `json:"total_count"`
+	Page       int                   `json:"page"`
+	PageSize   int                   `json:"page_size"`
+	TotalPages int                   `json:"total_pages"`
+}
+
 type usageIdentityResponse struct {
 	ID                         uint                           `json:"id"`
 	Name                       string                         `json:"name"`
@@ -60,11 +68,103 @@ type usageIdentityResponse struct {
 	DeletedAt                  *time.Time                     `json:"deleted_at,omitempty"`
 }
 
+type usageAPIKeyResponse struct {
+	ID              string     `json:"id"`
+	Identity        string     `json:"identity"`
+	DisplayName     string     `json:"displayName"`
+	Alias           string     `json:"alias"`
+	Provider        string     `json:"provider"`
+	AuthType        int        `json:"auth_type"`
+	AuthTypeName    string     `json:"auth_type_name"`
+	TotalRequests   int64      `json:"total_requests"`
+	SuccessCount    int64      `json:"success_count"`
+	FailureCount    int64      `json:"failure_count"`
+	InputTokens     int64      `json:"input_tokens"`
+	OutputTokens    int64      `json:"output_tokens"`
+	ReasoningTokens int64      `json:"reasoning_tokens"`
+	CachedTokens    int64      `json:"cached_tokens"`
+	TotalTokens     int64      `json:"total_tokens"`
+	TotalCost       float64    `json:"total_cost"`
+	CostAvailable   bool       `json:"cost_available"`
+	CostStatus      string     `json:"cost_status"`
+	FirstUsedAt     *time.Time `json:"first_used_at,omitempty"`
+	LastUsedAt      *time.Time `json:"last_used_at,omitempty"`
+}
+
 type usageIdentityAliasResponse struct {
 	Alias string `json:"alias"`
 }
 
 func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider service.UsageIdentityProvider, keyAliasProvider service.KeyAliasProvider) {
+	router.GET("/usage/api-keys/page", func(c *gin.Context) {
+		page := positiveQueryInt(c, "page", 1)
+		pageSize := positiveQueryInt(c, "page_size", 100)
+		if keyAliasProvider == nil {
+			c.JSON(http.StatusOK, usageAPIKeysPageResponse{APIKeys: []usageAPIKeyResponse{}, Page: page, PageSize: pageSize})
+			return
+		}
+		result, err := keyAliasProvider.ListAPIKeyAliasTargetsPage(c.Request.Context(), service.ListAPIKeyAliasTargetsRequest{Page: page, PageSize: pageSize})
+		if err != nil {
+			writeInternalError(c, "list api key aliases failed", err)
+			return
+		}
+		response := make([]usageAPIKeyResponse, 0, len(result.Items))
+		for _, item := range result.Items {
+			response = append(response, mapUsageAPIKeyResponse(item))
+		}
+		c.JSON(http.StatusOK, usageAPIKeysPageResponse{
+			APIKeys:    response,
+			TotalCount: result.Total,
+			Page:       page,
+			PageSize:   pageSize,
+			TotalPages: totalPages(result.Total, pageSize),
+		})
+	})
+
+	router.PUT("/usage/api-keys/:key_id/alias", func(c *gin.Context) {
+		keyID := strings.TrimSpace(c.Param("key_id"))
+		if keyID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "api key id is required"})
+			return
+		}
+		var request usageIdentityAliasResponse
+		if err := c.ShouldBindJSON(&request); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid alias payload"})
+			return
+		}
+		if _, err := repository.NormalizeKeyAlias(request.Alias); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "alias must be 80 characters or fewer"})
+			return
+		}
+		if keyAliasProvider == nil {
+			c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: strings.TrimSpace(request.Alias)})
+			return
+		}
+		alias, err := keyAliasProvider.SetAPIKeyAlias(c.Request.Context(), keyID, request.Alias)
+		if err != nil {
+			writeKeyAliasError(c, "set api key alias failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, usageIdentityAliasResponse{Alias: alias})
+	})
+
+	router.DELETE("/usage/api-keys/:key_id/alias", func(c *gin.Context) {
+		keyID := strings.TrimSpace(c.Param("key_id"))
+		if keyID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "api key id is required"})
+			return
+		}
+		if keyAliasProvider == nil {
+			c.Status(http.StatusNoContent)
+			return
+		}
+		if err := keyAliasProvider.ClearAPIKeyAlias(c.Request.Context(), keyID); err != nil {
+			writeKeyAliasError(c, "clear api key alias failed", err)
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
 	router.GET("/usage/identities/page", func(c *gin.Context) {
 		if usageIdentityProvider == nil {
 			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: 1, PageSize: 10})
@@ -285,5 +385,34 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		CreatedAt:                  item.CreatedAt,
 		UpdatedAt:                  item.UpdatedAt,
 		DeletedAt:                  item.DeletedAt,
+	}
+}
+
+func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse {
+	displayName := item.Identity
+	if strings.TrimSpace(item.Alias) != "" {
+		displayName = item.Alias
+	}
+	return usageAPIKeyResponse{
+		ID:              item.ID,
+		Identity:        item.Identity,
+		DisplayName:     displayName,
+		Alias:           item.Alias,
+		Provider:        item.Provider,
+		AuthType:        int(entities.UsageIdentityAuthTypeAIProvider),
+		AuthTypeName:    "apikey",
+		TotalRequests:   item.TotalRequests,
+		SuccessCount:    item.SuccessCount,
+		FailureCount:    item.FailureCount,
+		InputTokens:     item.InputTokens,
+		OutputTokens:    item.OutputTokens,
+		ReasoningTokens: item.ReasoningTokens,
+		CachedTokens:    item.CachedTokens,
+		TotalTokens:     item.TotalTokens,
+		TotalCost:       item.TotalCost,
+		CostAvailable:   item.CostAvailable,
+		CostStatus:      item.CostStatus,
+		FirstUsedAt:     item.FirstUsedAt,
+		LastUsedAt:      item.LastUsedAt,
 	}
 }

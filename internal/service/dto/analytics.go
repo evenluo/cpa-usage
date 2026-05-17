@@ -145,6 +145,7 @@ type AnalyticsSummarySnapshot struct {
 	Summary            AnalyticsSummary
 	Trend              []AnalyticsTrendPoint
 	KeyAliasBreakdown  []AnalyticsKeyAliasBreakdown
+	APIKeyBreakdown    []AnalyticsKeyAliasBreakdown
 	ModelBreakdown     []AnalyticsModelBreakdown
 	TimeBreakdown      []AnalyticsTrendPoint
 	Insights           []AnalyticsInsight

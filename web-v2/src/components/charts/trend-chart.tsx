@@ -15,7 +15,7 @@ import { formatCost, formatCompact } from "@/lib/format"
 interface TrendChartProps {
   data: TrendPoint[]
   range?: TimeRange
-  mode?: "cost-token" | "requests-token"
+  mode?: "cost-token" | "requests-token" | "tokens"
 }
 
 function formatTickLabel(label: string, range?: TimeRange): string {
@@ -50,10 +50,12 @@ function formatTickLabel(label: string, range?: TimeRange): string {
 }
 
 export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps) {
-  const primaryKey = mode === "cost-token" ? "cost" : "requests"
-  const primaryName = mode === "cost-token" ? "Cost" : "Requests"
-  const primaryColor = mode === "cost-token" ? "#d97757" : "#7c3aed"
-  const gradientId = mode === "cost-token" ? "costGradient" : "requestGradient"
+  const primaryKey = mode === "cost-token" ? "cost" : mode === "requests-token" ? "requests" : "tokens"
+  const primaryName = mode === "cost-token" ? "Cost" : mode === "requests-token" ? "Requests" : "Tokens"
+  const primaryColor = mode === "cost-token" ? "#d97757" : mode === "requests-token" ? "#7c3aed" : "#2563eb"
+  const gradientId = mode === "cost-token" ? "costGradient" : mode === "requests-token" ? "requestGradient" : "tokenGradient"
+  const overlayKey = mode === "tokens" ? "requests" : "tokens"
+  const overlayName = mode === "tokens" ? "Requests" : "Tokens"
 
   const chartData = data.map((p) => ({
     label: p.label,
@@ -137,7 +139,8 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
         <Line
           yAxisId="tokens"
           type="monotone"
-          dataKey="tokens"
+          dataKey={overlayKey}
+          name={overlayName}
           stroke="#94a3b8"
           strokeWidth={1.5}
           strokeDasharray="5 5"

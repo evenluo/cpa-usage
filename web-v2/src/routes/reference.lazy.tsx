@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/providers/toast-provider"
-import { useDeleteAlias, useKeys, useUpdateAlias } from "@/hooks/useKeys"
+import { useAPIKeys, useDeleteAPIKeyAlias, useDeleteAlias, useKeys, useUpdateAPIKeyAlias, useUpdateAlias } from "@/hooks/useKeys"
 import { usePricing, useSavePricing } from "@/hooks/usePricing"
 import { formatCompact, formatCost, formatDate } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 export const Route = createLazyFileRoute("/reference")({
   component: ReferencePage,
@@ -22,28 +23,82 @@ interface Drafts {
   }
 }
 
+type KeyAliasScope = "api-key" | "account"
+
+interface ReferenceKeyRow {
+  id: string
+  alias: string
+  displayName: string
+  name: string
+  identity: string
+  provider: string
+  type: string
+  auth_type_name: string
+  total_tokens: number
+  total_cost: number
+  cost_available: boolean
+  last_used_at: string | null
+}
+
 function ReferencePage() {
   const { data: keys, isLoading: isKeysLoading } = useKeys()
+  const { data: apiKeys, isLoading: isAPIKeysLoading } = useAPIKeys()
   const { data: pricingData, isLoading: isPricingLoading } = usePricing()
   const updateAlias = useUpdateAlias()
+  const updateAPIKeyAlias = useUpdateAPIKeyAlias()
   const deleteAlias = useDeleteAlias()
+  const deleteAPIKeyAlias = useDeleteAPIKeyAlias()
   const savePricing = useSavePricing()
   const toast = useToast()
   const [query, setQuery] = useState("")
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const [keyAliasScope, setKeyAliasScope] = useState<KeyAliasScope>("api-key")
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [draftAlias, setDraftAlias] = useState("")
   const [drafts, setDrafts] = useState<Drafts>({})
   const [savingModel, setSavingModel] = useState<string | null>(null)
 
+  const apiKeyRows: ReferenceKeyRow[] = useMemo(() => (apiKeys ?? []).map((key) => ({
+    id: key.id,
+    alias: key.alias,
+    displayName: key.displayName,
+    name: "",
+    identity: key.identity,
+    provider: key.provider,
+    type: "api-key",
+    auth_type_name: key.auth_type_name,
+    total_tokens: key.total_tokens,
+    total_cost: key.total_cost,
+    cost_available: key.cost_available,
+    last_used_at: key.last_used_at ?? null,
+  })), [apiKeys])
+
+  const accountRows: ReferenceKeyRow[] = useMemo(() => (keys ?? []).map((key) => ({
+    id: String(key.id),
+    alias: key.alias,
+    displayName: key.displayName,
+    name: key.name,
+    identity: key.identity,
+    provider: key.provider,
+    type: key.type,
+    auth_type_name: key.auth_type_name,
+    total_tokens: key.total_tokens,
+    total_cost: key.total_cost,
+    cost_available: key.cost_available,
+    last_used_at: key.last_used_at,
+  })), [keys])
+
+  const visibleRows = keyAliasScope === "api-key" ? apiKeyRows : accountRows
+  const isAliasLoading = keyAliasScope === "api-key" ? isAPIKeysLoading : isKeysLoading
+
   const filteredKeys = useMemo(() => {
-    if (!keys) return []
+    if (!visibleRows) return []
     const q = query.trim().toLowerCase()
-    if (!q) return keys
-    return keys.filter((key) =>
+    if (!q) return visibleRows
+    return visibleRows.filter((key) =>
       [key.alias, key.displayName, key.name, key.identity, key.provider, key.type, key.auth_type_name]
         .some((value) => value?.toLowerCase().includes(q))
     )
-  }, [keys, query])
+  }, [visibleRows, query])
 
   const pricingMap = new Map(pricingData?.pricing.map((entry) => [entry.model, entry]))
   const models = Array.from(
@@ -54,20 +109,25 @@ function ReferencePage() {
     return aMissing - bMissing || a.localeCompare(b)
   })
   const missingRates = models.filter((model) => !pricingMap.has(model)).length
-  const aliasedKeys = keys?.filter((key) => key.alias).length ?? 0
+  const aliasedAPIKeys = apiKeys?.filter((key) => key.alias).length ?? 0
+  const aliasedAccounts = keys?.filter((key) => key.alias).length ?? 0
 
-  function startEdit(key: typeof filteredKeys[0]) {
+  function startEdit(key: ReferenceKeyRow) {
     setEditingId(key.id)
     setDraftAlias(key.alias)
   }
 
-  async function saveEdit(key: typeof filteredKeys[0]) {
+  async function saveEdit(key: ReferenceKeyRow) {
     if (draftAlias.trim() === "") {
       toast.error("Use clear to remove an alias")
       return
     }
     try {
-      await updateAlias.mutateAsync({ id: key.id, alias: draftAlias })
+      if (keyAliasScope === "api-key") {
+        await updateAPIKeyAlias.mutateAsync({ id: key.id, alias: draftAlias })
+      } else {
+        await updateAlias.mutateAsync({ id: Number(key.id), alias: draftAlias })
+      }
       setEditingId(null)
       toast.success("Alias saved")
     } catch {
@@ -75,9 +135,13 @@ function ReferencePage() {
     }
   }
 
-  async function clearEdit(key: typeof filteredKeys[0]) {
+  async function clearEdit(key: ReferenceKeyRow) {
     try {
-      await deleteAlias.mutateAsync(key.id)
+      if (keyAliasScope === "api-key") {
+        await deleteAPIKeyAlias.mutateAsync(key.id)
+      } else {
+        await deleteAlias.mutateAsync(Number(key.id))
+      }
       setEditingId(null)
       toast.success("Alias cleared")
     } catch {
@@ -143,30 +207,57 @@ function ReferencePage() {
       </header>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <SummaryCard label="CPA Keys" value={keys?.length ?? 0} caption={`${aliasedKeys} aliased`} loading={isKeysLoading} />
+        <SummaryCard label="API Keys" value={apiKeys?.length ?? 0} caption={`${aliasedAPIKeys} aliased`} loading={isAPIKeysLoading} />
+        <SummaryCard label="Accounts" value={keys?.length ?? 0} caption={`${aliasedAccounts} aliased`} loading={isKeysLoading} />
         <SummaryCard label="Missing Cost Rates" value={missingRates} caption="Models without configured rates" loading={isPricingLoading} tone={missingRates > 0 ? "amber" : "green"} />
-        <SummaryCard label="Reference Health" value={missingRates > 0 ? "Partial" : "Complete"} caption="Used by Cost and leaderboards" loading={isPricingLoading} tone={missingRates > 0 ? "amber" : "green"} />
       </div>
 
       <Card>
         <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
           <div>
             <CardTitle>Key Aliases</CardTitle>
-            <CardDescription>Human-readable labels for CPA Keys</CardDescription>
+            <CardDescription>{keyAliasScope === "api-key" ? "Human-readable labels for raw API keys" : "Human-readable labels for account keys"}</CardDescription>
           </div>
-          <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
-            <Search className="h-4 w-4 text-muted-foreground" />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search alias or key..."
-              className="min-w-[200px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex items-center rounded-lg border border-border bg-card p-1">
+              {[
+                { value: "api-key", label: "API Keys" },
+                { value: "account", label: "Accounts" },
+              ].map((item) => (
+                <button
+                  key={item.value}
+                  onClick={() => {
+                    setKeyAliasScope(item.value as KeyAliasScope)
+                    setEditingId(null)
+                  }}
+                  aria-label={`Key alias scope: ${item.label}`}
+                  aria-pressed={keyAliasScope === item.value}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    keyAliasScope === item.value
+                      ? "bg-terracotta-500 text-white"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <input
+                name="key-alias-search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search alias or key..."
+                className="min-w-[200px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              />
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            {isKeysLoading ? (
+            {isAliasLoading ? (
               <>
                 <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
@@ -188,6 +279,7 @@ function ReferencePage() {
                     <div className="min-w-0">
                       {editing ? (
                         <input
+                          name={`key-alias-${key.id}`}
                           value={draftAlias}
                           onChange={(event) => setDraftAlias(event.target.value)}
                           className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-medium outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"

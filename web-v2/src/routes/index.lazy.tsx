@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useAnalytics } from "@/hooks/useAnalytics"
 import { useCountUp } from "@/hooks/useCountUp"
 import { Sparkline } from "@/components/charts/sparkline"
-import { TokenBreakdownPanel, TrendChart } from "@/components/charts/trend-chart"
+import { TrendChart } from "@/components/charts/trend-chart"
 import { KeyLeaderboard } from "@/components/charts/key-leaderboard"
 import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
@@ -39,7 +39,8 @@ function DashboardPage() {
   const [range, setRange] = useState<TimeRange>("7d")
   const [granularity, setGranularity] = useState<TimeGranularity | null>(null)
   const [provider, setProvider] = useState("")
-  const [trendView, setTrendView] = useState<"cost-token" | "requests-token" | "token-breakdown">("cost-token")
+  const [trendView, setTrendView] = useState<"cost-token" | "requests-token" | "tokens">("cost-token")
+  const [leaderboardScope, setLeaderboardScope] = useState<"account" | "api-key">("api-key")
 
   const g = granularity ?? defaultGranularity(range)
   const { data, isLoading, error } = useAnalytics(range, g, provider)
@@ -50,7 +51,8 @@ function DashboardPage() {
   const comparison = data?.comparison
   const trend = useMemo(() => data?.trend ?? [], [data?.trend])
   const keyAliases = useMemo(() => data?.key_alias_breakdown ?? [], [data?.key_alias_breakdown])
-  const modelDistribution = useMemo(() => data?.model_distribution ?? [], [data?.model_distribution])
+  const apiKeys = useMemo(() => data?.api_key_breakdown ?? [], [data?.api_key_breakdown])
+  const leaderboardRows = leaderboardScope === "api-key" ? apiKeys : keyAliases
   const providerOptions = useMemo(() => data?.provider_options ?? [], [data?.provider_options])
   const fixedHeatmap = fixedActivityData?.heatmap
   const serviceHealth = healthOverviewData?.service_health
@@ -241,14 +243,14 @@ function DashboardPage() {
               <CardDescription>
                 {trendView === "cost-token" && "Cost as filled area, tokens as dotted overlay"}
                 {trendView === "requests-token" && "Requests as filled area, tokens as dotted overlay"}
-                {trendView === "token-breakdown" && "Token composition and top model contribution"}
+                {trendView === "tokens" && "Tokens as filled area, requests as dotted overlay"}
               </CardDescription>
             </div>
             <div className="flex items-center rounded-lg border border-border bg-card p-1">
               {[
                 { value: "cost-token", label: "Cost" },
                 { value: "requests-token", label: "Requests" },
-                { value: "token-breakdown", label: "Tokens" },
+                { value: "tokens", label: "Tokens" },
               ].map((item) => (
                 <button
                   key={item.value}
@@ -276,11 +278,7 @@ function DashboardPage() {
               </div>
             ) : (
               <div className="h-[260px]">
-                {trendView === "token-breakdown" ? (
-                  <TokenBreakdownPanel data={modelDistribution} />
-                ) : (
-                  <TrendChart data={trend} range={range} mode={trendView} />
-                )}
+                <TrendChart data={trend} range={range} mode={trendView} />
               </div>
             )}
           </CardContent>
@@ -288,15 +286,40 @@ function DashboardPage() {
 
         {/* Key Leaderboard */}
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between pb-2">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 pb-2">
             <div>
               <CardTitle className="flex items-center gap-2">
                 Key Leaderboard
                 <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
               </CardTitle>
-              <CardDescription>Top contributors by alias</CardDescription>
+              <CardDescription>
+                {leaderboardScope === "api-key" ? "Top raw API keys" : "Top account keys"}
+              </CardDescription>
             </div>
-            <Badge variant="terracotta">{leaderboardSortLabel}</Badge>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex items-center rounded-lg border border-border bg-card p-1">
+                {[
+                  { value: "api-key", label: "API Keys" },
+                  { value: "account", label: "Accounts" },
+                ].map((item) => (
+                  <button
+                    key={item.value}
+                    onClick={() => setLeaderboardScope(item.value as typeof leaderboardScope)}
+                    aria-label={`Leaderboard scope: ${item.label}`}
+                    aria-pressed={leaderboardScope === item.value}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                      leaderboardScope === item.value
+                        ? "bg-terracotta-500 text-white"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+              <Badge variant="terracotta">{leaderboardSortLabel}</Badge>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -306,7 +329,7 @@ function DashboardPage() {
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : (
-              <KeyLeaderboard data={keyAliases} />
+              <KeyLeaderboard data={leaderboardRows} identityFallback={leaderboardScope === "api-key"} />
             )}
           </CardContent>
         </Card>
