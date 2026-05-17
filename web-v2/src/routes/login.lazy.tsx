@@ -1,4 +1,5 @@
 import { createLazyFileRoute, useNavigate } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
 import { useState, type FormEvent } from "react"
 import { apiFetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
@@ -13,6 +14,7 @@ function LoginPage() {
   const [password, setPassword] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const toast = useToast()
 
   async function handleSubmit(event: FormEvent) {
@@ -23,6 +25,7 @@ function LoginPage() {
         method: "POST",
         body: JSON.stringify({ password }),
       })
+      queryClient.setQueryData(["auth", "session"], { authenticated: true })
       toast.success("Signed in successfully")
       navigate({ to: "/" })
     } catch (err) {
