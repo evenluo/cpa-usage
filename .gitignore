@@ -3,12 +3,14 @@
 .env.*
 !.env.example
 .DS_Store
+.claude/
 
 # runtime data
 /data/
 *.db
 *.db-*
 backups/
+*.log
 
 # frontend deps and build cache
 web/node_modules/
@@ -20,6 +22,11 @@ web/dist/*
 .tmp-test.db
 coverage/
 bin/
+screenshots/
+scripts/debug_*.go
+scripts/seed_mock.go
+/seed_mock
+/server
 web-v2/node_modules/
 
 web-v2/dist/*
