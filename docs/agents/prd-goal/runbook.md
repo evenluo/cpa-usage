@@ -1,10 +1,10 @@
 # PRD Integration Goal Runbook
 
-This runbook supports `README.md`.
+This file is a cookbook, not the contract. `README.md` is authoritative.
 
-`README.md` defines the workflow contract. This file only provides command mechanics, review prompts, timeout classes, failure classification, and PR body scaffolding.
+Use these commands when they fit the repository state. Replace them freely with equivalent or stronger commands when they target the same state and produce auditable evidence.
 
-## Default Startup Commands
+## Startup Examples
 
 ```bash
 git rev-parse --show-toplevel
@@ -14,79 +14,98 @@ gh repo view --json defaultBranchRef,nameWithOwner
 gh issue view PARENT --comments
 ```
 
-If `gh repo view --json defaultBranchRef,nameWithOwner` fails because the local `gh` version or repository inference differs, use an equivalent explicit repository command such as:
+If repository inference fails:
 
 ```bash
 gh repo view OWNER/REPO --json defaultBranchRef,nameWithOwner
 ```
 
-## Per-Child Review Mechanics
+## Issue Review Examples
 
-Record the issue base before implementation:
+Record the base before starting a child:
 
 ```bash
 ISSUE_BASE_SHA=$(git rev-parse HEAD)
 ```
 
-After implementation and commit, estimate diff size:
+For code or docs changes, inspect the committed issue range:
 
 ```bash
 git diff --stat "$ISSUE_BASE_SHA..HEAD"
 git diff --shortstat "$ISSUE_BASE_SHA..HEAD"
 ```
 
-Default review tactic:
+Default independent review for a code or docs child:
 
 ```bash
 git update-ref refs/codex-review/prd-PARENT-issue-CHILD "$ISSUE_BASE_SHA"
-codex review --base refs/codex-review/prd-PARENT-issue-CHILD "Review the committed changes for child issue #CHILD under PRD #PARENT.
-Review only ISSUE_BASE_SHA..HEAD.
-Check:
-- child issue acceptance criteria
-- consistency with parent PRD #PARENT
-- unrelated scope
-- test adequacy
-- regressions
-- edge cases
-- maintainability"
+codex review --base refs/codex-review/prd-PARENT-issue-CHILD
 ```
 
-The reviewer must be a separate reviewer session. Do not count same-pass self-review as independent review.
+Equivalent review tooling is fine when it evaluates the same reviewable evidence set. Record the base ref or evidence artifact, tool, and result.
 
-## Final Integration Review Mechanics
+Do not make custom prompt delivery part of the contract. If the installed reviewer supports prompts with `--base`, use it; otherwise record the checklist in run notes.
 
-The final review target should match the final PR diff. Prefer the resolved remote base branch or merge-base used by the PR tooling.
+Review checklist:
 
-Useful checks:
+1. child acceptance criteria
+2. parent PRD consistency
+3. reviewable evidence completeness
+4. unrelated scope
+5. test adequacy
+6. regressions and edge cases
+7. maintainability
+
+## Test Evidence Examples
+
+Prefer repository Make targets when they match the risk:
+
+```bash
+make test-api
+make test-unit
+```
+
+Do not assume Make targets accept pass-through variables. If a target does not wire a variable, use a direct command or another repository-approved route:
+
+```bash
+cd server && go test ./internal/api ./internal/worker ./internal/synccontrol
+cd server && go test ./internal/api -run 'TestName'
+```
+
+Record reviewer-run test failures separately when caused by command misuse or sandbox limitations, such as `Makefile target does not consume TESTARGS` or `httptest port binding denied in reviewer sandbox`.
+
+## Final Review Examples
+
+Check the PR diff base:
 
 ```bash
 BASE_BRANCH=main
-INTEGRATION_BRANCH=$(git branch --show-current)
 git fetch origin "$BASE_BRANCH"
 git merge-base "origin/$BASE_BRANCH" HEAD
 git diff --stat "origin/$BASE_BRANCH...HEAD"
 git diff --shortstat "origin/$BASE_BRANCH...HEAD"
 ```
 
-Default final review tactic:
+Default final review:
 
 ```bash
-codex review --base "origin/$BASE_BRANCH" "Review the full PRD integration diff for PRD issue #PARENT.
-Check:
-- coverage of all completed child issues
-- consistency with parent PRD #PARENT
-- cross-issue interactions
-- regressions
-- test adequacy
-- compatibility impact
-- unrelated scope"
+codex review --base "origin/$BASE_BRANCH"
 ```
 
-If the repository uses a different PR diff base, record the exact base ref and why it matches the final PR.
+Use another final review command when it reviews the same diff the PR will present, or the same no-diff state the run will report. Record the exact base ref and why it matches the terminal artifact.
 
-## No-Diff Terminal Checks
+Final checklist:
 
-Use these checks only when final PR creation fails because the integration branch and resolved base branch have no commits between them.
+1. all completed children are covered
+2. parent PRD consistency
+3. cross-issue interactions
+4. regressions and test adequacy
+5. compatibility impact
+6. unrelated scope
+
+## No-Diff Checks
+
+Use when PR creation would fail or has failed because there are no commits between base and head:
 
 ```bash
 BASE_BRANCH=main
@@ -98,53 +117,56 @@ git diff --shortstat "origin/$BASE_BRANCH...origin/$INTEGRATION_BRANCH"
 gh pr list --head "$INTEGRATION_BRANCH" --base "$BASE_BRANCH" --state all --json number,state,title,headRefOid,baseRefName,url
 ```
 
-If `git rev-list --left-right --count` returns `0 0` and PR creation reports no commits between base and head, do not create unrelated commits just to open a PR. Finish through the no-diff terminal path.
+Read `git rev-list --left-right --count` as `<base-only> <integration-only>`. If `<integration-only>` is `0` and the diff is empty, finish through the no-diff terminal path instead of manufacturing a commit.
 
-## Review Timeout Classes
+## Failure Classification
 
-| Class | Diff size | Hard timeout |
-|---|---:|---:|
-| small | <=5 files and <=300 changed lines | 20 minutes |
-| medium | <=20 files and <=1500 changed lines | 40 minutes |
-| large | anything bigger, generated files, lockfiles, snapshots, or broad refactors | 90 minutes |
-
-A hard-timeout review is a failed review command and does not count as a completed review round.
-
-## Review Failure Classification
-
-| Failure type | Handling |
+| Failure | Handling |
 |---|---|
-| Product or test failure | Fix within scope, rerun the repository-required test target, then review again within budget. |
-| Reviewer command misuse | Run the canonical repository-required command yourself, record the result, and do not treat reviewer misuse as a product failure. |
-| Environment or access failure | Retry once if transient; otherwise record it as review failure. |
-| Empty, killed, or timed-out review | Not a pass; retry at most once for the same round. |
-| Valid non-trivial Round 2 finding | Fix within scope, rerun relevant tests and targeted verification, record the fix summary, then continue to the Final PR Gate. |
+| Product or test failure | Fix within scope and rerun relevant evidence. Open Round 2 only when the failure came from a valid P0/P1 Round 1 review finding. |
+| Reviewer command misuse | Rerun the canonical repository command yourself and do not count misuse as a product failure. |
+| Reviewer sandbox limitation | Use equivalent main-workspace evidence when the limitation is clearly environmental. |
+| Empty, killed, failed, or timed-out review | Not a pass; retry once if transient, otherwise report the incomplete gate. |
+| Repeated same test failure | Continue only with new evidence, a narrower hypothesis, or a different scoped fix; otherwise report the child as blocked. |
+| Round 1 finding below P1 | Fix when valid, verify, and record; do not open Round 2 only for this finding. |
+| Valid Round 2 finding | Fix, verify, record the fix commit and evidence, then continue without requiring Round 3. |
+| Repeated HITL gate gap | Stop and report the gate as blocked after one return-and-fix cycle for the same class of gap. |
 
-## Round 2 Fix Recovery
+## HITL Gate Notes
 
-The workflow allows at most 2 completed independent review rounds for each child issue and final integration. A valid non-trivial Round 2 finding does not require Round 3 or extra approval after it is fixed and verified. The PR's own review process handles any later review feedback.
+For a HITL gate child:
 
-If a valid non-trivial Round 2 finding is fixed after Round 2:
+1. re-read the child acceptance criteria
+2. inspect current committed branch state
+3. verify prior wave claims that the gate depends on
+4. search for named stop conditions
+5. prepare the concrete decision or evidence artifact for review
+6. run the required per-child independent review on the full HITL evidence set
 
-1. commit only the scoped fix
-2. rerun the relevant repository test target and any targeted verification for the finding
-3. record the finding, fix commit, commands, and results
-4. continue to the Final PR Gate
+If a narrow gate is fully verifiable from local committed evidence, record that evidence before independent review. Do not skip the required per-child review; use it to challenge whether the recorded evidence really satisfies the gate.
 
-If the finding is not fixed or verification fails, stop without PR and report the unresolved finding.
+If the gate has no code or docs diff, use a meaningful decision or evidence artifact as the review target. Do not create a meaningless file just to make a git range non-empty.
 
-## Test Evidence
+If the gate sends work back to an earlier child, record the owning child, gap class, fix commit, and verification. Do not repeat the same return path twice; repeated gap class means the gate is blocked.
 
-For each child issue, record:
+If an issue comment is explicitly required, adapt this minimum shape:
 
-1. commands run
-2. pass/fail result
+```markdown
+## Gate decision
 
-For final integration, record:
+Decision: ...
 
-1. broader suite commands run
-2. generated artifact, migration, rollback, SQL/API/frontend alignment, and cross-issue relationship checks as `checked` or `N/A` with reason
-3. any skipped tests and the reason
+Evidence checked:
+- ...
+
+Compatibility decision:
+- ...
+
+Remaining blockers:
+- ...
+```
+
+Do not write labels, assignees, milestones, project fields, or closure state in the comment.
 
 ## PR Body Skeleton
 
@@ -155,7 +177,7 @@ Parent PRD:
 Completed child issues:
 - Closes #CHILD_ID
 
-Tests:
+Tests and evidence:
 - ...
 
 Review summary:
@@ -175,8 +197,8 @@ Final integration checks:
 - SQL/API/frontend alignment: checked/N/A - ...
 - Cross-issue data relationships: checked/N/A - ...
 
-Low-risk residual notes:
-- None / spelling-comment-naming-only notes
+Residual notes:
+- None / low-risk notes
 
 Note: Merging this PR is the parent PRD #PARENT closure action.
 ```
