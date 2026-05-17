@@ -95,12 +95,24 @@ func TestKeyAliasServiceManagesRawAPIKeyAliasesByOpaqueID(t *testing.T) {
 	}
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
 		EventKey:    "api-key-event",
-		AuthType:    "apikey",
+		APIGroupKey: "sk-live-secret-value",
+		AuthType:    "oauth",
 		AuthIndex:   "account-key",
-		Source:      "sk-live-secret-value",
+		Source:      "operator@example.com",
 		Provider:    "OpenAI",
 		Model:       "priced-model",
 		Timestamp:   now,
+		InputTokens: 1_000_000,
+		TotalTokens: 1_000_000,
+	}, {
+		EventKey:    "provider-fallback",
+		APIGroupKey: "OpenAI",
+		AuthType:    "oauth",
+		AuthIndex:   "account-key",
+		Source:      "operator@example.com",
+		Provider:    "OpenAI",
+		Model:       "priced-model",
+		Timestamp:   now.Add(time.Minute),
 		InputTokens: 1_000_000,
 		TotalTokens: 1_000_000,
 	}}); err != nil {

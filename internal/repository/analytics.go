@@ -584,7 +584,6 @@ func analyticsAPIKeyEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFil
 	identityExpr := analyticsAPIKeyIdentitySQLExpression()
 	return analyticsEventsWithPricingQuery(db, filter).
 		Joins("LEFT JOIN key_aliases ON key_aliases.auth_type = ? AND key_aliases.identity = "+identityExpr, entities.UsageIdentityAuthTypeAIProvider).
-		Where("TRIM(usage_events.auth_type) = ?", "apikey").
 		Where(identityExpr + " <> ''")
 }
 
@@ -868,7 +867,11 @@ func analyticsAPIKeyAuthTypeSQLExpression() string {
 }
 
 func analyticsAPIKeyIdentitySQLExpression() string {
-	return "TRIM(usage_events.source)"
+	return `(CASE
+		WHEN TRIM(usage_events.api_group_key) LIKE 'sk-%' THEN TRIM(usage_events.api_group_key)
+		WHEN TRIM(usage_events.source) LIKE 'sk-%' THEN TRIM(usage_events.source)
+		ELSE ''
+	END)`
 }
 
 func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummaryRecord {

@@ -39,12 +39,12 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 		return nil, 0, fmt.Errorf("database is nil")
 	}
 
+	identityExpr := analyticsAPIKeyIdentitySQLExpression()
 	base := db.WithContext(ctx).Model(&entities.UsageEvent{}).
-		Where("TRIM(auth_type) = ?", "apikey").
-		Where("TRIM(source) <> ''")
+		Where(identityExpr + " <> ''")
 
 	var total int64
-	if err := db.WithContext(ctx).Table("(?) AS api_keys", base.Select("TRIM(source) AS identity").Group("TRIM(source)")).
+	if err := db.WithContext(ctx).Table("(?) AS api_keys", base.Select(identityExpr+" AS identity").Group(identityExpr)).
 		Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("count api key alias targets: %w", err)
 	}
@@ -62,24 +62,23 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 	var rows []apiKeyAliasTargetScanRow
 	if err := analyticsEventsWithPricingQuery(db.WithContext(ctx), dto.UsageQueryFilter{}).
 		Select(`
-			TRIM(usage_events.source) AS identity,
+			` + identityExpr + ` AS identity,
 			COALESCE(MIN(NULLIF(TRIM(usage_events.provider), '')), '') AS provider,
 			COUNT(*) AS request_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
 			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(`+analyticsPositiveTokenSQLExpression("usage_events.input_tokens")+`), 0) AS input_tokens,
-			COALESCE(SUM(`+analyticsPositiveTokenSQLExpression("usage_events.output_tokens")+`), 0) AS output_tokens,
-			COALESCE(SUM(`+analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens")+`), 0) AS reasoning_tokens,
-			COALESCE(SUM(`+analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")+`), 0) AS cached_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.output_tokens") + `), 0) AS output_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
 			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(`+analyticsCostSQLExpression()+`), 0) AS total_cost,
-			COALESCE(SUM(`+analyticsMissingPricingSQLExpression()+`), 0) AS missing_pricing_events,
-			COALESCE(SUM(`+analyticsPricedBillableSQLExpression()+`), 0) AS priced_billable_events,
+			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events,
 			MIN(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS first_used_at,
 			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS last_used_at`).
-		Where("TRIM(usage_events.auth_type) = ?", "apikey").
-		Where("TRIM(usage_events.source) <> ''").
-		Group("TRIM(usage_events.source)").
+		Where(identityExpr + " <> ''").
+		Group(identityExpr).
 		Order("total_cost DESC").
 		Order("COALESCE(SUM(usage_events.total_tokens), 0) DESC").
 		Order("last_used_at DESC").
@@ -118,13 +117,20 @@ func ListAPIKeySources(ctx context.Context, db *gorm.DB) ([]string, error) {
 		return nil, fmt.Errorf("database is nil")
 	}
 	var values []string
+	identityExpr := analyticsAPIKeyIdentitySQLExpression()
+	var rows []struct {
+		Identity string
+	}
 	if err := db.WithContext(ctx).Model(&entities.UsageEvent{}).
-		Select("DISTINCT TRIM(source)").
-		Where("TRIM(auth_type) = ?", "apikey").
-		Where("TRIM(source) <> ''").
-		Order("TRIM(source) ASC").
-		Pluck("source", &values).Error; err != nil {
+		Select("DISTINCT " + identityExpr + " AS identity").
+		Where(identityExpr + " <> ''").
+		Order("identity ASC").
+		Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("list api key sources: %w", err)
+	}
+	values = make([]string, 0, len(rows))
+	for _, row := range rows {
+		values = append(values, row.Identity)
 	}
 	result := make([]string, 0, len(values))
 	for _, value := range values {
