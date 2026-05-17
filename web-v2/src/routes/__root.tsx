@@ -1,6 +1,7 @@
 import { createRootRoute, Outlet, useLocation } from "@tanstack/react-router"
 import App from "@/App"
 import { useAuth } from "@/hooks/useAuth"
+import { appBasePath } from "@/lib/api"
 import { useEffect } from "react"
 
 export const Route = createRootRoute({
@@ -14,7 +15,7 @@ function RootComponent() {
 
   useEffect(() => {
     if (!isLoading && !auth?.authenticated && !isLoginPage) {
-      window.location.assign(`${window.__APP_BASE_PATH__ || ""}/login`)
+      window.location.assign(`${appBasePath()}/login`)
     }
   }, [auth?.authenticated, isLoading, isLoginPage])
 

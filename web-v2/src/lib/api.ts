@@ -1,4 +1,4 @@
-function appBasePath(): string {
+export function appBasePath(): string {
   const value = window.__APP_BASE_PATH__
   if (!value || value === "__APP_BASE_PATH__" || value === "/") {
     return ""
@@ -29,6 +29,10 @@ export async function apiFetch<T>(
   if (!response.ok) {
     const text = await response.text().catch(() => "Unknown error")
     throw new ApiError(response.status, text)
+  }
+
+  if (response.status === 204) {
+    return undefined as T
   }
 
   return response.json() as Promise<T>
