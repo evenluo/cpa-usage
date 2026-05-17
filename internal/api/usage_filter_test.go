@@ -182,6 +182,18 @@ func TestParseUsageFilterQueryAcceptsEventsPaginationAndFilters(t *testing.T) {
 	}
 }
 
+func TestParseUsageFilterQueryAcceptsCompactEvidencePageSize(t *testing.T) {
+	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&page_size=10", nil)
+
+	filter, err := parseUsageFilterQuery(req, time.Time{})
+	if err != nil {
+		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+	}
+	if filter.Page != 1 || filter.PageSize != 10 || filter.Limit != 10 || filter.Offset != 0 {
+		t.Fatalf("expected compact evidence pagination, got %+v", filter)
+	}
+}
+
 func TestParseUsageFilterQueryUsesLimitAsPageSizeAlias(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/events?limit=20", nil)
 
