@@ -4,8 +4,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useEvents } from "@/hooks/useEvents"
 import { formatCompact, formatDate } from "@/lib/format"
 
-export function RequestEvidence() {
-  const { data, isLoading, error } = useEvents("24h", 10)
+export function RequestEvidence({ provider }: { provider: string }) {
+  const { data, isLoading, error } = useEvents("24h", 10, provider)
   const events = data?.events.slice(0, 6) ?? []
 
   return (
@@ -43,7 +43,7 @@ export function RequestEvidence() {
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{event.model || "Unknown model"}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {event.auth_index || event.source || "No key trace"}
+                      {event.source || event.auth_index || "No key trace"}
                     </p>
                   </div>
                   <Badge variant={event.failed ? "amber" : "green"} className="shrink-0 text-[10px]">

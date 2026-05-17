@@ -54,6 +54,11 @@ function DashboardPage() {
   const providerOptions = data?.provider_options ?? []
   const fixedHeatmap = fixedActivityData?.heatmap
   const serviceHealth = healthOverviewData?.service_health
+  const leaderboardSortLabel = summary?.cost_status === "unavailable"
+    ? "Sort: Tokens"
+    : summary?.cost_status === "partial"
+      ? "Sort: Cost partial"
+      : "Sort: Cost"
 
   const kpiData = useMemo(() => {
     if (!trend.length) return null
@@ -217,7 +222,7 @@ function DashboardPage() {
           label="Cache"
           rawValue={summary?.cache_read_share}
           formatter={(n) => `${n.toFixed(1)}%`}
-          caption={summary?.cache_read_share_state === "available" ? "Cache hit rate" : summary?.cache_read_share_state?.replace(/_/g, " ")}
+          caption={summary?.cache_read_share_state === "available" ? "Cache Read Share" : summary?.cache_read_share_state?.replace(/_/g, " ")}
           isLoading={isLoading}
           tone="amber"
         />
@@ -291,7 +296,7 @@ function DashboardPage() {
               </CardTitle>
               <CardDescription>Top contributors by alias</CardDescription>
             </div>
-            <Badge variant="terracotta">Sort: Cost</Badge>
+            <Badge variant="terracotta">{leaderboardSortLabel}</Badge>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -367,7 +372,7 @@ function DashboardPage() {
         </CardContent>
       </Card>
 
-      <RequestEvidence />
+      <RequestEvidence provider={provider} />
     </div>
   )
 }

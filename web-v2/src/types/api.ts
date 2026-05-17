@@ -203,7 +203,6 @@ export interface StatusPayload {
   last_warning?: string
   timezone?: string
   version?: string
-  updateCheckEnabled?: boolean
 }
 
 export interface AuthSessionPayload {

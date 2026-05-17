@@ -1,4 +1,4 @@
-import { createLazyFileRoute } from "@tanstack/react-router"
+import { createLazyFileRoute, useNavigate } from "@tanstack/react-router"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, CheckCircle2, KeyRound, RefreshCw, Server } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -20,15 +20,36 @@ function OperationsPage() {
   const { data: auth } = useAuth()
   const toast = useToast()
   const qc = useQueryClient()
+  const navigate = useNavigate()
 
   const syncMutation = useMutation({
     mutationFn: () => apiFetch("/sync", { method: "POST" }),
     onSuccess: () => {
       toast.success("Sync triggered")
-      qc.invalidateQueries({ queryKey: ["status"] })
+      qc.invalidateQueries({ queryKey: ["analytics", "summary"] })
+      qc.invalidateQueries({ queryKey: ["usage", "overview"] })
+      qc.invalidateQueries({ queryKey: ["events"] })
+      qc.invalidateQueries({ queryKey: ["keys", "identities"] })
+      qc.invalidateQueries({ queryKey: ["pricing"] })
     },
     onError: (err: Error) => {
       toast.error(err.message || "Sync failed")
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["status"] })
+    },
+  })
+
+  const logoutMutation = useMutation({
+    mutationFn: () => apiFetch("/auth/logout", { method: "POST" }),
+    onSuccess: () => {
+      toast.success("Logged out")
+      qc.setQueryData(["auth", "session"], { authenticated: false })
+      qc.invalidateQueries({ queryKey: ["auth", "session"] })
+      navigate({ to: "/login" })
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Logout failed")
     },
   })
 
@@ -115,11 +136,6 @@ function OperationsPage() {
               ) : (
                 <>
                   <p className="text-sm font-semibold">{status?.version || "dev"}</p>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {status?.updateCheckEnabled
-                      ? "Update check enabled"
-                      : "Update check disabled"}
-                  </p>
                   <Badge variant="outline" className="mt-3">
                     {status?.timezone || "Local timezone"}
                   </Badge>
@@ -150,6 +166,15 @@ function OperationsPage() {
               <p className="mt-2 text-xs text-muted-foreground">
                 Dashboard password required
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                disabled={!auth?.authenticated || logoutMutation.isPending}
+                onClick={() => logoutMutation.mutate()}
+              >
+                {logoutMutation.isPending ? "Logging out..." : "Log out"}
+              </Button>
             </CardContent>
           </Card>
         </div>

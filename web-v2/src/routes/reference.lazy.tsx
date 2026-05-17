@@ -62,6 +62,10 @@ function ReferencePage() {
   }
 
   async function saveEdit(key: typeof filteredKeys[0]) {
+    if (draftAlias.trim() === "") {
+      toast.error("Use clear to remove an alias")
+      return
+    }
     try {
       await updateAlias.mutateAsync({ id: key.id, alias: draftAlias })
       setEditingId(null)
@@ -85,9 +89,9 @@ function ReferencePage() {
     const existing = pricingMap.get(model)
     return (
       drafts[model] ?? {
-        prompt: String(existing?.prompt_price_per_1m ?? 0),
-        completion: String(existing?.completion_price_per_1m ?? 0),
-        cache: String(existing?.cache_price_per_1m ?? 0),
+        prompt: existing ? String(existing.prompt_price_per_1m) : "",
+        completion: existing ? String(existing.completion_price_per_1m) : "",
+        cache: existing ? String(existing.cache_price_per_1m) : "",
       }
     )
   }
@@ -101,6 +105,10 @@ function ReferencePage() {
 
   async function saveRate(model: string) {
     const draft = getDraft(model)
+    if ([draft.prompt, draft.completion, draft.cache].some((value) => value.trim() === "")) {
+      toast.error("Enter all rates before saving")
+      return
+    }
     const prices = [draft.prompt, draft.completion, draft.cache].map(Number)
     if (prices.some((price) => !Number.isFinite(price) || price < 0)) {
       toast.error("Rates must be non-negative numbers")
@@ -356,6 +364,7 @@ function RateInput({
         step="0.000001"
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        placeholder="-"
         className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
       />
     </label>
