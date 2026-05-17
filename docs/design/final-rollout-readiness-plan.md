@@ -185,7 +185,8 @@ Required work:
   - `CPA_BASE_URL=http://cliproxyapi:8317`
   - `REDIS_QUEUE_ADDR=cliproxyapi:8317`
   - `AUTH_ENABLED=true`
-  - `LOGIN_PASSWORD=<secret>`
+  - `MANAGEMENT_PASSWORD=<secret>` as the maxtap source for `CPA_MANAGEMENT_KEY`
+  - `KEEPER_LOGIN_PASSWORD=<secret>` as the maxtap source for `LOGIN_PASSWORD`
   - `WORK_DIR=/data` or equivalent container path
   - backup/log retention values
 - Keep secret values redacted.

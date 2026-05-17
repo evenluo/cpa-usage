@@ -22,6 +22,8 @@ Make this repository's `cpa-usage` service the only CPA Usage owner on maxtap. T
 - Backup SHA256: `d0091456fc28b8e8a2bcfc8781223bec8ff233039836d88906916f53901f6506`
 - `https://cpa.maxtap.net/usage/healthz`: 404 after keeper shutdown.
 - `https://cpa.maxtap.net/`: 200 after keeper shutdown.
+- Deployed image: `cpa-usage:2cd0b87346a1`
+- Deployed image ID: `sha256:1615e74d66497b4e3fa0372fda7459acea4b64229782cc90984af12363888a5f`
 
 ## Preflight
 
@@ -88,8 +90,8 @@ Set runtime secrets on maxtap, not in git:
 
 ```sh
 export CPA_USAGE_IMAGE=ghcr.io/evenluo/cpa-usage:<immutable-commit-sha-tag>
-export CPA_MANAGEMENT_KEY='<secret>'
-export LOGIN_PASSWORD='<secret>'
+export MANAGEMENT_PASSWORD='<secret>'
+export KEEPER_LOGIN_PASSWORD='<secret>'
 ```
 
 Merge the service into the Dokploy compose file or run with an explicit overlay after copying the overlay to maxtap:
