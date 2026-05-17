@@ -1,4 +1,4 @@
-function appBasePath(): string {
+export function appBasePath(): string {
   const value = window.__APP_BASE_PATH__
   if (!value || value === "__APP_BASE_PATH__" || value === "/") {
     return ""
