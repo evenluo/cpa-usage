@@ -1,7 +1,6 @@
 import { createRootRoute, Outlet, useLocation } from "@tanstack/react-router"
 import App from "@/App"
 import { useAuth } from "@/hooks/useAuth"
-import { useEffect } from "react"
 
 export const Route = createRootRoute({
   component: RootComponent,

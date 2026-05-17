@@ -1,10 +1,8 @@
 import { Link, useRouter } from "@tanstack/react-router"
 import {
   BarChart3,
-  KeyRound,
-  Settings,
-  TableProperties,
-  WalletCards,
+  Activity,
+  Database,
   Sun,
   Moon,
 } from "lucide-react"
@@ -13,11 +11,9 @@ import { cn } from "@/lib/utils"
 import { useState } from "react"
 
 const navItems = [
-  { label: "Analytics", href: "/", icon: BarChart3 },
-  { label: "Keys", href: "/keys", icon: KeyRound },
-  { label: "Events", href: "/events", icon: TableProperties },
-  { label: "Pricing", href: "/pricing", icon: WalletCards },
-  { label: "Settings", href: "/settings", icon: Settings },
+  { label: "Intelligence", href: "/", icon: BarChart3 },
+  { label: "Reference", href: "/reference", icon: Database },
+  { label: "Operations", href: "/operations", icon: Activity },
 ]
 
 export function Sidebar() {

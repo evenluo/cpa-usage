@@ -12,38 +12,26 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { Route as rootRouteImport } from './routes/__root'
 
-const SettingsLazyRouteImport = createFileRoute('/settings')()
-const PricingLazyRouteImport = createFileRoute('/pricing')()
+const ReferenceLazyRouteImport = createFileRoute('/reference')()
+const OperationsLazyRouteImport = createFileRoute('/operations')()
 const LoginLazyRouteImport = createFileRoute('/login')()
-const KeysLazyRouteImport = createFileRoute('/keys')()
-const EventsLazyRouteImport = createFileRoute('/events')()
 const IndexLazyRouteImport = createFileRoute('/')()
 
-const SettingsLazyRoute = SettingsLazyRouteImport.update({
-  id: '/settings',
-  path: '/settings',
+const ReferenceLazyRoute = ReferenceLazyRouteImport.update({
+  id: '/reference',
+  path: '/reference',
   getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/settings.lazy').then((d) => d.Route))
-const PricingLazyRoute = PricingLazyRouteImport.update({
-  id: '/pricing',
-  path: '/pricing',
+} as any).lazy(() => import('./routes/reference.lazy').then((d) => d.Route))
+const OperationsLazyRoute = OperationsLazyRouteImport.update({
+  id: '/operations',
+  path: '/operations',
   getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/pricing.lazy').then((d) => d.Route))
+} as any).lazy(() => import('./routes/operations.lazy').then((d) => d.Route))
 const LoginLazyRoute = LoginLazyRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/login.lazy').then((d) => d.Route))
-const KeysLazyRoute = KeysLazyRouteImport.update({
-  id: '/keys',
-  path: '/keys',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/keys.lazy').then((d) => d.Route))
-const EventsLazyRoute = EventsLazyRouteImport.update({
-  id: '/events',
-  path: '/events',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/events.lazy').then((d) => d.Route))
 const IndexLazyRoute = IndexLazyRouteImport.update({
   id: '/',
   path: '/',
@@ -52,67 +40,52 @@ const IndexLazyRoute = IndexLazyRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexLazyRoute
-  '/events': typeof EventsLazyRoute
-  '/keys': typeof KeysLazyRoute
   '/login': typeof LoginLazyRoute
-  '/pricing': typeof PricingLazyRoute
-  '/settings': typeof SettingsLazyRoute
+  '/operations': typeof OperationsLazyRoute
+  '/reference': typeof ReferenceLazyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexLazyRoute
-  '/events': typeof EventsLazyRoute
-  '/keys': typeof KeysLazyRoute
   '/login': typeof LoginLazyRoute
-  '/pricing': typeof PricingLazyRoute
-  '/settings': typeof SettingsLazyRoute
+  '/operations': typeof OperationsLazyRoute
+  '/reference': typeof ReferenceLazyRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexLazyRoute
-  '/events': typeof EventsLazyRoute
-  '/keys': typeof KeysLazyRoute
   '/login': typeof LoginLazyRoute
-  '/pricing': typeof PricingLazyRoute
-  '/settings': typeof SettingsLazyRoute
+  '/operations': typeof OperationsLazyRoute
+  '/reference': typeof ReferenceLazyRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/events' | '/keys' | '/login' | '/pricing' | '/settings'
+  fullPaths: '/' | '/login' | '/operations' | '/reference'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/events' | '/keys' | '/login' | '/pricing' | '/settings'
-  id:
-    | '__root__'
-    | '/'
-    | '/events'
-    | '/keys'
-    | '/login'
-    | '/pricing'
-    | '/settings'
+  to: '/' | '/login' | '/operations' | '/reference'
+  id: '__root__' | '/' | '/login' | '/operations' | '/reference'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexLazyRoute: typeof IndexLazyRoute
-  EventsLazyRoute: typeof EventsLazyRoute
-  KeysLazyRoute: typeof KeysLazyRoute
   LoginLazyRoute: typeof LoginLazyRoute
-  PricingLazyRoute: typeof PricingLazyRoute
-  SettingsLazyRoute: typeof SettingsLazyRoute
+  OperationsLazyRoute: typeof OperationsLazyRoute
+  ReferenceLazyRoute: typeof ReferenceLazyRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsLazyRouteImport
+    '/reference': {
+      id: '/reference'
+      path: '/reference'
+      fullPath: '/reference'
+      preLoaderRoute: typeof ReferenceLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/pricing': {
-      id: '/pricing'
-      path: '/pricing'
-      fullPath: '/pricing'
-      preLoaderRoute: typeof PricingLazyRouteImport
+    '/operations': {
+      id: '/operations'
+      path: '/operations'
+      fullPath: '/operations'
+      preLoaderRoute: typeof OperationsLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -120,20 +93,6 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginLazyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/keys': {
-      id: '/keys'
-      path: '/keys'
-      fullPath: '/keys'
-      preLoaderRoute: typeof KeysLazyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/events': {
-      id: '/events'
-      path: '/events'
-      fullPath: '/events'
-      preLoaderRoute: typeof EventsLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -148,11 +107,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexLazyRoute: IndexLazyRoute,
-  EventsLazyRoute: EventsLazyRoute,
-  KeysLazyRoute: KeysLazyRoute,
   LoginLazyRoute: LoginLazyRoute,
-  PricingLazyRoute: PricingLazyRoute,
-  SettingsLazyRoute: SettingsLazyRoute,
+  OperationsLazyRoute: OperationsLazyRoute,
+  ReferenceLazyRoute: ReferenceLazyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

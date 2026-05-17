@@ -1,19 +1,15 @@
 import { Link, useRouter } from "@tanstack/react-router"
 import {
   BarChart3,
-  KeyRound,
-  Settings,
-  TableProperties,
-  WalletCards,
+  Activity,
+  Database,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
-  { label: "Analytics", href: "/", icon: BarChart3 },
-  { label: "Keys", href: "/keys", icon: KeyRound },
-  { label: "Events", href: "/events", icon: TableProperties },
-  { label: "Pricing", href: "/pricing", icon: WalletCards },
-  { label: "Settings", href: "/settings", icon: Settings },
+  { label: "Intelligence", href: "/", icon: BarChart3 },
+  { label: "Reference", href: "/reference", icon: Database },
+  { label: "Operations", href: "/operations", icon: Activity },
 ]
 
 export function MobileNav() {

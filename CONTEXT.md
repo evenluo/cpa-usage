@@ -16,6 +16,10 @@ _Avoid_: Credential alias, model alias, redacted alias
 The calculated spend derived from token usage and local model pricing.
 _Avoid_: Price
 
+**Cost Rate**:
+A user-maintained model unit rate used to calculate **Cost** from token usage.
+_Avoid_: Price, pricing entry
+
 **Cache Read Share**:
 The share of provider-normalized prompt input tokens served from cache reads, calculated as cached tokens divided by input tokens.
 _Avoid_: Cache hit rate, cache/reasoning share
@@ -32,6 +36,10 @@ _Avoid_: Request event log, raw events page
 The selected aggregation level for time-series analytics, such as hourly or daily buckets, applied consistently across trend charts and time-pattern views.
 _Avoid_: Fixed by-day chart, chart-only grouping
 
+**Reference Data**:
+Supporting user-maintained labels and rates that make **Usage Intelligence** readable and complete.
+_Avoid_: Credentials, setup data, generic data
+
 ## Relationships
 
 - A **CPA Key** may have zero or one global **Key Alias**
@@ -40,7 +48,7 @@ _Avoid_: Fixed by-day chart, chart-only grouping
 - Usage attribution remains attached to the **CPA Key**, not to the **Key Alias**
 - **Key Aliases** are stored by CPA Usage and are not written back to CPA.
 - A **Key Alias** remains available for historical usage even if the **CPA Key** is no longer active in CPA.
-- The Credentials view is where users manage **Key Aliases**.
+- The Reference Data view is where users manage **Key Aliases** and **Cost Rates**.
 - The first alias management version supports direct editing only, not bulk import or export.
 - Saved **Key Alias** edits should immediately affect current dashboard labels without waiting for the next CPA sync.
 - Search and filters can match both **Key Alias** and **CPA Key**.

@@ -11,6 +11,7 @@ import { TokenBreakdownPanel, TrendChart } from "@/components/charts/trend-chart
 import { KeyLeaderboard } from "@/components/charts/key-leaderboard"
 import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
+import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { useUsageOverview } from "@/hooks/useUsageOverview"
 import { formatCost, formatCompact, formatComparison } from "@/lib/format"
 import type { TimeRange, TimeGranularity } from "@/types/api"
@@ -365,6 +366,8 @@ function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      <RequestEvidence />
     </div>
   )
 }

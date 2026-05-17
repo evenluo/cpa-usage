@@ -1,7 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts"
 import type { ModelDistribution } from "@/types/api"
 import { formatCost, formatCompact } from "@/lib/format"
-import { Badge } from "@/components/ui/badge"
 
 interface ModelDistributionProps {
   data: ModelDistribution[]
@@ -61,7 +60,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{row.model}</p>
                   <p className="text-xs text-muted-foreground">
-                    {row.provider || "Unknown"} · {formatCompact(row.tokens, 1)} tokens · {formatCompact(row.requests, 0)} requests
+                    {row.provider || "Unknown"} · {formatCompact(row.total_tokens, 1)} tokens · {formatCompact(row.request_count, 0)} requests
                   </p>
                 </div>
                 <div className="text-right">

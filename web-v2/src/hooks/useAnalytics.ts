@@ -35,7 +35,7 @@ export function useAnalytics(
     queryFn: () =>
       apiFetch<AnalyticsResponse>(`/analytics/summary?${params.toString()}`),
     staleTime: 30_000,
-    refetchInterval: (query) => {
+    refetchInterval: () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
       }

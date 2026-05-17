@@ -5,3 +5,5 @@ declare global {
     __APP_BASE_PATH__?: string
   }
 }
+
+export {}
