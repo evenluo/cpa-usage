@@ -15,8 +15,9 @@
 backups/
 
 # frontend deps and build cache
-web/node_modules/
-web/dist/
+web-v2/node_modules/
+web-v2/.vite/
+web-v2/dist/
 
 # docs / temp
 .tmp-test.db

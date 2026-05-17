@@ -120,9 +120,9 @@ The existing `trend` array should follow `granularity`. The heatmap remains hour
 | Service DTO | `internal/service/dto/analytics.go` | Mirror comparison and heatmap DTOs for the service boundary. |
 | Service mapping | `internal/service/analytics_service.go` | Map repository comparison and heatmap records into service DTOs; do not allow new fields to stop at the repository layer. |
 | API DTO | `internal/api/analytics.go` | Publish stable JSON names for comparison and heatmap. |
-| Frontend types/state | `web/src/App.tsx` | Add `TimeGranularity` state; request `granularity`; map comparison and heatmap payloads. |
-| Frontend charts | `web/src/components/charts/index.tsx` | Upgrade the primary Cost/Tokens chart, add KPI sparklines if needed, and add a heatmap component. |
-| Frontend tests | `web/src/App.test.tsx`, `web/src/components/charts/index.test.tsx` | Cover default Hour query, Day switching, comparison rendering, and date-by-hour heatmap rendering. |
+| Frontend types/state | `web-v2/src/routes/index.lazy.tsx`, `web-v2/src/hooks/useAnalytics.ts`, `web-v2/src/types/api.ts` | Add `TimeGranularity` state; request `granularity`; map comparison and heatmap payloads. |
+| Frontend charts | `web-v2/src/components/charts/*` | Upgrade the primary Cost/Tokens chart, add KPI sparklines if needed, and add a heatmap component. |
+| Frontend verification | `web-v2/` | Cover default Hour query, Day switching, comparison rendering, and date-by-hour heatmap rendering when component tests are introduced; current gate is lint, typecheck, and build. |
 
 ## Time and Boundary Rules
 
@@ -230,8 +230,7 @@ Lower panels:
 Local verification:
 
 - Run backend analytics tests: `go test ./internal/repository ./internal/api ./internal/service`.
-- Run frontend tests: `npm --prefix ./web run test`.
-- Run frontend typecheck and build: `npm --prefix ./web run typecheck` and `npm --prefix ./web run build`.
+- Run frontend lint, typecheck, and build: `npm --prefix ./web-v2 run lint`, `npm --prefix ./web-v2 run typecheck`, and `npm --prefix ./web-v2 run build`.
 - Run `make verify` if the narrower checks pass.
 
 Remote rollout:

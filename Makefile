@@ -1,39 +1,50 @@
-.PHONY: dev-backend dev-frontend test-backend test-frontend fmt-backend vet-backend build-backend build-frontend verify verify-backend verify-frontend verify-docker
+WEB_DIR := ./web-v2
+
+.PHONY: dev-backend dev-frontend test-backend test-frontend fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker
 
 dev-backend:
 	go run ./cmd/server/main.go --env .env
 
 dev-frontend:
-	npm --prefix ./web run dev
+	npm --prefix $(WEB_DIR) run dev
 
-test-backend:
+ensure-frontend-embed-dir:
+	mkdir -p $(WEB_DIR)/dist
+	touch $(WEB_DIR)/dist/.gitkeep
+
+test-backend: ensure-frontend-embed-dir
 	go test ./cmd/... ./internal/...
 
 test-frontend:
-	npm --prefix ./web run test
+	$(MAKE) typecheck-frontend
 
 fmt-backend:
 	go fmt ./cmd/... ./internal/...
 
-vet-backend:
+vet-backend: ensure-frontend-embed-dir
 	go vet ./cmd/... ./internal/...
 
-build-backend:
+build-backend: ensure-frontend-embed-dir
 	mkdir -p ./bin
 	go build -o ./bin/cpa-usage ./cmd/server
 
 build-frontend:
-	npm --prefix ./web run build
+	npm --prefix $(WEB_DIR) run build
+
+lint-frontend:
+	npm --prefix $(WEB_DIR) run lint
+
+typecheck-frontend:
+	npm --prefix $(WEB_DIR) run typecheck
 
 verify: verify-backend verify-frontend
 
 verify-backend: test-backend vet-backend
 
 verify-frontend:
-	npm --prefix ./web ci
-	$(MAKE) test-frontend
-	npm --prefix ./web run lint
-	npm --prefix ./web run typecheck
+	npm --prefix $(WEB_DIR) ci
+	$(MAKE) lint-frontend
+	$(MAKE) typecheck-frontend
 	$(MAKE) build-frontend
 
 verify-docker:

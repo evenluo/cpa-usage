@@ -22,6 +22,11 @@ The final goal is for this repository's `cpa-usage` service to become the single
   - `https://cpa.maxtap.net/`: 200
   - `https://cpa.maxtap.net/cpa-usage/healthz`: 404
   - `https://cpa.maxtap.net/cpa-usage/`: 404
+- Keeper shutdown was executed on 2026-05-17 after this decision:
+  - backup path: `/root/cpa-usage-cutover-backups/20260517T152241Z/cpa-usage-keeper-data.tgz`
+  - backup SHA256: `d0091456fc28b8e8a2bcfc8781223bec8ff233039836d88906916f53901f6506`
+  - `https://cpa.maxtap.net/usage/healthz`: 404 after shutdown
+  - `https://cpa.maxtap.net/`: 200 after shutdown
 
 ## Rollout Decision
 
@@ -42,7 +47,8 @@ Goal: Preserve usable keeper data before taking the old consumer offline.
 Required work:
 
 - Inspect the current `cpa-usage-keeper` data volume and identify the SQLite database path.
-- Create a keeper database backup before any service mutation.
+- Stop `cpa-usage-keeper` so SQLite and WAL files are quiesced and it no longer consumes Redis usage events.
+- Create a keeper database backup immediately after shutdown.
 - Decide whether to migrate the existing SQLite database directly or export/import selected tables.
 - Preserve at minimum:
   - `usage_events`
@@ -51,15 +57,14 @@ Required work:
   - `key_aliases`
   - `model_price_settings`
   - migration metadata tables
-- Stop `cpa-usage-keeper` after the backup has been verified, so it no longer consumes Redis usage events.
 - Run migrations with the new binary against the migrated database.
 - Verify row counts and representative records for Usage Events, Key Aliases, and Cost Rates.
 - Confirm no plaintext secrets are copied into the repo or rollout report.
 
 Acceptance checks:
 
-- A timestamped keeper DB backup exists before cutover.
-- `cpa-usage-keeper` is stopped after backup verification and before new service ingestion starts.
+- `cpa-usage-keeper` is stopped before new service ingestion starts.
+- A timestamped keeper DB backup exists from the stopped volume.
 - The migrated `cpa-usage` database opens successfully under the new image.
 - Usage Intelligence returns non-empty historical data for the expected recent windows.
 - Reference Data shows existing Key Aliases and Cost Rates after migration.

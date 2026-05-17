@@ -9,18 +9,18 @@ export function useCountUp(
   options: { duration?: number; decimals?: number; enabled?: boolean } = {}
 ) {
   const { duration = 800, decimals = 0, enabled = true } = options
-  const [value, setValue] = useState(0)
+  const [value, setValue] = useState(target)
   const startRef = useRef<number | null>(null)
   const fromRef = useRef(0)
   const targetRef = useRef(target)
+  const valueRef = useRef(target)
 
   useEffect(() => {
     if (!enabled) {
-      setValue(target)
       return
     }
 
-    fromRef.current = value
+    fromRef.current = valueRef.current
     targetRef.current = target
     startRef.current = null
 
@@ -32,6 +32,7 @@ export function useCountUp(
       const progress = Math.min(elapsed / duration, 1)
       const eased = easeOutQuart(progress)
       const current = fromRef.current + (targetRef.current - fromRef.current) * eased
+      valueRef.current = current
       setValue(current)
 
       if (progress < 1) {
@@ -44,5 +45,6 @@ export function useCountUp(
   }, [target, duration, enabled])
 
   const factor = Math.pow(10, decimals)
-  return Math.round(value * factor) / factor
+  const displayValue = enabled ? value : target
+  return Math.round(displayValue * factor) / factor
 }

@@ -48,10 +48,10 @@ function DashboardPage() {
 
   const summary = data?.summary
   const comparison = data?.comparison
-  const trend = data?.trend ?? []
-  const keyAliases = data?.key_alias_breakdown ?? []
-  const modelDistribution = data?.model_distribution ?? []
-  const providerOptions = data?.provider_options ?? []
+  const trend = useMemo(() => data?.trend ?? [], [data?.trend])
+  const keyAliases = useMemo(() => data?.key_alias_breakdown ?? [], [data?.key_alias_breakdown])
+  const modelDistribution = useMemo(() => data?.model_distribution ?? [], [data?.model_distribution])
+  const providerOptions = useMemo(() => data?.provider_options ?? [], [data?.provider_options])
   const fixedHeatmap = fixedActivityData?.heatmap
   const serviceHealth = healthOverviewData?.service_health
   const leaderboardSortLabel = summary?.cost_status === "unavailable"

@@ -75,6 +75,13 @@ export function Heatmap({ data }: HeatmapProps) {
     return () => ro.disconnect()
   }, [])
 
+  const { cells: flatCells, maxTokens } = useMemo(() => flattenCells(data), [data])
+
+  const { daysPerRow, cellSize } = useMemo(
+    () => computeLayout(containerWidth || 1200),
+    [containerWidth]
+  )
+
   if (data.rows.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -82,13 +89,6 @@ export function Heatmap({ data }: HeatmapProps) {
       </div>
     )
   }
-
-  const { cells: flatCells, maxTokens } = useMemo(() => flattenCells(data), [data])
-
-  const { daysPerRow, cellSize } = useMemo(
-    () => computeLayout(containerWidth || 1200),
-    [containerWidth]
-  )
 
   const colsPerRow = 24 * daysPerRow
 

@@ -2,7 +2,7 @@
 
 CPA Usage is a human-readable usage dashboard on top of CPA usage data.
 
-This repository starts from the stable CPA usage keeper backend foundation and keeps CPA queue consumption, SQLite persistence, migrations, pricing semantics, auth/session, backup, update check, and Docker-friendly deployment behavior intact. The frontend baseline is a minimal React, TypeScript, and Vite shell that the next design-system slice will replace with the full analytics workspace.
+This repository starts from the stable CPA usage keeper backend foundation and keeps CPA queue consumption, SQLite persistence, migrations, pricing semantics, auth/session, backup, update check, and Docker-friendly deployment behavior intact. The frontend is the `web-v2/` React, TypeScript, Vite, Tailwind, and shadcn-style analytics workspace.
 
 ## Verification
 
@@ -13,7 +13,7 @@ make verify-backend
 make verify-frontend
 ```
 
-`make verify` runs both checks. `make verify-backend` runs backend tests and `go vet`; `make verify-frontend` installs frontend dependencies with `npm ci`, then runs test, lint, typecheck, and build. `make verify-docker` builds the deployment image.
+`make verify` runs both checks. `make verify-backend` runs backend tests and `go vet`; `make verify-frontend` installs frontend dependencies with `npm ci`, then runs lint, typecheck, and build. `make verify-docker` builds the deployment image.
 
 ## Development
 
@@ -21,7 +21,7 @@ Prepare local configuration and frontend dependencies once before running the de
 
 ```bash
 cp .env.example .env
-npm --prefix ./web ci
+npm --prefix ./web-v2 ci
 ```
 
 Edit `.env` with a reachable `CPA_BASE_URL` and `CPA_MANAGEMENT_KEY`. `make dev-backend` loads `.env` explicitly, so a missing file or missing required CPA settings fails fast.
@@ -31,7 +31,7 @@ make dev-backend
 make dev-frontend
 ```
 
-The Go server serves the built frontend assets from `web/dist` when `npm --prefix ./web run build` has been run.
+The Go server serves the built frontend assets from `web-v2/dist` when `npm --prefix ./web-v2 run build` has been run.
 
 Common backend targets:
 
@@ -81,4 +81,4 @@ New backend code should first choose the package that matches its responsibility
 
 - CPA native configuration is not mutated.
 - Existing usage events, pricing semantics, SQLite persistence, auth/session, backup, update check, and Docker deployment behavior are inherited from the keeper backend.
-- The frontend structure is intentionally not compatible with the old keeper SCSS-module UI; the old UI is reference material only.
+- The frontend structure is intentionally not compatible with the old keeper SCSS-module UI. The old `web/` implementation has been removed; `web-v2/` is the only frontend source.
