@@ -259,7 +259,7 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
 		row := dto.AnalyticsHeatmapRowRecord{
 			Date:  day.Format(time.DateOnly),
-			Label: day.Format("Mon 01/02"),
+			Label: day.Format("01/02 Mon"),
 			Cells: make([]dto.AnalyticsHeatmapCellRecord, 0, 24),
 		}
 		for hour := 0; hour < 24; hour++ {
@@ -459,7 +459,7 @@ func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *
 }
 
 func applyAnalyticsQueryFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	query = applyUsageOverviewQuery(query, filter)
+	query = applyUsageQueryWindow(query, filter)
 	if provider := strings.TrimSpace(filter.Provider); provider != "" {
 		query = query.Where("TRIM(usage_events.provider) = ?", provider)
 	}

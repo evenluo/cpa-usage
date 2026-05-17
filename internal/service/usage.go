@@ -22,6 +22,7 @@ func (s *usageService) GetUsageWithFilter(_ context.Context, filter servicedto.U
 		Range:     filter.Range,
 		StartTime: filter.StartTime,
 		EndTime:   filter.EndTime,
+		Provider:  filter.Provider,
 	})
 }
 
@@ -31,6 +32,7 @@ func (s *usageService) GetUsageOverview(_ context.Context, filter servicedto.Usa
 		Range:     filter.Range,
 		StartTime: filter.StartTime,
 		EndTime:   filter.EndTime,
+		Provider:  filter.Provider,
 	})
 	if err != nil {
 		return nil, err
@@ -106,6 +108,7 @@ func (s *usageService) ListUsageEvents(_ context.Context, filter servicedto.Usag
 		PageSize:  filter.PageSize,
 		Offset:    filter.Offset,
 		Model:     filter.Model,
+		Provider:  filter.Provider,
 		Source:    filter.Source,
 		AuthIndex: filter.AuthIndex,
 		Result:    filter.Result,
@@ -141,6 +144,7 @@ func (s *usageService) ListUsageEventFilterOptions(_ context.Context, filter ser
 	options, err := repository.ListUsageEventFilterOptionsWithFilter(s.db, repodto.UsageQueryFilter{
 		StartTime: filter.StartTime,
 		EndTime:   filter.EndTime,
+		Provider:  filter.Provider,
 	})
 	if err != nil {
 		return nil, err
@@ -153,6 +157,7 @@ func (s *usageService) GetUsageAnalysis(_ context.Context, filter servicedto.Usa
 	apiRows, modelRows, err := repository.ListUsageAnalysisWithFilter(s.db, repodto.UsageQueryFilter{
 		StartTime: filter.StartTime,
 		EndTime:   filter.EndTime,
+		Provider:  filter.Provider,
 	})
 	if err != nil {
 		return nil, err

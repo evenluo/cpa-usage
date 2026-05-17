@@ -164,7 +164,7 @@ func TestStatusReturnsEmptyStateWithoutProvider(t *testing.T) {
 	}
 }
 
-func TestStatusReturnsVersionAndUpdateCheckFlag(t *testing.T) {
+func TestStatusReturnsVersionWithoutUpdateCheckState(t *testing.T) {
 	previousVersion := version.Version
 	t.Cleanup(func() { version.Version = previousVersion })
 	version.Version = "v1.2.3"
@@ -178,12 +178,12 @@ func TestStatusReturnsVersionAndUpdateCheckFlag(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"version":"v1.2.3"`) || !contains(body, `"updateCheckEnabled":true`) {
+	if !contains(body, `"version":"v1.2.3"`) || contains(body, `"updateCheckEnabled"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }
 
-func TestStatusHidesUpdateCheckForDevVersion(t *testing.T) {
+func TestStatusReturnsDevVersionWithoutUpdateCheckState(t *testing.T) {
 	previousVersion := version.Version
 	t.Cleanup(func() { version.Version = previousVersion })
 	version.Version = "dev"
@@ -197,7 +197,7 @@ func TestStatusHidesUpdateCheckForDevVersion(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"version":"dev"`) || !contains(body, `"updateCheckEnabled":false`) {
+	if !contains(body, `"version":"dev"`) || contains(body, `"updateCheckEnabled"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }

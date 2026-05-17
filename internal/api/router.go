@@ -17,7 +17,6 @@ import (
 	"cpa-usage/internal/poller"
 	"cpa-usage/internal/quota"
 	"cpa-usage/internal/service"
-	"cpa-usage/internal/updatecheck"
 	"cpa-usage/internal/version"
 	"github.com/gin-gonic/gin"
 )
@@ -259,15 +258,14 @@ func stripBasePath(basePath, requestPath string) (string, bool) {
 }
 
 type statusResponse struct {
-	Running            bool       `json:"running"`
-	SyncRunning        bool       `json:"sync_running"`
-	Timezone           string     `json:"timezone"`
-	Version            string     `json:"version"`
-	UpdateCheckEnabled bool       `json:"updateCheckEnabled"`
-	LastRunAt          *time.Time `json:"last_run_at,omitempty"`
-	LastError          string     `json:"last_error,omitempty"`
-	LastWarning        string     `json:"last_warning,omitempty"`
-	LastStatus         string     `json:"last_status,omitempty"`
+	Running     bool       `json:"running"`
+	SyncRunning bool       `json:"sync_running"`
+	Timezone    string     `json:"timezone"`
+	Version     string     `json:"version"`
+	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
+	LastError   string     `json:"last_error,omitempty"`
+	LastWarning string     `json:"last_warning,omitempty"`
+	LastStatus  string     `json:"last_status,omitempty"`
 }
 
 func registerStatusRoutes(router gin.IRoutes, statusProvider StatusProvider) {
@@ -322,14 +320,13 @@ func registerSyncRoutes(router gin.IRoutes, statusProvider StatusProvider, limit
 
 func buildStatusResponse(status poller.Status) statusResponse {
 	response := statusResponse{
-		Running:            status.Running,
-		SyncRunning:        status.SyncRunning,
-		Timezone:           time.Local.String(),
-		Version:            version.Version,
-		UpdateCheckEnabled: updatecheck.IsStableVersion(version.Version),
-		LastError:          status.LastError,
-		LastWarning:        status.LastWarning,
-		LastStatus:         status.LastStatus,
+		Running:     status.Running,
+		SyncRunning: status.SyncRunning,
+		Timezone:    time.Local.String(),
+		Version:     version.Version,
+		LastError:   status.LastError,
+		LastWarning: status.LastWarning,
+		LastStatus:  status.LastStatus,
 	}
 	if !status.LastRunAt.IsZero() {
 		lastRunAt := status.LastRunAt.UTC()

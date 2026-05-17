@@ -128,24 +128,32 @@ func applyUsageQueryWindow(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
 	return query
 }
 
-// Overview Tab 第一步：只应用时间窗口，后续 Overview 专属条件也从这里加。
+func applyUsageProviderFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+	if provider := strings.TrimSpace(filter.Provider); provider != "" {
+		query = query.Where("TRIM(provider) = ?", provider)
+	}
+	return query
+}
+
+// Overview Tab 第一步：应用时间窗口和 provider scope，后续 Overview 专属条件也从这里加。
 func applyUsageOverviewQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	return applyUsageQueryWindow(query, filter)
+	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
 }
 
-// Analysis Tab 第一步：只应用时间窗口，避免 Request Event Log 的筛选污染聚合。
+// Analysis Tab 第一步：应用时间窗口和 provider scope，避免 Request Event Log 的筛选污染聚合。
 func applyUsageAnalysisTabQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	return applyUsageQueryWindow(query, filter)
+	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
 }
 
-// Request Event Log 筛选项第一步：只应用时间窗口，不叠加当前列表筛选。
+// Request Event Log 筛选项第一步：应用时间窗口和 provider scope，不叠加当前列表筛选。
 func applyUsageEventFilterOptionsQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	return applyUsageQueryWindow(query, filter)
+	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
 }
 
-// Request Event Log 列表第一步：在时间窗口上叠加 model/source/auth_index/result。
+// Request Event Log 列表第一步：在时间窗口和 provider scope 上叠加 model/source/auth_index/result。
 func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
 	query = applyUsageQueryWindow(query, filter)
+	query = applyUsageProviderFilter(query, filter)
 	if model := strings.TrimSpace(filter.Model); model != "" {
 		query = query.Where("TRIM(model) = ?", model)
 	}
@@ -644,8 +652,7 @@ const (
 )
 
 func buildUsageOverviewHealth(filter dto.UsageQueryFilter) dto.UsageOverviewHealthRecord {
-	rows := usageOverviewHealthRows
-	columns, span := usageOverviewHealthGrid(filter)
+	rows, columns, span := usageOverviewHealthGrid(filter)
 	totalBlocks := rows * columns
 	windowStart, windowEnd := usageOverviewHealthWindow(filter, totalBlocks, span)
 	blocks := make([]dto.UsageOverviewHealthBlockRecord, totalBlocks)
@@ -667,11 +674,14 @@ func buildUsageOverviewHealth(filter dto.UsageQueryFilter) dto.UsageOverviewHeal
 	}
 }
 
-func usageOverviewHealthGrid(filter dto.UsageQueryFilter) (int, time.Duration) {
-	if isUsageOverviewShortHealthRange(filter.Range) {
-		return usageOverviewHealthDefaultColumns, usageOverviewHealthPresetSpan
+func usageOverviewHealthGrid(filter dto.UsageQueryFilter) (int, int, time.Duration) {
+	if !isUsageOverviewShortHealthRange(filter.Range) {
+		return usageOverviewHealthRows, usageOverviewHealthDefaultColumns, usageOverviewHealthDefaultSpan
 	}
-	return usageOverviewHealthDefaultColumns, usageOverviewHealthDefaultSpan
+	if filter.Range == "24h" {
+		return 8, 60, 3 * time.Minute
+	}
+	return usageOverviewHealthRows, usageOverviewHealthDefaultColumns, usageOverviewHealthPresetSpan
 }
 
 func isUsageOverviewShortHealthRange(value string) bool {

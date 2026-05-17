@@ -89,6 +89,7 @@ func parseUsageFilterQuery(req *http.Request, anchor time.Time) (servicedto.Usag
 	}
 	filter.Offset = (filter.Page - 1) * filter.PageSize
 	filter.Model = strings.TrimSpace(query.Get("model"))
+	filter.Provider = strings.TrimSpace(query.Get("provider"))
 	filter.Source = strings.TrimSpace(query.Get("source"))
 	filter.AuthIndex = strings.TrimSpace(query.Get("auth_index"))
 	filter.Result = strings.TrimSpace(query.Get("result"))

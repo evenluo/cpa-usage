@@ -298,14 +298,14 @@ func TestBuildUsageOverviewWithFilterBuilds24hHealthGridFor24hRange(t *testing.T
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
 
-	if overview.Health.Rows != 7 || overview.Health.Columns != 96 || overview.Health.BucketSeconds != 129 {
+	if overview.Health.Rows != 8 || overview.Health.Columns != 60 || overview.Health.BucketSeconds != 180 {
 		t.Fatalf("unexpected service health grid metadata: rows=%d columns=%d bucket_seconds=%d", overview.Health.Rows, overview.Health.Columns, overview.Health.BucketSeconds)
 	}
 	if overview.Health.WindowStart.Before(end.Add(-24*time.Hour)) || overview.Health.WindowStart.After(end.Add(-24*time.Hour).Add(time.Second)) ||
 		overview.Health.WindowEnd.Before(end) || overview.Health.WindowEnd.After(end.Add(time.Second)) {
 		t.Fatalf("unexpected service health window: %+v", overview.Health)
 	}
-	if len(overview.Health.BlockDetails) != 7*96 {
+	if len(overview.Health.BlockDetails) != 8*60 {
 		t.Fatalf("expected 24h service health grid, got %d blocks", len(overview.Health.BlockDetails))
 	}
 
@@ -325,6 +325,69 @@ func TestBuildUsageOverviewWithFilterBuilds24hHealthGridFor24hRange(t *testing.T
 	}
 	if failedBlock == nil || failedBlock.StartTime.After(events[1].Timestamp) || !failedBlock.EndTime.After(events[1].Timestamp) || failedBlock.Rate != 0 {
 		t.Fatalf("unexpected failed health block: %+v", failedBlock)
+	}
+}
+
+func TestBuildUsageOverviewWithFilterAppliesProviderScope(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-overview-provider.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	events := []entities.UsageEvent{
+		{EventKey: "event-codex", APIGroupKey: "provider-a", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 17, 9, 31, 0, 0, time.UTC), Failed: false, TotalTokens: 10},
+		{EventKey: "event-claude", APIGroupKey: "provider-b", Provider: "claude", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 17, 10, 31, 0, 0, time.UTC), Failed: true, TotalTokens: 20},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 4, 17, 23, 59, 59, 999000000, time.UTC)
+	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"})
+	if err != nil {
+		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
+	}
+
+	if overview.Summary.RequestCount != 1 || overview.Summary.TokenCount != 10 {
+		t.Fatalf("expected overview to include only codex events, got summary=%+v", overview.Summary)
+	}
+	if overview.Health.TotalSuccess != 1 || overview.Health.TotalFailure != 0 {
+		t.Fatalf("expected health to include only codex events, got %+v", overview.Health)
+	}
+}
+
+func TestListUsageEventsWithFilterAppliesProviderScope(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-provider.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	events := []entities.UsageEvent{
+		{EventKey: "event-codex", APIGroupKey: "provider-a", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 17, 9, 31, 0, 0, time.UTC), TotalTokens: 10},
+		{EventKey: "event-claude", APIGroupKey: "provider-b", Provider: "claude", Model: "claude-opus", Timestamp: time.Date(2026, 4, 17, 10, 31, 0, 0, time.UTC), TotalTokens: 20},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 4, 17, 23, 59, 59, 999000000, time.UTC)
+	page, err := ListUsageEventsWithFilter(db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end, Provider: "codex", Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
+	}
+
+	if page.TotalCount != 1 || len(page.Events) != 1 {
+		t.Fatalf("expected one codex event, got %+v", page)
+	}
+	if page.Events[0].Provider != "codex" || page.Events[0].TotalTokens != 10 {
+		t.Fatalf("unexpected provider-scoped event: %+v", page.Events[0])
+	}
+	if !reflect.DeepEqual(page.Models, []string{"claude-sonnet"}) {
+		t.Fatalf("expected model options to follow provider scope, got %+v", page.Models)
 	}
 }
 
