@@ -85,6 +85,37 @@ Results:
 - `GET /cpa-usage/api/v1/analytics/summary?range=7d&granularity=day`: HTTP 200
 - `GET /cpa-usage/api/v1/status`: HTTP 200
 
+## OpenAI GPT Pricing Seed
+
+- Source check date: 2026-05-17
+- Source pages:
+  - `https://openai.com/api/pricing/`
+  - `https://developers.openai.com/api/docs/pricing`
+- Pricing basis: OpenAI API Standard tier, short context, USD per 1M tokens.
+- Seed script: `scripts/seed-openai-gpt-pricing.sh`
+- Backup before pricing write: `/root/cpa-usage-cutover-backups/pre-gpt-pricing-20260517T154052Z.tgz`
+- Backup SHA256: `61f1be0b2c3e86d486cc48508d7cebd38f9b01a240c54085f97b5c83368b222f`
+- Seeded rows:
+  - `gpt-5.5`: input `5.00`, output `30.00`, cached input `0.50`
+  - `gpt-5.4`: input `2.50`, output `15.00`, cached input `0.25`
+  - `gpt-5.4-mini`: input `0.75`, output `4.50`, cached input `0.075`
+  - `gpt-5.4-nano`: input `0.20`, output `1.25`, cached input `0.02`
+  - `gpt-5.3-codex`: input `1.75`, output `14.00`, cached input `0.175`
+- Production GPT usage models at seed time:
+  - `gpt-5.5`: `8486` events
+  - `gpt-5.4`: `695` events
+  - `gpt-5.4-mini`: `122` events
+- Verification after seed:
+  - `GET /`: HTTP 200
+  - `GET /cpa-usage/healthz`: HTTP 200
+  - `GET /cpa-usage/`: HTTP 200
+  - `GET /usage/healthz`: HTTP 404
+  - Login: HTTP 204
+  - `GET /cpa-usage/api/v1/auth/session`: authenticated
+  - `GET /cpa-usage/api/v1/analytics/summary?range=7d&granularity=hour`: HTTP 200
+  - `GET /cpa-usage/api/v1/analytics/summary?range=7d&granularity=day`: HTTP 200
+  - `GET /cpa-usage/api/v1/status`: HTTP 200
+
 ## Ownership Evidence
 
 - `cpa-usage` is the only running usage consumer.

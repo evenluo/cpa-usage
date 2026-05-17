@@ -132,6 +132,42 @@ Expected:
 - `/`: 200 CPA root JSON
 - `/usage/healthz`: not 200 after keeper shutdown
 
+## Seed OpenAI GPT Pricing
+
+Seed GPT Cost Rates after the service has started and migrations have completed. The seed script is idempotent and only upserts the listed GPT rows in `model_price_settings`; it does not remove operator-managed prices for other models.
+
+Prices are OpenAI API Standard tier, short context, USD per 1M tokens. Verify sources before changing values:
+
+- `https://openai.com/api/pricing/`
+- `https://developers.openai.com/api/docs/pricing`
+
+On maxtap:
+
+```sh
+scp scripts/seed-openai-gpt-pricing.sh maxtap:/tmp/seed-openai-gpt-pricing.sh
+
+ssh maxtap
+cd /etc/dokploy/compose/cpa-cliproxyapi-hazmcp/code
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+backup=/root/cpa-usage-cutover-backups/pre-gpt-pricing-$stamp.tgz
+data_dir=/var/lib/docker/volumes/cpa-cliproxyapi-hazmcp_cpa-usage-data/_data
+tar -C "$data_dir" -czf "$backup" .
+
+docker run --rm \
+  -v cpa-cliproxyapi-hazmcp_cpa-usage-data:/data \
+  -v /tmp/seed-openai-gpt-pricing.sh:/seed-openai-gpt-pricing.sh:ro \
+  alpine:3.20 \
+  sh -lc 'apk add --no-cache sqlite >/dev/null && sh /seed-openai-gpt-pricing.sh /data/app.db'
+```
+
+Expected seeded rows:
+
+- `gpt-5.5`: input `5.00`, output `30.00`, cached input `0.50`
+- `gpt-5.4`: input `2.50`, output `15.00`, cached input `0.25`
+- `gpt-5.4-mini`: input `0.75`, output `4.50`, cached input `0.075`
+- `gpt-5.4-nano`: input `0.20`, output `1.25`, cached input `0.02`
+- `gpt-5.3-codex`: input `1.75`, output `14.00`, cached input `0.175`
+
 ## Recovery
 
 Do not restart `cpa-usage-keeper` as a normal rollback path. Recovery should use:
