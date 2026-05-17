@@ -116,6 +116,20 @@ Results:
   - `GET /cpa-usage/api/v1/analytics/summary?range=7d&granularity=day`: HTTP 200
   - `GET /cpa-usage/api/v1/status`: HTTP 200
 
+## Auth Base Path Hotfix
+
+- Issue: browser users on `/cpa-usage/login` could bounce between `Checking session...` and login redirect because the frontend router was not mounted with the `/cpa-usage` base path.
+- Fix commit: `0572ad9f2890`
+- Image: `cpa-usage:0572ad9f2890`
+- Image ID: `sha256:399c0494bc390c75b451acd4af5a3aee92fde6e09b009e27d2e3fc226b113059`
+- Deployment time: 2026-05-17 23:58 Asia/Shanghai
+- Frontend bundle after deploy: `./assets/index-DU8wGBLX.js`
+- Verification:
+  - container image is `cpa-usage:0572ad9f2890`
+  - container health is `healthy`
+  - automated smoke passed for root, health, login, session, hour/day analytics, status, and stopped keeper path
+  - browser check on `https://cpa.maxtap.net/cpa-usage/login` shows the `Sign in` form with links under `/cpa-usage`
+
 ## Ownership Evidence
 
 - `cpa-usage` is the only running usage consumer.
