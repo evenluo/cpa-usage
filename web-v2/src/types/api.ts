@@ -209,3 +209,27 @@ export interface StatusPayload {
 export interface AuthSessionPayload {
   authenticated?: boolean
 }
+
+export interface ServiceHealthBlock {
+  start_time: string
+  end_time: string
+  success: number
+  failure: number
+  rate: number
+}
+
+export interface ServiceHealth {
+  total_success: number
+  total_failure: number
+  success_rate: number
+  rows: number
+  columns: number
+  bucket_seconds: number
+  window_start: string
+  window_end: string
+  block_details: ServiceHealthBlock[]
+}
+
+export interface UsageOverviewResponse {
+  service_health: ServiceHealth
+}

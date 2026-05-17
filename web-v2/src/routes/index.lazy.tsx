@@ -2,18 +2,19 @@ import { createLazyFileRoute } from "@tanstack/react-router"
 import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAnalytics } from "@/hooks/useAnalytics"
 import { useCountUp } from "@/hooks/useCountUp"
 import { Sparkline } from "@/components/charts/sparkline"
-import { TrendChart } from "@/components/charts/trend-chart"
+import { TokenBreakdownPanel, TrendChart } from "@/components/charts/trend-chart"
 import { KeyLeaderboard } from "@/components/charts/key-leaderboard"
 import { Heatmap } from "@/components/charts/heatmap"
-import { HealthTimeline } from "@/components/charts/health-timeline"
+import { HealthGrid } from "@/components/charts/health-grid"
+import { useUsageOverview } from "@/hooks/useUsageOverview"
 import { formatCost, formatCompact, formatComparison } from "@/lib/format"
 import type { TimeRange, TimeGranularity } from "@/types/api"
-import { Clock, CalendarRange, Filter } from "lucide-react"
+import { Clock, CalendarRange, Filter, Pin } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 export const Route = createLazyFileRoute("/")({
@@ -37,19 +38,21 @@ function DashboardPage() {
   const [range, setRange] = useState<TimeRange>("7d")
   const [granularity, setGranularity] = useState<TimeGranularity | null>(null)
   const [provider, setProvider] = useState("")
+  const [trendView, setTrendView] = useState<"cost-token" | "requests-token" | "token-breakdown">("cost-token")
 
   const g = granularity ?? defaultGranularity(range)
   const { data, isLoading, error } = useAnalytics(range, g, provider)
+  const { data: fixedActivityData, isLoading: isFixedActivityLoading } = useAnalytics("30d", "hour", provider)
+  const { data: healthOverviewData, isLoading: isHealthLoading } = useUsageOverview("24h", provider)
 
   const summary = data?.summary
   const comparison = data?.comparison
   const trend = data?.trend ?? []
   const keyAliases = data?.key_alias_breakdown ?? []
-  const heatmap = data?.heatmap
+  const modelDistribution = data?.model_distribution ?? []
   const providerOptions = data?.provider_options ?? []
-
-  const primaryMeasure: "cost" | "tokens" =
-    summary?.cost_status === "available" ? "cost" : "tokens"
+  const fixedHeatmap = fixedActivityData?.heatmap
+  const serviceHealth = healthOverviewData?.service_health
 
   const kpiData = useMemo(() => {
     if (!trend.length) return null
@@ -62,18 +65,6 @@ function DashboardPage() {
         return p.request_count > 0 ? (success / p.request_count) * 100 : 0
       }),
     }
-  }, [trend])
-
-  const healthData = useMemo(() => {
-    return trend.map((p) => {
-      const success = Math.max(p.request_count - p.failure_count, 0)
-      return {
-        label: p.label,
-        success,
-        failure: p.failure_count,
-        rate: p.request_count > 0 ? Number(((success / p.request_count) * 100).toFixed(1)) : 0,
-      }
-    })
   }, [trend])
 
   return (
@@ -137,6 +128,12 @@ function DashboardPage() {
               Day
             </button>
           </div>
+
+          {/* Scope indicator */}
+          <span className="hidden items-center gap-1 text-[10px] text-muted-foreground/60 sm:inline-flex">
+            <Clock className="h-3 w-3" />
+            Applies to KPIs, Trend & Leaderboard
+          </span>
         </div>
       </header>
 
@@ -225,50 +222,59 @@ function DashboardPage() {
         />
       </div>
 
-      {/* Trend Chart */}
-      <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div>
-            <CardTitle>Cost & Token Trend</CardTitle>
-            <CardDescription>Cost as filled area, tokens as dotted overlay</CardDescription>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <Skeleton className="h-[260px] w-full" />
-          ) : error ? (
-            <div className="flex h-[260px] items-center justify-center text-sm text-red-500">
-              Failed to load trend data
-            </div>
-          ) : (
-            <div className="h-[260px]">
-              <TrendChart data={trend} range={range} />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Health + Leaderboard — side by side */}
+      {/* Trend + Leaderboard — side by side */}
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
-        {/* Request Health */}
+        {/* Trend Chart */}
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
             <div>
-              <CardTitle>Request Health</CardTitle>
-              <CardDescription>Success/failure per bucket</CardDescription>
+              <CardTitle className="flex items-center gap-2">
+                Trend Workbench
+                <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
+              </CardTitle>
+              <CardDescription>
+                {trendView === "cost-token" && "Cost as filled area, tokens as dotted overlay"}
+                {trendView === "requests-token" && "Requests as filled area, tokens as dotted overlay"}
+                {trendView === "token-breakdown" && "Token composition and top model contribution"}
+              </CardDescription>
             </div>
-            {summary && summary.failure_count > 0 ? (
-              <Badge variant="amber">{summary.failure_count} failed</Badge>
-            ) : (
-              <Badge variant="green">No failures</Badge>
-            )}
+            <div className="flex items-center rounded-lg border border-border bg-card p-1">
+              {[
+                { value: "cost-token", label: "Cost" },
+                { value: "requests-token", label: "Requests" },
+                { value: "token-breakdown", label: "Tokens" },
+              ].map((item) => (
+                <button
+                  key={item.value}
+                  onClick={() => setTrendView(item.value as typeof trendView)}
+                  aria-label={`Trend view: ${item.label}`}
+                  aria-pressed={trendView === item.value}
+                  className={cn(
+                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    trendView === item.value
+                      ? "bg-terracotta-500 text-white"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <Skeleton className="h-[140px] w-full" />
+              <Skeleton className="h-[260px] w-full" />
+            ) : error ? (
+              <div className="flex h-[260px] items-center justify-center text-sm text-red-500">
+                Failed to load trend data
+              </div>
             ) : (
-              <div className="h-[140px]">
-                <HealthTimeline data={trend} granularity={g} />
+              <div className="h-[260px]">
+                {trendView === "token-breakdown" ? (
+                  <TokenBreakdownPanel data={modelDistribution} />
+                ) : (
+                  <TrendChart data={trend} range={range} mode={trendView} />
+                )}
               </div>
             )}
           </CardContent>
@@ -278,12 +284,13 @@ function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-start justify-between pb-2">
             <div>
-              <CardTitle>Key Leaderboard</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                Key Leaderboard
+                <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
+              </CardTitle>
               <CardDescription>Top contributors by alias</CardDescription>
             </div>
-            <Badge variant={primaryMeasure === "cost" ? "terracotta" : "blue"}>
-              {primaryMeasure === "cost" ? "Cost" : "Tokens"}
-            </Badge>
+            <Badge variant="terracotta">Sort: Cost</Badge>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -293,26 +300,67 @@ function DashboardPage() {
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : (
-              <KeyLeaderboard data={keyAliases} measure={primaryMeasure} />
+              <KeyLeaderboard data={keyAliases} />
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Heatmap */}
+      {/* Divider — Fixed overview */}
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1 bg-border" />
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Pin className="h-3 w-3" />
+          Fixed overview
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      {/* Activity Heatmap — 30d fixed */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle>Activity Heatmap</CardTitle>
-          <CardDescription>Hourly usage density across days</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between pb-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              Activity Heatmap
+              <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 30-day view" />
+            </CardTitle>
+            <CardDescription>Hourly usage density across days</CardDescription>
+          </div>
+          <Badge variant="terracotta">30d fixed</Badge>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isFixedActivityLoading ? (
             <Skeleton className="h-[260px] w-full" />
-          ) : heatmap ? (
-            <Heatmap data={heatmap} />
+          ) : fixedHeatmap ? (
+            <Heatmap data={fixedHeatmap} />
           ) : (
             <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
               No heatmap data
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Request Health — 24h fixed */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              Request Health
+              <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
+            </CardTitle>
+            <CardDescription>Success rate per 3-minute bucket</CardDescription>
+          </div>
+          <Badge variant="green">24h fixed</Badge>
+        </CardHeader>
+        <CardContent>
+          {isHealthLoading ? (
+            <Skeleton className="h-[180px] w-full" />
+          ) : serviceHealth ? (
+            <HealthGrid data={serviceHealth} />
+          ) : (
+            <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">
+              No health data
             </div>
           )}
         </CardContent>
