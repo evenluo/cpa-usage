@@ -16,7 +16,8 @@ backups/
 # frontend deps and build cache
 web-v2/node_modules/
 web-v2/.vite/
-web-v2/dist/
+web-v2/dist/*
+!web-v2/dist/.gitkeep
 
 # local test artifacts
 .tmp-test.db
