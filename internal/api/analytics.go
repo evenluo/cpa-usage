@@ -213,7 +213,7 @@ func parseAnalyticsSummaryFilterQuery(req *http.Request, anchor time.Time) (serv
 	return filter, nil
 }
 
-func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *servicedto.AnalyticsSummarySnapshot) analyticsSummaryResponse {
+func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsSummaryResponse {
 	response := analyticsSummaryResponse{
 		Range:       filter.Range,
 		Granularity: filter.Granularity,
@@ -352,7 +352,7 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 	return response
 }
 
-func mapAnalyticsHeatmap(heatmap servicedto.AnalyticsHeatmap) analyticsHeatmapPayload {
+func mapAnalyticsHeatmap(heatmap dto.AnalyticsHeatmap) analyticsHeatmapPayload {
 	rows := make([]analyticsHeatmapRow, 0, len(heatmap.Rows))
 	for _, row := range heatmap.Rows {
 		cells := make([]analyticsHeatmapCell, 0, len(row.Cells))
@@ -386,7 +386,7 @@ func mapAnalyticsHeatmap(heatmap servicedto.AnalyticsHeatmap) analyticsHeatmapPa
 	}
 }
 
-func mapAnalyticsKeyAliasRow(row servicedto.AnalyticsKeyAliasBreakdown) analyticsKeyAliasRow {
+func mapAnalyticsKeyAliasRow(row dto.AnalyticsKeyAliasBreakdown) analyticsKeyAliasRow {
 	authType := entities.UsageIdentityAuthType(row.AuthType)
 	identity := analyticsMaskedIdentity(authType, row.Identity)
 	label := strings.TrimSpace(row.Alias)

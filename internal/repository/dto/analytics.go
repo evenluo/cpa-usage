@@ -12,7 +12,7 @@ const (
 	AnalyticsCacheReadShareStateNoPromptInput = "no_prompt_input"
 )
 
-type AnalyticsSummaryRecord struct {
+type AnalyticsSummary struct {
 	TotalCost             float64
 	TotalTokens           int64
 	RequestCount          int64
@@ -29,7 +29,7 @@ type AnalyticsSummaryRecord struct {
 	EstimatedCacheSavings *float64
 }
 
-type AnalyticsTrendPointRecord struct {
+type AnalyticsTrendPoint struct {
 	Label         string
 	BucketStart   time.Time
 	BucketEnd     time.Time
@@ -42,7 +42,7 @@ type AnalyticsTrendPointRecord struct {
 	CostStatus    string
 }
 
-type AnalyticsKeyAliasTrendPointRecord struct {
+type AnalyticsKeyAliasTrendPoint struct {
 	Label         string
 	TotalCost     float64
 	TotalTokens   int64
@@ -50,7 +50,7 @@ type AnalyticsKeyAliasTrendPointRecord struct {
 	CostStatus    string
 }
 
-type AnalyticsKeyAliasBreakdownRecord struct {
+type AnalyticsKeyAliasBreakdown struct {
 	AuthType      int
 	Identity      string
 	Alias         string
@@ -70,10 +70,10 @@ type AnalyticsKeyAliasBreakdownRecord struct {
 	LastUsedAt    *time.Time
 	CostAvailable bool
 	CostStatus    string
-	Trend         []AnalyticsKeyAliasTrendPointRecord
+	Trend         []AnalyticsKeyAliasTrendPoint
 }
 
-type AnalyticsModelBreakdownRecord struct {
+type AnalyticsModelBreakdown struct {
 	Model                 string
 	Provider              string
 	TotalCost             float64
@@ -94,7 +94,7 @@ type AnalyticsModelBreakdownRecord struct {
 	EstimatedCacheSavings *float64
 }
 
-type AnalyticsInsightRecord struct {
+type AnalyticsInsight struct {
 	Type        string
 	Severity    string
 	Title       string
@@ -106,7 +106,7 @@ type AnalyticsInsightRecord struct {
 	CostStatus  string
 }
 
-type AnalyticsProviderOptionRecord struct {
+type AnalyticsProviderOption struct {
 	Provider      string
 	RequestCount  int64
 	TotalTokens   int64
@@ -115,7 +115,7 @@ type AnalyticsProviderOptionRecord struct {
 	CostStatus    string
 }
 
-type AnalyticsComparisonRecord struct {
+type AnalyticsComparison struct {
 	HasPreviousPeriod     bool
 	TotalCostChangePct    *float64
 	TotalTokensChangePct  *float64
@@ -123,7 +123,7 @@ type AnalyticsComparisonRecord struct {
 	SuccessRateChangePP   *float64
 }
 
-type AnalyticsHeatmapCellRecord struct {
+type AnalyticsHeatmapCell struct {
 	Hour          int
 	InRange       bool
 	BucketStart   time.Time
@@ -136,32 +136,32 @@ type AnalyticsHeatmapCellRecord struct {
 	CostStatus    string
 }
 
-type AnalyticsHeatmapRowRecord struct {
+type AnalyticsHeatmapRow struct {
 	Date  string
 	Label string
-	Cells []AnalyticsHeatmapCellRecord
+	Cells []AnalyticsHeatmapCell
 }
 
-type AnalyticsHeatmapRecord struct {
+type AnalyticsHeatmap struct {
 	Measure     string
 	MaxTokens   int64
 	MaxCost     float64
 	MaxRequests int64
 	MaxFailures int64
-	Rows        []AnalyticsHeatmapRowRecord
+	Rows        []AnalyticsHeatmapRow
 }
 
 type AnalyticsSummarySnapshot struct {
-	Summary            AnalyticsSummaryRecord
-	Trend              []AnalyticsTrendPointRecord
-	KeyAliasBreakdown  []AnalyticsKeyAliasBreakdownRecord
-	APIKeyBreakdown    []AnalyticsKeyAliasBreakdownRecord
-	ModelBreakdown     []AnalyticsModelBreakdownRecord
-	TimeBreakdown      []AnalyticsTrendPointRecord
-	Insights           []AnalyticsInsightRecord
-	ProviderOptions    []AnalyticsProviderOptionRecord
+	Summary            AnalyticsSummary
+	Trend              []AnalyticsTrendPoint
+	KeyAliasBreakdown  []AnalyticsKeyAliasBreakdown
+	APIKeyBreakdown    []AnalyticsKeyAliasBreakdown
+	ModelBreakdown     []AnalyticsModelBreakdown
+	TimeBreakdown      []AnalyticsTrendPoint
+	Insights           []AnalyticsInsight
+	ProviderOptions    []AnalyticsProviderOption
 	PreviousRangeStart *time.Time
 	PreviousRangeEnd   *time.Time
-	Comparison         AnalyticsComparisonRecord
-	Heatmap            AnalyticsHeatmapRecord
+	Comparison         AnalyticsComparison
+	Heatmap            AnalyticsHeatmap
 }

@@ -324,7 +324,7 @@ func TestBuildAnalyticsSummaryWithFilterKeepsRepeatedDSTHoursSeparate(t *testing
 	if snapshot.Trend[1].Label != "2026-11-01 01:00 -0500" || !snapshot.Trend[1].BucketStart.Equal(time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC)) {
 		t.Fatalf("expected second fall-back hour with EST offset, got %+v", snapshot.Trend[1])
 	}
-	var fallBackRow *dto.AnalyticsHeatmapRowRecord
+	var fallBackRow *dto.AnalyticsHeatmapRow
 	for index := range snapshot.Heatmap.Rows {
 		if snapshot.Heatmap.Rows[index].Date == "2026-11-01" {
 			fallBackRow = &snapshot.Heatmap.Rows[index]
@@ -361,7 +361,7 @@ func TestBuildAnalyticsSummaryWithFilterHandlesSpringForwardHeatmapHour(t *testi
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
 
-	var springRow *dto.AnalyticsHeatmapRowRecord
+	var springRow *dto.AnalyticsHeatmapRow
 	for index := range snapshot.Heatmap.Rows {
 		if snapshot.Heatmap.Rows[index].Date == "2026-03-08" {
 			springRow = &snapshot.Heatmap.Rows[index]
@@ -568,7 +568,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
 
-	insights := map[string]dto.AnalyticsInsightRecord{}
+	insights := map[string]dto.AnalyticsInsight{}
 	for _, insight := range snapshot.Insights {
 		insights[insight.Type] = insight
 	}

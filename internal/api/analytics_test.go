@@ -8,17 +8,18 @@ import (
 	"time"
 
 	"cpa-usage/internal/entities"
+	repodto "cpa-usage/internal/repository/dto"
 	servicedto "cpa-usage/internal/service/dto"
 	"github.com/gin-gonic/gin"
 )
 
 type analyticsStub struct {
-	snapshot *servicedto.AnalyticsSummarySnapshot
+	snapshot *repodto.AnalyticsSummarySnapshot
 	filter   servicedto.UsageFilter
 	calls    int
 }
 
-func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter servicedto.UsageFilter) (*servicedto.AnalyticsSummarySnapshot, error) {
+func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error) {
 	s.calls++
 	s.filter = filter
 	return s.snapshot, nil
@@ -37,8 +38,8 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	tokenChange := -4.25
 	requestChange := 8.0
 	successRateChange := 1.75
-	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{
-		Summary: servicedto.AnalyticsSummary{
+	provider := &analyticsStub{snapshot: &repodto.AnalyticsSummarySnapshot{
+		Summary: repodto.AnalyticsSummary{
 			TotalCost:           2.45,
 			TotalTokens:         2_100_100,
 			RequestCount:        3,
@@ -52,7 +53,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CacheReadShare:      6.666222251849877,
 			CacheReadShareState: "available",
 		},
-		Trend: []servicedto.AnalyticsTrendPoint{{
+		Trend: []repodto.AnalyticsTrendPoint{{
 			Label:         "2026-05-11",
 			BucketStart:   start,
 			BucketEnd:     end,
@@ -64,7 +65,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CostAvailable: true,
 			CostStatus:    "available",
 		}},
-		KeyAliasBreakdown: []servicedto.AnalyticsKeyAliasBreakdown{{
+		KeyAliasBreakdown: []repodto.AnalyticsKeyAliasBreakdown{{
 			AuthType:      int(entities.UsageIdentityAuthTypeAIProvider),
 			Identity:      "sk-alpha-123456",
 			Alias:         "Shared Alias",
@@ -81,7 +82,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			LastUsedAt:    &end,
 			CostAvailable: false,
 			CostStatus:    "partial",
-			Trend: []servicedto.AnalyticsKeyAliasTrendPoint{{
+			Trend: []repodto.AnalyticsKeyAliasTrendPoint{{
 				Label:         "2026-05-11",
 				TotalCost:     2.45,
 				TotalTokens:   2_100_100,
@@ -89,7 +90,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 				CostStatus:    "partial",
 			}},
 		}},
-		APIKeyBreakdown: []servicedto.AnalyticsKeyAliasBreakdown{{
+		APIKeyBreakdown: []repodto.AnalyticsKeyAliasBreakdown{{
 			AuthType:      int(entities.UsageIdentityAuthTypeAIProvider),
 			Identity:      "sk-api-123456",
 			Alias:         "Raw API Key",
@@ -104,7 +105,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CostAvailable: true,
 			CostStatus:    "available",
 		}},
-		ModelBreakdown: []servicedto.AnalyticsModelBreakdown{{
+		ModelBreakdown: []repodto.AnalyticsModelBreakdown{{
 			Model:               "priced-model",
 			Provider:            "OpenAI",
 			TotalCost:           2.45,
@@ -123,7 +124,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CacheReadShare:      6.666222251849877,
 			CacheReadShareState: "available",
 		}},
-		TimeBreakdown: []servicedto.AnalyticsTrendPoint{{
+		TimeBreakdown: []repodto.AnalyticsTrendPoint{{
 			Label:         "2026-05-11",
 			BucketStart:   start,
 			BucketEnd:     end,
@@ -135,7 +136,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			CostAvailable: true,
 			CostStatus:    "available",
 		}},
-		Insights: []servicedto.AnalyticsInsight{{
+		Insights: []repodto.AnalyticsInsight{{
 			Type:        "pricing_missing",
 			Severity:    "amber",
 			Title:       "Pricing Missing",
@@ -146,7 +147,7 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 			Count:       1,
 			CostStatus:  "partial",
 		}},
-		ProviderOptions: []servicedto.AnalyticsProviderOption{{
+		ProviderOptions: []repodto.AnalyticsProviderOption{{
 			Provider:      "OpenAI",
 			RequestCount:  3,
 			TotalTokens:   2_100_100,
@@ -156,23 +157,23 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 		}},
 		PreviousRangeStart: &previousStart,
 		PreviousRangeEnd:   &previousEnd,
-		Comparison: servicedto.AnalyticsComparison{
+		Comparison: repodto.AnalyticsComparison{
 			HasPreviousPeriod:     true,
 			TotalCostChangePct:    &costChange,
 			TotalTokensChangePct:  &tokenChange,
 			RequestCountChangePct: &requestChange,
 			SuccessRateChangePP:   &successRateChange,
 		},
-		Heatmap: servicedto.AnalyticsHeatmap{
+		Heatmap: repodto.AnalyticsHeatmap{
 			Measure:     "tokens",
 			MaxTokens:   1_600_000,
 			MaxCost:     1.95,
 			MaxRequests: 1,
 			MaxFailures: 1,
-			Rows: []servicedto.AnalyticsHeatmapRow{{
+			Rows: []repodto.AnalyticsHeatmapRow{{
 				Date:  "2026-05-11",
 				Label: "Mon 05/11",
-				Cells: []servicedto.AnalyticsHeatmapCell{{
+				Cells: []repodto.AnalyticsHeatmapCell{{
 					Hour:          9,
 					InRange:       true,
 					BucketStart:   start.Add(9 * time.Hour),
@@ -273,8 +274,8 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 }
 
 func TestAnalyticsSummaryRouteOmitsUnavailableComparisonDeltas(t *testing.T) {
-	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{
-		Comparison: servicedto.AnalyticsComparison{HasPreviousPeriod: false},
+	provider := &analyticsStub{snapshot: &repodto.AnalyticsSummarySnapshot{
+		Comparison: repodto.AnalyticsComparison{HasPreviousPeriod: false},
 	}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
@@ -308,7 +309,7 @@ func TestAnalyticsSummaryRouteOmitsUnavailableComparisonDeltas(t *testing.T) {
 }
 
 func TestAnalyticsSummaryRouteAcceptsDayGranularity(t *testing.T) {
-	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{}}
+	provider := &analyticsStub{snapshot: &repodto.AnalyticsSummarySnapshot{}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
 
@@ -328,7 +329,7 @@ func TestAnalyticsSummaryRouteAcceptsDayGranularity(t *testing.T) {
 }
 
 func TestAnalyticsSummaryRouteRejectsUnsupportedGranularity(t *testing.T) {
-	provider := &analyticsStub{snapshot: &servicedto.AnalyticsSummarySnapshot{}}
+	provider := &analyticsStub{snapshot: &repodto.AnalyticsSummarySnapshot{}}
 	router := gin.New()
 	registerAnalyticsRoutes(router, provider)
 
