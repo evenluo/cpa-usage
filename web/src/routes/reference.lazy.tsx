@@ -55,7 +55,7 @@ function ReferencePage() {
 
   const filteredKeys = useMemo(() => filterKeyAliasRows(visibleRows, query), [visibleRows, query])
 
-  const pricing = pricingData?.pricing ?? []
+  const pricing = useMemo(() => pricingData?.pricing ?? [], [pricingData?.pricing])
   const pricingMap = useMemo(() => buildPricingMap(pricing), [pricing])
   const models = useMemo(() => buildCostRateModels(pricingData?.usedModels ?? [], pricing), [pricingData?.usedModels, pricing])
   const missingRates = countMissingCostRates(models, pricingMap)

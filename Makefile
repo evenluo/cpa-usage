@@ -45,7 +45,7 @@ verify-backend: test-backend vet-backend
 verify-frontend:
 	npm --prefix $(WEB_DIR) ci
 	$(MAKE) lint-frontend
-	$(MAKE) typecheck-frontend
+	$(MAKE) test-frontend
 	$(MAKE) build-frontend
 
 verify-docker:

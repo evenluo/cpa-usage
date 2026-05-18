@@ -13,7 +13,7 @@ make verify-backend
 make verify-frontend
 ```
 
-`make verify` runs both checks. `make verify-backend` runs backend tests and `go vet`; `make verify-frontend` installs frontend dependencies with `npm ci`, then runs lint, typecheck, and build. `make verify-docker` builds the deployment image.
+`make verify` runs both checks. `make verify-backend` runs backend tests and `go vet`; `make verify-frontend` installs frontend dependencies with `npm ci`, then runs lint, typecheck, Vitest feature tests through `make test-frontend`, and build. `make verify-docker` builds the deployment image. GitHub Actions runs the same backend and frontend verification targets for pull requests and pushes to `main`.
 
 ## Development
 
@@ -46,10 +46,12 @@ Common frontend targets:
 
 ```bash
 make test-frontend
+make lint-frontend
+make typecheck-frontend
 make build-frontend
 ```
 
-The Makefile is the canonical repository-root entrypoint for common development and verification tasks. Targets intentionally stay as thin wrappers around Go and npm commands; use the underlying tools directly for focused package or file-level work.
+`make test-frontend` runs Vitest feature tests and frontend type checking. The Makefile is the canonical repository-root entrypoint for common development and verification tasks. Targets intentionally stay as thin wrappers around Go and npm commands; use the underlying tools directly for focused package or file-level work.
 
 ## Backend layout
 
@@ -59,7 +61,7 @@ The backend keeps the existing package layout and uses package responsibility, n
 - `internal/app` wires config, database, clients, services, HTTP routing, and background runners.
 - `internal/api` owns HTTP contracts and handlers.
 - `internal/service` owns business use cases and orchestration.
-- `internal/repository` owns SQLite/GORM persistence and SQL aggregation.
+- `internal/repository` owns SQLite/GORM persistence, analytics read models, and SQL aggregation.
 - `internal/cpa` owns CPA external API client and CPA DTO boundaries.
 - `internal/quota` owns the quota provider capability.
 - `internal/poller` owns background consumption and polling execution.
@@ -75,7 +77,7 @@ Supporting packages:
 - `internal/updatecheck` owns release update checks.
 - `internal/version` owns build version metadata.
 
-New backend code should first choose the package that matches its responsibility: HTTP, use case, persistence, external integration, background execution, or independent capability.
+New backend code should first choose the package that matches its responsibility: HTTP, use case, persistence, external integration, background execution, or independent capability. Frontend feature logic for Usage Intelligence and Reference Data lives under `web/src/features/`, while route files keep React state, data fetching, mutations, events, toasts, and layout composition.
 
 ## Compatibility
 
