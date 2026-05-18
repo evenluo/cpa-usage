@@ -1,0 +1,31 @@
+# local env and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+.claude/
+.serena/
+
+# runtime data
+/data/
+*.db
+*.db-*
+backups/
+*.log
+
+# frontend deps and build cache
+web/node_modules/
+web/.vite/
+web/dist/*
+!web/dist/.gitkeep
+web-v2/
+
+# local test artifacts
+.tmp-test.db
+coverage/
+bin/
+screenshots/
+scripts/debug_*.go
+scripts/seed_mock.go
+/seed_mock
+/server

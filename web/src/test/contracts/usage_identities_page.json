@@ -1,0 +1,36 @@
+{
+  "identities": [
+    {
+      "id": 42,
+      "name": "Provider Name",
+      "displayName": "Provider Name",
+      "alias": "Agent Research",
+      "auth_type": 2,
+      "auth_type_name": "apikey",
+      "identity": "sk-l************alue",
+      "type": "openai",
+      "provider": "OpenAI",
+      "total_requests": 3,
+      "success_count": 2,
+      "failure_count": 1,
+      "input_tokens": 10,
+      "output_tokens": 5,
+      "reasoning_tokens": 0,
+      "cached_tokens": 2,
+      "total_tokens": 17,
+      "total_cost": 1.5,
+      "cost_available": true,
+      "last_aggregated_usage_event_id": 99,
+      "first_used_at": "2026-05-18T07:00:00Z",
+      "last_used_at": "2026-05-18T08:00:00Z",
+      "stats_updated_at": "2026-05-18T09:00:00Z",
+      "is_deleted": false,
+      "created_at": "2026-05-17T08:00:00Z",
+      "updated_at": "2026-05-18T09:30:00Z"
+    }
+  ],
+  "total_count": 1,
+  "page": 1,
+  "page_size": 10,
+  "total_pages": 1
+}

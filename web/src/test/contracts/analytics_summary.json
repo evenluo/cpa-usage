@@ -1,0 +1,165 @@
+{
+  "range": "7d",
+  "granularity": "day",
+  "range_start": "2026-05-11T00:00:00Z",
+  "range_end": "2026-05-18T00:00:00Z",
+  "provider": "OpenAI",
+  "timezone": "UTC",
+  "summary": {
+    "total_cost": 2.45,
+    "total_tokens": 2100100,
+    "request_count": 3,
+    "success_count": 2,
+    "failure_count": 1,
+    "input_tokens": 1500100,
+    "cached_tokens": 100000,
+    "success_rate": 66.6666666667,
+    "cost_available": false,
+    "cost_status": "partial",
+    "cache_read_share": 6.666222251849877,
+    "cache_read_share_state": "available"
+  },
+  "comparison": {
+    "has_previous_period": false
+  },
+  "heatmap": {
+    "measure": "tokens",
+    "max_tokens": 1600000,
+    "max_cost": 1.95,
+    "max_requests": 1,
+    "max_failures": 0,
+    "rows": [
+      {
+        "date": "2026-05-11",
+        "label": "05/11 Mon",
+        "cells": []
+      }
+    ]
+  },
+  "trend": [
+    {
+      "label": "2026-05-11",
+      "bucket_start": "2026-05-11T00:00:00Z",
+      "bucket_end": "2026-05-12T00:00:00Z",
+      "total_cost": 1.95,
+      "total_tokens": 1600000,
+      "request_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "cost_available": true,
+      "cost_status": "available"
+    }
+  ],
+  "key_alias_breakdown": [
+    {
+      "label": "Shared Alias",
+      "alias": "Shared Alias",
+      "traceability": "sk-a*******3456 · OpenAI",
+      "identity": "sk-a*******3456",
+      "auth_type": 2,
+      "auth_type_name": "apikey",
+      "type": "openai",
+      "provider": "OpenAI",
+      "is_deleted": false,
+      "total_cost": 2.45,
+      "total_tokens": 2100100,
+      "request_count": 3,
+      "success_count": 2,
+      "failure_count": 1,
+      "success_rate": 66.6666666667,
+      "last_used_at": "2026-05-12T00:00:00Z",
+      "cost_available": false,
+      "cost_status": "partial",
+      "trend": [
+        {
+          "label": "2026-05-11",
+          "total_cost": 2.45,
+          "total_tokens": 2100100,
+          "cost_available": false,
+          "cost_status": "partial"
+        }
+      ]
+    }
+  ],
+  "api_key_breakdown": [
+    {
+      "label": "Raw API Key",
+      "alias": "Raw API Key",
+      "traceability": "sk-a*****3456 · OpenAI",
+      "identity": "sk-a*****3456",
+      "auth_type": 2,
+      "auth_type_name": "apikey",
+      "type": "",
+      "provider": "OpenAI",
+      "is_deleted": false,
+      "total_cost": 1.25,
+      "total_tokens": 1000000,
+      "request_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "success_rate": 100,
+      "last_used_at": "2026-05-12T00:00:00Z",
+      "cost_available": true,
+      "cost_status": "available",
+      "trend": []
+    }
+  ],
+  "model_distribution": [
+    {
+      "model": "priced-model",
+      "provider": "OpenAI",
+      "total_cost": 2.45,
+      "total_tokens": 2100100,
+      "request_count": 3,
+      "success_count": 2,
+      "failure_count": 1,
+      "input_tokens": 1500100,
+      "cached_tokens": 100000,
+      "success_rate": 66.6666666667,
+      "total_latency_ms": 600,
+      "latency_sample_count": 3,
+      "average_latency_ms": 200,
+      "cost_available": false,
+      "cost_status": "partial",
+      "cache_read_share": 6.666222251849877,
+      "cache_read_share_state": "available"
+    }
+  ],
+  "time_breakdown": [
+    {
+      "label": "2026-05-11",
+      "bucket_start": "2026-05-11T00:00:00Z",
+      "bucket_end": "2026-05-12T00:00:00Z",
+      "total_cost": 1.95,
+      "total_tokens": 1600000,
+      "request_count": 1,
+      "success_count": 1,
+      "failure_count": 0,
+      "cost_available": true,
+      "cost_status": "available"
+    }
+  ],
+  "insights": [
+    {
+      "type": "pricing_missing",
+      "severity": "amber",
+      "title": "Pricing Missing",
+      "detail": "Some Cost values are partial.",
+      "subject": "1 model",
+      "metric_label": "Cost status",
+      "metric_value": 1,
+      "count": 1,
+      "cost_status": "partial"
+    }
+  ],
+  "provider_options": [
+    {
+      "provider": "OpenAI",
+      "request_count": 3,
+      "total_tokens": 2100100,
+      "total_cost": 2.45,
+      "cost_available": false,
+      "cost_status": "partial"
+    }
+  ]
+}
