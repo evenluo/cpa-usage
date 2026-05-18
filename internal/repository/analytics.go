@@ -869,7 +869,7 @@ func analyticsAPIKeyAuthTypeSQLExpression() string {
 func analyticsAPIKeyIdentitySQLExpression() string {
 	return `(CASE
 		WHEN TRIM(usage_events.api_group_key) LIKE 'sk-%' THEN TRIM(usage_events.api_group_key)
-		WHEN TRIM(usage_events.source) LIKE 'sk-%' THEN TRIM(usage_events.source)
+		WHEN TRIM(usage_events.auth_type) = 'apikey' AND TRIM(usage_events.source) LIKE 'sk-%' THEN TRIM(usage_events.source)
 		ELSE ''
 	END)`
 }

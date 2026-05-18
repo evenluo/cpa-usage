@@ -1072,7 +1072,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsAPIKeyBreakdownByClientKey(t *tes
 	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
 		{EventKey: "alpha", APIGroupKey: "sk-alpha-123456", AuthType: "oauth", AuthIndex: "account-key", Source: "operator@example.com", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000},
 		{EventKey: "beta", APIGroupKey: "sk-beta-123456", AuthType: "oauth", AuthIndex: "account-key", Source: "operator@example.com", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
-		{EventKey: "provider-fallback-ignored", APIGroupKey: "OpenAI", AuthType: "oauth", AuthIndex: "oauth-account", Source: "operator@example.com", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 5_000_000, TotalTokens: 5_000_000},
+		{EventKey: "provider-fallback-ignored", APIGroupKey: "OpenAI", AuthType: "oauth", AuthIndex: "oauth-account", Source: "sk-oauth-source", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 5_000_000, TotalTokens: 5_000_000},
 		{EventKey: "source-key-compat", APIGroupKey: "OpenAI", AuthType: "apikey", AuthIndex: "legacy-account-key", Source: "sk-source-123456", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(4 * time.Hour), InputTokens: 500_000, TotalTokens: 500_000},
 	}); err != nil {
 		t.Fatalf("insert events: %v", err)
