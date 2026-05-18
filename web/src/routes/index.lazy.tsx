@@ -1,5 +1,5 @@
 import { createLazyFileRoute } from "@tanstack/react-router"
-import { useState, useMemo } from "react"
+import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
@@ -14,6 +14,11 @@ import { HealthGrid } from "@/components/charts/health-grid"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { useUsageOverview } from "@/hooks/useUsageOverview"
 import { formatCost, formatCompact, formatComparison } from "@/lib/format"
+import {
+  buildUsageDashboardViewModel,
+  getEffectiveGranularity,
+  TIME_RANGES,
+} from "@/features/usage-intelligence/view-model"
 import type { TimeRange, TimeGranularity } from "@/types/api"
 import { Clock, CalendarRange, Filter, Pin } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -22,19 +27,6 @@ export const Route = createLazyFileRoute("/")({
   component: DashboardPage,
 })
 
-const TIME_RANGES: { value: TimeRange; label: string }[] = [
-  { value: "today", label: "Today" },
-  { value: "yesterday", label: "Yesterday" },
-  { value: "24h", label: "Last 24h" },
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" },
-]
-
-function defaultGranularity(range: TimeRange): TimeGranularity {
-  if (range === "30d") return "day"
-  return "hour"
-}
-
 function DashboardPage() {
   const [range, setRange] = useState<TimeRange>("7d")
   const [granularity, setGranularity] = useState<TimeGranularity | null>(null)
@@ -42,38 +34,30 @@ function DashboardPage() {
   const [trendView, setTrendView] = useState<"cost-token" | "requests-token" | "tokens">("cost-token")
   const [leaderboardScope, setLeaderboardScope] = useState<"account" | "api-key">("api-key")
 
-  const g = granularity ?? defaultGranularity(range)
+  const g = getEffectiveGranularity(range, granularity)
   const { data, isLoading, error } = useAnalytics(range, g, provider)
   const { data: fixedActivityData, isLoading: isFixedActivityLoading } = useAnalytics("30d", "hour", provider)
   const { data: healthOverviewData, isLoading: isHealthLoading } = useUsageOverview("24h", provider)
 
   const summary = data?.summary
   const comparison = data?.comparison
-  const trend = useMemo(() => data?.trend ?? [], [data?.trend])
-  const keyAliases = useMemo(() => data?.key_alias_breakdown ?? [], [data?.key_alias_breakdown])
-  const apiKeys = useMemo(() => data?.api_key_breakdown ?? [], [data?.api_key_breakdown])
-  const leaderboardRows = leaderboardScope === "api-key" ? apiKeys : keyAliases
-  const providerOptions = useMemo(() => data?.provider_options ?? [], [data?.provider_options])
-  const fixedHeatmap = fixedActivityData?.heatmap
-  const serviceHealth = healthOverviewData?.service_health
-  const leaderboardSortLabel = summary?.cost_status === "unavailable"
-    ? "Sort: Tokens"
-    : summary?.cost_status === "partial"
-      ? "Sort: Cost partial"
-      : "Sort: Cost"
-
-  const kpiData = useMemo(() => {
-    if (!trend.length) return null
-    return {
-      cost: trend.map((p) => (p.cost_status === "unavailable" ? null : p.total_cost)),
-      tokens: trend.map((p) => p.total_tokens),
-      requests: trend.map((p) => p.request_count),
-      successRate: trend.map((p) => {
-        const success = Math.max(p.request_count - p.failure_count, 0)
-        return p.request_count > 0 ? (success / p.request_count) * 100 : 0
-      }),
-    }
-  }, [trend])
+  const {
+    trend,
+    leaderboardRows,
+    providerOptions,
+    fixedHeatmap,
+    serviceHealth,
+    leaderboardSortLabel,
+    kpiData,
+  } = useMemo(
+    () => buildUsageDashboardViewModel({
+      analytics: data,
+      fixedActivityAnalytics: fixedActivityData,
+      healthOverview: healthOverviewData,
+      leaderboardScope,
+    }),
+    [data, fixedActivityData, healthOverviewData, leaderboardScope],
+  )
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">

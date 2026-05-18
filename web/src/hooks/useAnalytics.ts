@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { getDefaultGranularity } from "@/features/usage-intelligence/view-model"
 import { apiFetch } from "@/lib/api"
 import type { AnalyticsResponse, TimeRange, TimeGranularity } from "@/types/api"
 
@@ -12,18 +13,12 @@ function rangeParam(range: TimeRange): string {
   }
 }
 
-function defaultGranularity(range: TimeRange): TimeGranularity {
-  if (range === "today" || range === "yesterday" || range === "24h") return "hour"
-  if (range === "30d") return "day"
-  return "hour"
-}
-
 export function useAnalytics(
   range: TimeRange,
   granularity: TimeGranularity | null,
   provider: string,
 ) {
-  const g = granularity ?? defaultGranularity(range)
+  const g = granularity ?? getDefaultGranularity(range)
   const params = new URLSearchParams({
     range: rangeParam(range),
     granularity: g,

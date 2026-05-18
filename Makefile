@@ -16,6 +16,7 @@ test-backend: ensure-frontend-embed-dir
 	go test ./cmd/... ./internal/...
 
 test-frontend:
+	npm --prefix $(WEB_DIR) run test
 	$(MAKE) typecheck-frontend
 
 fmt-backend:
