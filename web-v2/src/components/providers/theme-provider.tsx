@@ -19,29 +19,23 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem("cpa-theme") as Theme | null
     return stored ?? "system"
   })
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">(getSystemTheme())
+  const [systemTheme, setSystemTheme] = useState<"light" | "dark">(getSystemTheme)
+  const resolvedTheme = theme === "system" ? systemTheme : theme
 
   useEffect(() => {
     const root = document.documentElement
-    const resolved = theme === "system" ? getSystemTheme() : theme
-    setResolvedTheme(resolved)
     root.classList.remove("light", "dark")
-    root.classList.add(resolved)
-  }, [theme])
+    root.classList.add(resolvedTheme)
+  }, [resolvedTheme])
 
   useEffect(() => {
     const listener = (e: MediaQueryListEvent) => {
-      if (theme === "system") {
-        const resolved = e.matches ? "dark" : "light"
-        setResolvedTheme(resolved)
-        document.documentElement.classList.remove("light", "dark")
-        document.documentElement.classList.add(resolved)
-      }
+      setSystemTheme(e.matches ? "dark" : "light")
     }
     const mql = window.matchMedia("(prefers-color-scheme: dark)")
     mql.addEventListener("change", listener)
     return () => mql.removeEventListener("change", listener)
-  }, [theme])
+  }, [])
 
   const setTheme = (newTheme: Theme) => {
     localStorage.setItem("cpa-theme", newTheme)

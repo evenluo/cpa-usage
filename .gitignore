@@ -14,10 +14,10 @@ backups/
 *.log
 
 # frontend deps and build cache
-web/node_modules/
-web/.vite/
-web/dist/*
-!web/dist/.gitkeep
+web-v2/node_modules/
+web-v2/.vite/
+web-v2/dist/*
+!web-v2/dist/.gitkeep
 
 # local test artifacts
 .tmp-test.db
@@ -28,7 +28,3 @@ scripts/debug_*.go
 scripts/seed_mock.go
 /seed_mock
 /server
-web-v2/node_modules/
-
-web-v2/dist/*
-!web-v2/dist/.gitkeep

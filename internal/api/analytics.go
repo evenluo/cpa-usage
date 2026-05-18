@@ -28,6 +28,7 @@ type analyticsSummaryResponse struct {
 	Heatmap            analyticsHeatmapPayload    `json:"heatmap"`
 	Trend              []analyticsTrendPoint      `json:"trend"`
 	KeyAliases         []analyticsKeyAliasRow     `json:"key_alias_breakdown"`
+	APIKeys            []analyticsKeyAliasRow     `json:"api_key_breakdown"`
 	Models             []analyticsModelRow        `json:"model_distribution"`
 	Time               []analyticsTrendPoint      `json:"time_breakdown"`
 	Insights           []analyticsInsight         `json:"insights"`
@@ -228,6 +229,7 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 		Trend:      []analyticsTrendPoint{},
 		Heatmap:    analyticsHeatmapPayload{Measure: "tokens", Rows: []analyticsHeatmapRow{}},
 		KeyAliases: []analyticsKeyAliasRow{},
+		APIKeys:    []analyticsKeyAliasRow{},
 		Models:     []analyticsModelRow{},
 		Time:       []analyticsTrendPoint{},
 		Insights:   []analyticsInsight{},
@@ -279,6 +281,10 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *serv
 	response.KeyAliases = make([]analyticsKeyAliasRow, 0, len(snapshot.KeyAliasBreakdown))
 	for _, row := range snapshot.KeyAliasBreakdown {
 		response.KeyAliases = append(response.KeyAliases, mapAnalyticsKeyAliasRow(row))
+	}
+	response.APIKeys = make([]analyticsKeyAliasRow, 0, len(snapshot.APIKeyBreakdown))
+	for _, row := range snapshot.APIKeyBreakdown {
+		response.APIKeys = append(response.APIKeys, mapAnalyticsKeyAliasRow(row))
 	}
 	response.Models = make([]analyticsModelRow, 0, len(snapshot.ModelBreakdown))
 	for _, row := range snapshot.ModelBreakdown {

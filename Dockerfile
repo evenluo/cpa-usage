@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1
 
 FROM node:22-alpine AS web-builder
-WORKDIR /app/web
-COPY web/package.json web/package-lock.json ./
+WORKDIR /app/web-v2
+COPY web-v2/package.json web-v2/package-lock.json ./
 RUN npm ci
-COPY web/ ./
+COPY web-v2/ ./
 RUN npm run build
 
 FROM golang:1.22-alpine AS go-builder
@@ -14,8 +14,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
-COPY --from=web-builder /app/web/dist ./web/dist
-COPY web/static.go ./web/static.go
+COPY --from=web-builder /app/web-v2/dist ./web-v2/dist
+COPY web-v2/static.go ./web-v2/static.go
 ARG VERSION=dev
 RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-s -w -X cpa-usage/internal/version.Version=${VERSION}" \

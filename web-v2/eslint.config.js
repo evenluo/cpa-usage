@@ -11,10 +11,7 @@ export default defineConfig([
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{ts,tsx,js,jsx}'],
-    extends: [
-      reactHooks.configs.flat.recommended,
-      reactRefresh.configs.vite,
-    ],
+    extends: [reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
     languageOptions: {
       ecmaVersion: 2020,
       globals: {

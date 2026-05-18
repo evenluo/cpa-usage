@@ -436,6 +436,22 @@ func TestUsageEventsPassesPaginationAndAuthIndexSourceFilter(t *testing.T) {
 	}
 }
 
+func TestUsageEventsAcceptsCompactEvidencePageSize(t *testing.T) {
+	provider := &usageEventsStub{eventsPage: &servicedto.UsageEventsPage{Events: []servicedto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 10, TotalPages: 0}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h&page_size=10", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if provider.lastFilter.Page != 1 || provider.lastFilter.PageSize != 10 || provider.lastFilter.Offset != 0 {
+		t.Fatalf("expected compact evidence pagination, got %+v", provider.lastFilter)
+	}
+}
+
 func TestUsageEventsPassesAuthFileIdentitySourceFilterAsAuthIndex(t *testing.T) {
 	provider := &usageEventsStub{eventsPage: &servicedto.UsageEventsPage{Events: []servicedto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 100, TotalPages: 0}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")

@@ -20,6 +20,7 @@ var presetUsageRangeDurations = map[string]time.Duration{
 }
 
 var allowedUsageEventsPageSizes = map[int]struct{}{
+	10:   {},
 	20:   {},
 	50:   {},
 	100:  {},

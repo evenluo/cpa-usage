@@ -1054,6 +1054,52 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesKeyAliasBreakdownByStableIdent
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterReturnsAPIKeyBreakdownByClientKey(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 1,
+		CachePricePer1M:      1,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha-123456", "Alpha API Key", start); err != nil {
+		t.Fatalf("set alpha alias: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "alpha", APIGroupKey: "sk-alpha-123456", AuthType: "oauth", AuthIndex: "account-key", Source: "operator@example.com", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000},
+		{EventKey: "beta", APIGroupKey: "sk-beta-123456", AuthType: "oauth", AuthIndex: "account-key", Source: "operator@example.com", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
+		{EventKey: "provider-fallback-ignored", APIGroupKey: "OpenAI", AuthType: "oauth", AuthIndex: "oauth-account", Source: "sk-oauth-source", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 5_000_000, TotalTokens: 5_000_000},
+		{EventKey: "source-key-compat", APIGroupKey: "OpenAI", AuthType: "apikey", AuthIndex: "legacy-account-key", Source: "sk-source-123456", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(4 * time.Hour), InputTokens: 500_000, TotalTokens: 500_000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+
+	if len(snapshot.KeyAliasBreakdown) != 3 || snapshot.KeyAliasBreakdown[0].Identity != "oauth-account" || snapshot.KeyAliasBreakdown[1].Identity != "account-key" || snapshot.KeyAliasBreakdown[2].Identity != "legacy-account-key" {
+		t.Fatalf("expected account leaderboard to stay grouped by auth_index, got %+v", snapshot.KeyAliasBreakdown)
+	}
+	if len(snapshot.APIKeyBreakdown) != 3 {
+		t.Fatalf("expected three client key rows, got %+v", snapshot.APIKeyBreakdown)
+	}
+	if snapshot.APIKeyBreakdown[0].Identity != "sk-alpha-123456" || snapshot.APIKeyBreakdown[0].Alias != "Alpha API Key" || snapshot.APIKeyBreakdown[0].TotalCost != 2 {
+		t.Fatalf("expected alpha client key first by cost with alias, got %+v", snapshot.APIKeyBreakdown[0])
+	}
+	if snapshot.APIKeyBreakdown[1].Identity != "sk-beta-123456" || snapshot.APIKeyBreakdown[1].TotalTokens != 1_000_000 {
+		t.Fatalf("expected beta client key row, got %+v", snapshot.APIKeyBreakdown[1])
+	}
+	if snapshot.APIKeyBreakdown[2].Identity != "sk-source-123456" || snapshot.APIKeyBreakdown[2].TotalTokens != 500_000 {
+		t.Fatalf("expected source-key compatibility row, got %+v", snapshot.APIKeyBreakdown[2])
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterOrdersKeyAliasBreakdownByTokensWhenCostUnavailable(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

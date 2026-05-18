@@ -49,38 +49,11 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 	}
 	keyAliasBreakdown := make([]servicedto.AnalyticsKeyAliasBreakdown, 0, len(snapshot.KeyAliasBreakdown))
 	for _, row := range snapshot.KeyAliasBreakdown {
-		trend := make([]servicedto.AnalyticsKeyAliasTrendPoint, 0, len(row.Trend))
-		for _, point := range row.Trend {
-			trend = append(trend, servicedto.AnalyticsKeyAliasTrendPoint{
-				Label:         point.Label,
-				TotalCost:     point.TotalCost,
-				TotalTokens:   point.TotalTokens,
-				CostAvailable: point.CostAvailable,
-				CostStatus:    point.CostStatus,
-			})
-		}
-		keyAliasBreakdown = append(keyAliasBreakdown, servicedto.AnalyticsKeyAliasBreakdown{
-			AuthType:      row.AuthType,
-			Identity:      row.Identity,
-			Alias:         row.Alias,
-			Name:          row.Name,
-			AuthTypeName:  row.AuthTypeName,
-			Type:          row.Type,
-			Provider:      row.Provider,
-			Prefix:        row.Prefix,
-			BaseURL:       row.BaseURL,
-			IsDeleted:     row.IsDeleted,
-			TotalCost:     row.TotalCost,
-			TotalTokens:   row.TotalTokens,
-			RequestCount:  row.RequestCount,
-			SuccessCount:  row.SuccessCount,
-			FailureCount:  row.FailureCount,
-			SuccessRate:   row.SuccessRate,
-			LastUsedAt:    row.LastUsedAt,
-			CostAvailable: row.CostAvailable,
-			CostStatus:    row.CostStatus,
-			Trend:         trend,
-		})
+		keyAliasBreakdown = append(keyAliasBreakdown, mapAnalyticsKeyAliasBreakdown(row))
+	}
+	apiKeyBreakdown := make([]servicedto.AnalyticsKeyAliasBreakdown, 0, len(snapshot.APIKeyBreakdown))
+	for _, row := range snapshot.APIKeyBreakdown {
+		apiKeyBreakdown = append(apiKeyBreakdown, mapAnalyticsKeyAliasBreakdown(row))
 	}
 	modelBreakdown := make([]servicedto.AnalyticsModelBreakdown, 0, len(snapshot.ModelBreakdown))
 	for _, row := range snapshot.ModelBreakdown {
@@ -187,6 +160,7 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 		},
 		Trend:              trend,
 		KeyAliasBreakdown:  keyAliasBreakdown,
+		APIKeyBreakdown:    apiKeyBreakdown,
 		ModelBreakdown:     modelBreakdown,
 		TimeBreakdown:      timeBreakdown,
 		Insights:           insights,
@@ -209,4 +183,39 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 			Rows:        heatmapRows,
 		},
 	}, nil
+}
+
+func mapAnalyticsKeyAliasBreakdown(row repodto.AnalyticsKeyAliasBreakdownRecord) servicedto.AnalyticsKeyAliasBreakdown {
+	trend := make([]servicedto.AnalyticsKeyAliasTrendPoint, 0, len(row.Trend))
+	for _, point := range row.Trend {
+		trend = append(trend, servicedto.AnalyticsKeyAliasTrendPoint{
+			Label:         point.Label,
+			TotalCost:     point.TotalCost,
+			TotalTokens:   point.TotalTokens,
+			CostAvailable: point.CostAvailable,
+			CostStatus:    point.CostStatus,
+		})
+	}
+	return servicedto.AnalyticsKeyAliasBreakdown{
+		AuthType:      row.AuthType,
+		Identity:      row.Identity,
+		Alias:         row.Alias,
+		Name:          row.Name,
+		AuthTypeName:  row.AuthTypeName,
+		Type:          row.Type,
+		Provider:      row.Provider,
+		Prefix:        row.Prefix,
+		BaseURL:       row.BaseURL,
+		IsDeleted:     row.IsDeleted,
+		TotalCost:     row.TotalCost,
+		TotalTokens:   row.TotalTokens,
+		RequestCount:  row.RequestCount,
+		SuccessCount:  row.SuccessCount,
+		FailureCount:  row.FailureCount,
+		SuccessRate:   row.SuccessRate,
+		LastUsedAt:    row.LastUsedAt,
+		CostAvailable: row.CostAvailable,
+		CostStatus:    row.CostStatus,
+		Trend:         trend,
+	}
 }

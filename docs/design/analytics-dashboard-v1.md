@@ -350,7 +350,7 @@ The implementation repository should migrate the stable keeper backend and deplo
 Migration approach:
 
 - Bring over backend and deployment foundations such as `cmd/`, `internal/`, migrations, Dockerfile, and Makefile.
-- Rebuild `web/` with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui.
+- Rebuild the frontend with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui. The active implementation lives in `web-v2/`; the old `web/` source has been removed.
 - Treat the old keeper frontend as a reference for API usage and field semantics, not as the component or styling baseline.
 - Keep backend compatibility where it protects CPA data collection and deployment behavior.
 - Do not preserve old frontend component compatibility.

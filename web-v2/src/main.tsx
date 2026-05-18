@@ -2,11 +2,12 @@ import React from "react"
 import ReactDOM from "react-dom/client"
 import { RouterProvider, createRouter } from "@tanstack/react-router"
 import { QueryProvider } from "@/components/providers/query-provider"
+import { appBasePath } from "@/lib/api"
 import "./index.css"
 
 import { routeTree } from "./routeTree.gen"
 
-const router = createRouter({ routeTree })
+const router = createRouter({ routeTree, basepath: appBasePath() })
 
 declare module "@tanstack/react-router" {
   interface Register {

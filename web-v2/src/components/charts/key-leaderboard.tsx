@@ -3,9 +3,10 @@ import { formatCost, formatCompact } from "@/lib/format"
 
 interface KeyLeaderboardProps {
   data: KeyAliasBreakdown[]
+  identityFallback?: boolean
 }
 
-export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
+export function KeyLeaderboard({ data, identityFallback = false }: KeyLeaderboardProps) {
   const hasCost = data.some((row) => row.cost_available)
   const sorted = [...data].sort((a, b) => {
     if (hasCost) return b.total_cost - a.total_cost
@@ -28,7 +29,7 @@ export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
       {rows.map((row, i) => {
         const costPct = totalCost > 0 ? (row.total_cost / totalCost) * 100 : 0
         const tokenPct = totalTokens > 0 ? (row.total_tokens / totalTokens) * 100 : 0
-        const label = row.alias || row.traceability || row.identity
+        const label = row.alias || (identityFallback ? row.identity : row.label) || row.traceability || row.identity
 
         return (
           <div

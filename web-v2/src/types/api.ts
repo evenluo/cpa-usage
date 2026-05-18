@@ -137,6 +137,7 @@ export interface AnalyticsResponse {
   heatmap?: HeatmapData
   trend: TrendPoint[]
   key_alias_breakdown?: KeyAliasBreakdown[]
+  api_key_breakdown?: KeyAliasBreakdown[]
   model_distribution?: ModelDistribution[]
   time_breakdown?: TrendPoint[]
   insights?: Insight[]
@@ -159,8 +160,36 @@ export interface KeyIdentity {
   last_used_at: string | null
 }
 
+export interface APIKeyAliasTarget {
+  id: string
+  identity: string
+  displayName: string
+  alias: string
+  provider: string
+  auth_type: number
+  auth_type_name: string
+  total_requests: number
+  success_count: number
+  failure_count: number
+  input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
+  cached_tokens: number
+  total_tokens: number
+  total_cost: number
+  cost_available: boolean
+  cost_status: CostStatus
+  first_used_at: string | null
+  last_used_at: string | null
+}
+
 export interface KeyIdentityPage {
   identities: KeyIdentity[]
+  total_pages?: number
+}
+
+export interface APIKeyAliasTargetPage {
+  api_keys: APIKeyAliasTarget[]
   total_pages?: number
 }
 
