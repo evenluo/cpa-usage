@@ -8,17 +8,20 @@ import (
 	"time"
 )
 
+const analyticsHeatmapWindow = 30 * 24 * time.Hour
+
 func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
 	heatmap := dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}
-	if filter.StartTime == nil || filter.EndTime == nil {
+	heatmapFilter, ok := analyticsFixedHeatmapFilter(filter)
+	if !ok {
 		return heatmap, nil
 	}
 
-	windowStart := filter.StartTime.UTC()
-	windowEnd := filter.EndTime.UTC()
-	startDay := localDateStart(filter.StartTime.In(time.Local))
-	endDay := localDateStart(filter.EndTime.In(time.Local))
-	aggregates, err := buildAnalyticsHeatmapAggregates(db, filter, startDay, endDay)
+	windowStart := heatmapFilter.StartTime.UTC()
+	windowEnd := heatmapFilter.EndTime.UTC()
+	startDay := localDateStart(windowStart.In(time.Local))
+	endDay := localDateStart(windowEnd.In(time.Local))
+	aggregates, err := buildAnalyticsHeatmapAggregates(db, heatmapFilter, startDay, endDay)
 	if err != nil {
 		return dto.AnalyticsHeatmap{}, err
 	}
@@ -67,6 +70,18 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 		}
 	}
 	return heatmap, nil
+}
+
+func analyticsFixedHeatmapFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
+	if filter.EndTime == nil {
+		return dto.UsageQueryFilter{}, false
+	}
+	windowEnd := filter.EndTime.UTC()
+	windowStart := windowEnd.Add(-analyticsHeatmapWindow)
+	heatmapFilter := filter
+	heatmapFilter.StartTime = &windowStart
+	heatmapFilter.EndTime = &windowEnd
+	return heatmapFilter, true
 }
 
 func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {

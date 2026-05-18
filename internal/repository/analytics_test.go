@@ -874,6 +874,17 @@ func TestBuildAnalyticsSummaryWithFilterOmitsCostComparisonWhenPricingIsIncomple
 	}
 }
 
+func analyticsHeatmapRowByDate(t *testing.T, heatmap dto.AnalyticsHeatmap, date string) dto.AnalyticsHeatmapRow {
+	t.Helper()
+	for _, row := range heatmap.Rows {
+		if row.Date == date {
+			return row
+		}
+	}
+	t.Fatalf("expected heatmap row %s, got %+v", date, heatmap.Rows)
+	return dto.AnalyticsHeatmapRow{}
+}
+
 func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.T) {
 	withRepositoryTestLocation(t, "UTC")
 
@@ -893,7 +904,8 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	selectedStart := start.AddDate(0, 0, 1)
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &selectedStart, EndTime: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -902,29 +914,31 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	if heatmap.Measure != "tokens" || heatmap.MaxTokens != 120 || heatmap.MaxRequests != 1 || heatmap.MaxFailures != 1 {
 		t.Fatalf("unexpected heatmap max values: %+v", heatmap)
 	}
-	if len(heatmap.Rows) != 2 {
-		t.Fatalf("expected two heatmap rows, got %+v", heatmap.Rows)
+	if len(heatmap.Rows) < 30 {
+		t.Fatalf("expected fixed 30-day heatmap rows, got %+v", heatmap.Rows)
 	}
 	for _, row := range heatmap.Rows {
 		if len(row.Cells) != 24 {
 			t.Fatalf("expected 24 cells for row %+v", row)
 		}
 	}
-	if heatmap.Rows[0].Date != "2026-05-11" || heatmap.Rows[0].Cells[9].TotalTokens != 120 || heatmap.Rows[0].Cells[9].RequestCount != 1 {
-		t.Fatalf("expected priced event in first row hour 9, got %+v", heatmap.Rows[0])
+	firstRow := analyticsHeatmapRowByDate(t, heatmap, "2026-05-11")
+	if firstRow.Cells[9].TotalTokens != 120 || firstRow.Cells[9].RequestCount != 1 {
+		t.Fatalf("expected priced event before selected range in fixed heatmap row hour 9, got %+v", firstRow)
 	}
-	if !heatmap.Rows[0].Cells[9].InRange {
-		t.Fatalf("expected populated cell to be in range, got %+v", heatmap.Rows[0].Cells[9])
+	if !firstRow.Cells[9].InRange {
+		t.Fatalf("expected populated fixed-window cell to be in range, got %+v", firstRow.Cells[9])
 	}
-	if !heatmap.Rows[0].Cells[8].CostAvailable || heatmap.Rows[0].Cells[8].CostStatus != dto.AnalyticsCostStatusAvailable || heatmap.Rows[0].Cells[8].TotalTokens != 0 {
-		t.Fatalf("expected empty bucket to be explicit available zero cell, got %+v", heatmap.Rows[0].Cells[8])
+	if !firstRow.Cells[8].CostAvailable || firstRow.Cells[8].CostStatus != dto.AnalyticsCostStatusAvailable || firstRow.Cells[8].TotalTokens != 0 {
+		t.Fatalf("expected empty bucket to be explicit available zero cell, got %+v", firstRow.Cells[8])
 	}
-	unpriced := heatmap.Rows[1].Cells[10]
+	secondRow := analyticsHeatmapRowByDate(t, heatmap, "2026-05-12")
+	unpriced := secondRow.Cells[10]
 	if unpriced.TotalTokens != 80 || unpriced.RequestCount != 1 || unpriced.FailureCount != 1 || unpriced.CostStatus != dto.AnalyticsCostStatusUnavailable {
 		t.Fatalf("expected unpriced failed event to preserve cost completeness, got %+v", unpriced)
 	}
-	if !heatmap.Rows[0].Cells[9].BucketStart.Equal(start.Add(9*time.Hour)) || !heatmap.Rows[0].Cells[9].BucketEnd.Equal(start.Add(10*time.Hour)) {
-		t.Fatalf("unexpected bucket boundaries: %+v", heatmap.Rows[0].Cells[9])
+	if !firstRow.Cells[9].BucketStart.Equal(start.Add(9*time.Hour)) || !firstRow.Cells[9].BucketEnd.Equal(start.Add(10*time.Hour)) {
+		t.Fatalf("unexpected bucket boundaries: %+v", firstRow.Cells[9])
 	}
 }
 
@@ -940,20 +954,22 @@ func TestBuildAnalyticsSummaryWithFilterHeatmapMarksRollingRangeBoundaryCells(t 
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
 
-	if len(snapshot.Heatmap.Rows) != 2 {
-		t.Fatalf("expected two boundary date rows, got %+v", snapshot.Heatmap.Rows)
+	if len(snapshot.Heatmap.Rows) < 30 {
+		t.Fatalf("expected fixed 30-day boundary date rows, got %+v", snapshot.Heatmap.Rows)
 	}
-	if snapshot.Heatmap.Rows[0].Cells[9].InRange {
-		t.Fatalf("expected hour before rolling start to be out of range, got %+v", snapshot.Heatmap.Rows[0].Cells[9])
+	startBoundaryRow := analyticsHeatmapRowByDate(t, snapshot.Heatmap, "2026-04-12")
+	if startBoundaryRow.Cells[11].InRange {
+		t.Fatalf("expected hour before fixed window start to be out of range, got %+v", startBoundaryRow.Cells[11])
 	}
-	if !snapshot.Heatmap.Rows[0].Cells[10].InRange {
-		t.Fatalf("expected overlapping start hour to be in range, got %+v", snapshot.Heatmap.Rows[0].Cells[10])
+	if !startBoundaryRow.Cells[12].InRange {
+		t.Fatalf("expected overlapping fixed window start hour to be in range, got %+v", startBoundaryRow.Cells[12])
 	}
-	if !snapshot.Heatmap.Rows[1].Cells[12].InRange {
-		t.Fatalf("expected overlapping end hour to be in range, got %+v", snapshot.Heatmap.Rows[1].Cells[12])
+	endBoundaryRow := analyticsHeatmapRowByDate(t, snapshot.Heatmap, "2026-05-12")
+	if !endBoundaryRow.Cells[12].InRange {
+		t.Fatalf("expected overlapping fixed window end hour to be in range, got %+v", endBoundaryRow.Cells[12])
 	}
-	if snapshot.Heatmap.Rows[1].Cells[13].InRange {
-		t.Fatalf("expected hour after rolling end to be out of range, got %+v", snapshot.Heatmap.Rows[1].Cells[13])
+	if endBoundaryRow.Cells[13].InRange {
+		t.Fatalf("expected hour after fixed window end to be out of range, got %+v", endBoundaryRow.Cells[13])
 	}
 }
 
@@ -980,15 +996,13 @@ func TestBuildAnalyticsSummaryWithFilterHeatmapBucketsFractionalOffsetLocalHour(
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
 
-	if len(snapshot.Heatmap.Rows) != 1 || snapshot.Heatmap.Rows[0].Date != "2026-05-11" {
-		t.Fatalf("expected one local heatmap row, got %+v", snapshot.Heatmap.Rows)
-	}
-	cell := snapshot.Heatmap.Rows[0].Cells[0]
+	row := analyticsHeatmapRowByDate(t, snapshot.Heatmap, "2026-05-11")
+	cell := row.Cells[0]
 	if cell.TotalTokens != 75 || cell.RequestCount != 1 {
 		t.Fatalf("expected local 00:30 event in hour 0 cell, got %+v", cell)
 	}
-	if snapshot.Heatmap.Rows[0].Cells[23].TotalTokens != 0 {
-		t.Fatalf("expected event not to be shifted into another local hour, got %+v", snapshot.Heatmap.Rows[0].Cells[23])
+	if row.Cells[23].TotalTokens != 0 {
+		t.Fatalf("expected event not to be shifted into another local hour, got %+v", row.Cells[23])
 	}
 }
 
