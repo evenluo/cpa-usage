@@ -5,6 +5,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts"
@@ -56,12 +57,22 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
   const gradientId = mode === "cost-token" ? "costGradient" : mode === "requests-token" ? "requestGradient" : "tokenGradient"
   const overlayKey = mode === "tokens" ? "requests" : "tokens"
   const overlayName = mode === "tokens" ? "Requests" : "Tokens"
+  const tokenSeries = [
+    { key: "inputTokens", name: "Input", color: "#059669" },
+    { key: "outputTokens", name: "Output", color: "#d97706" },
+    { key: "reasoningTokens", name: "Reasoning", color: "#7c3aed" },
+    { key: "cachedTokens", name: "Cached", color: "#0891b2" },
+  ]
 
   const chartData = data.map((p) => ({
     label: p.label,
     cost: p.cost_status === "unavailable" ? null : p.total_cost,
     requests: p.request_count,
     tokens: p.total_tokens,
+    inputTokens: p.input_tokens,
+    outputTokens: p.output_tokens,
+    reasoningTokens: p.reasoning_tokens,
+    cachedTokens: p.cached_tokens,
     costStatus: p.cost_status,
   }))
   const tooltipFormatter: Formatter<ValueType, NameType> = (value, name, item) => {
@@ -73,7 +84,7 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
     if (name === "Requests") {
       return [Number(value).toLocaleString("en"), "Requests"]
     }
-    return [`${formatCompact(Number(value), 2)} tokens`, "Tokens"]
+    return [`${formatCompact(Number(value), 2)} tokens`, String(name)]
   }
 
   return (
@@ -108,6 +119,7 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
         <YAxis
           yAxisId="tokens"
           orientation="right"
+          hide={mode === "tokens"}
           tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
           tickFormatter={(v: number) => formatCompact(v)}
           tickLine={false}
@@ -125,6 +137,14 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
           formatter={tooltipFormatter}
           labelFormatter={(label) => label}
         />
+        {mode === "tokens" && (
+          <Legend
+            verticalAlign="top"
+            align="right"
+            iconType="line"
+            wrapperStyle={{ fontSize: "12px", paddingBottom: "8px" }}
+          />
+        )}
         <Area
           yAxisId="primary"
           type="monotone"
@@ -136,17 +156,33 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
           dot={false}
           activeDot={{ r: 4, fill: primaryColor, stroke: "#fff", strokeWidth: 2 }}
         />
-        <Line
-          yAxisId="tokens"
-          type="monotone"
-          dataKey={overlayKey}
-          name={overlayName}
-          stroke="#94a3b8"
-          strokeWidth={1.5}
-          strokeDasharray="5 5"
-          dot={false}
-          activeDot={{ r: 3, fill: "#94a3b8", stroke: "#fff", strokeWidth: 2 }}
-        />
+        {mode === "tokens" ? (
+          tokenSeries.map((series) => (
+            <Line
+              key={series.key}
+              yAxisId="primary"
+              type="monotone"
+              dataKey={series.key}
+              name={series.name}
+              stroke={series.color}
+              strokeWidth={1.75}
+              dot={false}
+              activeDot={{ r: 3, fill: series.color, stroke: "#fff", strokeWidth: 2 }}
+            />
+          ))
+        ) : (
+          <Line
+            yAxisId="tokens"
+            type="monotone"
+            dataKey={overlayKey}
+            name={overlayName}
+            stroke="#94a3b8"
+            strokeWidth={1.5}
+            strokeDasharray="5 5"
+            dot={false}
+            activeDot={{ r: 3, fill: "#94a3b8", stroke: "#fff", strokeWidth: 2 }}
+          />
+        )}
       </AreaChart>
     </ResponsiveContainer>
   )
@@ -161,13 +197,14 @@ export function TokenBreakdownPanel({ data }: TokenBreakdownPanelProps) {
     (acc, row) => {
       acc.total += row.total_tokens
       acc.input += row.input_tokens
+      acc.output += row.output_tokens
+      acc.reasoning += row.reasoning_tokens
       acc.cached += row.cached_tokens
       return acc
     },
-    { total: 0, input: 0, cached: 0 }
+    { total: 0, input: 0, output: 0, reasoning: 0, cached: 0 }
   )
-  const outputEstimate = Math.max(totals.total - totals.input, 0)
-  const maxValue = Math.max(totals.total, totals.input, totals.cached, outputEstimate, 1)
+  const maxValue = Math.max(totals.total, totals.input, totals.output, totals.reasoning, totals.cached, 1)
   const rows = [...data].sort((a, b) => b.total_tokens - a.total_tokens).slice(0, 5)
 
   if (data.length === 0) {
@@ -180,8 +217,9 @@ export function TokenBreakdownPanel({ data }: TokenBreakdownPanelProps) {
 
   const breakdown = [
     { label: "Input", value: totals.input, color: "bg-blue-500" },
+    { label: "Output", value: totals.output, color: "bg-emerald-500" },
+    { label: "Reasoning", value: totals.reasoning, color: "bg-violet-500" },
     { label: "Cached", value: totals.cached, color: "bg-amber-500" },
-    { label: "Output", value: outputEstimate, color: "bg-emerald-500" },
   ]
 
   return (

@@ -231,7 +231,7 @@ function DashboardPage() {
               <CardDescription>
                 {trendView === "cost-token" && "Cost as filled area, tokens as dotted overlay"}
                 {trendView === "requests-token" && "Requests as filled area, tokens as dotted overlay"}
-                {trendView === "tokens" && "Tokens as filled area, requests as dotted overlay"}
+                {trendView === "tokens" && "Total, input, output, reasoning, and cached tokens"}
               </CardDescription>
             </div>
             <div className="flex items-center rounded-lg border border-border bg-card p-1">

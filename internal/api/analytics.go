@@ -41,6 +41,8 @@ type analyticsSummaryPayload struct {
 	SuccessCount          int64    `json:"success_count"`
 	FailureCount          int64    `json:"failure_count"`
 	InputTokens           int64    `json:"input_tokens"`
+	OutputTokens          int64    `json:"output_tokens"`
+	ReasoningTokens       int64    `json:"reasoning_tokens"`
 	CachedTokens          int64    `json:"cached_tokens"`
 	SuccessRate           float64  `json:"success_rate"`
 	CostAvailable         bool     `json:"cost_available"`
@@ -51,16 +53,20 @@ type analyticsSummaryPayload struct {
 }
 
 type analyticsTrendPoint struct {
-	Label         string    `json:"label"`
-	BucketStart   time.Time `json:"bucket_start"`
-	BucketEnd     time.Time `json:"bucket_end"`
-	TotalCost     float64   `json:"total_cost"`
-	TotalTokens   int64     `json:"total_tokens"`
-	RequestCount  int64     `json:"request_count"`
-	SuccessCount  int64     `json:"success_count"`
-	FailureCount  int64     `json:"failure_count"`
-	CostAvailable bool      `json:"cost_available"`
-	CostStatus    string    `json:"cost_status"`
+	Label           string    `json:"label"`
+	BucketStart     time.Time `json:"bucket_start"`
+	BucketEnd       time.Time `json:"bucket_end"`
+	TotalCost       float64   `json:"total_cost"`
+	TotalTokens     int64     `json:"total_tokens"`
+	InputTokens     int64     `json:"input_tokens"`
+	OutputTokens    int64     `json:"output_tokens"`
+	ReasoningTokens int64     `json:"reasoning_tokens"`
+	CachedTokens    int64     `json:"cached_tokens"`
+	RequestCount    int64     `json:"request_count"`
+	SuccessCount    int64     `json:"success_count"`
+	FailureCount    int64     `json:"failure_count"`
+	CostAvailable   bool      `json:"cost_available"`
+	CostStatus      string    `json:"cost_status"`
 }
 
 type analyticsKeyAliasTrendPoint struct {
@@ -102,6 +108,8 @@ type analyticsModelRow struct {
 	SuccessCount          int64    `json:"success_count"`
 	FailureCount          int64    `json:"failure_count"`
 	InputTokens           int64    `json:"input_tokens"`
+	OutputTokens          int64    `json:"output_tokens"`
+	ReasoningTokens       int64    `json:"reasoning_tokens"`
 	CachedTokens          int64    `json:"cached_tokens"`
 	SuccessRate           float64  `json:"success_rate"`
 	TotalLatencyMS        int64    `json:"total_latency_ms"`
@@ -246,6 +254,8 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.
 		SuccessCount:          snapshot.Summary.SuccessCount,
 		FailureCount:          snapshot.Summary.FailureCount,
 		InputTokens:           snapshot.Summary.InputTokens,
+		OutputTokens:          snapshot.Summary.OutputTokens,
+		ReasoningTokens:       snapshot.Summary.ReasoningTokens,
 		CachedTokens:          snapshot.Summary.CachedTokens,
 		SuccessRate:           snapshot.Summary.SuccessRate,
 		CostAvailable:         snapshot.Summary.CostAvailable,
@@ -265,16 +275,20 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.
 	response.Trend = make([]analyticsTrendPoint, 0, len(snapshot.Trend))
 	for _, point := range snapshot.Trend {
 		response.Trend = append(response.Trend, analyticsTrendPoint{
-			Label:         point.Label,
-			BucketStart:   point.BucketStart,
-			BucketEnd:     point.BucketEnd,
-			TotalCost:     point.TotalCost,
-			TotalTokens:   point.TotalTokens,
-			RequestCount:  point.RequestCount,
-			SuccessCount:  point.SuccessCount,
-			FailureCount:  point.FailureCount,
-			CostAvailable: point.CostAvailable,
-			CostStatus:    point.CostStatus,
+			Label:           point.Label,
+			BucketStart:     point.BucketStart,
+			BucketEnd:       point.BucketEnd,
+			TotalCost:       point.TotalCost,
+			TotalTokens:     point.TotalTokens,
+			InputTokens:     point.InputTokens,
+			OutputTokens:    point.OutputTokens,
+			ReasoningTokens: point.ReasoningTokens,
+			CachedTokens:    point.CachedTokens,
+			RequestCount:    point.RequestCount,
+			SuccessCount:    point.SuccessCount,
+			FailureCount:    point.FailureCount,
+			CostAvailable:   point.CostAvailable,
+			CostStatus:      point.CostStatus,
 		})
 	}
 	response.KeyAliases = make([]analyticsKeyAliasRow, 0, len(snapshot.KeyAliasBreakdown))
@@ -296,6 +310,8 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.
 			SuccessCount:          row.SuccessCount,
 			FailureCount:          row.FailureCount,
 			InputTokens:           row.InputTokens,
+			OutputTokens:          row.OutputTokens,
+			ReasoningTokens:       row.ReasoningTokens,
 			CachedTokens:          row.CachedTokens,
 			SuccessRate:           row.SuccessRate,
 			TotalLatencyMS:        row.TotalLatencyMS,
@@ -311,16 +327,20 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.
 	response.Time = make([]analyticsTrendPoint, 0, len(snapshot.TimeBreakdown))
 	for _, point := range snapshot.TimeBreakdown {
 		response.Time = append(response.Time, analyticsTrendPoint{
-			Label:         point.Label,
-			BucketStart:   point.BucketStart,
-			BucketEnd:     point.BucketEnd,
-			TotalCost:     point.TotalCost,
-			TotalTokens:   point.TotalTokens,
-			RequestCount:  point.RequestCount,
-			SuccessCount:  point.SuccessCount,
-			FailureCount:  point.FailureCount,
-			CostAvailable: point.CostAvailable,
-			CostStatus:    point.CostStatus,
+			Label:           point.Label,
+			BucketStart:     point.BucketStart,
+			BucketEnd:       point.BucketEnd,
+			TotalCost:       point.TotalCost,
+			TotalTokens:     point.TotalTokens,
+			InputTokens:     point.InputTokens,
+			OutputTokens:    point.OutputTokens,
+			ReasoningTokens: point.ReasoningTokens,
+			CachedTokens:    point.CachedTokens,
+			RequestCount:    point.RequestCount,
+			SuccessCount:    point.SuccessCount,
+			FailureCount:    point.FailureCount,
+			CostAvailable:   point.CostAvailable,
+			CostStatus:      point.CostStatus,
 		})
 	}
 	response.Insights = make([]analyticsInsight, 0, len(snapshot.Insights))

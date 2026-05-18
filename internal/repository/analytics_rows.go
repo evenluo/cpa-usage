@@ -6,6 +6,7 @@ type analyticsAggregateRow struct {
 	SuccessCount               int64
 	FailureCount               int64
 	InputTokens                int64
+	OutputTokens               int64
 	TotalTokens                int64
 	TotalCost                  float64
 	CachedTokens               int64
@@ -56,6 +57,8 @@ type analyticsModelAggregateRow struct {
 	SuccessCount               int64
 	FailureCount               int64
 	InputTokens                int64
+	OutputTokens               int64
+	ReasoningTokens            int64
 	TotalTokens                int64
 	TotalCost                  float64
 	CachedTokens               int64

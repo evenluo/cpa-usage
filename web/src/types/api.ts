@@ -10,6 +10,8 @@ export interface AnalyticsSummary {
   success_count: number
   failure_count: number
   input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
   cached_tokens: number
   success_rate: number
   cost_available: boolean
@@ -23,6 +25,10 @@ export interface TrendPoint {
   label: string
   total_cost: number
   total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
+  cached_tokens: number
   request_count: number
   success_count: number
   failure_count: number
@@ -58,6 +64,8 @@ export interface ModelDistribution {
   total_cost: number
   total_tokens: number
   input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
   cached_tokens: number
   cache_read_share: number
   cache_read_share_state: CacheReadShareState
