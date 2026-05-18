@@ -73,10 +73,10 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 }
 
 func analyticsFixedHeatmapFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
-	if filter.EndTime == nil {
+	if filter.FixedWindowEnd == nil {
 		return dto.UsageQueryFilter{}, false
 	}
-	windowEnd := filter.EndTime.UTC()
+	windowEnd := filter.FixedWindowEnd.UTC()
 	windowStart := windowEnd.Add(-analyticsHeatmapWindow)
 	heatmapFilter := filter
 	heatmapFilter.StartTime = &windowStart

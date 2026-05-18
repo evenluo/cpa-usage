@@ -64,7 +64,8 @@ func parseUsageFilterQuery(req *http.Request, anchor time.Time) (servicedto.Usag
 		rangeValue = "all"
 	}
 
-	filter := servicedto.UsageFilter{Range: rangeValue, Limit: servicedto.DefaultUsageEventsLimit, Page: 1, PageSize: servicedto.DefaultUsageEventsLimit}
+	fixedWindowEnd := anchor.UTC()
+	filter := servicedto.UsageFilter{Range: rangeValue, FixedWindowEnd: &fixedWindowEnd, Limit: servicedto.DefaultUsageEventsLimit, Page: 1, PageSize: servicedto.DefaultUsageEventsLimit}
 	query := req.URL.Query()
 	if pageValue := strings.TrimSpace(query.Get("page")); pageValue != "" {
 		page, err := strconv.Atoi(pageValue)

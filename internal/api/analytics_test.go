@@ -328,6 +328,23 @@ func TestAnalyticsSummaryRouteAcceptsDayGranularity(t *testing.T) {
 	}
 }
 
+func TestAnalyticsSummaryFilterUsesRequestAnchorForFixedOperationalWindow(t *testing.T) {
+	anchor := time.Date(2026, 5, 18, 14, 30, 0, 0, time.UTC)
+	req := httptest.NewRequest(http.MethodGet, "/analytics/summary?range=custom&start=2026-05-01&end=2026-05-02", nil)
+
+	filter, err := parseAnalyticsSummaryFilterQuery(req, anchor)
+	if err != nil {
+		t.Fatalf("parseAnalyticsSummaryFilterQuery returned error: %v", err)
+	}
+
+	if filter.FixedWindowEnd == nil || !filter.FixedWindowEnd.Equal(anchor) {
+		t.Fatalf("expected fixed operational window to use request anchor, got %+v", filter)
+	}
+	if filter.EndTime == nil || filter.EndTime.Equal(anchor) {
+		t.Fatalf("expected selected analysis window end to remain independent, got %+v", filter)
+	}
+}
+
 func TestAnalyticsSummaryRouteRejectsUnsupportedGranularity(t *testing.T) {
 	provider := &analyticsStub{snapshot: &repodto.AnalyticsSummarySnapshot{}}
 	router := gin.New()

@@ -81,7 +81,6 @@ export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
 
 export function buildUsageDashboardViewModel(input: {
   analytics?: AnalyticsResponse
-  fixedActivityAnalytics?: AnalyticsResponse
   healthOverview?: UsageOverviewResponse
   leaderboardScope: LeaderboardScope
 }): UsageDashboardViewModel {
@@ -94,7 +93,7 @@ export function buildUsageDashboardViewModel(input: {
     apiKeys,
     leaderboardRows: getLeaderboardRows(input.leaderboardScope, apiKeys, keyAliases),
     providerOptions: input.analytics?.provider_options ?? [],
-    fixedHeatmap: input.fixedActivityAnalytics?.heatmap,
+    fixedHeatmap: input.analytics?.heatmap,
     serviceHealth: input.healthOverview?.service_health,
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
     kpiData: deriveKpiSparklineData(trend),

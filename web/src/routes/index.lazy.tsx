@@ -36,7 +36,6 @@ function DashboardPage() {
 
   const g = getEffectiveGranularity(range, granularity)
   const { data, isLoading, error } = useAnalytics(range, g, provider)
-  const { data: fixedActivityData, isLoading: isFixedActivityLoading } = useAnalytics("30d", "hour", provider)
   const { data: healthOverviewData, isLoading: isHealthLoading } = useUsageOverview("24h", provider)
 
   const summary = data?.summary
@@ -52,11 +51,10 @@ function DashboardPage() {
   } = useMemo(
     () => buildUsageDashboardViewModel({
       analytics: data,
-      fixedActivityAnalytics: fixedActivityData,
       healthOverview: healthOverviewData,
       leaderboardScope,
     }),
-    [data, fixedActivityData, healthOverviewData, leaderboardScope],
+    [data, healthOverviewData, leaderboardScope],
   )
 
   return (
@@ -342,7 +340,7 @@ function DashboardPage() {
           <Badge variant="terracotta">30d fixed</Badge>
         </CardHeader>
         <CardContent>
-          {isFixedActivityLoading ? (
+          {isLoading ? (
             <Skeleton className="h-[260px] w-full" />
           ) : fixedHeatmap ? (
             <Heatmap data={fixedHeatmap} />

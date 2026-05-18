@@ -32,7 +32,7 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsCompl
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestBuildAnalyticsSummaryWithFilterSplitsCacheUnavailableStates(t *testing.
 				t.Fatalf("insert events: %v", err)
 			}
 
-			snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+			snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 			if err != nil {
 				t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 			}
@@ -189,7 +189,7 @@ func TestBuildAnalyticsSummaryWithFilterWithholdsCacheSavingsWhenPromptCachePric
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendByLocalDay(t *testing.T
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsHourlyTrendWhenRequested(t *testi
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "hour", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "hour", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestBuildAnalyticsSummaryWithFilterKeepsRepeatedDSTHoursSeparate(t *testing
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", Granularity: "hour", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", Granularity: "hour", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -356,7 +356,7 @@ func TestBuildAnalyticsSummaryWithFilterHandlesSpringForwardHeatmapHour(t *testi
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendAcrossDSTChange(t *test
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostUnavailableWhenNoPricedCostExis
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -462,7 +462,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsModelAndTimeBreakdowns(t *testing
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -511,7 +511,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsProviderOptionsForCurrentScope(t 
 		t.Fatalf("insert events: %v", err)
 	}
 
-	allProviders, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	allProviders, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -525,7 +525,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsProviderOptionsForCurrentScope(t 
 		t.Fatalf("expected OpenAI option totals, got %+v", allProviders.ProviderOptions)
 	}
 
-	openAIOnly, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	openAIOnly, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -563,7 +563,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -617,7 +617,7 @@ func TestBuildAnalyticsSummaryWithFilterDoesNotRenderUnavailableCacheInsightAsZe
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostPartialWhenPricedRowsHaveZeroRa
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -682,7 +682,7 @@ func TestBuildAnalyticsSummaryWithFilterClampsTokenFieldsBeforeCostCalculation(t
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -697,7 +697,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsEmptyState(t *testing.T) {
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -737,7 +737,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsPreviousPeriodComparison(t *testi
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -783,7 +783,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsMissingPreviousPeriodComparison(t
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -820,7 +820,7 @@ func TestBuildAnalyticsSummaryWithFilterIncludesPreviousPeriodStartBoundary(t *t
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -855,7 +855,7 @@ func TestBuildAnalyticsSummaryWithFilterOmitsCostComparisonWhenPricingIsIncomple
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -905,7 +905,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	}
 
 	selectedStart := start.AddDate(0, 0, 1)
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &selectedStart, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &selectedStart, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -949,7 +949,7 @@ func TestBuildAnalyticsSummaryWithFilterHeatmapMarksRollingRangeBoundaryCells(t 
 	start := time.Date(2026, 5, 11, 10, 30, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 12, 12, 15, 0, 0, time.UTC)
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -991,7 +991,7 @@ func TestBuildAnalyticsSummaryWithFilterHeatmapBucketsFractionalOffsetLocalHour(
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, Provider: "OpenAI"})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end, FixedWindowEnd: &end, Provider: "OpenAI"})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -1045,7 +1045,7 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesKeyAliasBreakdownByStableIdent
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -1092,7 +1092,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsAPIKeyBreakdownByClientKey(t *tes
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -1125,7 +1125,7 @@ func TestBuildAnalyticsSummaryWithFilterOrdersKeyAliasBreakdownByTokensWhenCostU
 		t.Fatalf("insert events: %v", err)
 	}
 
-	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	snapshot, err := BuildAnalyticsSummaryWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
@@ -1151,7 +1151,7 @@ func TestBuildAnalyticsKeyAliasTrendsRestrictsRowsToSelectedIdentities(t *testin
 
 	trends, err := buildAnalyticsKeyAliasTrends(
 		db,
-		dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end},
+		dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end},
 		[]analyticsIdentityKey{{AuthType: int(entities.UsageIdentityAuthTypeAIProvider), Identity: "sk-included-123456"}},
 	)
 	if err != nil {
