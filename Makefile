@@ -31,6 +31,7 @@ build-backend: ensure-frontend-embed-dir
 
 build-frontend:
 	npm --prefix $(WEB_DIR) run build
+	$(MAKE) ensure-frontend-embed-dir
 
 lint-frontend:
 	npm --prefix $(WEB_DIR) run lint
