@@ -1,6 +1,6 @@
 WEB_DIR := ./web
 
-.PHONY: dev-backend dev-frontend test-backend test-frontend fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker
+.PHONY: dev-backend dev-frontend test-backend test-frontend fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose
 
 dev-backend:
 	go run ./cmd/server/main.go --env .env
@@ -51,3 +51,9 @@ verify-frontend:
 
 verify-docker:
 	docker build -t cpa-usage:ci .
+
+render-dokploy-compose:
+	scripts/render-dokploy-compose.sh $${CPA_USAGE_VERSION:?set CPA_USAGE_VERSION} $${OUTPUT:-.tmp/dokploy/cpa-cliproxyapi.compose.yml}
+
+verify-dokploy-compose:
+	scripts/verify-dokploy-compose.sh

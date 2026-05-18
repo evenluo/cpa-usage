@@ -239,7 +239,7 @@ func Load(options LoadOptions) (*Config, error) {
 		LogDir:                  filepath.Join(workDir, workDirLogsName),
 		LogRetentionDays:        logRetentionDays,
 		AuthEnabled:             authEnabled,
-		LoginPassword:           strings.TrimSpace(os.Getenv("LOGIN_PASSWORD")),
+		LoginPassword:           strings.TrimSpace(os.Getenv("CPA_USAGE_LOGIN_PASSWORD")),
 		AuthSessionTTL:          authSessionTTL,
 		AuthSessionSecret:       strings.TrimSpace(os.Getenv("AUTH_SESSION_SECRET")),
 		AuthSessionCookieName:   getString("AUTH_SESSION_COOKIE_NAME", "cpa_usage_session"),
@@ -254,7 +254,7 @@ func Load(options LoadOptions) (*Config, error) {
 		return nil, fmt.Errorf("CPA_MANAGEMENT_KEY is required")
 	}
 	if cfg.AuthEnabled && cfg.LoginPassword == "" {
-		return nil, fmt.Errorf("LOGIN_PASSWORD is required when AUTH_ENABLED is true")
+		return nil, fmt.Errorf("CPA_USAGE_LOGIN_PASSWORD is required when AUTH_ENABLED is true")
 	}
 	if cfg.AuthEnabled && cfg.AuthSessionSecret != "" && len(cfg.AuthSessionSecret) < 32 {
 		return nil, fmt.Errorf("AUTH_SESSION_SECRET must be at least 32 characters when set")

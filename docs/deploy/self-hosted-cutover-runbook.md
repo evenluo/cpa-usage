@@ -86,7 +86,7 @@ export PUBLIC_HOST=<your-cpa-host>
 export CPA_SERVICE_URL=http://<cpa-backend-service>:8317
 export REDIS_QUEUE_ADDR=<cpa-backend-service>:8317
 export MANAGEMENT_PASSWORD='<secret>'
-export LOGIN_PASSWORD='<secret>'
+export CPA_USAGE_LOGIN_PASSWORD='<secret>'
 export AUTH_SESSION_SECRET='<secret>'
 ```
 
@@ -107,7 +107,7 @@ From a trusted machine:
 ```sh
 BASE_URL=https://<your-cpa-host> \
 BASE_PATH=/usage \
-LOGIN_PASSWORD='<secret>' \
+CPA_USAGE_LOGIN_PASSWORD='<secret>' \
 scripts/smoke-cpa-usage.sh
 ```
 

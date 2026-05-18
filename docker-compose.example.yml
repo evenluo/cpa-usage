@@ -1,13 +1,13 @@
 services:
   cpa-usage:
-    image: ghcr.io/evenluo/cpa-usage:latest
+    image: ${CPA_USAGE_IMAGE:?set CPA_USAGE_IMAGE to an immutable version tag}
     ports:
       - "8080:8080"
     environment:
       CPA_BASE_URL: ${CPA_BASE_URL}
       CPA_MANAGEMENT_KEY: ${CPA_MANAGEMENT_KEY}
       AUTH_ENABLED: ${AUTH_ENABLED:-false}
-      LOGIN_PASSWORD: ${LOGIN_PASSWORD:-}
+      CPA_USAGE_LOGIN_PASSWORD: ${CPA_USAGE_LOGIN_PASSWORD:-}
       AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}
       AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
       AUTH_SESSION_COOKIE_NAME: ${AUTH_SESSION_COOKIE_NAME:-cpa_usage_session}

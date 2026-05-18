@@ -16,7 +16,7 @@ var configEnvKeys = []string{
 	"USAGE_SYNC_MODE", "REDIS_QUEUE_ADDR", "REDIS_QUEUE_TLS", "REDIS_QUEUE_BATCH_SIZE", "REDIS_QUEUE_IDLE_INTERVAL",
 	"SQLITE_PATH", "BACKUP_ENABLED", "BACKUP_DIR", "BACKUP_INTERVAL", "BACKUP_RETENTION_DAYS",
 	"REQUEST_TIMEOUT", "LOG_LEVEL", "LOG_FILE_ENABLED", "LOG_DIR", "LOG_RETENTION_DAYS",
-	"AUTH_ENABLED", "LOGIN_PASSWORD", "AUTH_SESSION_TTL", "TRUSTED_PROXIES", "TZ", "TLS_SKIP_VERIFY",
+	"AUTH_ENABLED", "CPA_USAGE_LOGIN_PASSWORD", "AUTH_SESSION_TTL", "TRUSTED_PROXIES", "TZ", "TLS_SKIP_VERIFY",
 	"AUTH_SESSION_SECRET", "AUTH_SESSION_COOKIE_NAME", "AUTH_SESSION_COOKIE_DOMAIN", "AUTH_SESSION_COOKIE_PATH",
 }
 
@@ -380,8 +380,8 @@ func TestLoadFromEnvRequiresCriticalValues(t *testing.T) {
 		t.Setenv("AUTH_ENABLED", "true")
 
 		_, err := LoadFromEnv()
-		if err == nil || err.Error() != "LOGIN_PASSWORD is required when AUTH_ENABLED is true" {
-			t.Fatalf("expected LOGIN_PASSWORD required error, got %v", err)
+		if err == nil || err.Error() != "CPA_USAGE_LOGIN_PASSWORD is required when AUTH_ENABLED is true" {
+			t.Fatalf("expected CPA_USAGE_LOGIN_PASSWORD required error, got %v", err)
 		}
 	})
 
@@ -389,7 +389,7 @@ func TestLoadFromEnvRequiresCriticalValues(t *testing.T) {
 		t.Setenv("CPA_BASE_URL", "http://127.0.0.1:"+cpa.ManagementRedisDefaultPort)
 		t.Setenv("CPA_MANAGEMENT_KEY", "secret")
 		t.Setenv("AUTH_ENABLED", "true")
-		t.Setenv("LOGIN_PASSWORD", "secret")
+		t.Setenv("CPA_USAGE_LOGIN_PASSWORD", "secret")
 		t.Setenv("AUTH_SESSION_SECRET", "short")
 
 		_, err := LoadFromEnv()
@@ -476,7 +476,7 @@ func TestLoadFromEnvParsesOverrides(t *testing.T) {
 	t.Setenv("LOG_FILE_ENABLED", "false")
 	t.Setenv("LOG_RETENTION_DAYS", "14")
 	t.Setenv("AUTH_ENABLED", "true")
-	t.Setenv("LOGIN_PASSWORD", "top-secret")
+	t.Setenv("CPA_USAGE_LOGIN_PASSWORD", "top-secret")
 	t.Setenv("AUTH_SESSION_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("AUTH_SESSION_COOKIE_NAME", "shared_cpa_session")
 	t.Setenv("AUTH_SESSION_COOKIE_DOMAIN", "cpa.example.com")

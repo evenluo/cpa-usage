@@ -1,0 +1,115 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:?set POSTGRES_IMAGE to the existing pinned postgres image}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - cpa-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  cliproxyapi:
+    image: ${CLIPROXYAPI_IMAGE:?set CLIPROXYAPI_IMAGE to the existing pinned cliproxyapi image}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DEPLOY: ${CLIPROXYAPI_DEPLOY:-}
+      PGSTORE_DSN: ${CLIPROXYAPI_PGSTORE_DSN:?set CLIPROXYAPI_PGSTORE_DSN}
+      TZ: Asia/Shanghai
+    volumes:
+      - ${CLIPROXYAPI_CONFIG_PATH:?set CLIPROXYAPI_CONFIG_PATH}:/CLIProxyAPI/config.yaml:ro
+      - ${CLIPROXYAPI_AUTH_PATH:?set CLIPROXYAPI_AUTH_PATH}:/root/.cli-proxy-api
+      - ${CLIPROXYAPI_LOG_PATH:?set CLIPROXYAPI_LOG_PATH}:/CLIProxyAPI/logs
+    networks:
+      - cpa-internal
+      - web
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.cliproxyapi-web.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
+      - traefik.http.routers.cliproxyapi-web.entrypoints=web
+      - traefik.http.routers.cliproxyapi-web.priority=10
+      - traefik.http.routers.cliproxyapi-web.middlewares=redirect-to-https@file
+      - traefik.http.routers.cliproxyapi-web.service=cliproxyapi-web
+      - traefik.http.services.cliproxyapi-web.loadbalancer.server.port=8317
+      - traefik.http.routers.cliproxyapi-websecure.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
+      - traefik.http.routers.cliproxyapi-websecure.entrypoints=websecure
+      - traefik.http.routers.cliproxyapi-websecure.priority=10
+      - traefik.http.routers.cliproxyapi-websecure.service=cliproxyapi-websecure
+      - traefik.http.routers.cliproxyapi-websecure.tls.certresolver=letsencrypt
+      - traefik.http.services.cliproxyapi-websecure.loadbalancer.server.port=8317
+
+  cpa-usage:
+    image: __CPA_USAGE_IMAGE__
+    restart: unless-stopped
+    depends_on:
+      - cliproxyapi
+    environment:
+      GIN_MODE: release
+      TZ: Asia/Shanghai
+      APP_PORT: 8080
+      APP_BASE_PATH: /usage
+      CPA_BASE_URL: http://cliproxyapi:8317
+      CPA_MANAGEMENT_KEY: ${MANAGEMENT_PASSWORD:?set MANAGEMENT_PASSWORD}
+      REDIS_QUEUE_ADDR: cliproxyapi:8317
+      AUTH_ENABLED: "true"
+      CPA_USAGE_LOGIN_PASSWORD: ${CPA_USAGE_LOGIN_PASSWORD:?set CPA_USAGE_LOGIN_PASSWORD}
+      AUTH_SESSION_TTL: ${AUTH_SESSION_TTL:-168h}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:?set AUTH_SESSION_SECRET}
+      AUTH_SESSION_COOKIE_NAME: ${AUTH_SESSION_COOKIE_NAME:-cpa_usage_session}
+      AUTH_SESSION_COOKIE_DOMAIN: ${AUTH_SESSION_COOKIE_DOMAIN:-}
+      AUTH_SESSION_COOKIE_PATH: /
+      WORK_DIR: /data
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FILE_ENABLED: ${LOG_FILE_ENABLED:-true}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-7}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_INTERVAL: ${BACKUP_INTERVAL:-24h}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+    volumes:
+      - cpa-usage-data:/data
+    networks:
+      - cpa-internal
+      - web
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      - traefik.http.routers.cpa-usage-web.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`) && PathPrefix(`/usage`)
+      - traefik.http.routers.cpa-usage-web.entrypoints=web
+      - traefik.http.routers.cpa-usage-web.priority=110
+      - traefik.http.routers.cpa-usage-web.middlewares=redirect-to-https@file
+      - traefik.http.routers.cpa-usage-web.service=cpa-usage-web
+      - traefik.http.services.cpa-usage-web.loadbalancer.server.port=8080
+      - traefik.http.routers.cpa-usage-websecure.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`) && PathPrefix(`/usage`)
+      - traefik.http.routers.cpa-usage-websecure.entrypoints=websecure
+      - traefik.http.routers.cpa-usage-websecure.priority=110
+      - traefik.http.routers.cpa-usage-websecure.service=cpa-usage-websecure
+      - traefik.http.routers.cpa-usage-websecure.tls.certresolver=letsencrypt
+      - traefik.http.services.cpa-usage-websecure.loadbalancer.server.port=8080
+
+volumes:
+  cpa-usage-data:
+    external: true
+    name: cpa-usage-data
+  postgres-data:
+    external: true
+    name: ${POSTGRES_DATA_VOLUME:?set POSTGRES_DATA_VOLUME to the existing postgres data volume}
+
+networks:
+  cpa-internal:
+    external: true
+    name: ${CPA_INTERNAL_NETWORK:-cpa-internal}
+  web:
+    external: true
+    name: ${WEB_NETWORK:-web}

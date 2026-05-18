@@ -3,7 +3,7 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
 BASE_PATH="${BASE_PATH:-/usage}"
-LOGIN_PASSWORD="${LOGIN_PASSWORD:-}"
+CPA_USAGE_LOGIN_PASSWORD="${CPA_USAGE_LOGIN_PASSWORD:-}"
 EXPECT_KEEPER_STOPPED="${EXPECT_KEEPER_STOPPED:-false}"
 CURL_INSECURE="${CURL_INSECURE:-false}"
 
@@ -74,11 +74,11 @@ fi
 if grep -q '"authenticated":true' "$tmpdir/session-before"; then
   echo "OK auth session already authenticated"
 else
-  if [[ -z "$LOGIN_PASSWORD" ]]; then
-    echo "FAIL LOGIN_PASSWORD is required because session is not authenticated" >&2
+  if [[ -z "$CPA_USAGE_LOGIN_PASSWORD" ]]; then
+    echo "FAIL CPA_USAGE_LOGIN_PASSWORD is required because session is not authenticated" >&2
     exit 1
   fi
-  payload="{\"password\":\"$(json_escape "$LOGIN_PASSWORD")\"}"
+  payload="{\"password\":\"$(json_escape "$CPA_USAGE_LOGIN_PASSWORD")\"}"
   login_code="$(curl "${curl_args[@]}" -b "$cookie_jar" -c "$cookie_jar" -H 'Content-Type: application/json' -d "$payload" -o "$tmpdir/login" -w '%{http_code}' "$BASE_URL$BASE_PATH/api/v1/auth/login" || true)"
   if [[ "$login_code" != "204" ]]; then
     echo "FAIL login expected HTTP 204 got $login_code" >&2

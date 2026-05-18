@@ -17,11 +17,24 @@ COPY internal/ ./internal/
 COPY --from=web-builder /app/web/dist ./web/dist
 COPY web/static.go ./web/static.go
 ARG VERSION=dev
+ARG REVISION=unknown
+ARG SOURCE=https://github.com/evenluo/cpa-usage
+ARG CREATED=unknown
 RUN CGO_ENABLED=1 GOOS=linux go build \
     -ldflags="-s -w -X cpa-usage/internal/version.Version=${VERSION}" \
     -o /out/cpa-usage ./cmd/server/main.go
 
 FROM alpine:3.20
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG SOURCE=https://github.com/evenluo/cpa-usage
+ARG CREATED=unknown
+LABEL org.opencontainers.image.title="cpa-usage" \
+      org.opencontainers.image.description="CPA usage analytics service" \
+      org.opencontainers.image.source="${SOURCE}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${CREATED}"
 WORKDIR /
 RUN apk add --no-cache ca-certificates tzdata su-exec \
 	&& addgroup -S app \

@@ -17,7 +17,7 @@ Configure `cpa-usage` with the CPA management key and its own dashboard login se
 ```dotenv
 AUTH_ENABLED=true
 CPA_MANAGEMENT_KEY=<same value as CPA management password>
-LOGIN_PASSWORD=<usage dashboard password>
+CPA_USAGE_LOGIN_PASSWORD=<usage dashboard password>
 AUTH_SESSION_TTL=168h
 AUTH_SESSION_SECRET=<random secret with at least 32 characters>
 AUTH_SESSION_COOKIE_NAME=cpa_usage_session
@@ -36,7 +36,7 @@ openssl rand -base64 48
 The example compose fragment in `deploy/example/cpa-usage.cutover.compose.yml` expects:
 
 ```bash
-export LOGIN_PASSWORD='<redacted>'
+export CPA_USAGE_LOGIN_PASSWORD='<redacted>'
 export AUTH_SESSION_SECRET='<redacted>'
 export AUTH_SESSION_COOKIE_NAME=cpa_usage_session
 export AUTH_SESSION_COOKIE_DOMAIN=<your-cpa-host>
