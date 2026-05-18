@@ -8,37 +8,26 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/providers/toast-provider"
 import { useAPIKeys, useDeleteAPIKeyAlias, useDeleteAlias, useKeys, useUpdateAPIKeyAlias, useUpdateAlias } from "@/hooks/useKeys"
 import { usePricing, useSavePricing } from "@/hooks/usePricing"
+import {
+  buildCostRateModels,
+  buildCostRateSavePayload,
+  buildPricingMap,
+  canSaveKeyAlias,
+  countAliasedRows,
+  countMissingCostRates,
+  filterKeyAliasRows,
+  getCostRateDraft,
+  normalizeAccountKeyRows,
+  normalizeAPIKeyRows,
+  validateCostRateDraft,
+} from "@/features/reference-data/model"
 import { formatCompact, formatCost, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import type { CostRateDrafts, KeyAliasScope, ReferenceKeyRow } from "@/features/reference-data/model"
 
 export const Route = createLazyFileRoute("/reference")({
   component: ReferencePage,
 })
-
-interface Drafts {
-  [model: string]: {
-    prompt: string
-    completion: string
-    cache: string
-  }
-}
-
-type KeyAliasScope = "api-key" | "account"
-
-interface ReferenceKeyRow {
-  id: string
-  alias: string
-  displayName: string
-  name: string
-  identity: string
-  provider: string
-  type: string
-  auth_type_name: string
-  total_tokens: number
-  total_cost: number
-  cost_available: boolean
-  last_used_at: string | null
-}
 
 function ReferencePage() {
   const { data: keys, isLoading: isKeysLoading } = useKeys()
@@ -54,63 +43,24 @@ function ReferencePage() {
   const [keyAliasScope, setKeyAliasScope] = useState<KeyAliasScope>("api-key")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draftAlias, setDraftAlias] = useState("")
-  const [drafts, setDrafts] = useState<Drafts>({})
+  const [drafts, setDrafts] = useState<CostRateDrafts>({})
   const [savingModel, setSavingModel] = useState<string | null>(null)
 
-  const apiKeyRows: ReferenceKeyRow[] = useMemo(() => (apiKeys ?? []).map((key) => ({
-    id: key.id,
-    alias: key.alias,
-    displayName: key.displayName,
-    name: "",
-    identity: key.identity,
-    provider: key.provider,
-    type: "api-key",
-    auth_type_name: key.auth_type_name,
-    total_tokens: key.total_tokens,
-    total_cost: key.total_cost,
-    cost_available: key.cost_available,
-    last_used_at: key.last_used_at ?? null,
-  })), [apiKeys])
+  const apiKeyRows: ReferenceKeyRow[] = useMemo(() => normalizeAPIKeyRows(apiKeys ?? []), [apiKeys])
 
-  const accountRows: ReferenceKeyRow[] = useMemo(() => (keys ?? []).map((key) => ({
-    id: String(key.id),
-    alias: key.alias,
-    displayName: key.displayName,
-    name: key.name,
-    identity: key.identity,
-    provider: key.provider,
-    type: key.type,
-    auth_type_name: key.auth_type_name,
-    total_tokens: key.total_tokens,
-    total_cost: key.total_cost,
-    cost_available: key.cost_available,
-    last_used_at: key.last_used_at,
-  })), [keys])
+  const accountRows: ReferenceKeyRow[] = useMemo(() => normalizeAccountKeyRows(keys ?? []), [keys])
 
   const visibleRows = keyAliasScope === "api-key" ? apiKeyRows : accountRows
   const isAliasLoading = keyAliasScope === "api-key" ? isAPIKeysLoading : isKeysLoading
 
-  const filteredKeys = useMemo(() => {
-    if (!visibleRows) return []
-    const q = query.trim().toLowerCase()
-    if (!q) return visibleRows
-    return visibleRows.filter((key) =>
-      [key.alias, key.displayName, key.name, key.identity, key.provider, key.type, key.auth_type_name]
-        .some((value) => value?.toLowerCase().includes(q))
-    )
-  }, [visibleRows, query])
+  const filteredKeys = useMemo(() => filterKeyAliasRows(visibleRows, query), [visibleRows, query])
 
-  const pricingMap = new Map(pricingData?.pricing.map((entry) => [entry.model, entry]))
-  const models = Array.from(
-    new Set([...(pricingData?.usedModels ?? []), ...(pricingData?.pricing.map((entry) => entry.model) ?? [])])
-  ).sort((a, b) => {
-    const aMissing = pricingMap.has(a) ? 1 : 0
-    const bMissing = pricingMap.has(b) ? 1 : 0
-    return aMissing - bMissing || a.localeCompare(b)
-  })
-  const missingRates = models.filter((model) => !pricingMap.has(model)).length
-  const aliasedAPIKeys = apiKeys?.filter((key) => key.alias).length ?? 0
-  const aliasedAccounts = keys?.filter((key) => key.alias).length ?? 0
+  const pricing = pricingData?.pricing ?? []
+  const pricingMap = useMemo(() => buildPricingMap(pricing), [pricing])
+  const models = useMemo(() => buildCostRateModels(pricingData?.usedModels ?? [], pricing), [pricingData?.usedModels, pricing])
+  const missingRates = countMissingCostRates(models, pricingMap)
+  const aliasedAPIKeys = countAliasedRows(apiKeyRows)
+  const aliasedAccounts = countAliasedRows(accountRows)
 
   function startEdit(key: ReferenceKeyRow) {
     setEditingId(key.id)
@@ -118,7 +68,7 @@ function ReferencePage() {
   }
 
   async function saveEdit(key: ReferenceKeyRow) {
-    if (draftAlias.trim() === "") {
+    if (!canSaveKeyAlias(draftAlias)) {
       toast.error("Use clear to remove an alias")
       return
     }
@@ -150,17 +100,10 @@ function ReferencePage() {
   }
 
   function getDraft(model: string) {
-    const existing = pricingMap.get(model)
-    return (
-      drafts[model] ?? {
-        prompt: existing ? String(existing.prompt_price_per_1m) : "",
-        completion: existing ? String(existing.completion_price_per_1m) : "",
-        cache: existing ? String(existing.cache_price_per_1m) : "",
-      }
-    )
+    return getCostRateDraft(model, pricingMap, drafts)
   }
 
-  function updateDraft(model: string, field: keyof Drafts[string], value: string) {
+  function updateDraft(model: string, field: keyof CostRateDrafts[string], value: string) {
     setDrafts((prev) => ({
       ...prev,
       [model]: { ...getDraft(model), [field]: value },
@@ -168,25 +111,15 @@ function ReferencePage() {
   }
 
   async function saveRate(model: string) {
-    const draft = getDraft(model)
-    if ([draft.prompt, draft.completion, draft.cache].some((value) => value.trim() === "")) {
-      toast.error("Enter all rates before saving")
-      return
-    }
-    const prices = [draft.prompt, draft.completion, draft.cache].map(Number)
-    if (prices.some((price) => !Number.isFinite(price) || price < 0)) {
-      toast.error("Rates must be non-negative numbers")
+    const validation = validateCostRateDraft(getDraft(model))
+    if (!validation.valid) {
+      toast.error(validation.reason === "missing" ? "Enter all rates before saving" : "Rates must be non-negative numbers")
       return
     }
 
     setSavingModel(model)
     try {
-      await savePricing.mutateAsync({
-        model,
-        prompt_price_per_1m: prices[0],
-        completion_price_per_1m: prices[1],
-        cache_price_per_1m: prices[2],
-      })
+      await savePricing.mutateAsync(buildCostRateSavePayload(model, validation.prices))
       toast.success(`${model} cost rate saved`)
     } catch {
       toast.error("Failed to save cost rate")
