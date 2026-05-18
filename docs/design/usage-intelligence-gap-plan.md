@@ -23,7 +23,7 @@ This plan applies to the main `/cpa-usage/` analytics page. It does not target `
 - Default Time Granularity is Hour.
 - Supported Time Granularity in this refinement is Hour and Day.
 - Heatmap default measure is Tokens.
-- Heatmap V1 uses date-by-hour buckets for the selected range, not weekday averages.
+- Heatmap V1 uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.
 - KPI comparison uses the immediately previous period for the same selected range.
 - Missing previous-period data is shown explicitly. It is not inferred.
 - Leaderboards sort by Cost when Cost is complete; if Cost is unavailable, token volume becomes the ordering measure.
@@ -101,7 +101,7 @@ The existing `trend` array should follow `granularity`. The heatmap remains hour
 - `comparison.has_previous_period=false` when the previous period has no requests.
 - When `comparison.has_previous_period=false`, percentage and point deltas are omitted from JSON.
 - When a previous-period denominator is zero for a specific metric, that metric's change field is omitted instead of returning `0`.
-- Heatmap rows must cover each local date in the selected range.
+- Heatmap rows must cover each local date in the fixed 30-day **Fixed Operational Window** used for Activity Heatmap.
 - Each heatmap row must contain exactly 24 cells, one for each local hour.
 - Empty heatmap cells use zero counts and `cost_status="available"` with `cost_available=true`.
 - Heatmap intensity normalization is a frontend responsibility using `max_tokens`, `max_cost`, `max_requests`, or `max_failures`.
@@ -117,12 +117,11 @@ The existing `trend` array should follow `granularity`. The heatmap remains hour
 | Repository filter | `internal/repository/dto/usage_query_filter.go` | Add `Granularity string`; keep non-analytics callers unaffected. |
 | Repository analytics | `internal/repository/analytics.go` | Make trend bucketing honor `Granularity`; build previous-period summary; build date-by-hour heatmap; keep SQL aggregation as the primary mechanism. |
 | Repository DTO | `internal/repository/dto/analytics.go` | Add comparison and heatmap DTOs to `AnalyticsSummarySnapshot`. |
-| Service DTO | `internal/service/dto/analytics.go` | Mirror comparison and heatmap DTOs for the service boundary. |
-| Service mapping | `internal/service/analytics_service.go` | Map repository comparison and heatmap records into service DTOs; do not allow new fields to stop at the repository layer. |
+| Service analytics | `internal/service/analytics_service.go` | Pass analytics filters to the repository and return repository-owned analytics read models without duplicating service-layer analytics DTOs. |
 | API DTO | `internal/api/analytics.go` | Publish stable JSON names for comparison and heatmap. |
 | Frontend types/state | `web/src/routes/index.lazy.tsx`, `web/src/hooks/useAnalytics.ts`, `web/src/types/api.ts` | Add `TimeGranularity` state; request `granularity`; map comparison and heatmap payloads. |
 | Frontend charts | `web/src/components/charts/*` | Upgrade the primary Cost/Tokens chart, add KPI sparklines if needed, and add a heatmap component. |
-| Frontend verification | `web/` | Cover default Hour query, Day switching, comparison rendering, and date-by-hour heatmap rendering when component tests are introduced; current gate is lint, typecheck, and build. |
+| Frontend verification | `web/` | Cover feature-level Usage Intelligence and Reference Data behavior with Vitest, alongside lint, typecheck, and build in the frontend verification gate. |
 
 ## Time and Boundary Rules
 
@@ -148,7 +147,7 @@ Backend:
 - Add previous-period filtering using the same range length and provider scope.
 - Build `comparison` from current summary versus previous summary.
 - Add heatmap aggregation grouped by server-business local date and local hour.
-- Return complete 24-cell rows for each local date in the selected range.
+- Return complete 24-cell rows for each local date in the fixed 30-day **Fixed Operational Window**.
 - Preserve Metric Completeness semantics for Cost fields in trend, comparison, leaderboard, model mix, and heatmap cells.
 
 Tests:
@@ -191,7 +190,7 @@ Primary trend:
 Heatmap:
 
 - Replace the current `Time` tab content in the Breakdown Workbench with a date-by-hour token heatmap.
-- Rows are dates in the selected range.
+- Rows are dates in the fixed 30-day **Fixed Operational Window**.
 - Columns are hours from `00` through `23`.
 - Default measure is Tokens.
 - Cell intensity is normalized in the frontend using `heatmap.max_tokens`.
@@ -230,7 +229,7 @@ Lower panels:
 Local verification:
 
 - Run backend analytics tests: `go test ./internal/repository ./internal/api ./internal/service`.
-- Run frontend lint, typecheck, and build: `npm --prefix ./web run lint`, `npm --prefix ./web run typecheck`, and `npm --prefix ./web run build`.
+- Run frontend lint, feature tests, typecheck, and build through `make verify-frontend`.
 - Run `make verify` if the narrower checks pass.
 
 Remote rollout:
