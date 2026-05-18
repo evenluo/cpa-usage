@@ -29,20 +29,9 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 env \
-  "PUBLIC_HOST=example.com" \
-  "POSTGRES_IMAGE=postgres:16-alpine" \
-  "POSTGRES_DB=cliproxyapi" \
-  "POSTGRES_USER=cliproxyapi" \
   "POSTGRES_PASSWORD=example-postgres-password" \
-  "POSTGRES_DATA_VOLUME=cliproxyapi-postgres-data" \
-  "CLIPROXYAPI_IMAGE=eceasy/cli-proxy-api:v7.1.0" \
-  "CLIPROXYAPI_PGSTORE_DSN=postgres://cliproxyapi:example-postgres-password@postgres:5432/cliproxyapi?sslmode=disable" \
-  "CLIPROXYAPI_CONFIG_PATH=/opt/cliproxyapi/config.yaml" \
-  "CLIPROXYAPI_AUTH_PATH=/opt/cliproxyapi/auths" \
-  "CLIPROXYAPI_LOG_PATH=/opt/cliproxyapi/logs" \
   "MANAGEMENT_PASSWORD=example-management-password" \
   "CPA_USAGE_LOGIN_PASSWORD=example-login-password" \
-  "AUTH_SESSION_SECRET=0123456789abcdef0123456789abcdef" \
   docker compose -f "$compose_file" config >/dev/null
 
 echo "OK dokploy compose"

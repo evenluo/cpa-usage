@@ -47,21 +47,12 @@ The workflow is `.github/workflows/release.yml` and runs on tags matching `v*.*.
 The Dokploy Compose environment must provide the runtime values referenced by the template:
 
 ```dotenv
-PUBLIC_HOST=example.com
-POSTGRES_IMAGE=<existing pinned postgres image>
-POSTGRES_DB=<existing postgres database>
-POSTGRES_USER=<existing postgres user>
 POSTGRES_PASSWORD=<existing postgres password>
-POSTGRES_DATA_VOLUME=<existing postgres data volume; defaults to cpa-cliproxyapi-hazmcp_postgres-data>
-CLIPROXYAPI_IMAGE=<existing pinned cliproxyapi image>
-CLIPROXYAPI_PGSTORE_DSN=<existing postgres DSN for cliproxyapi>
-CLIPROXYAPI_CONFIG_PATH=<existing host config.yaml path>
-CLIPROXYAPI_AUTH_PATH=<existing host auth directory>
-CLIPROXYAPI_LOG_PATH=<existing host logs directory>
 MANAGEMENT_PASSWORD=<existing CPA management password>
 CPA_USAGE_LOGIN_PASSWORD=<usage dashboard login password>
-AUTH_SESSION_SECRET=<at least 32 characters>
 ```
+
+The template defaults the current Dokploy runtime facts: `postgres:16-alpine`, `eceasy/cli-proxy-api:v7.1.11`, database/user `cliproxyapi`, `example.com`, `dokploy-network`, `cpa-cliproxyapi-hazmcp_cliproxyapi-internal`, `cpa-cliproxyapi-hazmcp_cliproxyapi-postgres-data`, and `cpa-cliproxyapi-hazmcp_cpa-usage-data`. Override these only when the Dokploy runtime topology changes.
 
 The release script migrates `KEEPER_LOGIN_PASSWORD` to `CPA_USAGE_LOGIN_PASSWORD` once through `compose.saveEnvironment`, then removes the old key from the Dokploy env text. Runtime auth only reads `CPA_USAGE_LOGIN_PASSWORD`.
 
