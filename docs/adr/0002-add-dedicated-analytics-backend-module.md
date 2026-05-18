@@ -1,6 +1,8 @@
 # Add a dedicated analytics backend module
 
-CPA Usage v1 will add key-centric analytics in a dedicated backend module instead of extending the existing broad usage aggregation path. The existing keeper backend is valuable and should be reused, but its current overview, analysis, events, health, and cost aggregation responsibilities are already concentrated; adding Key Alias rankings, trends, drill-downs, and deterministic insights there would make the core analytics path harder to test and evolve.
+Status: Superseded by ADR 0003 and ADR 0004.
+
+CPA Usage originally planned to add key-centric analytics in a dedicated backend module instead of extending the existing broad usage aggregation path. ADR 0003 and ADR 0004 replaced that direction: analytics read models now stay in `internal/repository`, analytics implementation is split by same-package files, and `internal/api` remains the HTTP contract owner.
 
 ## Consequences
 

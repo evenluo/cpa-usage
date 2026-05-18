@@ -85,7 +85,7 @@ _Avoid_: Request event workbench, full event search, audit log
 - Provider filtering scopes both **Selected Analysis Window** modules and **Fixed Operational Window** modules.
 - Provider filter options are derived from the **Selected Analysis Window**, not from fixed windows or a global provider catalog.
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
-- The first heatmap view uses date-by-hour buckets for the selected range, not weekday averages.
+- The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.
 - KPI comparison uses the immediately previous period for the same selected range; missing previous-period data is shown explicitly instead of inferred.
 - The primary trend includes bucket-derived summary stats for average and peak **Cost** and token volume, plus total **Cost** and tokens.
 - The first **Usage Intelligence** refinement keeps the selected range fixed to Last 7 days while adding **Time Granularity** support.
