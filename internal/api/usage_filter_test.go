@@ -71,6 +71,38 @@ func TestParseUsageFilterQueryTodayRangeUsesLocalDayBoundary(t *testing.T) {
 	}
 }
 
+func TestParseUsageFilterQueryYesterdayRangeUsesPreviousLocalDayBoundary(t *testing.T) {
+	previousLocal := time.Local
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("load location: %v", err)
+	}
+	t.Cleanup(func() { time.Local = previousLocal })
+	time.Local = location
+
+	req := httptest.NewRequest("GET", "/api/v1/usage/overview?range=yesterday", nil)
+	anchor := time.Date(2026, 4, 22, 12, 34, 56, 0, time.UTC)
+
+	filter, err := parseUsageFilterQuery(req, anchor)
+	if err != nil {
+		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+	}
+	if filter.Range != "yesterday" {
+		t.Fatalf("expected yesterday range to be preserved, got %+v", filter)
+	}
+	if filter.StartTime == nil || filter.EndTime == nil {
+		t.Fatalf("expected yesterday range to resolve concrete times, got %+v", filter)
+	}
+	expectedStart := time.Date(2026, 4, 21, 0, 0, 0, 0, location).UTC()
+	expectedEnd := time.Date(2026, 4, 22, 0, 0, 0, 0, location).Add(-time.Nanosecond).UTC()
+	if !filter.StartTime.Equal(expectedStart) {
+		t.Fatalf("expected yesterday start %s, got %s", expectedStart, *filter.StartTime)
+	}
+	if !filter.EndTime.Equal(expectedEnd) {
+		t.Fatalf("expected yesterday end %s, got %s", expectedEnd, *filter.EndTime)
+	}
+}
+
 func TestParseUsageFilterQueryTodayRangeUsesLocalDSTBoundary(t *testing.T) {
 	previousLocal := time.Local
 	location, err := time.LoadLocation("America/New_York")
