@@ -104,7 +104,7 @@ volumes:
     name: cpa-usage-data
   postgres-data:
     external: true
-    name: ${POSTGRES_DATA_VOLUME:?set POSTGRES_DATA_VOLUME to the existing postgres data volume}
+    name: ${POSTGRES_DATA_VOLUME:-cpa-cliproxyapi-hazmcp_postgres-data}
 
 networks:
   cpa-internal:
