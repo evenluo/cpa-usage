@@ -151,7 +151,7 @@ All existing `/api/v1/*` endpoints remain unchanged. New frontend consumes:
   - `hooks/useAnalytics.ts` — Mock TanStack Query's `useQuery` and verify correct query keys and parameter transformation.
   - `components/ui/chart-components` — Verify Recharts receives correctly transformed data.
   - `lib/api-client.ts` — Verify base path injection, auth header attachment, and error handling.
-- **Test tooling**: `web/` currently uses lint, TypeScript typecheck, and Vite build as the frontend verification gate. Add Vitest + React Testing Library when component-level regression coverage is introduced.
+- **Test tooling**: `web/` now includes Vitest + React Testing Library for feature-level regression coverage alongside lint, TypeScript typecheck, and Vite build in the frontend verification gate.
 
 ## Out of Scope
 
