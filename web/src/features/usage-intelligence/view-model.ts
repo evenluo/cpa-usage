@@ -19,6 +19,9 @@ export const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: "30d", label: "30 days" },
 ]
 
+export const DEFAULT_TIME_RANGE: TimeRange = "7d"
+export const SELECTED_TIME_RANGE_STORAGE_KEY = "cpa-usage:selected-time-range"
+
 export type LeaderboardScope = "account" | "api-key"
 
 export interface UsageKpiSparklineData {
@@ -43,6 +46,14 @@ export interface UsageDashboardViewModel {
 export function getDefaultGranularity(range: TimeRange): TimeGranularity {
   if (range === "30d") return "day"
   return "hour"
+}
+
+export function isTimeRange(value: string | null): value is TimeRange {
+  return TIME_RANGES.some((range) => range.value === value)
+}
+
+export function resolveStoredTimeRange(value: string | null): TimeRange {
+  return isTimeRange(value) ? value : DEFAULT_TIME_RANGE
 }
 
 export function getEffectiveGranularity(

@@ -1,5 +1,5 @@
 import { createLazyFileRoute } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
@@ -17,6 +17,8 @@ import { formatCost, formatCompact, formatComparison } from "@/lib/format"
 import {
   buildUsageDashboardViewModel,
   getEffectiveGranularity,
+  resolveStoredTimeRange,
+  SELECTED_TIME_RANGE_STORAGE_KEY,
   TIME_RANGES,
 } from "@/features/usage-intelligence/view-model"
 import type { TimeRange, TimeGranularity } from "@/types/api"
@@ -28,7 +30,7 @@ export const Route = createLazyFileRoute("/")({
 })
 
 function DashboardPage() {
-  const [range, setRange] = useState<TimeRange>("7d")
+  const [range, setRange] = useState<TimeRange>(() => readStoredTimeRange())
   const [granularity, setGranularity] = useState<TimeGranularity | null>(null)
   const [provider, setProvider] = useState("")
   const [trendView, setTrendView] = useState<"cost-token" | "requests-token" | "tokens">("cost-token")
@@ -37,6 +39,10 @@ function DashboardPage() {
   const g = getEffectiveGranularity(range, granularity)
   const { data, isLoading, error } = useAnalytics(range, g, provider)
   const { data: healthOverviewData, isLoading: isHealthLoading } = useUsageOverview("24h", provider)
+
+  useEffect(() => {
+    writeStoredTimeRange(range)
+  }, [range])
 
   const summary = data?.summary
   const comparison = data?.comparison
@@ -380,6 +386,25 @@ function DashboardPage() {
       <RequestEvidence provider={provider} />
     </div>
   )
+}
+
+function readStoredTimeRange(): TimeRange {
+  if (typeof window === "undefined") {
+    return resolveStoredTimeRange(null)
+  }
+  try {
+    return resolveStoredTimeRange(window.localStorage.getItem(SELECTED_TIME_RANGE_STORAGE_KEY))
+  } catch {
+    return resolveStoredTimeRange(null)
+  }
+}
+
+function writeStoredTimeRange(range: TimeRange) {
+  try {
+    window.localStorage.setItem(SELECTED_TIME_RANGE_STORAGE_KEY, range)
+  } catch {
+    // Browser storage can be unavailable in private or restricted contexts.
+  }
 }
 
 /* ─── KPI Card ─── */

@@ -5,10 +5,12 @@ import analyticsSummaryFixture from "@/test/contracts/analytics_summary.json"
 import type { AnalyticsResponse, KeyAliasBreakdown, TrendPoint } from "@/types/api"
 import {
   buildUsageDashboardViewModel,
+  DEFAULT_TIME_RANGE,
   deriveKpiSparklineData,
   getDefaultGranularity,
   getEffectiveGranularity,
   getLeaderboardSortLabel,
+  resolveStoredTimeRange,
   TIME_RANGES,
 } from "./view-model"
 
@@ -59,6 +61,12 @@ describe("Usage Intelligence view model", () => {
     expect(getDefaultGranularity("7d")).toBe("hour")
     expect(getDefaultGranularity("30d")).toBe("day")
     expect(getEffectiveGranularity("30d", "hour")).toBe("hour")
+  })
+
+  it("restores a persisted Selected Analysis Window only when the value is supported", () => {
+    expect(resolveStoredTimeRange("30d")).toBe("30d")
+    expect(resolveStoredTimeRange("last-week")).toBe(DEFAULT_TIME_RANGE)
+    expect(resolveStoredTimeRange(null)).toBe(DEFAULT_TIME_RANGE)
   })
 
   it("derives KPI sparklines without counting unavailable Cost or negative successes", () => {
