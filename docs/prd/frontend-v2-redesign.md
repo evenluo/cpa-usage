@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-The original CPA Usage frontend (`web/`) was a single 1,800-line `App.tsx` file that lacked visual sophistication and polished interaction design. It has now been removed from the active source tree; `web-v2/` is the only frontend implementation. Users frequently interact with the dashboard to monitor AI API consumption, and the interface should feel intentional rather than merely utilitarian. Key pain points addressed by v2 include:
+The original CPA Usage frontend was a single 1,800-line `App.tsx` file that lacked visual sophistication and polished interaction design. It has been replaced in the active source tree; `web/` is the only frontend implementation. Users frequently interact with the dashboard to monitor AI API consumption, and the interface should feel intentional rather than merely utilitarian. Key pain points addressed by v2 include:
 
 - **Visual flatness**: Generic card layouts, uninspired color palette, and chart styling that does not convey precision or care.
 - **Interaction friction**: No loading skeletons, abrupt data changes, hard-coded "Last 7 days" range, and manual routing via `window.location.pathname`.
@@ -12,7 +12,7 @@ The original CPA Usage frontend (`web/`) was a single 1,800-line `App.tsx` file 
 
 ## Solution
 
-Use the `web-v2/` frontend with a **Claude-inspired editorial aesthetic** — warm terracotta accents, clean typography, generous whitespace, and a reading-flow information architecture. The frontend will:
+Use the `web/` frontend with a **Claude-inspired editorial aesthetic** — warm terracotta accents, clean typography, generous whitespace, and a reading-flow information architecture. The frontend will:
 
 1. Present **Usage Intelligence** as a curated data-reading experience rather than a raw metrics dump.
 2. Support **light/dark dual themes** with system-level auto-detection and manual override.
@@ -151,7 +151,7 @@ All existing `/api/v1/*` endpoints remain unchanged. New frontend consumes:
   - `hooks/useAnalytics.ts` — Mock TanStack Query's `useQuery` and verify correct query keys and parameter transformation.
   - `components/ui/chart-components` — Verify Recharts receives correctly transformed data.
   - `lib/api-client.ts` — Verify base path injection, auth header attachment, and error handling.
-- **Test tooling**: `web-v2/` currently uses lint, TypeScript typecheck, and Vite build as the frontend verification gate. Add Vitest + React Testing Library when component-level regression coverage is introduced.
+- **Test tooling**: `web/` currently uses lint, TypeScript typecheck, and Vite build as the frontend verification gate. Add Vitest + React Testing Library when component-level regression coverage is introduced.
 
 ## Out of Scope
 
@@ -162,11 +162,11 @@ All existing `/api/v1/*` endpoints remain unchanged. New frontend consumes:
 5. **Notifications / alerting** — No alerting mechanism exists in the backend; out of scope.
 6. **Real-time WebSocket updates** — Polling is sufficient for this use case.
 7. **Modifications to backend API** — All existing endpoints used as-is.
-8. **Compatibility with the removed `web/` directory** — `web-v2/` is the production frontend source and does not keep component, route, or test compatibility with the removed implementation.
+8. **Compatibility with the removed old frontend implementation** — `web/` is the production frontend source and does not keep component, route, or test compatibility with the removed implementation.
 
 ## Further Notes
 
 - The design direction is intentionally opinionated. The "Claude aesthetic" — warm, editorial, restrained — is chosen to differentiate CPA Usage from generic SaaS dashboards. Avoid the temptation to add features that would dilute this vision (e.g., excessive color accents, busy animations).
 - Performance target: First Contentful Paint < 1.5s on a 4G connection. Code-split routes with lazy loading.
 - Accessibility: All charts need aria-labels and keyboard-navigable controls. Toast notifications should be announced via `aria-live`.
-- The build output (`web-v2/dist/`) is embedded in the Go static file serving pipeline. The Go backend's `router.go` serves `index.html` with base path injection — this mechanism remains unchanged.
+- The build output (`web/dist/`) is embedded in the Go static file serving pipeline. The Go backend's `router.go` serves `index.html` with base path injection — this mechanism remains unchanged.

@@ -16,7 +16,7 @@ import (
 	"cpa-usage/internal/quota"
 	"cpa-usage/internal/repository"
 	"cpa-usage/internal/service"
-	webui "cpa-usage/web-v2"
+	webui "cpa-usage/web"
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"

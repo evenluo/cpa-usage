@@ -1,4 +1,4 @@
-WEB_DIR := ./web-v2
+WEB_DIR := ./web
 
 .PHONY: dev-backend dev-frontend test-backend test-frontend fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker
 

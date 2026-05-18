@@ -2,7 +2,7 @@
 
 CPA Usage is a human-readable usage dashboard on top of CPA usage data.
 
-This repository starts from the stable CPA usage keeper backend foundation and keeps CPA queue consumption, SQLite persistence, migrations, pricing semantics, auth/session, backup, update check, and Docker-friendly deployment behavior intact. The frontend is the `web-v2/` React, TypeScript, Vite, Tailwind, and shadcn-style analytics workspace.
+This repository starts from the stable CPA usage keeper backend foundation and keeps CPA queue consumption, SQLite persistence, migrations, pricing semantics, auth/session, backup, update check, and Docker-friendly deployment behavior intact. The frontend is the `web/` React, TypeScript, Vite, Tailwind, and shadcn-style analytics workspace.
 
 ## Verification
 
@@ -21,7 +21,7 @@ Prepare local configuration and frontend dependencies once before running the de
 
 ```bash
 cp .env.example .env
-npm --prefix ./web-v2 ci
+npm --prefix ./web ci
 ```
 
 Edit `.env` with a reachable `CPA_BASE_URL` and `CPA_MANAGEMENT_KEY`. `make dev-backend` loads `.env` explicitly, so a missing file or missing required CPA settings fails fast.
@@ -31,7 +31,7 @@ make dev-backend
 make dev-frontend
 ```
 
-The Go server serves the built frontend assets from `web-v2/dist` when `npm --prefix ./web-v2 run build` has been run.
+The Go server serves the built frontend assets from `web/dist` when `npm --prefix ./web run build` has been run.
 
 Common backend targets:
 
@@ -81,4 +81,4 @@ New backend code should first choose the package that matches its responsibility
 
 - CPA native configuration is not mutated.
 - Existing usage events, pricing semantics, SQLite persistence, auth/session, backup, update check, and Docker deployment behavior are inherited from the keeper backend.
-- The frontend structure is intentionally not compatible with the old keeper SCSS-module UI. The old `web/` implementation has been removed; `web-v2/` is the only frontend source.
+- The current `web/` frontend is intentionally not compatible with the old keeper SCSS-module UI; no old frontend source is kept in parallel.

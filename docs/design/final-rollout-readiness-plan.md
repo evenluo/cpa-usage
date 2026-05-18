@@ -4,13 +4,13 @@ Date: 2026-05-17
 
 ## Conclusion
 
-CPA Usage is locally buildable and smoke-tested with `web-v2/` as the only frontend source, but it is not ready for final maxtap cutover yet.
+CPA Usage is locally buildable and smoke-tested with `web/` as the only frontend source, but it is not ready for final maxtap cutover yet.
 
 The final goal is for this repository's `cpa-usage` service to become the single production owner of CPA Usage. The current `/usage` keeper should be backed up, migrated from if useful, and taken offline directly. The blocking gaps are deployment topology, data continuity, and Redis queue ownership: the current maxtap Dokploy compose directory `/etc/dokploy/compose/cpa-cliproxyapi-hazmcp/code` no longer contains a `cpa-usage` service, public `/cpa-usage` routes currently return 404, and the existing `/usage` keeper is still the active usage consumer.
 
 ## Current Evidence
 
-- Local `make verify` passes after moving all frontend build, lint, typecheck, and Docker paths to `web-v2/`.
+- Local `make verify` passes after moving all frontend build, lint, typecheck, and Docker paths to `web/`.
 - Local `make verify-docker` builds image `cpa-usage:ci`.
 - Local container smoke with dummy CPA settings returns:
   - `GET /healthz`: 200, `{"status":"ok"}`

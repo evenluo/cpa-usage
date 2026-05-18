@@ -1,10 +1,10 @@
-# Web v2 Capability Coverage
+# Web Capability Coverage
 
 ## Conclusion
 
-Web v2 is reviewed as a product capability coverage surface, not as a one-to-one endpoint index. A backend endpoint can remain uncovered when the product boundary deliberately excludes it from the first web v2 information architecture.
+The current web frontend is reviewed as a product capability coverage surface, not as a one-to-one endpoint index. A backend endpoint can remain uncovered when the product boundary deliberately excludes it from the first web information architecture.
 
-The first web v2 information architecture has three workspaces:
+The first web information architecture has three workspaces:
 
 - **Usage Intelligence**: aggregate usage reading, selected-window analytics, fixed-window activity and health evidence.
 - **Reference Data**: user-maintained labels and model cost rates that make usage analytics readable and complete.
@@ -12,25 +12,25 @@ The first web v2 information architecture has three workspaces:
 
 ## Compatibility Decision
 
-The web v2 navigation is intentionally incompatible with the old `/keys`, `/pricing`, `/events`, and `/settings` pages. Those old paths are not retained and do not redirect because their old page semantics have been merged into the three workspace model.
+The current web navigation is intentionally incompatible with the old `/keys`, `/pricing`, `/events`, and `/settings` pages. Those old paths are not retained and do not redirect because their old page semantics have been merged into the three workspace model.
 
 ## Coverage Matrix
 
 | Workspace | User-facing capability | Frontend owner module | Backend/API capability | Backend owner module | Source data | Coverage status | Decision |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Usage Intelligence | KPI cards, primary trend, Key Alias leaderboard, model/token breakdown, provider options, deterministic insights | `web-v2/src/routes/index.lazy.tsx`, `web-v2/src/hooks/useAnalytics.ts`, `web-v2/src/components/charts/*` | `GET /api/v1/analytics/summary?range=&granularity=&provider=` | `internal/api/analytics.go`, `internal/service/analytics_service.go`, `internal/repository/analytics.go` | SQLite usage events, usage identities, key aliases, cost rates | Covered | Uses the **Selected Analysis Window**. |
-| Usage Intelligence | Activity Heatmap | `web-v2/src/routes/index.lazy.tsx`, `web-v2/src/hooks/useAnalytics.ts`, `web-v2/src/components/charts/heatmap.tsx` | `GET /api/v1/analytics/summary?range=30d&granularity=hour&provider=` heatmap payload | `internal/api/analytics.go`, `internal/service/analytics_service.go`, `internal/repository/analytics.go` | SQLite usage events | Covered | Fixed 30-day hourly **Fixed Operational Window**. |
-| Usage Intelligence | Request Health | `web-v2/src/routes/index.lazy.tsx`, `web-v2/src/hooks/useUsageOverview.ts`, `web-v2/src/components/charts/health-grid.tsx` | `GET /api/v1/usage/overview?range=24h&provider=` service health payload | `internal/api/usage_overview.go`, `internal/service/usage_service.go`, `internal/repository/usage.go` | SQLite usage events | Covered | Fixed 24-hour **Fixed Operational Window**. |
-| Usage Intelligence | Request Evidence | `web-v2/src/components/intelligence/request-evidence.tsx`, `web-v2/src/hooks/useEvents.ts` | `GET /api/v1/usage/events?range=24h&page_size=10` | `internal/api/usage_events.go`, `internal/service/usage_service.go`, `internal/repository/usage.go` | SQLite usage events and usage identity resolution | Covered as evidence strip | Not a full event search or audit log. |
-| Reference Data | Key Alias search, edit, and clear | `web-v2/src/routes/reference.lazy.tsx`, `web-v2/src/hooks/useKeys.ts` | `GET /api/v1/usage/identities/page`, `PUT /api/v1/usage/identities/:id/alias`, `DELETE /api/v1/usage/identities/:id/alias` | `internal/api/usage_identities.go`, `internal/service/usage_identities_service.go`, `internal/service/key_alias_service.go`, `internal/repository/usage_identities.go`, `internal/repository/key_alias.go` | Usage identities and key aliases | Covered | First-version alias management is direct editing only. |
-| Reference Data | Cost Rate view and save | `web-v2/src/routes/reference.lazy.tsx`, `web-v2/src/hooks/usePricing.ts` | `GET /api/v1/pricing`, `GET /api/v1/models/used`, `PUT /api/v1/pricing` | `internal/api/pricing.go`, `internal/service/pricing_service.go`, `internal/repository/pricing.go` | Used models and model price settings | Covered | Saving/overwriting rates is required for the primary completeness workflow. |
+| Usage Intelligence | KPI cards, primary trend, Key Alias leaderboard, model/token breakdown, provider options, deterministic insights | `web/src/routes/index.lazy.tsx`, `web/src/hooks/useAnalytics.ts`, `web/src/components/charts/*` | `GET /api/v1/analytics/summary?range=&granularity=&provider=` | `internal/api/analytics.go`, `internal/service/analytics_service.go`, `internal/repository/analytics.go` | SQLite usage events, usage identities, key aliases, cost rates | Covered | Uses the **Selected Analysis Window**. |
+| Usage Intelligence | Activity Heatmap | `web/src/routes/index.lazy.tsx`, `web/src/hooks/useAnalytics.ts`, `web/src/components/charts/heatmap.tsx` | `GET /api/v1/analytics/summary?range=30d&granularity=hour&provider=` heatmap payload | `internal/api/analytics.go`, `internal/service/analytics_service.go`, `internal/repository/analytics.go` | SQLite usage events | Covered | Fixed 30-day hourly **Fixed Operational Window**. |
+| Usage Intelligence | Request Health | `web/src/routes/index.lazy.tsx`, `web/src/hooks/useUsageOverview.ts`, `web/src/components/charts/health-grid.tsx` | `GET /api/v1/usage/overview?range=24h&provider=` service health payload | `internal/api/usage_overview.go`, `internal/service/usage_service.go`, `internal/repository/usage.go` | SQLite usage events | Covered | Fixed 24-hour **Fixed Operational Window**. |
+| Usage Intelligence | Request Evidence | `web/src/components/intelligence/request-evidence.tsx`, `web/src/hooks/useEvents.ts` | `GET /api/v1/usage/events?range=24h&page_size=10` | `internal/api/usage_events.go`, `internal/service/usage_service.go`, `internal/repository/usage.go` | SQLite usage events and usage identity resolution | Covered as evidence strip | Not a full event search or audit log. |
+| Reference Data | Key Alias search, edit, and clear | `web/src/routes/reference.lazy.tsx`, `web/src/hooks/useKeys.ts` | `GET /api/v1/usage/identities/page`, `PUT /api/v1/usage/identities/:id/alias`, `DELETE /api/v1/usage/identities/:id/alias` | `internal/api/usage_identities.go`, `internal/service/usage_identities_service.go`, `internal/service/key_alias_service.go`, `internal/repository/usage_identities.go`, `internal/repository/key_alias.go` | Usage identities and key aliases | Covered | First-version alias management is direct editing only. |
+| Reference Data | Cost Rate view and save | `web/src/routes/reference.lazy.tsx`, `web/src/hooks/usePricing.ts` | `GET /api/v1/pricing`, `GET /api/v1/models/used`, `PUT /api/v1/pricing` | `internal/api/pricing.go`, `internal/service/pricing_service.go`, `internal/repository/pricing.go` | Used models and model price settings | Covered | Saving/overwriting rates is required for the primary completeness workflow. |
 | Reference Data | Cost Rate delete | No first-version frontend owner | `DELETE /api/v1/pricing?model=` | `internal/api/pricing.go`, `internal/service/pricing_service.go`, `internal/repository/pricing.go` | Model price settings | Deliberate gap | Secondary maintenance action, not first-version blocking coverage. |
-| Operations Console | Sync state and manual sync | `web-v2/src/routes/operations.lazy.tsx`, `web-v2/src/hooks/useStatus.ts` | `GET /api/v1/status`, `POST /api/v1/sync` | `internal/api/router.go`, `internal/app/manual_sync.go`, `internal/poller/*` | Poller status and sync runner | Covered | First-version operations scope. |
-| Operations Console | Runtime state | `web-v2/src/routes/operations.lazy.tsx`, `web-v2/src/hooks/useStatus.ts` | `GET /api/v1/status` | `internal/api/router.go`, `internal/version/version.go`, `internal/config/config.go` | Runtime config and version metadata | Covered | Displays version and timezone only. |
-| Operations Console | Access state and logout | `web-v2/src/routes/operations.lazy.tsx`, `web-v2/src/hooks/useAuth.ts` | `GET /api/v1/auth/session`, `POST /api/v1/auth/logout` | `internal/api/auth.go`, `internal/auth/session.go` | In-memory dashboard session | Covered | First-version operations scope. |
-| Operations Console | Update check execution and state | No frontend owner | `GET /api/v1/update/check` | `internal/api/update.go`, `internal/updatecheck/checker.go` | GitHub release checker | Explicit non-feature | Web v2 and `GET /api/v1/status` do not expose update-check actions or update-check state. |
+| Operations Console | Sync state and manual sync | `web/src/routes/operations.lazy.tsx`, `web/src/hooks/useStatus.ts` | `GET /api/v1/status`, `POST /api/v1/sync` | `internal/api/router.go`, `internal/app/manual_sync.go`, `internal/poller/*` | Poller status and sync runner | Covered | First-version operations scope. |
+| Operations Console | Runtime state | `web/src/routes/operations.lazy.tsx`, `web/src/hooks/useStatus.ts` | `GET /api/v1/status` | `internal/api/router.go`, `internal/version/version.go`, `internal/config/config.go` | Runtime config and version metadata | Covered | Displays version and timezone only. |
+| Operations Console | Access state and logout | `web/src/routes/operations.lazy.tsx`, `web/src/hooks/useAuth.ts` | `GET /api/v1/auth/session`, `POST /api/v1/auth/logout` | `internal/api/auth.go`, `internal/auth/session.go` | In-memory dashboard session | Covered | First-version operations scope. |
+| Operations Console | Update check execution and state | No frontend owner | `GET /api/v1/update/check` | `internal/api/update.go`, `internal/updatecheck/checker.go` | GitHub release checker | Explicit non-feature | Current web and `GET /api/v1/status` do not expose update-check actions or update-check state. |
 | Operations Console | Quota check, cache, and refresh | No frontend owner | `POST /api/v1/quota/check`, `POST /api/v1/quota/cache`, `POST /api/v1/quota/refresh`, `GET /api/v1/quota/refresh/:task_id` | `internal/api/quota.go`, `internal/quota/*` | CPA management API and provider quota services | Explicit non-feature | CPA Usage is a pure usage product and does not expose account-capacity operations. |
-| Operations Console | Backup/log inspection | No frontend owner | Runtime backup and logging behavior | `internal/backup/*`, `internal/logging/*` | SQLite backups and log files | Explicit non-feature | Web v2 keeps operations simple and does not expose backup or log inspection. |
+| Operations Console | Backup/log inspection | No frontend owner | Runtime backup and logging behavior | `internal/backup/*`, `internal/logging/*` | SQLite backups and log files | Explicit non-feature | The current web frontend keeps operations simple and does not expose backup or log inspection. |
 
 ## Review Rules
 
@@ -71,7 +71,7 @@ Fix:
 Verification:
 
 - `go test ./internal/api ./internal/repository ./internal/service`
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ### Cost Rate Empty State
 
@@ -97,7 +97,7 @@ Fix:
 
 Verification:
 
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ### Key Alias Empty Save
 
@@ -117,7 +117,7 @@ Fix:
 
 Verification:
 
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ### Operations Logout
 
@@ -139,7 +139,7 @@ Fix:
 
 Verification:
 
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ### Manual Sync Read-Model Refresh
 
@@ -168,7 +168,7 @@ Additional status refresh:
 
 Verification:
 
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ### Key Leaderboard Sort Label
 
@@ -190,7 +190,7 @@ Fix:
 
 Verification:
 
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ### Cache KPI Vocabulary
 
@@ -209,7 +209,7 @@ Fix:
 
 Verification:
 
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ### Request Evidence Identity Display
 
@@ -228,7 +228,7 @@ Fix:
 
 Verification:
 
-- `npm --prefix ./web-v2 run typecheck`
+- `npm --prefix ./web run typecheck`
 
 ## Follow-Up Decisions
 
@@ -240,11 +240,11 @@ Verification:
 - Saving a **Cost Rate** must refresh **Reference Data** rates and **Usage Intelligence** analytics. It does not need to immediately refresh Reference key usage totals in the first version.
 - Saving or clearing a **Key Alias** must refresh **Reference Data** identities and **Usage Intelligence** analytics. The current first-version invalidation boundary is sufficient.
 - Deleting a **Cost Rate** remains a possible future secondary maintenance action inside **Reference Data**; it is not a first-version blocking capability and is not an explicit non-feature.
-- Update-check actions and update-check state are explicit non-features for web v2 because there is no user-facing update-management workflow.
-- Keeping the backend `/api/v1/update/check` endpoint does not create a web v2 product commitment because web v2 does not expose, imply, or depend on update-check behavior.
-- Quota operations are an explicit non-feature for web v2 because CPA Usage remains a pure usage product. Account-capacity operations should not enter **Usage Intelligence**, **Reference Data**, or **Operations Console**.
-- Keeping backend quota endpoints does not create a web v2 product commitment because web v2 does not expose, imply, or depend on account-capacity behavior.
-- Backup and log inspection are explicit non-features for web v2 because **Operations Console** should stay simple and lightweight.
+- Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
+- Keeping the backend `/api/v1/update/check` endpoint does not create a web product commitment because the current web frontend does not expose, imply, or depend on update-check behavior.
+- Quota operations are an explicit non-feature for the current web frontend because CPA Usage remains a pure usage product. Account-capacity operations should not enter **Usage Intelligence**, **Reference Data**, or **Operations Console**.
+- Keeping backend quota endpoints does not create a web product commitment because the current web frontend does not expose, imply, or depend on account-capacity behavior.
+- Backup and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.
 
 ## Open Review Questions
 

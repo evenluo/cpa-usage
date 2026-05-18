@@ -65,7 +65,7 @@ _Avoid_: Request event workbench, full event search, audit log
 - **Key Aliases** are stored by CPA Usage and are not written back to CPA.
 - A **Key Alias** remains available for historical usage even if the **CPA Key** is no longer active in CPA.
 - The Reference Data view is where users manage **Key Aliases** and **Cost Rates**.
-- The first web v2 navigation is an incompatible information-architecture change from the old Keys, Pricing, Events, and Settings pages to **Usage Intelligence**, **Reference Data**, and **Operations Console**.
+- The current web navigation is an incompatible information-architecture change from the old Keys, Pricing, Events, and Settings pages to **Usage Intelligence**, **Reference Data**, and **Operations Console**.
 - The first alias management version supports direct editing only, not bulk import or export.
 - The first **Reference Data** version supports viewing and saving **Cost Rates**; deleting a **Cost Rate** is a secondary maintenance action, not required for the primary completeness workflow.
 - An unset **Cost Rate** is displayed as `-`; only an explicitly entered numeric value represents a real configured **Cost Rate**.
@@ -100,8 +100,8 @@ _Avoid_: Request event workbench, full event search, audit log
 - **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.
 - **Quota** is an explicit non-feature for CPA Usage because the product is scoped to pure usage, not account-capacity operations.
 - The first **Operations Console** covers sync state, runtime state, access state, and logout.
-- Update-check actions and update-check state are explicit non-features for web v2 because there is no user-facing update-management workflow.
-- Backup inspection and log inspection are explicit non-features for web v2 because **Operations Console** should stay simple and lightweight.
+- Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
+- Backup inspection and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.
 - Logout should leave the user at the login surface rather than keeping them inside a protected workspace.
 - A successful manual sync should refresh usage, evidence, identity, and reference-data read models in the frontend.
 - Production rollout for **Usage Intelligence** refinements updates the `/cpa-usage` service only and must leave the existing `/usage` service and CPA root service intact.
