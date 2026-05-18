@@ -7,6 +7,6 @@ CPA Usage originally planned to add key-centric analytics in a dedicated backend
 ## Consequences
 
 - Stable keeper capabilities such as CPA queue consumption, SQLite persistence, pricing, events, auth, backup, and deployment remain inherited.
-- New Key Alias analytics should be built behind focused service/repository interfaces.
-- Existing usage aggregation can be reused where appropriate, but the new module owns the product-facing analytics API shape.
+- Superseded: new Key Alias analytics are not owned by a separate backend module in the current implementation.
+- Superseded: product-facing analytics HTTP payload shape remains owned by `internal/api`; analytics read models are owned by `internal/repository`.
 - Key/model/time-bucket statistics should use SQL aggregation first; in-memory processing should only shape bounded result sets for the frontend.
