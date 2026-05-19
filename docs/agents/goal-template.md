@@ -74,7 +74,9 @@ Stop before implementation if any requirement fails:
    - `AGENTS.md`
    - `CLAUDE.md`
    - `CONTEXT.md`
-   - `CONTEXT-MAP.md`
+   - `docs/project/contract.md`
+   - `docs/project/layout.md`
+   - `CONTEXT-MAP.md` if present; this repository does not require it as a startup blocker
    - relevant docs and ADR files
 
 ## Planning Phase

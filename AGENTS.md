@@ -23,6 +23,8 @@
 
 ## Agent skills
 
+Before scoped ADR or design docs, read `docs/project/contract.md` for the repository-wide project contract and `docs/project/layout.md` for current ownership boundaries.
+
 ### Issue tracker
 
 Issues and PRDs are tracked in GitHub Issues for `evenluo/cpa-usage`. See `docs/agents/issue-tracker.md`.
@@ -33,4 +35,4 @@ The repository uses the default mattpocock/skills triage label vocabulary. See `
 
 ### Domain docs
 
-This is a single-context repo with root `CONTEXT.md` and architecture decisions in `docs/adr/`. See `docs/agents/domain.md`.
+This is a single-context repo with root `CONTEXT.md`, architecture decisions in `docs/adr/`, and project-level SoT docs in `docs/project/`. See `docs/agents/domain.md`.
