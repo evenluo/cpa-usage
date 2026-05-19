@@ -11,5 +11,11 @@ export function useEvents(range: string = "24h", pageSize: number = 20, provider
     queryFn: () =>
       apiFetch<UsageEventsPage>(`/usage/events?${params.toString()}`),
     staleTime: 30_000,
+    refetchInterval: () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return false
+      }
+      return 60_000
+    },
   })
 }
