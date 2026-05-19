@@ -44,7 +44,7 @@ export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
                 {row.identity}
               </p>
             </div>
-            <div className="w-full text-left sm:min-w-[156px] sm:text-right">
+            <div className="w-full text-left sm:w-auto sm:min-w-[156px] sm:text-right">
               <div className="flex flex-wrap items-baseline gap-2 sm:justify-end">
                 <span className="text-sm font-semibold">
                   {row.cost_available ? formatCost(row.total_cost) : "Cost n/a"}
