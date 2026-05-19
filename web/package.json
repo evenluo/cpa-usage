@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e:mobile": "playwright test"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.1",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.60.0",
     "@tanstack/router-devtools": "^1.58.0",
     "@tanstack/router-plugin": "^1.58.0",
     "@testing-library/jest-dom": "^6.9.1",

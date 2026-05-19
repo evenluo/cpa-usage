@@ -1,6 +1,6 @@
 WEB_DIR := ./web
 
-.PHONY: dev-backend dev-frontend test-backend test-frontend fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose
+.PHONY: dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose
 
 dev-backend:
 	go run ./cmd/server/main.go --env .env
@@ -18,6 +18,17 @@ test-backend: ensure-frontend-embed-dir
 test-frontend:
 	npm --prefix $(WEB_DIR) run test
 	$(MAKE) typecheck-frontend
+
+install-playwright:
+	@if [ "$$(uname)" = "Linux" ]; then \
+		npm --prefix $(WEB_DIR) exec playwright install --with-deps chromium; \
+	else \
+		npm --prefix $(WEB_DIR) exec playwright install chromium; \
+	fi
+
+test-frontend-mobile: build-frontend
+	$(MAKE) install-playwright
+	npm --prefix $(WEB_DIR) run test:e2e:mobile
 
 fmt-backend:
 	go fmt ./cmd/... ./internal/...
@@ -47,7 +58,7 @@ verify-frontend:
 	npm --prefix $(WEB_DIR) ci
 	$(MAKE) lint-frontend
 	$(MAKE) test-frontend
-	$(MAKE) build-frontend
+	$(MAKE) test-frontend-mobile
 
 verify-docker:
 	docker build -t cpa-usage:ci .
