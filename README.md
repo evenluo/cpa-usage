@@ -34,6 +34,28 @@ make dev-frontend
 
 The Go server serves the built frontend assets from `web/dist` when `npm --prefix ./web run build` has been run.
 
+## Deployment
+
+Production images are published as immutable GHCR version tags. Do not deploy `latest`.
+
+For Dokploy, this repository now owns only the independent `cpa-usage` Compose app. The release workflow renders `deploy/dokploy/cpa-usage.compose.yml`, updates the Dokploy app referenced by `DOKPLOY_CPA_USAGE_COMPOSE_ID`, and deploys that app only. Adjacent CPA infrastructure such as the root CPA service, its Postgres database, and other proxy services is outside the release blast radius.
+
+Deployment docs:
+
+- `docs/deploy/dokploy-release.md`: Dokploy release chain, required GitHub variables, required Dokploy environment, and one-time split migration.
+- `docs/deploy/self-hosted-cutover-runbook.md`: generic self-hosted cutover flow.
+- `docs/deploy/self-hosted-shared-login.md`: optional same-origin login sharing.
+
+For Dokploy, set environment-specific values in Dokploy, not in git:
+
+```dotenv
+PUBLIC_HOST=<your-cpa-host>
+MANAGEMENT_PASSWORD=<existing CPA management password>
+CPA_USAGE_LOGIN_PASSWORD=<usage dashboard login password>
+AUTH_SESSION_SECRET=<random secret with at least 32 characters>
+AUTH_SESSION_COOKIE_DOMAIN=<your-cpa-host>
+```
+
 Common backend targets:
 
 ```bash

@@ -35,23 +35,23 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=dokploy-network
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.rule=Host(`${PUBLIC_HOST:-example.com}`)
+      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
       - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.entrypoints=web
       - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.middlewares=redirect-to-https@file
       - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.service=cpa-cliproxyapi-hazmcp-6-web
       - traefik.http.services.cpa-cliproxyapi-hazmcp-6-web.loadbalancer.server.port=8317
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.rule=Host(`${PUBLIC_HOST:-example.com}`)
+      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
       - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.entrypoints=websecure
       - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.service=cpa-cliproxyapi-hazmcp-6-websecure
       - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.tls.certresolver=letsencrypt
       - traefik.http.services.cpa-cliproxyapi-hazmcp-6-websecure.loadbalancer.server.port=8317
-      - traefik.http.routers.cliproxyapi-web.rule=Host(`${PUBLIC_HOST:-example.com}`)
+      - traefik.http.routers.cliproxyapi-web.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
       - traefik.http.routers.cliproxyapi-web.entrypoints=web
       - traefik.http.routers.cliproxyapi-web.priority=10
       - traefik.http.routers.cliproxyapi-web.middlewares=redirect-to-https@file
       - traefik.http.routers.cliproxyapi-web.service=cliproxyapi-web
       - traefik.http.services.cliproxyapi-web.loadbalancer.server.port=8317
-      - traefik.http.routers.cliproxyapi-websecure.rule=Host(`${PUBLIC_HOST:-example.com}`)
+      - traefik.http.routers.cliproxyapi-websecure.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
       - traefik.http.routers.cliproxyapi-websecure.entrypoints=websecure
       - traefik.http.routers.cliproxyapi-websecure.priority=10
       - traefik.http.routers.cliproxyapi-websecure.service=cliproxyapi-websecure

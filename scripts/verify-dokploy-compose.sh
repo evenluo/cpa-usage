@@ -36,11 +36,13 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 env \
+  "PUBLIC_HOST=example.com" \
   "MANAGEMENT_PASSWORD=example-management-password" \
   "CPA_USAGE_LOGIN_PASSWORD=example-login-password" \
   docker compose -f "$compose_file" config >/dev/null
 
 services="$(env \
+  "PUBLIC_HOST=example.com" \
   "MANAGEMENT_PASSWORD=example-management-password" \
   "CPA_USAGE_LOGIN_PASSWORD=example-login-password" \
   docker compose -f "$compose_file" config --services)"

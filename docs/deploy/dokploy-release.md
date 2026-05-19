@@ -21,6 +21,7 @@ The production template contains only the `cpa-usage` service:
 - internal CPA address: `http://cliproxyapi:8317`
 - Redis queue address: `cliproxyapi:8317`
 - no `postgres` or `cliproxyapi` services, and no `cpa-usage-keeper` or `KEEPER_LOGIN_PASSWORD`
+- no hard-coded public host; `PUBLIC_HOST` must be supplied by the Dokploy environment
 
 `deploy/dokploy/cpa-cliproxyapi.compose.yml` is kept only for the one-time split migration of the source Dokploy app. It contains `postgres` and `cliproxyapi` without the `cpa-usage` service, usage route labels, or `cpa-usage-data` volume declaration.
 
@@ -54,11 +55,14 @@ The workflow is `.github/workflows/release.yml` and runs on tags matching `v*.*.
 The Dokploy Compose environment must provide the runtime values referenced by the template:
 
 ```dotenv
+PUBLIC_HOST=<production CPA host>
 MANAGEMENT_PASSWORD=<existing CPA management password>
 CPA_USAGE_LOGIN_PASSWORD=<usage dashboard login password>
+AUTH_SESSION_SECRET=<random secret with at least 32 characters>
+AUTH_SESSION_COOKIE_DOMAIN=<production CPA host>
 ```
 
-The template defaults the current Dokploy runtime facts: `example.com`, `dokploy-network`, `cpa-cliproxyapi-hazmcp_cliproxyapi-internal`, and `cpa-cliproxyapi-hazmcp_cpa-usage-data`. Override these only when the Dokploy runtime topology changes.
+The template defaults the current Dokploy runtime facts that are not personal hostnames: `dokploy-network`, `cpa-cliproxyapi-hazmcp_cliproxyapi-internal`, and `cpa-cliproxyapi-hazmcp_cpa-usage-data`. Override these only when the Dokploy runtime topology changes.
 
 The release script migrates `KEEPER_LOGIN_PASSWORD` to `CPA_USAGE_LOGIN_PASSWORD` once through `compose.saveEnvironment`, then removes the old key from the Dokploy env text. Runtime auth only reads `CPA_USAGE_LOGIN_PASSWORD`.
 
@@ -84,7 +88,7 @@ The migration script:
 
 The script does not deploy the source app. For cutover, back up `cpa-cliproxyapi-hazmcp_cpa-usage-data`, pre-pull `ghcr.io/evenluo/cpa-usage:v0.1.2`, stop and remove `cpa-cliproxyapi-hazmcp-cpa-usage-1`, then deploy the new `cpa-usage` app.
 
-Cutover verification should confirm only one `cpa-usage` container is running, `cliproxyapi` and `postgres` kept their original `Created` / `StartedAt` timestamps, `https://example.com/` stays healthy, `https://example.com/usage/healthz` and `https://example.com/usage/` return 200, and `scripts/smoke-cpa-usage.sh` passes.
+Cutover verification should confirm only one `cpa-usage` container is running, `cliproxyapi` and `postgres` kept their original `Created` / `StartedAt` timestamps, `https://<production-host>/` stays healthy, `https://<production-host>/usage/healthz` and `https://<production-host>/usage/` return 200, and `scripts/smoke-cpa-usage.sh` passes.
 
 ## Local Verification
 
