@@ -23,7 +23,7 @@ export function Sidebar() {
   const [hovered, setHovered] = useState<string | null>(null)
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-16 flex-col items-center border-r border-border bg-card py-4 transition-all duration-300">
+    <aside aria-label="Desktop navigation" className="fixed left-0 top-0 z-40 hidden h-screen w-16 flex-col items-center border-r border-border bg-card py-4 transition-all duration-300 md:flex">
       {/* Logo */}
       <div className="mb-6 flex h-9 w-9 items-center justify-center rounded-lg bg-terracotta-500 text-white">
         <BarChart3 className="h-5 w-5" />
@@ -42,6 +42,7 @@ export function Sidebar() {
             >
               <Link
                 to={item.href}
+                aria-label={item.label}
                 className={cn(
                   "flex h-10 w-10 items-center justify-center rounded-lg transition-colors duration-200",
                   isActive

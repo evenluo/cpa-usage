@@ -10,7 +10,7 @@ export default function App({ children }: { children: ReactNode }) {
       <ToastProvider>
         <div className="min-h-screen bg-background">
           <Sidebar />
-          <main className="ml-0 min-h-screen p-4 pb-20 md:ml-16 md:p-6 md:pb-6 lg:p-8">
+          <main className="ml-0 min-h-screen p-4 pb-[calc(5rem+env(safe-area-inset-bottom))] md:ml-16 md:p-6 md:pb-6 lg:p-8">
             {children}
           </main>
           <MobileNav />

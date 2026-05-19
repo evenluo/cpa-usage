@@ -155,13 +155,13 @@ function ReferencePage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+        <CardHeader className="flex flex-col items-start justify-between gap-4 md:flex-row md:flex-wrap">
           <div>
             <CardTitle>Key Aliases</CardTitle>
             <CardDescription>{keyAliasScopeDescription(keyAliasScope)}</CardDescription>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <div className="flex items-center rounded-lg border border-border bg-card p-1">
+          <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-wrap md:items-center md:justify-end">
+            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
               {KEY_ALIAS_SCOPES.map((item) => (
                 <button
                   key={item.value}
@@ -172,7 +172,7 @@ function ReferencePage() {
                   aria-label={`Key alias scope: ${item.label}`}
                   aria-pressed={keyAliasScope === item.value}
                   className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                     keyAliasScope === item.value
                       ? "bg-terracotta-500 text-white"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -182,14 +182,14 @@ function ReferencePage() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+            <div className="flex w-full items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 md:w-auto">
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
                 name="key-alias-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search alias or key..."
-                className="min-w-[200px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground md:min-w-[200px]"
               />
             </div>
           </div>
@@ -213,7 +213,7 @@ function ReferencePage() {
                 return (
                   <div
                     key={key.id}
-                    className="grid items-center gap-3 rounded-lg border border-border p-3 sm:grid-cols-[1fr_120px_130px_100px]"
+                    className="grid items-center gap-3 rounded-lg border border-border p-3 md:grid-cols-[1fr_120px_130px_100px]"
                   >
                     <div className="min-w-0">
                       {editing ? (
@@ -253,15 +253,18 @@ function ReferencePage() {
                       {editing ? (
                         <>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void saveEdit(key)}>
+                            <span className="sr-only">Save alias for {label}</span>
                             <Check className="h-4 w-4" />
                           </Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingId(null)}>
+                            <span className="sr-only">Cancel alias edit for {label}</span>
                             <X className="h-4 w-4" />
                           </Button>
                         </>
                       ) : (
                         <>
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEdit(key)}>
+                            <span className="sr-only">Edit alias for {label}</span>
                             <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
@@ -271,6 +274,7 @@ function ReferencePage() {
                             disabled={!key.alias}
                             onClick={() => void clearEdit(key)}
                           >
+                            <span className="sr-only">Clear alias for {label}</span>
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </>
@@ -307,7 +311,7 @@ function ReferencePage() {
                 return (
                   <div
                     key={model}
-                    className="grid items-end gap-3 rounded-lg border border-border p-3 sm:grid-cols-[1fr_120px_120px_120px_auto]"
+                    className="grid items-end gap-3 rounded-lg border border-border p-3 md:grid-cols-[1fr_120px_120px_120px_auto]"
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{model}</p>

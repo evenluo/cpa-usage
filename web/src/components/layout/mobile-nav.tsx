@@ -17,7 +17,7 @@ export function MobileNav() {
   const currentPath = router.state.location.pathname
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80 md:hidden">
+    <nav aria-label="Mobile navigation" className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-card/80 md:hidden">
       <div className="flex h-16 items-center justify-around px-2">
         {navItems.map((item) => {
           const isActive = currentPath === item.href
@@ -25,6 +25,7 @@ export function MobileNav() {
             <Link
               key={item.href}
               to={item.href}
+              aria-label={item.label}
               className={cn(
                 "flex flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors",
                 isActive

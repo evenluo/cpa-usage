@@ -75,9 +75,9 @@ function DashboardPage() {
             Dashboard
           </h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           {/* Time Range */}
-          <div className="flex items-center rounded-lg border border-border bg-card p-1">
+          <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
             {TIME_RANGES.map((tr) => (
               <button
                 key={tr.value}
@@ -86,7 +86,7 @@ function DashboardPage() {
                   setGranularity(null)
                 }}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                  "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                   range === tr.value
                     ? "bg-terracotta-500 text-white"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -98,11 +98,11 @@ function DashboardPage() {
           </div>
 
           {/* Granularity Toggle */}
-          <div className="flex items-center rounded-lg border border-border bg-card p-1">
+          <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
             <button
               onClick={() => setGranularity("hour")}
               className={cn(
-                "flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                "flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                 g === "hour"
                   ? "bg-terracotta-500 text-white"
                   : "text-muted-foreground hover:bg-muted"
@@ -114,7 +114,7 @@ function DashboardPage() {
             <button
               onClick={() => setGranularity("day")}
               className={cn(
-                "flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                "flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                 g === "day"
                   ? "bg-terracotta-500 text-white"
                   : "text-muted-foreground hover:bg-muted"
@@ -222,7 +222,7 @@ function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
         {/* Trend Chart */}
         <Card>
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4">
+          <CardHeader className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:flex-wrap">
             <div>
               <CardTitle className="flex items-center gap-2">
                 Trend Workbench
@@ -234,7 +234,7 @@ function DashboardPage() {
                 {trendView === "tokens" && "Total, input, output, reasoning, and cached tokens"}
               </CardDescription>
             </div>
-            <div className="flex items-center rounded-lg border border-border bg-card p-1">
+            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
               {[
                 { value: "cost-token", label: "Cost" },
                 { value: "requests-token", label: "Requests" },
@@ -246,7 +246,7 @@ function DashboardPage() {
                   aria-label={`Trend view: ${item.label}`}
                   aria-pressed={trendView === item.value}
                   className={cn(
-                    "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                    "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                     trendView === item.value
                       ? "bg-terracotta-500 text-white"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -274,7 +274,7 @@ function DashboardPage() {
 
         {/* Key Leaderboard */}
         <Card>
-          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 pb-2">
+          <CardHeader className="flex flex-col items-start justify-between gap-3 pb-2 sm:flex-row sm:flex-wrap">
             <div>
               <CardTitle className="flex items-center gap-2">
                 Key Leaderboard
@@ -284,8 +284,8 @@ function DashboardPage() {
                 {leaderboardScope === "api-key" ? "Top raw API keys" : "Top account keys"}
               </CardDescription>
             </div>
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <div className="flex items-center rounded-lg border border-border bg-card p-1">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+              <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
                 {[
                   { value: "api-key", label: "API Keys" },
                   { value: "account", label: "Accounts" },
@@ -296,7 +296,7 @@ function DashboardPage() {
                     aria-label={`Leaderboard scope: ${item.label}`}
                     aria-pressed={leaderboardScope === item.value}
                     className={cn(
-                      "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                      "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                       leaderboardScope === item.value
                         ? "bg-terracotta-500 text-white"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -335,7 +335,7 @@ function DashboardPage() {
 
       {/* Activity Heatmap — 30d fixed */}
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between pb-2">
+        <CardHeader className="flex flex-col items-start justify-between gap-3 pb-2 sm:flex-row">
           <div>
             <CardTitle className="flex items-center gap-2">
               Activity Heatmap
@@ -360,7 +360,7 @@ function DashboardPage() {
 
       {/* Request Health — 24h fixed */}
       <Card>
-        <CardHeader className="flex flex-row items-start justify-between gap-4 pb-2">
+        <CardHeader className="flex flex-col items-start justify-between gap-4 pb-2 sm:flex-row">
           <div>
             <CardTitle className="flex items-center gap-2">
               Request Health

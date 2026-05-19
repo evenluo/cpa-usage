@@ -34,7 +34,7 @@ export function KeyLeaderboard({ data, identityFallback = false }: KeyLeaderboar
         return (
           <div
             key={row.identity}
-            className="flex items-center gap-3 rounded-lg border border-border px-2.5 py-2"
+            className="flex flex-col items-start gap-2 rounded-lg border border-border px-2.5 py-2 sm:flex-row sm:items-center sm:gap-3"
           >
             <span className="w-5 text-xs font-semibold text-muted-foreground">
               #{i + 1}
@@ -45,8 +45,8 @@ export function KeyLeaderboard({ data, identityFallback = false }: KeyLeaderboar
                 {row.identity}
               </p>
             </div>
-            <div className="min-w-[156px] text-right">
-              <div className="flex items-baseline justify-end gap-2">
+            <div className="w-full text-left sm:min-w-[156px] sm:text-right">
+              <div className="flex flex-wrap items-baseline gap-2 sm:justify-end">
                 <span className="text-sm font-semibold">
                   {row.cost_available ? formatCost(row.total_cost) : "Cost n/a"}
                 </span>
