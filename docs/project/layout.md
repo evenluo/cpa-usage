@@ -57,6 +57,7 @@ Current SoT areas:
 - `docs/project/`: repository-wide project contract and current layout ownership.
 - `docs/deploy/`: deployment runbooks and current operational procedures.
 - `docs/agents/`: AI workflow, issue tracker, and agent documentation consumption rules.
+- `docs/assets/`: public documentation image assets, including README and GitHub homepage screenshots.
 
 Historical or scoped evidence areas:
 
@@ -65,4 +66,3 @@ Historical or scoped evidence areas:
 - `docs/design/assets/`: supporting design images and artifacts.
 
 When current behavior conflicts with older evidence, update the current SoT first and preserve historical documents as dated context unless the task explicitly asks to rewrite them.
-
