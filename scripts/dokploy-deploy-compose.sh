@@ -11,7 +11,7 @@ require_env() {
 
 require_env DOKPLOY_URL
 require_env DOKPLOY_API_KEY
-require_env DOKPLOY_COMPOSE_ID
+require_env DOKPLOY_CPA_USAGE_COMPOSE_ID
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required" >&2
@@ -22,7 +22,8 @@ base_url="${DOKPLOY_URL%/}"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-compose_file="$tmpdir/cpa-cliproxyapi.compose.yml"
+compose_id="$DOKPLOY_CPA_USAGE_COMPOSE_ID"
+compose_file="$tmpdir/cpa-usage.compose.yml"
 scripts/render-dokploy-compose.sh "${CPA_USAGE_VERSION:-}" "$compose_file"
 scripts/verify-dokploy-compose.sh "$compose_file"
 
@@ -84,13 +85,13 @@ migrate_env_file() {
 }
 
 current_json="$tmpdir/compose-one.json"
-api_get "compose.one?composeId=$DOKPLOY_COMPOSE_ID" > "$current_json"
+api_get "compose.one?composeId=$compose_id" > "$current_json"
 
 jq -r '.env // ""' "$current_json" > "$tmpdir/current.env"
 migrate_env_file "$tmpdir/current.env" "$tmpdir/migrated.env"
 if ! cmp -s "$tmpdir/current.env" "$tmpdir/migrated.env"; then
   jq -n \
-    --arg composeId "$DOKPLOY_COMPOSE_ID" \
+    --arg composeId "$compose_id" \
     --rawfile env "$tmpdir/migrated.env" \
     '{composeId: $composeId, env: $env}' > "$tmpdir/save-env.json"
   api_post "compose.saveEnvironment" "$tmpdir/save-env.json" >/dev/null
@@ -100,7 +101,7 @@ else
 fi
 
 jq -n \
-  --arg composeId "$DOKPLOY_COMPOSE_ID" \
+  --arg composeId "$compose_id" \
   --rawfile composeFile "$compose_file" \
   '{
     composeId: $composeId,
@@ -111,9 +112,9 @@ jq -n \
 api_post "compose.update" "$tmpdir/update-compose.json" >/dev/null
 echo "OK updated Dokploy compose"
 
-api_get "compose.getConvertedCompose?composeId=$DOKPLOY_COMPOSE_ID" >/dev/null
+api_get "compose.getConvertedCompose?composeId=$compose_id" >/dev/null
 echo "OK Dokploy converted compose"
 
-jq -n --arg composeId "$DOKPLOY_COMPOSE_ID" '{composeId: $composeId}' > "$tmpdir/deploy.json"
+jq -n --arg composeId "$compose_id" '{composeId: $composeId}' > "$tmpdir/deploy.json"
 api_post "compose.deploy" "$tmpdir/deploy.json" >/dev/null
 echo "OK triggered Dokploy deployment"

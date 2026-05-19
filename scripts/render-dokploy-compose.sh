@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-template="${DOKPLOY_COMPOSE_TEMPLATE:-deploy/dokploy/cpa-cliproxyapi.compose.yml}"
+template="${DOKPLOY_COMPOSE_TEMPLATE:-deploy/dokploy/cpa-usage.compose.yml}"
 version_or_image="${1:-${CPA_USAGE_VERSION:-}}"
 output="${2:-}"
 

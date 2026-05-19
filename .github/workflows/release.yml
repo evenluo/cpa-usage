@@ -13,7 +13,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     env:
-      DOKPLOY_COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
+      DOKPLOY_CPA_USAGE_COMPOSE_ID: ${{ vars.DOKPLOY_CPA_USAGE_COMPOSE_ID }}
       DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
       DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
     steps:
@@ -44,7 +44,7 @@ jobs:
       - name: Validate Dokploy configuration
         run: |
           set -euo pipefail
-          for name in DOKPLOY_COMPOSE_ID DOKPLOY_URL DOKPLOY_API_KEY; do
+          for name in DOKPLOY_CPA_USAGE_COMPOSE_ID DOKPLOY_URL DOKPLOY_API_KEY; do
             if [[ -z "${!name:-}" ]]; then
               echo "$name is required" >&2
               exit 1
@@ -94,7 +94,7 @@ jobs:
           CPA_USAGE_IMAGE: ${{ steps.image.outputs.name }}:${{ github.ref_name }}
         run: |
           set -euo pipefail
-          rendered="$RUNNER_TEMP/cpa-cliproxyapi.compose.yml"
+          rendered="$RUNNER_TEMP/cpa-usage.compose.yml"
           scripts/render-dokploy-compose.sh "$GITHUB_REF_NAME" "$rendered"
           scripts/verify-dokploy-compose.sh "$rendered"
 
