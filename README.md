@@ -5,17 +5,22 @@
 [![License: MIT](https://img.shields.io/github/license/evenluo/cpa-usage)](LICENSE)
 [![Security](https://img.shields.io/badge/security-policy-2ea44f)](SECURITY.md)
 
-Self-hosted usage intelligence dashboard for CPA usage data: cost, token volume, request health, key aliases, and pricing reference data.
+Self-hosted usage intelligence dashboard for CPA usage data, with shared login for `/usage` deployments, human-readable key aliases, cost, token volume, request health, and pricing reference data.
 
 ![Usage Intelligence dashboard screenshot](docs/assets/github-homepage/usage-intelligence-dashboard.png)
 
 CPA Usage turns CPA usage data into a human-readable operating workspace without becoming a general CPA administration console. It keeps the stable CPA usage keeper backend foundation for queue consumption, SQLite persistence, migrations, pricing semantics, auth/session, backup, update checks, and Docker-friendly deployment, then adds a React analytics frontend for people who need to read usage patterns quickly.
 
+## Highlights
+
+- **Shared self-hosted login**: CPA Usage can share auth/session state with the CPA root service when deployed under `/usage`, so operators do not need a separate login loop for the usage dashboard.
+- **Human-readable key aliases**: operators can label raw CPA keys with Key Aliases, read dashboards by those aliases, and still keep the masked CPA key available for traceability.
+
 ## What It Does
 
 - **Usage Intelligence**: selected-window KPIs, hourly or daily trends, provider filters, key leaderboards, model distribution, activity heatmap, request health, and recent request evidence.
-- **Reference Data**: human-readable Key Aliases and Cost Rates that make raw CPA usage data understandable.
-- **Operations Console**: lightweight sync, runtime, access, and logout state for the usage dashboard.
+- **Reference Data**: human-readable Key Aliases and Cost Rates that make raw CPA usage data understandable without writing alias data back to CPA.
+- **Operations Console**: lightweight sync, runtime, shared-login access, and logout state for the usage dashboard.
 - **Self-hosted persistence**: local SQLite data, migrations, backups, and logs under the configured work directory.
 - **Docker-friendly release path**: immutable GHCR version tags and deployment docs for Dokploy or other self-hosted environments.
 
