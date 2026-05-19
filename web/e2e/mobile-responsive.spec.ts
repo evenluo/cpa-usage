@@ -18,13 +18,13 @@ const usageOverviewPayload = {
     total_failure: 1,
     success_rate: 94.7,
     rows: 1,
-    columns: 8,
+    columns: 480,
     bucket_seconds: 180,
     window_start: "2026-05-18T00:00:00Z",
     window_end: "2026-05-19T00:00:00Z",
-    block_details: Array.from({ length: 8 }, (_, index) => ({
-      start_time: `2026-05-18T0${index}:00:00Z`,
-      end_time: `2026-05-18T0${index}:03:00Z`,
+    block_details: Array.from({ length: 480 }, (_, index) => ({
+      start_time: new Date(Date.UTC(2026, 4, 18, 0, index * 3)).toISOString(),
+      end_time: new Date(Date.UTC(2026, 4, 18, 0, index * 3 + 3)).toISOString(),
       success: index === 2 ? 0 : 3,
       failure: index === 2 ? 1 : 0,
       rate: index === 2 ? 0 : 1,
@@ -36,14 +36,14 @@ const usageEventsPayload = {
   events: Array.from({ length: 6 }, (_, index) => ({
     id: index + 1,
     timestamp: `2026-05-18T09:0${index}:00Z`,
-    model: "priced-model",
-    source: "sk-l************alue",
-    auth_index: "sk-l************alue",
-    api_key_alias: "Agent API Key",
-    api_key_display: "sk-l************alue",
+    model: "mobile-overflow-regression-model-with-extra-long-provider-suffix",
+    source: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
+    auth_index: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
+    api_key_alias: "Agent API Key With A Very Long Mobile Label",
+    api_key_display: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
     failed: index === 2,
     latency_ms: 240 + index,
-    tokens: { total_tokens: 1700 + index },
+    tokens: { total_tokens: 1_700_000_000 + index },
   })),
 }
 
@@ -118,6 +118,7 @@ test("mobile uses bottom navigation without the fixed desktop sidebar", async ({
   if (usesMobileNav) {
     await expect(page.getByLabel("Desktop navigation")).toBeHidden()
     await expect(page.getByLabel("Mobile navigation")).toBeVisible()
+    await expectMobileNavigationPinnedToViewportBottom(page)
   } else {
     await expect(page.getByLabel("Desktop navigation")).toBeVisible()
     await expect(page.getByLabel("Mobile navigation")).toBeHidden()
@@ -263,6 +264,21 @@ async function expectNoDocumentOverflow(page: Page) {
     return root.scrollWidth - root.clientWidth
   })
   expect(overflow).toBeLessThanOrEqual(1)
+}
+
+async function expectMobileNavigationPinnedToViewportBottom(page: Page) {
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
+
+  const navPosition = await page.getByLabel("Mobile navigation").evaluate((node) => {
+    const rect = node.getBoundingClientRect()
+    return {
+      bottomGap: Math.abs(window.innerHeight - rect.bottom),
+      position: window.getComputedStyle(node).position,
+    }
+  })
+
+  expect(navPosition.position).toBe("fixed")
+  expect(navPosition.bottomGap).toBeLessThanOrEqual(1)
 }
 
 async function expectFixedOverviewCardHeights(page: Page) {

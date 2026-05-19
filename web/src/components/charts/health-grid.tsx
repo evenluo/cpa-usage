@@ -110,10 +110,10 @@ export function HealthGrid({ data }: HealthGridProps) {
   }
 
   return (
-    <div ref={containerRef} className="space-y-3">
+    <div ref={containerRef} className="min-w-0 space-y-3">
       {/* Overall stats */}
-      <div className="flex items-center justify-between text-xs">
-        <div className="flex items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs">
+        <div className="flex min-w-0 flex-wrap items-center gap-3">
           <span className="text-muted-foreground">
             {(data.total_success + data.total_failure).toLocaleString("en")} requests
           </span>
@@ -127,8 +127,8 @@ export function HealthGrid({ data }: HealthGridProps) {
       </div>
 
       {/* Grid */}
-      <div className="overflow-x-auto pb-1">
-        <div className="space-y-[2px]">
+      <div className="min-w-0 overflow-hidden pb-1">
+        <div className="min-w-0 space-y-[2px]">
           {gridRows.map((rowBlocks, rowIdx) => (
             <div
               key={`row-${rowIdx}`}

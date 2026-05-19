@@ -359,8 +359,8 @@ function DashboardPage() {
       </Card>
 
       {/* Request Health + Evidence — 24h fixed */}
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
-        <Card className="flex h-full flex-col xl:h-[300px]">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
+        <Card className="flex h-full min-w-0 flex-col overflow-hidden xl:h-[300px]">
           <CardHeader className="flex flex-col items-start justify-between gap-4 pb-2 sm:flex-row">
             <div>
               <CardTitle className="flex items-center gap-2">
@@ -371,7 +371,7 @@ function DashboardPage() {
             </div>
             <Badge variant="green">24h fixed</Badge>
           </CardHeader>
-          <CardContent className="min-h-0 flex-1">
+          <CardContent className="min-h-0 min-w-0 flex-1">
             {isHealthLoading ? (
               <Skeleton className="h-[180px] w-full" />
             ) : serviceHealth ? (

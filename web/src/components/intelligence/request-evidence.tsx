@@ -9,15 +9,15 @@ export function RequestEvidence({ provider }: { provider: string }) {
   const events = data?.events.slice(0, 5) ?? []
 
   return (
-    <Card className="flex h-full flex-col xl:h-[300px]">
+    <Card className="flex h-full min-w-0 flex-col overflow-hidden xl:h-[300px]">
       <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 pb-3">
-        <div>
+        <div className="min-w-0">
           <CardTitle className="text-base">Request Evidence</CardTitle>
           <CardDescription>Recent samples behind health</CardDescription>
         </div>
-        <Badge variant="outline">Last 24h</Badge>
+        <Badge variant="outline" className="shrink-0">Last 24h</Badge>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 p-4 pt-0">
+      <CardContent className="min-h-0 min-w-0 flex-1 p-4 pt-0">
         {isLoading ? (
           <div className="h-full space-y-2 overflow-y-auto pr-1">
             {Array.from({ length: 5 }).map((_, index) => (
@@ -33,7 +33,7 @@ export function RequestEvidence({ provider }: { provider: string }) {
             No recent request evidence
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             {events.map((event) => {
               const keyLabel =
                 event.api_key_alias || event.api_key_display || event.source || event.auth_index || "No key trace"
@@ -57,13 +57,13 @@ export function RequestEvidence({ provider }: { provider: string }) {
                       {event.failed ? "Failed" : "Success"}
                     </Badge>
                   </div>
-                  <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-xs text-muted-foreground">
+                  <div className="mt-2 grid min-w-0 grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:gap-2">
                     <span className="truncate">{event.model || "Unknown model"}</span>
-                    <span>
+                    <span className="min-w-0 truncate">
                       {formatCompact(event.tokens?.total_tokens ?? 0, 2)} tokens
                       {event.latency_ms > 0 ? ` · ${event.latency_ms}ms` : ""}
                     </span>
-                    <span className="truncate text-right">{formatDate(event.timestamp)}</span>
+                    <span className="min-w-0 truncate sm:text-right">{formatDate(event.timestamp)}</span>
                   </div>
                 </div>
               )
