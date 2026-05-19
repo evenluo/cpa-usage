@@ -66,7 +66,7 @@ function DashboardPage() {
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
       {/* Header */}
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <header>
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Usage Intelligence
@@ -75,6 +75,46 @@ function DashboardPage() {
             Dashboard
           </h1>
         </div>
+      </header>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {/* Provider Filter */}
+        {providerOptions.length > 0 ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <button
+              onClick={() => setProvider("")}
+              className={cn(
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                provider === ""
+                  ? "bg-foreground text-background"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              )}
+            >
+              All
+            </button>
+            {providerOptions.map((opt) => (
+              <button
+                key={opt.provider}
+                onClick={() => setProvider(opt.provider)}
+                className={cn(
+                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  provider === opt.provider
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                )}
+              >
+                {opt.provider}
+                <span className="ml-1 text-[10px] opacity-60">
+                  {formatCompact(opt.request_count, 0)}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div />
+        )}
+
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           {/* Time Range */}
           <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
@@ -131,42 +171,7 @@ function DashboardPage() {
             Applies to KPIs, Trend & Leaderboard
           </span>
         </div>
-      </header>
-
-      {/* Provider Filter */}
-      {providerOptions.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5 text-muted-foreground" />
-          <button
-            onClick={() => setProvider("")}
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-              provider === ""
-                ? "bg-foreground text-background"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            )}
-          >
-            All
-          </button>
-          {providerOptions.map((opt) => (
-            <button
-              key={opt.provider}
-              onClick={() => setProvider(opt.provider)}
-              className={cn(
-                "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                provider === opt.provider
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              )}
-            >
-              {opt.provider}
-              <span className="ml-1 text-[10px] opacity-60">
-                {formatCompact(opt.request_count, 0)}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      </div>
 
       {/* KPI Cards — 5 compact cards */}
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
