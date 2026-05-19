@@ -13,7 +13,7 @@ import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { useUsageOverview } from "@/hooks/useUsageOverview"
-import { formatCost, formatCompact, formatComparison } from "@/lib/format"
+import { formatCost, formatCompact, formatComparison, formatPercent } from "@/lib/format"
 import {
   buildUsageDashboardViewModel,
   getEffectiveGranularity,
@@ -174,6 +174,7 @@ function DashboardPage() {
           label="Cost"
           rawValue={summary?.total_cost}
           formatter={formatCost}
+          valueDecimals={4}
           caption={summary?.cost_status}
           comparison={comparison?.has_previous_period ? formatComparison(comparison.total_cost_change_pct, "%") : undefined}
           sparkline={kpiData?.cost}
@@ -201,7 +202,8 @@ function DashboardPage() {
         <KpiCard
           label="Success"
           rawValue={summary?.success_rate}
-          formatter={(n) => `${n.toFixed(1)}%`}
+          formatter={formatPercent}
+          valueDecimals={1}
           caption={`${summary?.failure_count ?? 0} failed`}
           comparison={comparison?.has_previous_period ? formatComparison(comparison.success_rate_change_pp, "pp") : undefined}
           sparkline={kpiData?.successRate}
@@ -211,7 +213,8 @@ function DashboardPage() {
         <KpiCard
           label="Cache"
           rawValue={summary?.cache_read_share}
-          formatter={(n) => `${n.toFixed(1)}%`}
+          formatter={formatPercent}
+          valueDecimals={1}
           caption={summary?.cache_read_share_state === "available" ? "Cache Read Share" : summary?.cache_read_share_state?.replace(/_/g, " ")}
           isLoading={isLoading}
           tone="amber"
@@ -418,6 +421,7 @@ interface KpiCardProps {
   caption?: string
   comparison?: string
   sparkline?: (number | null)[]
+  valueDecimals?: number
   isLoading: boolean
   tone: "terracotta" | "blue" | "violet" | "green" | "amber"
 }
@@ -430,10 +434,10 @@ const toneStyles = {
   amber: "text-amber-700 bg-amber-50 border-amber-200",
 }
 
-function KpiCard({ label, rawValue, formatter, caption, comparison, sparkline, isLoading, tone }: KpiCardProps) {
+function KpiCard({ label, rawValue, formatter, caption, comparison, sparkline, valueDecimals = 0, isLoading, tone }: KpiCardProps) {
   const animated = useCountUp(rawValue ?? 0, {
     duration: 900,
-    decimals: formatter === formatCost ? 2 : 0,
+    decimals: valueDecimals,
     enabled: rawValue !== undefined,
   })
   const display = rawValue !== undefined && formatter ? formatter(animated) : "—"
