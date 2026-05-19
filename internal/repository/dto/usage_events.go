@@ -22,6 +22,7 @@ type UsageEventRecord struct {
 	ID              uint
 	Timestamp       time.Time
 	APIGroupKey     string
+	APIKeyIdentity  string
 	Model           string
 	AuthType        string
 	Provider        string

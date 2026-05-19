@@ -46,6 +46,7 @@ func (s usageIdentitiesStub) ListActiveUsageIdentitiesPage(_ context.Context, re
 
 type keyAliasStub struct {
 	aliases        map[service.UsageIdentityAliasKey]string
+	apiKeyAliases  map[string]string
 	apiKeyItems    []service.APIKeyAliasTarget
 	apiKeyTotal    int64
 	apiKeyPageReq  *service.ListAPIKeyAliasTargetsRequest
@@ -66,6 +67,16 @@ func (s *keyAliasStub) ListAliasesForUsageIdentities(_ context.Context, identiti
 		key := service.UsageIdentityAliasKey{AuthType: identity.AuthType, Identity: identity.Identity}
 		if alias, ok := s.aliases[key]; ok {
 			result[key] = alias
+		}
+	}
+	return result, s.err
+}
+
+func (s *keyAliasStub) ListAliasesForAPIKeyIdentities(_ context.Context, identities []string) (map[string]string, error) {
+	result := map[string]string{}
+	for _, identity := range identities {
+		if alias, ok := s.apiKeyAliases[identity]; ok {
+			result[identity] = alias
 		}
 	}
 	return result, s.err

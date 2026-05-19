@@ -115,7 +115,7 @@ func NewRouter(
 	registerUsageOverviewRoute(protected, usageProvider)
 	registerUsageAnalysisRoute(protected, usageProvider)
 	registerAnalyticsRoutes(protected, analyticsProvider)
-	registerUsageEventsRoute(protected, usageProvider, usageIdentityProvider)
+	registerUsageEventsRoute(protected, usageProvider, usageIdentityProvider, keyAliasProvider)
 	registerUsageIdentityRoutes(protected, usageIdentityProvider, keyAliasProvider)
 	registerPricingRoutes(protected, pricingProvider)
 	registerQuotaRoutes(protected, quotaProvider)

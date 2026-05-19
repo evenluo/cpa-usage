@@ -100,6 +100,7 @@ func (s *usageService) ListUsageEvents(_ context.Context, filter servicedto.Usag
 			ID:              row.ID,
 			Timestamp:       row.Timestamp,
 			APIGroupKey:     row.APIGroupKey,
+			APIKeyIdentity:  row.APIKeyIdentity,
 			Model:           row.Model,
 			AuthType:        row.AuthType,
 			Provider:        row.Provider,

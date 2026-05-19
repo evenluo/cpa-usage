@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/redact"
 	"cpa-usage/internal/repository/dto"
 	servicedto "cpa-usage/internal/service/dto"
 )
@@ -244,6 +245,40 @@ func TestUsageEventsResponseDoesNotExposeSourceKey(t *testing.T) {
 	}
 	if contains(body, `"source_key"`) {
 		t.Fatalf("expected source_key to be removed from usage event response, got %s", body)
+	}
+}
+
+func TestUsageEventsIncludesAPIKeyAliasAndMaskedKey(t *testing.T) {
+	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+		ID:             49,
+		Timestamp:      time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
+		Model:          "claude-sonnet",
+		AuthType:       "apikey",
+		Provider:       "Fallback Provider",
+		Source:         "sk-live-secret-value",
+		AuthIndex:      "provider-auth-index",
+		APIKeyIdentity: "sk-live-secret-value",
+	}}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{
+		KeyAlias: &keyAliasStub{apiKeyAliases: map[string]string{"sk-live-secret-value": "Agent API Key"}},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	if !contains(body, `"api_key_alias":"Agent API Key"`) {
+		t.Fatalf("expected api key alias in response body: %s", body)
+	}
+	if !contains(body, `"api_key_display":"`+redact.APIKeyDisplayName("sk-live-secret-value")+`"`) {
+		t.Fatalf("expected masked api key display in response body: %s", body)
+	}
+	if contains(body, `sk-live-secret-value`) {
+		t.Fatalf("expected raw api key to stay hidden, got %s", body)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/redact"
 	"cpa-usage/internal/service"
 	servicedto "cpa-usage/internal/service/dto"
 
@@ -32,17 +33,19 @@ type usageEventFilterOptionsResponse struct {
 }
 
 type usageEventPayload struct {
-	ID         uint                   `json:"id,omitempty"`
-	Timestamp  string                 `json:"timestamp"`
-	Model      string                 `json:"model"`
-	Source     string                 `json:"source"`
-	SourceRaw  string                 `json:"source_raw,omitempty"`
-	SourceType string                 `json:"source_type,omitempty"`
-	AuthIndex  string                 `json:"auth_index,omitempty"`
-	IsDelete   bool                   `json:"isDelete,omitempty"`
-	Failed     bool                   `json:"failed"`
-	LatencyMS  int64                  `json:"latency_ms"`
-	Tokens     usageEventTokenPayload `json:"tokens"`
+	ID            uint                   `json:"id,omitempty"`
+	Timestamp     string                 `json:"timestamp"`
+	Model         string                 `json:"model"`
+	Source        string                 `json:"source"`
+	SourceRaw     string                 `json:"source_raw,omitempty"`
+	SourceType    string                 `json:"source_type,omitempty"`
+	AuthIndex     string                 `json:"auth_index,omitempty"`
+	APIKeyAlias   string                 `json:"api_key_alias,omitempty"`
+	APIKeyDisplay string                 `json:"api_key_display,omitempty"`
+	IsDelete      bool                   `json:"isDelete,omitempty"`
+	Failed        bool                   `json:"failed"`
+	LatencyMS     int64                  `json:"latency_ms"`
+	Tokens        usageEventTokenPayload `json:"tokens"`
 }
 
 type usageEventTokenPayload struct {
@@ -57,6 +60,7 @@ func registerUsageEventsRoute(
 	router gin.IRoutes,
 	usageProvider service.UsageProvider,
 	usageIdentityProvider service.UsageIdentityProvider,
+	keyAliasProvider service.KeyAliasProvider,
 ) {
 	router.GET("/usage/events/filters/models", func(c *gin.Context) {
 		models, err := loadUsageEventModelFilterOptions(c, usageProvider)
@@ -104,14 +108,43 @@ func registerUsageEventsRoute(
 			return
 		}
 		resolver := newUsageIdentityResolver(identities)
+		apiKeyAliases, err := loadUsageEventAPIKeyAliases(c, keyAliasProvider, rows.Events)
+		if err != nil {
+			writeInternalError(c, "load usage event api key aliases failed", err)
+			return
+		}
 		c.JSON(http.StatusOK, usageEventsResponse{
-			Events:     buildUsageEventsPayload(rows.Events, resolver),
+			Events:     buildUsageEventsPayload(rows.Events, resolver, apiKeyAliases),
 			TotalCount: rows.TotalCount,
 			Page:       rows.Page,
 			PageSize:   rows.PageSize,
 			TotalPages: rows.TotalPages,
 		})
 	})
+}
+
+func loadUsageEventAPIKeyAliases(c *gin.Context, keyAliasProvider service.KeyAliasProvider, rows []servicedto.UsageEventRecord) (map[string]string, error) {
+	result := map[string]string{}
+	if keyAliasProvider == nil || len(rows) == 0 {
+		return result, nil
+	}
+	identities := make([]string, 0, len(rows))
+	seen := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		identity := strings.TrimSpace(row.APIKeyIdentity)
+		if identity == "" {
+			continue
+		}
+		if _, ok := seen[identity]; ok {
+			continue
+		}
+		seen[identity] = struct{}{}
+		identities = append(identities, identity)
+	}
+	if len(identities) == 0 {
+		return result, nil
+	}
+	return keyAliasProvider.ListAliasesForAPIKeyIdentities(c.Request.Context(), identities)
 }
 
 // Source 下拉提交的是 usage identity，进入仓储前转换成 auth_index 查询。
@@ -129,7 +162,7 @@ func applyUsageEventsSourceFilter(filter *servicedto.UsageFilter) error {
 }
 
 // 列表结果先按 auth_index 解析展示名，再组装前端需要的事件 payload。
-func buildUsageEventsPayload(rows []servicedto.UsageEventRecord, resolver usageIdentityResolver) []usageEventPayload {
+func buildUsageEventsPayload(rows []servicedto.UsageEventRecord, resolver usageIdentityResolver, apiKeyAliases map[string]string) []usageEventPayload {
 	if len(rows) == 0 {
 		return []usageEventPayload{}
 	}
@@ -137,16 +170,19 @@ func buildUsageEventsPayload(rows []servicedto.UsageEventRecord, resolver usageI
 	for _, row := range rows {
 		identity, matched := resolver.resolveByAuthIndex(row.AuthIndex)
 		source, isDelete := usageEventPublicSource(row, identity, matched)
+		apiKeyIdentity := strings.TrimSpace(row.APIKeyIdentity)
 		payload = append(payload, usageEventPayload{
-			ID:         row.ID,
-			Timestamp:  row.Timestamp.UTC().Format(time.RFC3339),
-			Model:      row.Model,
-			Source:     source,
-			SourceType: identity.Type,
-			AuthIndex:  row.AuthIndex,
-			IsDelete:   isDelete,
-			Failed:     row.Failed,
-			LatencyMS:  row.LatencyMS,
+			ID:            row.ID,
+			Timestamp:     row.Timestamp.UTC().Format(time.RFC3339),
+			Model:         row.Model,
+			Source:        source,
+			SourceType:    identity.Type,
+			AuthIndex:     row.AuthIndex,
+			APIKeyAlias:   strings.TrimSpace(apiKeyAliases[apiKeyIdentity]),
+			APIKeyDisplay: usageEventAPIKeyDisplay(apiKeyIdentity),
+			IsDelete:      isDelete,
+			Failed:        row.Failed,
+			LatencyMS:     row.LatencyMS,
 			Tokens: usageEventTokenPayload{
 				InputTokens:     row.InputTokens,
 				OutputTokens:    row.OutputTokens,
@@ -157,6 +193,14 @@ func buildUsageEventsPayload(rows []servicedto.UsageEventRecord, resolver usageI
 		})
 	}
 	return payload
+}
+
+func usageEventAPIKeyDisplay(identity string) string {
+	identity = strings.TrimSpace(identity)
+	if identity == "" {
+		return ""
+	}
+	return redact.APIKeyDisplayName(identity)
 }
 
 func usageEventPublicSource(row servicedto.UsageEventRecord, identity resolvedUsageIdentity, matched bool) (string, bool) {

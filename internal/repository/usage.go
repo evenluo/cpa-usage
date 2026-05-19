@@ -69,6 +69,7 @@ func ListUsageEventsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.U
 			ID:              event.ID,
 			Timestamp:       event.Timestamp.UTC(),
 			APIGroupKey:     strings.TrimSpace(event.APIGroupKey),
+			APIKeyIdentity:  usageEventAPIKeyIdentity(event),
 			Model:           strings.TrimSpace(event.Model),
 			AuthType:        strings.TrimSpace(event.AuthType),
 			Provider:        strings.TrimSpace(event.Provider),
@@ -88,6 +89,18 @@ func ListUsageEventsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.U
 		totalPages = int((totalCount + int64(pageSize) - 1) / int64(pageSize))
 	}
 	return &dto.UsageEventsPageRecord{Events: rows, Models: modelOptions, TotalCount: totalCount, Page: page, PageSize: pageSize, TotalPages: totalPages}, nil
+}
+
+func usageEventAPIKeyIdentity(event entities.UsageEvent) string {
+	if apiGroupKey := strings.TrimSpace(event.APIGroupKey); strings.HasPrefix(apiGroupKey, "sk-") {
+		return apiGroupKey
+	}
+	if strings.TrimSpace(event.AuthType) == "apikey" {
+		if source := strings.TrimSpace(event.Source); strings.HasPrefix(source, "sk-") {
+			return source
+		}
+	}
+	return ""
 }
 
 // Request Event Log Filter Options：只按时间窗口收集 model 候选值。

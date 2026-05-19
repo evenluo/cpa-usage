@@ -56,6 +56,7 @@ type ListAPIKeyAliasTargetsResponse struct {
 
 type KeyAliasProvider interface {
 	ListAliasesForUsageIdentities(context.Context, []entities.UsageIdentity) (map[UsageIdentityAliasKey]string, error)
+	ListAliasesForAPIKeyIdentities(context.Context, []string) (map[string]string, error)
 	ListAPIKeyAliasTargetsPage(context.Context, ListAPIKeyAliasTargetsRequest) (ListAPIKeyAliasTargetsResponse, error)
 	GetUsageIdentityAlias(context.Context, uint) (string, error)
 	SetUsageIdentityAlias(context.Context, uint, string) (string, error)
@@ -84,6 +85,22 @@ func (s *keyAliasService) ListAliasesForUsageIdentities(ctx context.Context, ide
 	}
 	for key, row := range aliases {
 		result[UsageIdentityAliasKey{AuthType: key.AuthType, Identity: key.Identity}] = row.Alias
+	}
+	return result, nil
+}
+
+func (s *keyAliasService) ListAliasesForAPIKeyIdentities(ctx context.Context, identities []string) (map[string]string, error) {
+	result := make(map[string]string)
+	keys := make([]repository.KeyAliasKey, 0, len(identities))
+	for _, identity := range identities {
+		keys = append(keys, repository.KeyAliasKey{AuthType: entities.UsageIdentityAuthTypeAIProvider, Identity: identity})
+	}
+	aliases, err := repository.ListKeyAliases(ctx, s.db, keys)
+	if err != nil {
+		return result, err
+	}
+	for key, row := range aliases {
+		result[key.Identity] = row.Alias
 	}
 	return result, nil
 }

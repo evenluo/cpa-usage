@@ -128,6 +128,13 @@ func TestKeyAliasServiceManagesRawAPIKeyAliasesByOpaqueID(t *testing.T) {
 	if alias != "Raw API Key" {
 		t.Fatalf("expected trimmed alias, got %q", alias)
 	}
+	aliases, err := provider.ListAliasesForAPIKeyIdentities(context.Background(), []string{"sk-live-secret-value"})
+	if err != nil {
+		t.Fatalf("list aliases for api key identities: %v", err)
+	}
+	if aliases["sk-live-secret-value"] != "Raw API Key" {
+		t.Fatalf("expected api key identity alias lookup, got %+v", aliases)
+	}
 
 	page, err := provider.ListAPIKeyAliasTargetsPage(context.Background(), ListAPIKeyAliasTargetsRequest{Page: 1, PageSize: 10})
 	if err != nil {
