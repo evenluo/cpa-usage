@@ -9,7 +9,7 @@ export function RequestEvidence({ provider }: { provider: string }) {
   const events = data?.events.slice(0, 5) ?? []
 
   return (
-    <Card className="h-full">
+    <Card className="flex h-full flex-col xl:h-[300px]">
       <CardHeader className="flex flex-row items-start justify-between gap-4 p-4 pb-3">
         <div>
           <CardTitle className="text-base">Request Evidence</CardTitle>
@@ -17,9 +17,9 @@ export function RequestEvidence({ provider }: { provider: string }) {
         </div>
         <Badge variant="outline">Last 24h</Badge>
       </CardHeader>
-      <CardContent className="p-4 pt-0">
+      <CardContent className="min-h-0 flex-1 p-4 pt-0">
         {isLoading ? (
-          <div className="space-y-2">
+          <div className="h-full space-y-2 overflow-y-auto pr-1">
             {Array.from({ length: 5 }).map((_, index) => (
               <Skeleton key={index} className="h-[58px] w-full" />
             ))}

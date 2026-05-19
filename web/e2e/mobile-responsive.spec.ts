@@ -33,20 +33,18 @@ const usageOverviewPayload = {
 }
 
 const usageEventsPayload = {
-  events: [
-    {
-      id: 1,
-      timestamp: "2026-05-18T09:00:00Z",
-      model: "priced-model",
-      source: "sk-l************alue",
-      auth_index: "sk-l************alue",
-      api_key_alias: "Agent API Key",
-      api_key_display: "sk-l************alue",
-      failed: false,
-      latency_ms: 240,
-      tokens: { total_tokens: 1700 },
-    },
-  ],
+  events: Array.from({ length: 6 }, (_, index) => ({
+    id: index + 1,
+    timestamp: `2026-05-18T09:0${index}:00Z`,
+    model: "priced-model",
+    source: "sk-l************alue",
+    auth_index: "sk-l************alue",
+    api_key_alias: "Agent API Key",
+    api_key_display: "sk-l************alue",
+    failed: index === 2,
+    latency_ms: 240 + index,
+    tokens: { total_tokens: 1700 + index },
+  })),
 }
 
 const pricingPayload = {
@@ -150,7 +148,8 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(chartLegend.getByText("Cached", { exact: true })).toBeVisible()
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("Request Evidence")).toBeVisible()
-  await expect(page.getByText("Agent API Key")).toBeVisible()
+  await expect(page.getByText("Agent API Key").first()).toBeVisible()
+  await expectFixedOverviewCardHeights(page)
   await expectNoDocumentOverflow(page)
 })
 
@@ -264,4 +263,22 @@ async function expectNoDocumentOverflow(page: Page) {
     return root.scrollWidth - root.clientWidth
   })
   expect(overflow).toBeLessThanOrEqual(1)
+}
+
+async function expectFixedOverviewCardHeights(page: Page) {
+  const heights = await page.evaluate(() => {
+    const healthHeading = Array.from(document.querySelectorAll("h3")).find((node) => node.textContent?.includes("Request Health"))
+    const evidenceHeading = Array.from(document.querySelectorAll("h3")).find((node) => node.textContent?.includes("Request Evidence"))
+    const healthCard = healthHeading?.closest(".rounded-xl")
+    const evidenceCard = evidenceHeading?.closest(".rounded-xl")
+    return {
+      isWide: window.matchMedia("(min-width: 1280px)").matches,
+      health: healthCard?.getBoundingClientRect().height ?? 0,
+      evidence: evidenceCard?.getBoundingClientRect().height ?? 0,
+    }
+  })
+
+  if (!heights.isWide) return
+  expect(Math.abs(heights.health - heights.evidence)).toBeLessThanOrEqual(1)
+  expect(heights.evidence).toBeLessThanOrEqual(330)
 }
