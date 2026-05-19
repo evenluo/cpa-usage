@@ -8,11 +8,14 @@ This is a single-context repo:
 
 - Root glossary and domain language: `CONTEXT.md`
 - Architecture decisions: `docs/adr/`
+- Project contract and layout ownership: `docs/project/`
 - Product design docs: `docs/design/`
 
 ## Before exploring, read these
 
 - `CONTEXT.md` at the repo root.
+- `docs/project/contract.md` for repository-wide contribution rules, compatibility rules, naming rules, documentation rules, and verification policy.
+- `docs/project/layout.md` for current backend, frontend, and documentation ownership boundaries.
 - ADRs in `docs/adr/` that touch the area being changed.
 - Design docs in `docs/design/` when implementing frontend, analytics, or product behavior.
 
