@@ -1,5 +1,5 @@
 import {
-  AreaChart,
+  ComposedChart,
   Area,
   Line,
   XAxis,
@@ -89,7 +89,7 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
 
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+      <ComposedChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={primaryColor} stopOpacity={0.25} />
@@ -183,7 +183,7 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
             activeDot={{ r: 3, fill: "#94a3b8", stroke: "#fff", strokeWidth: 2 }}
           />
         )}
-      </AreaChart>
+      </ComposedChart>
     </ResponsiveContainer>
   )
 }

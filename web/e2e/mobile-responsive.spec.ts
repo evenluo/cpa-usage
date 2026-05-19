@@ -62,6 +62,50 @@ const usedModelsPayload = {
   models: ["priced-model", "mobile-overflow-regression-model"],
 }
 
+const dashboardAnalyticsSummary = {
+  ...analyticsSummary,
+  trend: [
+    {
+      ...analyticsSummary.trend[0],
+      label: "2026-05-11",
+      bucket_start: "2026-05-11T00:00:00Z",
+      bucket_end: "2026-05-12T00:00:00Z",
+      total_tokens: 1600000,
+      input_tokens: 1000000,
+      output_tokens: 500000,
+      reasoning_tokens: 100000,
+      cached_tokens: 100000,
+      request_count: 1,
+    },
+    {
+      ...analyticsSummary.trend[0],
+      label: "2026-05-12",
+      bucket_start: "2026-05-12T00:00:00Z",
+      bucket_end: "2026-05-13T00:00:00Z",
+      total_cost: 0.35,
+      total_tokens: 320000,
+      input_tokens: 220000,
+      output_tokens: 80000,
+      reasoning_tokens: 10000,
+      cached_tokens: 10000,
+      request_count: 1,
+    },
+    {
+      ...analyticsSummary.trend[0],
+      label: "2026-05-13",
+      bucket_start: "2026-05-13T00:00:00Z",
+      bucket_end: "2026-05-14T00:00:00Z",
+      total_cost: 0.15,
+      total_tokens: 380100,
+      input_tokens: 280100,
+      output_tokens: 20000,
+      reasoning_tokens: 0,
+      cached_tokens: 50000,
+      request_count: 1,
+    },
+  ],
+}
+
 test.beforeEach(async ({ page }) => {
   await mockAPI(page)
 })
@@ -96,6 +140,12 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await page.getByRole("button", { name: "Trend view: Tokens" }).click()
 
   await expect(page.getByText("Trend Workbench")).toBeVisible()
+  const chartLegend = page.locator(".recharts-legend-wrapper")
+  await expect(chartLegend.getByText("Tokens", { exact: true })).toBeVisible()
+  await expect(chartLegend.getByText("Input", { exact: true })).toBeVisible()
+  await expect(chartLegend.getByText("Output", { exact: true })).toBeVisible()
+  await expect(chartLegend.getByText("Reasoning", { exact: true })).toBeVisible()
+  await expect(chartLegend.getByText("Cached", { exact: true })).toBeVisible()
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expectNoDocumentOverflow(page)
@@ -148,7 +198,7 @@ async function mockAPI(page: Page) {
       return
     }
     if (path === "/analytics/summary") {
-      await route.fulfill({ json: analyticsSummary })
+      await route.fulfill({ json: dashboardAnalyticsSummary })
       return
     }
     if (path === "/usage/overview") {
