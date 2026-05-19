@@ -40,6 +40,8 @@ const usageEventsPayload = {
       model: "priced-model",
       source: "sk-l************alue",
       auth_index: "sk-l************alue",
+      api_key_alias: "Agent API Key",
+      api_key_display: "sk-l************alue",
       failed: false,
       latency_ms: 240,
       tokens: { total_tokens: 1700 },
@@ -148,6 +150,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(chartLegend.getByText("Cached", { exact: true })).toBeVisible()
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("Request Evidence")).toBeVisible()
+  await expect(page.getByText("Agent API Key")).toBeVisible()
   await expectNoDocumentOverflow(page)
 })
 

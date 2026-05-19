@@ -358,32 +358,34 @@ function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Request Health — 24h fixed */}
-      <Card>
-        <CardHeader className="flex flex-col items-start justify-between gap-4 pb-2 sm:flex-row">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              Request Health
-              <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
-            </CardTitle>
-            <CardDescription>Success rate per 3-minute bucket</CardDescription>
-          </div>
-          <Badge variant="green">24h fixed</Badge>
-        </CardHeader>
-        <CardContent>
-          {isHealthLoading ? (
-            <Skeleton className="h-[180px] w-full" />
-          ) : serviceHealth ? (
-            <HealthGrid data={serviceHealth} />
-          ) : (
-            <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">
-              No health data
+      {/* Request Health + Evidence — 24h fixed */}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
+        <Card className="h-full">
+          <CardHeader className="flex flex-col items-start justify-between gap-4 pb-2 sm:flex-row">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                Request Health
+                <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
+              </CardTitle>
+              <CardDescription>Success rate per 3-minute bucket</CardDescription>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <Badge variant="green">24h fixed</Badge>
+          </CardHeader>
+          <CardContent>
+            {isHealthLoading ? (
+              <Skeleton className="h-[180px] w-full" />
+            ) : serviceHealth ? (
+              <HealthGrid data={serviceHealth} />
+            ) : (
+              <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">
+                No health data
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      <RequestEvidence provider={provider} />
+        <RequestEvidence provider={provider} />
+      </div>
     </div>
   )
 }

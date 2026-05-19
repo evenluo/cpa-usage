@@ -207,6 +207,8 @@ export interface UsageEvent {
   model: string
   source: string
   auth_index?: string
+  api_key_alias?: string
+  api_key_display?: string
   failed: boolean
   latency_ms: number
   tokens: { total_tokens: number }
