@@ -27,9 +27,27 @@ interface HeatmapTooltip {
   y: number
 }
 
+interface HeatmapRowLabel {
+  dateLabel: string
+  weekdayLabel: string
+}
+
+const heatmapLabelWidth = 68
+
 function cellTooltipLabel(fc: FlatCell): string {
   if (!fc.cell) return ""
   return `${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}r · ${cellCostLabel(fc.cell)}`
+}
+
+function fallbackDateLabel(date: string): string {
+  const match = date.match(/^\d{4}-(\d{2})-(\d{2})$/)
+  return match ? `${match[1]}/${match[2]}` : date
+}
+
+function splitRowLabel(label: string, date: string): HeatmapRowLabel {
+  const dateLabel = label.match(/\d{1,2}\/\d{1,2}/)?.[0] ?? fallbackDateLabel(date)
+  const weekdayLabel = label.match(/[A-Za-z]{3,}/)?.[0] ?? ""
+  return { dateLabel, weekdayLabel }
 }
 
 function flattenCells(data: HeatmapData): {
@@ -55,7 +73,6 @@ function flattenCells(data: HeatmapData): {
 }
 
 function computeLayout(containerWidth: number): { daysPerRow: number; cellSize: number } {
-  const labelWidth = 56
   const hoursPerDay = 24
   const gap = 1
   const daySep = 3
@@ -64,7 +81,7 @@ function computeLayout(containerWidth: number): { daysPerRow: number; cellSize: 
   for (let daysPerRow = 3; daysPerRow >= 1; daysPerRow--) {
     const cols = hoursPerDay * daysPerRow
     const totalGap = (cols - 1) * gap + (daysPerRow - 1) * daySep
-    const cellSize = Math.floor((containerWidth - labelWidth - totalGap) / cols)
+    const cellSize = Math.floor((containerWidth - heatmapLabelWidth - totalGap) / cols)
     if (cellSize >= minCellSize) {
       return { daysPerRow, cellSize }
     }
@@ -121,19 +138,19 @@ export function Heatmap({ data }: HeatmapProps) {
   const hideTooltip = () => setTooltip(null)
 
   // Split into rows
-  const rows: Array<{ startLabel: string; cells: FlatCell[] }> = []
+  const rows: Array<{ label: HeatmapRowLabel; cells: FlatCell[] }> = []
   for (let i = 0; i < flatCells.length; i += colsPerRow) {
     const rowCells = flatCells.slice(i, i + colsPerRow)
+    const firstCell = rowCells[0]
     rows.push({
-      startLabel: rowCells[0]?.dateLabel ?? "",
+      label: firstCell ? splitRowLabel(firstCell.dateLabel, firstCell.date) : { dateLabel: "", weekdayLabel: "" },
       cells: rowCells,
     })
   }
 
   // Build grid columns: label + [24 cells + separator] × (daysPerRow - 1) + 24 cells
-  const labelWidth = 56
   const daySep = 3
-  const gridCols: string[] = [`${labelWidth}px`]
+  const gridCols: string[] = [`${heatmapLabelWidth}px`]
   for (let d = 0; d < daysPerRow; d++) {
     if (d > 0) gridCols.push(`${daySep}px`)
     for (let h = 0; h < 24; h++) {
@@ -155,8 +172,9 @@ export function Heatmap({ data }: HeatmapProps) {
               style={{ gridTemplateColumns }}
             >
               {/* Row start date label */}
-              <div className="flex h-full items-center truncate pr-2 text-[10px] font-medium text-muted-foreground/60">
-                {row.startLabel}
+              <div className="grid h-full grid-cols-[5ch_3ch] items-center gap-1 pr-2 text-[10px] font-medium text-muted-foreground/60">
+                <span className="text-right tabular-nums">{row.label.dateLabel}</span>
+                <span className="text-left">{row.label.weekdayLabel}</span>
               </div>
 
               {/* Cells + separators */}
