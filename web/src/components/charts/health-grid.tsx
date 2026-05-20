@@ -136,7 +136,7 @@ export function HealthGrid({ data }: HealthGridProps) {
               style={{ gridTemplateColumns }}
             >
               {/* Row label */}
-              <div className="flex h-full items-center truncate pr-2 text-[10px] font-medium text-muted-foreground/60">
+              <div className="flex h-full items-center justify-end truncate pr-2 text-right text-[10px] font-medium tabular-nums text-muted-foreground/60">
                 {formatTimeLabel(rowBlocks[0]?.start_time)}
               </div>
 
