@@ -271,14 +271,19 @@ async function expectMobileNavigationPinnedToViewportBottom(page: Page) {
 
   const navPosition = await page.getByLabel("Mobile navigation").evaluate((node) => {
     const rect = node.getBoundingClientRect()
+    const style = window.getComputedStyle(node)
     return {
       bottomGap: Math.abs(window.innerHeight - rect.bottom),
-      position: window.getComputedStyle(node).position,
+      position: style.position,
+      transform: style.transform,
+      willChange: style.willChange,
     }
   })
 
   expect(navPosition.position).toBe("fixed")
   expect(navPosition.bottomGap).toBeLessThanOrEqual(1)
+  expect(navPosition.transform).toBe("none")
+  expect(navPosition.willChange).toBe("auto")
 }
 
 async function expectFixedOverviewCardHeights(page: Page) {
