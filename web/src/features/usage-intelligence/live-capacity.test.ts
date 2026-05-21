@@ -49,8 +49,8 @@ describe("Live Capacity view model", () => {
       status: "cached",
       planType: "plus",
       resetLabel: "1h",
-      fiveHour: { valueLabel: "25% used", progress: 25, tone: "green" },
-      weekly: { valueLabel: "80% used", progress: 80, tone: "amber" },
+      fiveHour: { valueLabel: "25% used", resetLabel: "1h", progress: 25, tone: "green" },
+      weekly: { valueLabel: "80% used", resetLabel: "2h", progress: 80, tone: "amber" },
     })
   })
 
@@ -150,28 +150,103 @@ describe("Live Capacity view model", () => {
     expect(rows[0].isConstrained).toBe(true)
   })
 
-  it("promotes failed and constrained rows before stable provider/name sorting", () => {
+  it("keeps failed, refreshing, and constrained states out of ordering priority", () => {
     const cache: QuotaCacheResponse = {
-      items: [{
-        id: "codex-auth",
-        quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 99 }],
-      }],
+      items: [
+        {
+          id: "codex-pro",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 99, planType: "pro" }],
+        },
+        {
+          id: "claude-max",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "max" }],
+        },
+      ],
     }
     const rows = buildLiveCapacityRows({
       identities: [
-        identity({ identity: "z-auth", displayName: "Zulu", provider: "Codex", type: "codex" }),
-        identity({ identity: "codex-auth", displayName: "Codex", provider: "Codex", type: "codex" }),
-        identity({ identity: "bad-auth", displayName: "Bad", provider: "Claude", type: "claude" }),
+        identity({ identity: "z-codex", displayName: "Zulu Codex", provider: "Codex", type: "codex" }),
+        identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
+        identity({ identity: "claude-max", displayName: "Claude Max", provider: "Claude", type: "claude" }),
       ],
       cachedQuota: cache,
       taskStates: {
-        "bad-auth": { status: "failed", error: "unsupported" },
+        "z-codex": { status: "failed", error: "API error 500" },
+        "claude-max": { status: "running", taskId: "task-claude-max" },
       },
     })
 
-    expect(rows.map((row) => row.authIndex)).toEqual(["bad-auth", "codex-auth", "z-auth"])
-    expect(rows[0].statusLabel).toBe("Unsupported")
-    expect(rows[1].isConstrained).toBe(true)
+    expect(rows.map((row) => row.authIndex)).toEqual(["codex-pro", "claude-max", "z-codex"])
+    expect(rows[0].isConstrained).toBe(true)
+    expect(rows[1].status).toBe("refreshing")
+    expect(rows[2].status).toBe("failed")
+  })
+
+  it("sorts fixed business priority by plan type and supported provider", () => {
+    const cache: QuotaCacheResponse = {
+      items: [
+        {
+          id: "plain-codex",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "team" }],
+        },
+        {
+          id: "codex-pro",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }],
+        },
+        {
+          id: "plain-claude",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }],
+        },
+        {
+          id: "claude-max",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "max20" }],
+        },
+        {
+          id: "gemini-auth",
+          quota: [{ key: "quota", label: "Code Assist", remaining: 20 }],
+        },
+      ],
+    }
+
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "unsupported-auth", displayName: "Unsupported", provider: "OpenAI", type: "openai" }),
+        identity({ identity: "gemini-auth", displayName: "Gemini", provider: "Gemini", type: "gemini-cli" }),
+        identity({ identity: "plain-codex", displayName: "Codex Team", provider: "Codex", type: "codex" }),
+        identity({ identity: "claude-max", displayName: "Claude Max", provider: "Claude", type: "claude" }),
+        identity({ identity: "plain-claude", displayName: "Claude Pro Name", provider: "Claude", type: "claude" }),
+        identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
+      ],
+      cachedQuota: cache,
+    })
+
+    expect(rows.map((row) => row.authIndex)).toEqual([
+      "codex-pro",
+      "claude-max",
+      "plain-claude",
+      "plain-codex",
+      "gemini-auth",
+      "unsupported-auth",
+    ])
+  })
+
+  it("formats metric reset per quota row and keeps missing reset explicit", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [
+            { key: "rate_limit.primary_window", label: "5h", usedPercent: 25, resetAfterSeconds: 3600 },
+            { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 80 },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].fiveHour?.resetLabel).toBe("1h")
+    expect(rows[0].weekly?.resetLabel).toBe("-")
+    expect(rows[0].resetLabel).toBe("1h")
   })
 
   it("lets provider filtering happen before row derivation", () => {

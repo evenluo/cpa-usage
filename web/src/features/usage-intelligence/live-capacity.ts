@@ -24,6 +24,7 @@ export interface LiveCapacityRow {
 export interface LiveCapacityMetric {
   label: string
   valueLabel: string
+  resetLabel: string
   progress: number | null
   tone: "green" | "amber" | "red" | "muted"
 }
@@ -108,6 +109,7 @@ function metricFromQuotaRow(row: QuotaRow): LiveCapacityMetric {
   return {
     label: metricLabel(row),
     valueLabel: valueLabel(row),
+    resetLabel: resetLabel(row),
     progress,
     tone: toneFromProgress(row, progress),
   }
@@ -216,14 +218,27 @@ function rejectionLabel(code: string): string {
 function compareLiveCapacityRows(a: LiveCapacityRow, b: LiveCapacityRow): number {
   const priority = rowPriority(a) - rowPriority(b)
   if (priority !== 0) return priority
-  return `${a.provider} ${a.displayName} ${a.authIndex}`.localeCompare(`${b.provider} ${b.displayName} ${b.authIndex}`)
+  return `${accountTitle(a)} ${a.authIndex}`.localeCompare(`${accountTitle(b)} ${b.authIndex}`)
 }
 
 function rowPriority(row: LiveCapacityRow): number {
-  if (row.status === "failed" || row.isConstrained) return 0
-  if (row.status === "refreshing") return 1
-  if (row.status === "unsupported") return 3
-  return 2
+  if (row.status === "unsupported") return 4
+  if (isProvider(row, "codex") && hasPlanType(row, "pro")) return 0
+  if (isProvider(row, "claude") && hasPlanType(row, "max")) return 1
+  if (isProvider(row, "codex") || isProvider(row, "claude")) return 2
+  return 3
+}
+
+function accountTitle(row: LiveCapacityRow): string {
+  return row.alias || row.displayName || row.name || row.authIndex
+}
+
+function isProvider(row: LiveCapacityRow, provider: string): boolean {
+  return [row.provider, row.type].some((value) => value.trim().toLowerCase() === provider)
+}
+
+function hasPlanType(row: LiveCapacityRow, keyword: string): boolean {
+  return row.planType.toLowerCase().includes(keyword)
 }
 
 function clamp(value: number): number {
