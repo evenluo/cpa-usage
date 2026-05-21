@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { buildLiveCapacityRows, type LiveCapacityMetric } from "@/features/usage-intelligence/live-capacity"
+import { buildLiveCapacityRows, type LiveCapacityMetric, type LiveCapacityPlanTone } from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
 import { cn } from "@/lib/utils"
 import { ProviderBrandIcon } from "./provider-brand-icon"
@@ -76,7 +76,6 @@ function LiveCapacityAccountTile({
   const isRowRefreshing = row.status === "refreshing"
   const hasAttention = row.isConstrained || row.status === "failed"
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
-  const planLabel = row.planType || "no plan"
   const attentionLabel = row.status === "failed"
     ? `Refresh failed: ${row.error || row.statusLabel}`
     : row.isConstrained
@@ -96,25 +95,26 @@ function LiveCapacityAccountTile({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <div
-            className="flex h-7 max-w-[128px] shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2"
+            className="flex h-[42px] w-9 shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/20 dark:border-white/10 dark:bg-white/90"
             title={row.providerLabel}
+            aria-label={row.providerLabel}
           >
-            <ProviderBrandIcon providerKind={row.providerKind} label={row.providerLabel} />
-            <span className="truncate text-[11px] font-medium leading-none text-foreground">{row.providerLabel}</span>
+            <ProviderBrandIcon providerKind={row.providerKind} label={row.providerLabel} className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
               <p className="truncate font-medium leading-5" title={accountTitle}>{accountTitle}</p>
-              {row.priorityLabel ? (
-                <Badge variant="terracotta" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">
-                  {row.priorityLabel}
-                </Badge>
+              {row.planLabel ? (
+                <PlanBadge label={row.planLabel} tone={row.planTone} rawPlanType={row.planType} />
               ) : null}
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="max-w-[92px] truncate rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium leading-4 text-muted-foreground" title={row.statusLabel}>
+            {row.statusLabel}
+          </span>
           {hasAttention ? (
             <span title={attentionLabel}>
               <AlertTriangle
@@ -138,15 +138,34 @@ function LiveCapacityAccountTile({
         </div>
       </div>
 
-      <p className="mt-2 truncate text-[11px] text-muted-foreground/80" title={`${row.providerLabel} · ${planLabel} · ${row.statusLabel}`}>
-        {row.providerLabel} · {planLabel} · {row.statusLabel}
-      </p>
-
       <div className="mt-3 grid gap-2">
         <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} iconKind={primaryMetric === row.fiveHour ? "5h" : undefined} />
         <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} iconKind={secondaryMetric === row.weekly ? "weekly" : undefined} />
       </div>
     </div>
+  )
+}
+
+function PlanBadge({
+  label,
+  tone,
+  rawPlanType,
+}: {
+  label: string
+  tone: LiveCapacityPlanTone
+  rawPlanType: string
+}) {
+  return (
+    <Badge
+      variant={tone === "priority" ? "terracotta" : "secondary"}
+      className={cn(
+        "shrink-0 px-1.5 py-0 text-[10px] leading-4",
+        tone === "ordinary" && "border-border/70 bg-muted text-muted-foreground",
+      )}
+      title={rawPlanType}
+    >
+      {label}
+    </Badge>
   )
 }
 

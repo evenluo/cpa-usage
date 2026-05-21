@@ -93,6 +93,8 @@ describe("Live Capacity view model", () => {
       authIndex: "codex-auth",
       status: "cached",
       planType: "plus",
+      planLabel: "Plus",
+      planTone: "ordinary",
       resetLabel: "1h",
       fiveHour: { valueLabel: "25% used", resetLabel: "1h", progress: 25, tone: "green" },
       weekly: { valueLabel: "80% used", resetLabel: "2h", progress: 80, tone: "amber" },
@@ -132,13 +134,15 @@ describe("Live Capacity view model", () => {
 
     const priorityByAuthIndex = Object.fromEntries(rows.map((row) => [row.authIndex, {
       isPriorityAccount: row.isPriorityAccount,
+      planLabel: row.planLabel,
+      planTone: row.planTone,
       priorityLabel: row.priorityLabel,
     }]))
     expect(priorityByAuthIndex).toMatchObject({
-      "codex-pro": { isPriorityAccount: true, priorityLabel: "Pro" },
-      "codex-team": { isPriorityAccount: false, priorityLabel: undefined },
-      "claude-max": { isPriorityAccount: true, priorityLabel: "Max" },
-      "claude-pro": { isPriorityAccount: false, priorityLabel: undefined },
+      "codex-pro": { isPriorityAccount: true, planLabel: "Pro", planTone: "priority", priorityLabel: "Pro" },
+      "codex-team": { isPriorityAccount: false, planLabel: "Team", planTone: "ordinary", priorityLabel: undefined },
+      "claude-max": { isPriorityAccount: true, planLabel: "Max", planTone: "priority", priorityLabel: "Max" },
+      "claude-pro": { isPriorityAccount: false, planLabel: "Pro", planTone: "ordinary", priorityLabel: undefined },
     })
   })
 

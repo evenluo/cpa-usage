@@ -64,8 +64,23 @@ const authFileIdentitiesPayload = {
       cost_available: false,
       last_used_at: null,
     },
+    {
+      id: 502,
+      name: "Unsupported OpenAI",
+      displayName: "Unsupported OpenAI",
+      alias: "",
+      auth_type: 1,
+      auth_type_name: "oauth",
+      identity: "openai-auth-e2e",
+      type: "openai",
+      provider: "OpenAI",
+      total_tokens: 0,
+      total_cost: 0,
+      cost_available: false,
+      last_used_at: null,
+    },
   ],
-  total_count: 1,
+  total_count: 2,
   page: 1,
   page_size: 100,
   total_pages: 1,
@@ -170,6 +185,9 @@ test("mobile uses bottom navigation without the fixed desktop sidebar", async ({
 })
 
 test("dashboard controls and evidence stay inside each responsive viewport", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("cpa-theme", "dark")
+  })
   await page.goto("/")
 
   await page.getByRole("button", { name: "30 days" }).click()
@@ -186,6 +204,15 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Agent Codex")).toBeVisible()
+  await expect(page.getByText("Plus", { exact: true })).toBeVisible()
+  await expect(page.getByText("cached", { exact: true })).toBeVisible()
+  await expect(page.getByText("Unsupported OpenAI")).toBeVisible()
+  await expect(page.getByText("OA", { exact: true })).toBeVisible()
+  const codexLogoWell = page.locator('[aria-label="Codex"]')
+  await expect(codexLogoWell).toHaveCount(1)
+  await expect
+    .poll(async () => codexLogoWell.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .toContain("255, 255, 255")
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expect(page.getByText("Agent API Key").first()).toBeVisible()
   await expectFixedOverviewCardHeights(page)

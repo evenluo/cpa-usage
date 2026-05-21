@@ -3,6 +3,7 @@ import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
 export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported"
 export type ProviderKind = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unsupported"
+export type LiveCapacityPlanTone = "priority" | "ordinary" | "none"
 
 export interface LiveCapacityRow {
   authIndex: string
@@ -21,6 +22,8 @@ export interface LiveCapacityRow {
   additionalMetrics: LiveCapacityMetric[]
   resetLabel: string
   planType: string
+  planLabel?: string
+  planTone: LiveCapacityPlanTone
   priorityLabel?: string
   isPriorityAccount: boolean
   isConstrained: boolean
@@ -74,7 +77,8 @@ export function buildLiveCapacityRows(input: {
         .map(metricFromQuotaRow)
       const isConstrained = quotaRows.some(isConstrainedQuotaRow)
       const resolvedPlanType = planType(quotaRows)
-      const priorityLabel = priorityLabelFor(providerKind, resolvedPlanType)
+      const planDisplay = planDisplayFor(providerKind, resolvedPlanType)
+      const priorityLabel = planDisplay.tone === "priority" ? planDisplay.label : undefined
 
       let status: LiveCapacityStatus = activeQuota ? "cached" : "no_cache"
       let statusLabel = activeQuota ? "cached" : "No cached probe"
@@ -108,6 +112,8 @@ export function buildLiveCapacityRows(input: {
         additionalMetrics,
         resetLabel: resetLabel(fiveHour, weekly, ...quotaRows),
         planType: resolvedPlanType,
+        planLabel: planDisplay.label,
+        planTone: planDisplay.tone,
         priorityLabel,
         isPriorityAccount: Boolean(priorityLabel),
         isConstrained,
@@ -140,6 +146,22 @@ function priorityLabelFor(providerKind: ProviderKind, planTypeValue: string): st
   if (providerKind === "codex" && hasPlanTypeValue(planTypeValue, "pro")) return "Pro"
   if (providerKind === "claude" && hasPlanTypeValue(planTypeValue, "max")) return "Max"
   return undefined
+}
+
+function planDisplayFor(providerKind: ProviderKind, planTypeValue: string): { label?: string; tone: LiveCapacityPlanTone } {
+  const normalizedPlanType = planTypeValue.trim()
+  if (!normalizedPlanType) return { tone: "none" }
+  const priorityLabel = priorityLabelFor(providerKind, normalizedPlanType)
+  if (priorityLabel) return { label: priorityLabel, tone: "priority" }
+  return { label: formatPlanType(normalizedPlanType), tone: "ordinary" }
+}
+
+function formatPlanType(planTypeValue: string): string {
+  return planTypeValue
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ")
 }
 
 function findQuotaWindow(rows: QuotaRow[], kind: "5h" | "weekly"): QuotaRow | undefined {
