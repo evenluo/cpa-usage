@@ -48,9 +48,9 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
             No auth-file accounts
           </div>
         ) : (
-          <div className="max-h-[340px] space-y-2 overflow-y-auto pr-1">
+          <div className="grid max-h-[560px] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
             {rows.map((row) => (
-              <LiveCapacityRowItem
+              <LiveCapacityAccountTile
                 key={row.authIndex}
                 row={row}
                 onRefresh={() => refresh(row.authIndex)}
@@ -63,7 +63,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   )
 }
 
-function LiveCapacityRowItem({
+function LiveCapacityAccountTile({
   row,
   onRefresh,
 }: {
@@ -73,12 +73,18 @@ function LiveCapacityRowItem({
   const primaryMetric = row.fiveHour ?? row.additionalMetrics[0]
   const secondaryMetric = row.weekly ?? row.additionalMetrics[1]
   const isRowRefreshing = row.status === "refreshing"
+  const hasAttention = row.isConstrained || row.status === "failed"
 
   return (
     <div
-      className="grid min-w-0 gap-3 rounded-lg border border-border bg-background/60 p-3 text-sm lg:grid-cols-[minmax(190px,0.9fr)_minmax(130px,0.7fr)_minmax(130px,0.7fr)_minmax(90px,0.45fr)_auto]"
+      className={cn(
+        "group flex min-h-[176px] min-w-0 flex-col rounded-lg border border-border bg-background/70 p-3 text-sm transition-[border-color,box-shadow,transform] duration-300 hover:-translate-y-0.5 hover:border-terracotta-500/25 hover:shadow-sm",
+        row.status === "failed" && "border-red-500/25 bg-red-500/[0.025]",
+        row.status !== "failed" && row.isConstrained && "border-amber-500/30 bg-amber-500/[0.03]",
+        isRowRefreshing && "border-amber-500/25 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]",
+      )}
     >
-      <div className="min-w-0">
+      <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <Badge variant="outline" className="shrink-0 text-[10px]">
             {row.provider || row.type || "unknown"}
@@ -86,34 +92,41 @@ function LiveCapacityRowItem({
           {row.planType ? <Badge variant="terracotta" className="text-[10px]">{row.planType}</Badge> : null}
           <StatusBadge status={row.status} label={row.statusLabel} />
         </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {hasAttention ? (
+            <AlertTriangle
+              className={cn("h-4 w-4", row.status === "failed" ? "text-red-600" : "text-amber-600")}
+              aria-label="Capacity attention required"
+            />
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 opacity-70 transition-opacity group-hover:opacity-100"
+            onClick={onRefresh}
+            disabled={isRowRefreshing}
+            aria-label={`Refresh ${row.alias || row.displayName || row.name || row.authIndex}`}
+            title="Refresh this account"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-3 min-w-0">
         <p className="mt-2 truncate font-medium">{row.alias || row.displayName || row.name || row.authIndex}</p>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{row.authIndex}</p>
       </div>
 
-      <MetricCell title={primaryMetric?.label ?? "5h"} metric={primaryMetric} />
-      <MetricCell title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} />
-
-      <div className="min-w-0 lg:text-right">
-        <p className="text-xs text-muted-foreground">Reset</p>
-        <p className="mt-1 truncate font-medium">{row.resetLabel}</p>
+      <div className="mt-4 grid gap-2">
+        <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} />
+        <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} />
       </div>
 
-      <div className="flex items-start justify-end gap-1">
-        {row.isConstrained || row.status === "failed" ? (
-          <AlertTriangle className="mt-2 h-4 w-4 text-amber-600" aria-label="Capacity attention required" />
-        ) : null}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          onClick={onRefresh}
-          disabled={isRowRefreshing}
-          aria-label={`Refresh ${row.alias || row.displayName || row.name || row.authIndex}`}
-          title="Refresh this account"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
-        </Button>
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/70 pt-3 text-xs">
+        <span className="text-muted-foreground">Reset</span>
+        <span className="min-w-0 truncate font-medium">{row.resetLabel}</span>
       </div>
     </div>
   )
@@ -137,27 +150,41 @@ function StatusBadge({ status, label }: { status: LiveCapacityStatus; label: str
   )
 }
 
-function MetricCell({ title, metric }: { title: string; metric?: LiveCapacityMetric }) {
+function MetricMeter({ title, metric }: { title: string; metric?: LiveCapacityMetric }) {
+  const progress = metric?.progress ?? null
+
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2">
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="text-muted-foreground">{title}</span>
         <span className="truncate font-medium">{metric?.valueLabel ?? "-"}</span>
       </div>
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-        {metric?.progress !== null && metric?.progress !== undefined ? (
+      <div
+        className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
+        aria-label={metric ? `${title}: ${metric.valueLabel}` : `${title}: no capacity reading`}
+      >
+        {progress !== null ? (
           <div
-            className={cn(
-              "h-full rounded-full",
-              metric.tone === "red" && "bg-red-500",
-              metric.tone === "amber" && "bg-amber-500",
-              metric.tone === "green" && "bg-emerald-500",
-              metric.tone === "muted" && "bg-muted-foreground/40",
-            )}
-            style={{ width: `${metric.progress}%` }}
+            className={cn("h-full rounded-full transition-[width,background-color] duration-500", metricToneClass(metric?.tone))}
+            style={{ width: `${progress}%` }}
           />
         ) : null}
       </div>
     </div>
   )
+}
+
+function metricToneClass(tone: LiveCapacityMetric["tone"] | undefined): string {
+  switch (tone) {
+    case "red":
+      return "bg-red-500"
+    case "amber":
+      return "bg-amber-500"
+    case "green":
+      return "bg-emerald-500"
+    case "muted":
+      return "bg-muted-foreground/40"
+    default:
+      return "bg-muted-foreground/30"
+  }
 }
