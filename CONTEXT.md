@@ -44,6 +44,10 @@ _Avoid_: Global dashboard range, page range
 A fixed recent window used for stable activity, health, or evidence readings that should not change with the selected analysis range.
 _Avoid_: Ignored filter, stale range
 
+**Live Capacity**:
+A restricted operational reading that uses CPA generic `api-call` support to probe cached or refreshed auth-file account capacity.
+_Avoid_: Usage quota analytics, CPA native quota source, billing quota
+
 **Reference Data**:
 Supporting user-maintained labels and rates that make **Usage Intelligence** readable and complete.
 _Avoid_: Credentials, setup data, generic data
@@ -79,7 +83,11 @@ _Avoid_: Request event workbench, full event search, audit log
 - The primary trend is controlled by **Time Granularity** and must not be limited to a fixed by-day aggregation.
 - The default **Time Granularity** for the primary trend is hourly; daily is an explicit roll-up mode.
 - **Usage Intelligence** uses the **Selected Analysis Window** for KPIs, primary trends, and ranked contributors.
-- **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, request health, and recent request evidence.
+- **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, request health, recent request evidence, and **Live Capacity**.
+- **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility; it is powered by CPA generic `api-call` quota probes and cached refresh tasks, not by a CPA native quota datasource.
+- **Live Capacity** displays active auth-file accounts that can be probed for capacity. Unsupported auth-file accounts are shown explicitly instead of blocking supported accounts.
+- **Live Capacity** is cache-first. Loading **Usage Intelligence** reads cached quota probe results only; manual refresh is the user action that may trigger provider calls.
+- **Live Capacity** follows provider filtering, but the **Selected Analysis Window** and **Time Granularity** do not change its query key or probe window.
 - **Activity Heatmap** uses a fixed 30-day hourly **Fixed Operational Window** to show recent usage rhythm, independent of the **Selected Analysis Window**.
 - Request health and **Request Evidence** use fixed 24-hour **Fixed Operational Windows** to show recent stability and supporting samples, independent of the **Selected Analysis Window**.
 - Provider filtering scopes both **Selected Analysis Window** modules and **Fixed Operational Window** modules.
@@ -98,7 +106,7 @@ _Avoid_: Request event workbench, full event search, audit log
 - Future **Request Evidence** drill-down belongs inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
 - First-version insights are deterministic metrics and warnings, not AI-generated summaries.
 - **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.
-- **Quota** is an explicit non-feature for CPA Usage because the product is scoped to pure usage, not account-capacity operations.
+- CPA native quota administration remains out of scope; the supported capacity surface is the restricted **Live Capacity** probe inside **Usage Intelligence**.
 - The first **Operations Console** covers sync state, runtime state, access state, and logout.
 - Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
 - Backup inspection and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.
