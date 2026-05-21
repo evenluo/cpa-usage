@@ -2,10 +2,13 @@ import type { KeyIdentity, QuotaCacheResponse, QuotaRow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
 export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported"
+export type ProviderKind = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unsupported"
 
 export interface LiveCapacityRow {
   authIndex: string
   provider: string
+  providerKind: ProviderKind
+  providerLabel: string
   type: string
   name: string
   alias: string
@@ -18,6 +21,8 @@ export interface LiveCapacityRow {
   additionalMetrics: LiveCapacityMetric[]
   resetLabel: string
   planType: string
+  priorityLabel?: string
+  isPriorityAccount: boolean
   isConstrained: boolean
 }
 
@@ -29,7 +34,22 @@ export interface LiveCapacityMetric {
   tone: "green" | "amber" | "red" | "muted"
 }
 
-const SUPPORTED_QUOTA_IDENTITIES = new Set(["antigravity", "claude", "codex", "gemini-cli", "kimi"])
+const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
+  antigravity: "Antigravity",
+  claude: "Claude",
+  codex: "Codex",
+  "gemini-cli": "Gemini CLI",
+  kimi: "Kimi",
+  unsupported: "Unsupported",
+}
+
+const PROVIDER_KIND_ALIASES: Record<string, ProviderKind> = {
+  antigravity: "antigravity",
+  claude: "claude",
+  codex: "codex",
+  "gemini-cli": "gemini-cli",
+  kimi: "kimi",
+}
 
 export function buildLiveCapacityRows(input: {
   identities: KeyIdentity[]
@@ -42,7 +62,8 @@ export function buildLiveCapacityRows(input: {
   return input.identities
     .map((identity) => {
       const taskState = taskStates[identity.identity]
-      const supported = isSupportedQuotaIdentity(identity)
+      const providerKind = providerKindFromIdentity(identity)
+      const supported = providerKind !== "unsupported"
       const activeQuota = taskState?.status === "completed" ? taskState.quota : cachedByAuthIndex.get(identity.identity)
       const quotaRows = activeQuota?.quota ?? []
       const fiveHour = findQuotaWindow(quotaRows, "5h")
@@ -52,6 +73,8 @@ export function buildLiveCapacityRows(input: {
         .slice(0, 3)
         .map(metricFromQuotaRow)
       const isConstrained = quotaRows.some(isConstrainedQuotaRow)
+      const resolvedPlanType = planType(quotaRows)
+      const priorityLabel = priorityLabelFor(providerKind, resolvedPlanType)
 
       let status: LiveCapacityStatus = activeQuota ? "cached" : "no_cache"
       let statusLabel = activeQuota ? "cached" : "No cached probe"
@@ -71,6 +94,8 @@ export function buildLiveCapacityRows(input: {
       return {
         authIndex: identity.identity,
         provider: identity.provider,
+        providerKind,
+        providerLabel: providerLabelFor(providerKind, identity),
         type: identity.type,
         name: identity.name,
         alias: identity.alias,
@@ -82,7 +107,9 @@ export function buildLiveCapacityRows(input: {
         weekly: weekly ? metricFromQuotaRow(weekly) : undefined,
         additionalMetrics,
         resetLabel: resetLabel(fiveHour, weekly, ...quotaRows),
-        planType: planType(quotaRows),
+        planType: resolvedPlanType,
+        priorityLabel,
+        isPriorityAccount: Boolean(priorityLabel),
         isConstrained,
       }
     })
@@ -90,9 +117,29 @@ export function buildLiveCapacityRows(input: {
 }
 
 export function isSupportedQuotaIdentity(identity: KeyIdentity): boolean {
+  return providerKindFromIdentity(identity) !== "unsupported"
+}
+
+export function providerKindFromIdentity(identity: Pick<KeyIdentity, "provider" | "type">): ProviderKind {
   return [identity.provider, identity.type]
-    .map((value) => value.trim().toLowerCase())
-    .some((value) => SUPPORTED_QUOTA_IDENTITIES.has(value))
+    .map(normalizeProviderValue)
+    .map((value) => PROVIDER_KIND_ALIASES[value])
+    .find((kind): kind is ProviderKind => Boolean(kind)) ?? "unsupported"
+}
+
+function normalizeProviderValue(value: string): string {
+  return value.trim().toLowerCase()
+}
+
+function providerLabelFor(providerKind: ProviderKind, identity: Pick<KeyIdentity, "provider" | "type">): string {
+  if (providerKind !== "unsupported") return PROVIDER_KIND_LABELS[providerKind]
+  return identity.provider.trim() || identity.type.trim() || PROVIDER_KIND_LABELS.unsupported
+}
+
+function priorityLabelFor(providerKind: ProviderKind, planTypeValue: string): string | undefined {
+  if (providerKind === "codex" && hasPlanTypeValue(planTypeValue, "pro")) return "Pro"
+  if (providerKind === "claude" && hasPlanTypeValue(planTypeValue, "max")) return "Max"
+  return undefined
 }
 
 function findQuotaWindow(rows: QuotaRow[], kind: "5h" | "weekly"): QuotaRow | undefined {
@@ -223,9 +270,9 @@ function compareLiveCapacityRows(a: LiveCapacityRow, b: LiveCapacityRow): number
 
 function rowPriority(row: LiveCapacityRow): number {
   if (row.status === "unsupported") return 4
-  if (isProvider(row, "codex") && hasPlanType(row, "pro")) return 0
-  if (isProvider(row, "claude") && hasPlanType(row, "max")) return 1
-  if (isProvider(row, "codex") || isProvider(row, "claude")) return 2
+  if (row.providerKind === "codex" && row.priorityLabel === "Pro") return 0
+  if (row.providerKind === "claude" && row.priorityLabel === "Max") return 1
+  if (row.providerKind === "codex" || row.providerKind === "claude") return 2
   return 3
 }
 
@@ -233,12 +280,8 @@ function accountTitle(row: LiveCapacityRow): string {
   return row.alias || row.displayName || row.name || row.authIndex
 }
 
-function isProvider(row: LiveCapacityRow, provider: string): boolean {
-  return [row.provider, row.type].some((value) => value.trim().toLowerCase() === provider)
-}
-
-function hasPlanType(row: LiveCapacityRow, keyword: string): boolean {
-  return row.planType.toLowerCase().includes(keyword)
+function hasPlanTypeValue(planTypeValue: string, keyword: string): boolean {
+  return planTypeValue.toLowerCase().includes(keyword)
 }
 
 function clamp(value: number): number {

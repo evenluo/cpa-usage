@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
-import { buildLiveCapacityRows, isSupportedQuotaIdentity } from "./live-capacity"
+import { buildLiveCapacityRows, isSupportedQuotaIdentity, providerKindFromIdentity } from "./live-capacity"
 
 function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
   return {
@@ -25,7 +25,52 @@ describe("Live Capacity view model", () => {
   it("recognizes supported provider and type names", () => {
     expect(isSupportedQuotaIdentity(identity({ provider: "Claude", type: "auth-file" }))).toBe(true)
     expect(isSupportedQuotaIdentity(identity({ provider: "Gemini", type: "gemini-cli" }))).toBe(true)
+    expect(isSupportedQuotaIdentity(identity({ provider: "Anthropic", type: "auth-file" }))).toBe(false)
+    expect(isSupportedQuotaIdentity(identity({ provider: "Google Gemini", type: "auth-file" }))).toBe(false)
+    expect(isSupportedQuotaIdentity(identity({ provider: "Moonshot", type: "auth-file" }))).toBe(false)
     expect(isSupportedQuotaIdentity(identity({ provider: "OpenAI", type: "openai" }))).toBe(false)
+  })
+
+  it("normalizes official provider kinds and labels for supported capacity accounts", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "codex-auth", provider: "Codex", type: "auth-file" }),
+        identity({ identity: "claude-auth", provider: "Claude", type: "auth-file" }),
+        identity({ identity: "gemini-auth", provider: "Gemini", type: "gemini-cli" }),
+        identity({ identity: "kimi-auth", provider: "Kimi", type: "auth-file" }),
+        identity({ identity: "antigravity-auth", provider: "Antigravity", type: "auth-file" }),
+      ],
+    })
+
+    expect(Object.fromEntries(rows.map((row) => [row.authIndex, [row.providerKind, row.providerLabel]]))).toEqual({
+      "antigravity-auth": ["antigravity", "Antigravity"],
+      "claude-auth": ["claude", "Claude"],
+      "codex-auth": ["codex", "Codex"],
+      "gemini-auth": ["gemini-cli", "Gemini CLI"],
+      "kimi-auth": ["kimi", "Kimi"],
+    })
+    expect(providerKindFromIdentity({ provider: "Gemini", type: "gemini-cli" })).toBe("gemini-cli")
+  })
+
+  it("keeps brand aliases unsupported when backend registry keys are absent", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "anthropic-auth", provider: "Anthropic", type: "auth-file" }),
+        identity({ identity: "google-gemini-auth", provider: "Google Gemini", type: "auth-file" }),
+        identity({ identity: "moonshot-auth", provider: "Moonshot", type: "auth-file" }),
+      ],
+    })
+
+    expect(Object.fromEntries(rows.map((row) => [row.authIndex, {
+      providerKind: row.providerKind,
+      providerLabel: row.providerLabel,
+      status: row.status,
+      isPriorityAccount: row.isPriorityAccount,
+    }]))).toEqual({
+      "anthropic-auth": { providerKind: "unsupported", providerLabel: "Anthropic", status: "unsupported", isPriorityAccount: false },
+      "google-gemini-auth": { providerKind: "unsupported", providerLabel: "Google Gemini", status: "unsupported", isPriorityAccount: false },
+      "moonshot-auth": { providerKind: "unsupported", providerLabel: "Moonshot", status: "unsupported", isPriorityAccount: false },
+    })
   })
 
   it("maps 5h and Weekly quota windows from cached probe rows", () => {
@@ -63,6 +108,38 @@ describe("Live Capacity view model", () => {
     expect(rows[0].status).toBe("no_cache")
     expect(rows[0].statusLabel).toBe("No cached probe")
     expect(rows[0].fiveHour).toBeUndefined()
+  })
+
+  it("marks priority accounts only from normalized provider kind and plan type", () => {
+    const cache: QuotaCacheResponse = {
+      items: [
+        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "codex-team", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "claude-max", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "max20" }] },
+        { id: "claude-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+      ],
+    }
+
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "codex-pro", displayName: "Codex Priority", provider: "Codex", type: "codex" }),
+        identity({ identity: "codex-team", displayName: "Codex Team", provider: "Codex", type: "codex" }),
+        identity({ identity: "claude-max", displayName: "Claude Priority", provider: "Claude", type: "claude" }),
+        identity({ identity: "claude-pro", displayName: "Claude Pro", provider: "Claude", type: "claude" }),
+      ],
+      cachedQuota: cache,
+    })
+
+    const priorityByAuthIndex = Object.fromEntries(rows.map((row) => [row.authIndex, {
+      isPriorityAccount: row.isPriorityAccount,
+      priorityLabel: row.priorityLabel,
+    }]))
+    expect(priorityByAuthIndex).toMatchObject({
+      "codex-pro": { isPriorityAccount: true, priorityLabel: "Pro" },
+      "codex-team": { isPriorityAccount: false, priorityLabel: undefined },
+      "claude-max": { isPriorityAccount: true, priorityLabel: "Max" },
+      "claude-pro": { isPriorityAccount: false, priorityLabel: undefined },
+    })
   })
 
   it("keeps cached metrics visible when a later refresh failed", () => {

@@ -1,4 +1,4 @@
-import { AlertTriangle, Gauge, RefreshCw } from "lucide-react"
+import { AlertTriangle, CalendarDays, Clock, Gauge, RefreshCw, Timer } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { buildLiveCapacityRows, type LiveCapacityMetric } from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
 import { cn } from "@/lib/utils"
+import { ProviderBrandIcon } from "./provider-brand-icon"
 
 export function LiveCapacityCard({ provider }: { provider: string }) {
   const { identities, cachedQuota, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider)
@@ -75,7 +76,6 @@ function LiveCapacityAccountTile({
   const isRowRefreshing = row.status === "refreshing"
   const hasAttention = row.isConstrained || row.status === "failed"
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
-  const providerLabel = row.provider || row.type || "unknown"
   const planLabel = row.planType || "no plan"
   const attentionLabel = row.status === "failed"
     ? `Refresh failed: ${row.error || row.statusLabel}`
@@ -89,13 +89,30 @@ function LiveCapacityAccountTile({
         "group flex min-h-[190px] min-w-0 flex-col rounded-lg border border-border bg-background/70 p-3 text-sm transition-[background-color,border-color,box-shadow] duration-300 hover:border-terracotta-500/25 hover:shadow-sm",
         row.status === "failed" && "border-red-500/25 bg-red-500/[0.025]",
         row.status !== "failed" && row.isConstrained && "border-amber-500/30 bg-amber-500/[0.03]",
+        row.status !== "failed" && !row.isConstrained && row.isPriorityAccount && "border-terracotta-500/30 shadow-[inset_2px_0_0_rgba(192,80,62,0.45)]",
         isRowRefreshing && "border-amber-500/25 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]",
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-medium leading-5" title={accountTitle}>{accountTitle}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
+        <div className="flex min-w-0 flex-1 items-start gap-2">
+          <div
+            className="flex h-7 max-w-[128px] shrink-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2"
+            title={row.providerLabel}
+          >
+            <ProviderBrandIcon providerKind={row.providerKind} label={row.providerLabel} />
+            <span className="truncate text-[11px] font-medium leading-none text-foreground">{row.providerLabel}</span>
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <p className="truncate font-medium leading-5" title={accountTitle}>{accountTitle}</p>
+              {row.priorityLabel ? (
+                <Badge variant="terracotta" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">
+                  {row.priorityLabel}
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {hasAttention ? (
@@ -121,27 +138,39 @@ function LiveCapacityAccountTile({
         </div>
       </div>
 
-      <p className="mt-2 truncate text-xs text-muted-foreground" title={`${providerLabel} · ${planLabel} · ${row.statusLabel}`}>
-        {providerLabel} · {planLabel} · {row.statusLabel}
+      <p className="mt-2 truncate text-[11px] text-muted-foreground/80" title={`${row.providerLabel} · ${planLabel} · ${row.statusLabel}`}>
+        {row.providerLabel} · {planLabel} · {row.statusLabel}
       </p>
 
       <div className="mt-3 grid gap-2">
-        <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} />
-        <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} />
+        <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} iconKind={primaryMetric === row.fiveHour ? "5h" : undefined} />
+        <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} iconKind={secondaryMetric === row.weekly ? "weekly" : undefined} />
       </div>
     </div>
   )
 }
 
-function MetricMeter({ title, metric }: { title: string; metric?: LiveCapacityMetric }) {
+function MetricMeter({
+  title,
+  metric,
+  iconKind,
+}: {
+  title: string
+  metric?: LiveCapacityMetric
+  iconKind?: "5h" | "weekly"
+}) {
   const progress = metric?.progress ?? null
   const resetLabel = metric?.resetLabel ?? "-"
   const resetText = resetLabel === "-" ? "-" : `reset ${resetLabel}`
+  const WindowIcon = iconKind === "5h" ? Timer : iconKind === "weekly" ? CalendarDays : null
 
   return (
     <div className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2">
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className="text-muted-foreground">{title}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+          {WindowIcon ? <WindowIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
+          <span className="truncate">{title}</span>
+        </span>
         <span className="truncate font-medium">{metric?.valueLabel ?? "-"}</span>
       </div>
       <div
@@ -155,8 +184,9 @@ function MetricMeter({ title, metric }: { title: string; metric?: LiveCapacityMe
           />
         ) : null}
       </div>
-      <div className="mt-1.5 truncate text-[11px] text-muted-foreground" title={resetText}>
-        {resetText}
+      <div className="mt-1.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground" title={resetText}>
+        <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <span className="truncate">{resetText}</span>
       </div>
     </div>
   )
