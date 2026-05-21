@@ -196,6 +196,69 @@ export interface KeyIdentityPage {
   total_pages?: number
 }
 
+export interface QuotaWindow {
+  duration?: number
+  unit?: string
+  seconds?: number
+}
+
+export interface QuotaRow {
+  key: string
+  label?: string
+  scope?: string
+  metric?: string
+  planType?: string
+  used?: number
+  limit?: number
+  remaining?: number
+  usedPercent?: number
+  remainingFraction?: number
+  allowed?: boolean
+  limitReached?: boolean
+  window?: QuotaWindow
+  resetAt?: string
+  resetAfterSeconds?: number
+}
+
+export interface QuotaCheckResponse {
+  id: string
+  quota: QuotaRow[]
+}
+
+export interface QuotaCacheResponse {
+  items: QuotaCheckResponse[]
+}
+
+export interface QuotaRefreshTaskID {
+  authIndex: string
+  taskId: string
+}
+
+export interface QuotaRefreshRejectedAuthIndex {
+  authIndex: string
+  error: string
+}
+
+export interface QuotaRefreshResponse {
+  tasks: QuotaRefreshTaskID[]
+  rejected: QuotaRefreshRejectedAuthIndex[]
+  accepted: number
+  skipped: number
+  limit: number
+}
+
+export type QuotaRefreshTaskStatus = "queued" | "running" | "completed" | "failed"
+
+export interface QuotaRefreshTaskResponse {
+  taskId: string
+  authIndex: string
+  status: QuotaRefreshTaskStatus
+  quota?: QuotaCheckResponse
+  error?: string
+  cachedAt?: string
+  expiresAt?: string
+}
+
 export interface APIKeyAliasTargetPage {
   api_keys: APIKeyAliasTarget[]
   total_pages?: number

@@ -12,6 +12,7 @@ import { KeyLeaderboard } from "@/components/charts/key-leaderboard"
 import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
+import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
 import { useUsageOverview } from "@/hooks/useUsageOverview"
 import { formatCost, formatCompact, formatComparison, formatPercent } from "@/lib/format"
 import {
@@ -342,6 +343,8 @@ function DashboardPage() {
         </span>
         <div className="h-px flex-1 bg-border" />
       </div>
+
+      <LiveCapacityCard provider={provider} />
 
       {/* Activity Heatmap — 30d fixed */}
       <Card>
