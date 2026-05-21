@@ -47,6 +47,42 @@ const usageEventsPayload = {
   })),
 }
 
+const authFileIdentitiesPayload = {
+  identities: [
+    {
+      id: 501,
+      name: "Codex Auth",
+      displayName: "Codex Auth",
+      alias: "Agent Codex",
+      auth_type: 1,
+      auth_type_name: "oauth",
+      identity: "codex-auth-e2e",
+      type: "codex",
+      provider: "Codex",
+      total_tokens: 0,
+      total_cost: 0,
+      cost_available: false,
+      last_used_at: null,
+    },
+  ],
+  total_count: 1,
+  page: 1,
+  page_size: 100,
+  total_pages: 1,
+}
+
+const quotaCachePayload = {
+  items: [
+    {
+      id: "codex-auth-e2e",
+      quota: [
+        { key: "rate_limit.primary_window", label: "5h", usedPercent: 35, resetAfterSeconds: 3600, planType: "plus" },
+        { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 62, resetAfterSeconds: 7200, planType: "plus" },
+      ],
+    },
+  ],
+}
+
 const pricingPayload = {
   pricing: [
     {
@@ -148,6 +184,8 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(chartLegend.getByText("Reasoning", { exact: true })).toBeVisible()
   await expect(chartLegend.getByText("Cached", { exact: true })).toBeVisible()
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
+  await expect(page.getByText("Live Capacity")).toBeVisible()
+  await expect(page.getByText("Agent Codex")).toBeVisible()
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expect(page.getByText("Agent API Key").first()).toBeVisible()
   await expectFixedOverviewCardHeights(page)
@@ -213,7 +251,7 @@ async function mockAPI(page: Page) {
       return
     }
     if (path === "/usage/identities/page") {
-      await route.fulfill({ json: usageIdentities })
+      await route.fulfill({ json: url.searchParams.get("auth_type") === "1" ? authFileIdentitiesPayload : usageIdentities })
       return
     }
     if (path === "/usage/api-keys/page") {
@@ -230,6 +268,14 @@ async function mockAPI(page: Page) {
     }
     if (path === "/models/used") {
       await route.fulfill({ json: usedModelsPayload })
+      return
+    }
+    if (path === "/quota/cache" && method === "POST") {
+      await route.fulfill({ json: quotaCachePayload })
+      return
+    }
+    if (path === "/quota/refresh" && method === "POST") {
+      await route.fulfill({ json: { tasks: [], rejected: [], accepted: 0, skipped: 0, limit: 20 } })
       return
     }
     if (path.startsWith("/usage/identities/") && path.endsWith("/alias")) {
