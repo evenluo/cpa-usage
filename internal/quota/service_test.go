@@ -68,6 +68,104 @@ func TestRefreshCreatesTaskPerAuthIndexAndCachesCompletedQuota(t *testing.T) {
 	}
 }
 
+func TestRefreshKeepsLatestCompletedCacheWhileNewRefreshRuns(t *testing.T) {
+	db := openQuotaTestDatabase(t)
+	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
+	block := make(chan struct{})
+	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
+	service := NewServiceWithRegistry(db, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+
+	first := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, first, RefreshTaskStatusCompleted)
+	assertCachedUsagePercent(t, service, "auth-1", 25)
+
+	handler.output = claudeUsageOutput(80)
+	handler.block = block
+	second := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, second, RefreshTaskStatusRunning)
+
+	assertCachedUsagePercent(t, service, "auth-1", 25)
+	if handler.callCount() != 1 {
+		t.Fatalf("cache lookup should not trigger provider calls while refresh is running, got %d", handler.callCount())
+	}
+	close(block)
+	waitForRefreshTask(t, service, second, RefreshTaskStatusCompleted)
+	assertCachedUsagePercent(t, service, "auth-1", 80)
+}
+
+func TestRefreshFailureKeepsLatestCompletedCache(t *testing.T) {
+	db := openQuotaTestDatabase(t)
+	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
+	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
+	service := NewServiceWithRegistry(db, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+
+	first := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, first, RefreshTaskStatusCompleted)
+	assertCachedUsagePercent(t, service, "auth-1", 25)
+
+	handler.err = errors.New("upstream exploded")
+	second := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, second, RefreshTaskStatusFailed)
+
+	assertCachedUsagePercent(t, service, "auth-1", 25)
+	if handler.callCount() != 2 {
+		t.Fatalf("expected one failed refresh provider call and no cache provider calls, got %d", handler.callCount())
+	}
+}
+
+func TestRefreshSuccessReplacesLatestCompletedCache(t *testing.T) {
+	db := openQuotaTestDatabase(t)
+	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
+	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
+	service := NewServiceWithRegistry(db, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+
+	first := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, first, RefreshTaskStatusCompleted)
+	assertCachedUsagePercent(t, service, "auth-1", 25)
+
+	handler.output = claudeUsageOutput(80)
+	second := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, second, RefreshTaskStatusCompleted)
+
+	assertCachedUsagePercent(t, service, "auth-1", 80)
+	if handler.callCount() != 2 {
+		t.Fatalf("expected two refresh provider calls and no cache provider calls, got %d", handler.callCount())
+	}
+}
+
+func TestRefreshCleanupRemovesExpiredLatestCompletedCache(t *testing.T) {
+	db := openQuotaTestDatabase(t)
+	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
+	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
+	service := NewServiceWithRegistry(db, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+
+	taskID := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, taskID, RefreshTaskStatusCompleted)
+	assertCachedUsagePercent(t, service, "auth-1", 25)
+
+	service.refreshMu.Lock()
+	service.refreshTasks[taskID].ExpiresAt = time.Now().Add(-time.Second)
+	service.refreshMu.Unlock()
+
+	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{"auth-1"}, Limit: 1})
+	if err != nil {
+		t.Fatalf("GetCachedQuota returned error: %v", err)
+	}
+	if len(cache.Items) != 0 {
+		t.Fatalf("expected expired cache to be removed, got %+v", cache.Items)
+	}
+	service.refreshMu.Lock()
+	_, latestOK := service.latestCompletedRefreshTaskIDsByAuth["auth-1"]
+	_, activeOK := service.refreshTaskIDsByAuth["auth-1"]
+	service.refreshMu.Unlock()
+	if latestOK || activeOK {
+		t.Fatalf("expected expired task indexes to be removed, latest=%v active=%v", latestOK, activeOK)
+	}
+	if handler.callCount() != 1 {
+		t.Fatalf("cache cleanup should not trigger provider calls, got %d", handler.callCount())
+	}
+}
+
 func TestRefreshRejectsInvalidEntriesAndIgnoresRunningTask(t *testing.T) {
 	db := openQuotaTestDatabase(t)
 	seedUsageIdentity(t, db, entities.UsageIdentity{Identity: "auth-1", Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile})
@@ -126,6 +224,36 @@ func TestRefreshTaskFailureReturnsFriendlyMessage(t *testing.T) {
 	task := waitForRefreshTask(t, service, response.Tasks[0].TaskID, RefreshTaskStatusFailed)
 	if task.Error != "Quota refresh failed. Please try again later." {
 		t.Fatalf("expected friendly error message, got %q", task.Error)
+	}
+}
+
+func claudeUsageOutput(usedPercent float64) ProviderOutput {
+	return ProviderOutput{Result: ClaudeResult{Usage: &ClaudeUsagePayload{FiveHour: &ClaudeUsageWindow{Utilization: usedPercent}}}}
+}
+
+func refreshAuthIndex(t *testing.T, service *Service, authIndex string) string {
+	t.Helper()
+	response, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{authIndex}, Limit: 20, Source: RefreshSourceManual})
+	if err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if response.Accepted != 1 || len(response.Tasks) != 1 {
+		t.Fatalf("expected one accepted refresh task, got %+v", response)
+	}
+	return response.Tasks[0].TaskID
+}
+
+func assertCachedUsagePercent(t *testing.T, service *Service, authIndex string, want float64) {
+	t.Helper()
+	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{authIndex}, Limit: 1})
+	if err != nil {
+		t.Fatalf("GetCachedQuota returned error: %v", err)
+	}
+	if len(cache.Items) != 1 || cache.Items[0].ID != authIndex || len(cache.Items[0].Quota) != 1 || cache.Items[0].Quota[0].UsedPercent == nil {
+		t.Fatalf("expected one cached quota row for %s, got %+v", authIndex, cache.Items)
+	}
+	if got := *cache.Items[0].Quota[0].UsedPercent; got != want {
+		t.Fatalf("expected cached usage percent %.0f, got %.0f", want, got)
 	}
 }
 
