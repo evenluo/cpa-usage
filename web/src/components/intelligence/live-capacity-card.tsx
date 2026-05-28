@@ -1,16 +1,35 @@
 import { AlertTriangle, CalendarDays, Clock, Gauge, RefreshCw, Timer } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { buildLiveCapacityRows, type LiveCapacityMetric, type LiveCapacityPlanTone } from "@/features/usage-intelligence/live-capacity"
+import {
+  buildLiveCapacityRows,
+  mergeLiveCapacityRowOrder,
+  orderLiveCapacityRows,
+  type LiveCapacityMetric,
+  type LiveCapacityPlanTone,
+} from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
 import { cn } from "@/lib/utils"
 import { ProviderBrandIcon } from "./provider-brand-icon"
 
 export function LiveCapacityCard({ provider }: { provider: string }) {
   const { identities, cachedQuota, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider)
-  const rows = buildLiveCapacityRows({ identities, cachedQuota, taskStates })
+  const derivedRows = useMemo(
+    () => buildLiveCapacityRows({ identities, cachedQuota, taskStates }),
+    [identities, cachedQuota, taskStates],
+  )
+  const [rowOrder, setRowOrder] = useState<string[]>([])
+  useEffect(() => {
+    if (isLoading || error) return
+    const update = () => {
+      setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, derivedRows))
+    }
+    queueMicrotask(update)
+  }, [derivedRows, error, isLoading])
+  const rows = useMemo(() => orderLiveCapacityRows(derivedRows, rowOrder), [derivedRows, rowOrder])
   const refreshLabel = identities.length > refreshLimit ? `Refresh first ${refreshLimit}` : "Refresh"
 
   return (

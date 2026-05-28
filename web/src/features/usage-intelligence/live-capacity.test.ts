@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
-import { buildLiveCapacityRows, isSupportedQuotaIdentity, providerKindFromIdentity } from "./live-capacity"
+import {
+  buildLiveCapacityRows,
+  isSupportedQuotaIdentity,
+  mergeLiveCapacityRowOrder,
+  orderLiveCapacityRows,
+  providerKindFromIdentity,
+} from "./live-capacity"
 
 function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
   return {
@@ -309,6 +315,63 @@ describe("Live Capacity view model", () => {
       "gemini-auth",
       "unsupported-auth",
     ])
+  })
+
+  it("keeps the current tile order stable when a single refreshed row changes priority", () => {
+    const identities = [
+      identity({ identity: "codex-pro", displayName: "Zulu Codex Pro", provider: "Codex", type: "codex" }),
+      identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
+    ]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [
+        {
+          id: "codex-pro",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }],
+        },
+        {
+          id: "plain-codex",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "team" }],
+        },
+      ],
+    }
+    const initialRows = buildLiveCapacityRows({ identities, cachedQuota })
+    const currentOrder = mergeLiveCapacityRowOrder([], initialRows)
+
+    const refreshedRows = buildLiveCapacityRows({
+      identities,
+      cachedQuota,
+      taskStates: {
+        "plain-codex": {
+          status: "completed",
+          taskId: "task-plain-codex",
+          quota: {
+            id: "plain-codex",
+            quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "pro" }],
+          },
+        },
+      },
+    })
+
+    expect(initialRows.map((row) => row.authIndex)).toEqual(["codex-pro", "plain-codex"])
+    expect(refreshedRows.map((row) => row.authIndex)).toEqual(["plain-codex", "codex-pro"])
+    expect(orderLiveCapacityRows(refreshedRows, currentOrder).map((row) => row.authIndex)).toEqual(["codex-pro", "plain-codex"])
+  })
+
+  it("appends new live capacity rows after the stable current order", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
+        identity({ identity: "plain-codex", displayName: "Codex Team", provider: "Codex", type: "codex" }),
+      ],
+      cachedQuota: {
+        items: [
+          { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+          { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        ],
+      },
+    })
+
+    expect(mergeLiveCapacityRowOrder(["plain-codex"], rows)).toEqual(["plain-codex", "codex-pro"])
   })
 
   it("formats metric reset per quota row and keeps missing reset explicit", () => {

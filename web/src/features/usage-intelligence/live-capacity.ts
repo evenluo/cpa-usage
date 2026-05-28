@@ -122,6 +122,34 @@ export function buildLiveCapacityRows(input: {
     .sort(compareLiveCapacityRows)
 }
 
+export function mergeLiveCapacityRowOrder(currentOrder: string[], rows: LiveCapacityRow[]): string[] {
+  const rowAuthIndexes = new Set(rows.map((row) => row.authIndex))
+  const nextOrder = currentOrder.filter((authIndex) => rowAuthIndexes.has(authIndex))
+  const orderedAuthIndexes = new Set(nextOrder)
+  for (const row of rows) {
+    if (!orderedAuthIndexes.has(row.authIndex)) {
+      nextOrder.push(row.authIndex)
+    }
+  }
+  if (nextOrder.length === currentOrder.length && nextOrder.every((authIndex, index) => authIndex === currentOrder[index])) {
+    return currentOrder
+  }
+  return nextOrder
+}
+
+export function orderLiveCapacityRows(rows: LiveCapacityRow[], rowOrder: string[]): LiveCapacityRow[] {
+  if (rowOrder.length === 0) return rows
+  const orderByAuthIndex = new Map(rowOrder.map((authIndex, index) => [authIndex, index]))
+  return [...rows].sort((a, b) => {
+    const aOrder = orderByAuthIndex.get(a.authIndex)
+    const bOrder = orderByAuthIndex.get(b.authIndex)
+    if (aOrder !== undefined && bOrder !== undefined) return aOrder - bOrder
+    if (aOrder !== undefined) return -1
+    if (bOrder !== undefined) return 1
+    return 0
+  })
+}
+
 export function isSupportedQuotaIdentity(identity: KeyIdentity): boolean {
   return providerKindFromIdentity(identity) !== "unsupported"
 }

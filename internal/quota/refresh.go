@@ -113,7 +113,7 @@ func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (Cac
 			continue
 		}
 		seen[authIndex] = struct{}{}
-		taskID, ok := s.refreshTaskIDsByAuth[authIndex]
+		taskID, ok := s.latestCompletedRefreshTaskIDsByAuth[authIndex]
 		if !ok {
 			continue
 		}
@@ -213,7 +213,7 @@ func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string
 }
 
 func (s *Service) ensureRefreshTask(authIndex string, source RefreshSource) (*RefreshTaskRecord, bool) {
-	// 同一个 auth_index 已经 queued/running 时复用现有任务，避免重复打到上游接口。
+	// refreshTaskIDsByAuth 只记录当前刷新任务，用于 queued/running 去重；最新 completed cache 由独立索引维护。
 	now := time.Now().UTC()
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
@@ -293,6 +293,7 @@ func (s *Service) markRefreshTaskCompleted(taskID string, response CheckResponse
 	task.CachedAt = now
 	task.ExpiresAt = now.Add(s.refreshTaskTTL)
 	task.Quota = &response
+	s.latestCompletedRefreshTaskIDsByAuth[task.AuthIndex] = taskID
 }
 
 func (s *Service) markRefreshTaskFailed(taskID string, message string) {
@@ -316,7 +317,7 @@ func (s *Service) cleanupExpiredRefreshTasks(now time.Time) {
 }
 
 func (s *Service) cleanupExpiredRefreshTasksLocked(now time.Time) {
-	// 任务过期时同步删除 task_id 和 auth_index 索引，避免缓存映射残留。
+	// 任务过期时同步删除 task_id、当前任务索引和最新完成缓存索引，避免映射残留。
 	for taskID, task := range s.refreshTasks {
 		if task.ExpiresAt.IsZero() || now.Before(task.ExpiresAt) {
 			continue
@@ -324,6 +325,9 @@ func (s *Service) cleanupExpiredRefreshTasksLocked(now time.Time) {
 		delete(s.refreshTasks, taskID)
 		if s.refreshTaskIDsByAuth[task.AuthIndex] == taskID {
 			delete(s.refreshTaskIDsByAuth, task.AuthIndex)
+		}
+		if s.latestCompletedRefreshTaskIDsByAuth[task.AuthIndex] == taskID {
+			delete(s.latestCompletedRefreshTaskIDsByAuth, task.AuthIndex)
 		}
 	}
 }
