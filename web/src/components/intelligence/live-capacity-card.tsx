@@ -1,5 +1,5 @@
 import { AlertTriangle, CalendarDays, Clock, Gauge, RefreshCw, Timer } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useLayoutEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +12,7 @@ import {
   type LiveCapacityPlanTone,
 } from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
+import { useFlipReorder } from "@/hooks/useFlipReorder"
 import { cn } from "@/lib/utils"
 import { ProviderBrandIcon } from "./provider-brand-icon"
 
@@ -22,14 +23,17 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
     [identities, cachedQuota, taskStates],
   )
   const [rowOrder, setRowOrder] = useState<string[]>([])
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (isLoading || error) return
-    const update = () => {
-      setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, derivedRows))
-    }
-    queueMicrotask(update)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- useLayoutEffect blocks paint, so no flash
+    setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, derivedRows))
   }, [derivedRows, error, isLoading])
   const rows = useMemo(() => orderLiveCapacityRows(derivedRows, rowOrder), [derivedRows, rowOrder])
+
+  const rowKeys = useMemo(() => rows.map((r) => r.authIndex), [rows])
+  const flipEnabled = !isLoading && !error && identities.length > 0
+  const { containerRef, registerItem } = useFlipReorder(rowKeys, { enabled: flipEnabled })
+
   const refreshLabel = identities.length > refreshLimit ? `Refresh first ${refreshLimit}` : "Refresh"
 
   return (
@@ -68,13 +72,17 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
             No auth-file accounts
           </div>
         ) : (
-          <div className="grid max-h-[560px] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+          <div
+            ref={containerRef}
+            className="grid max-h-[560px] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3"
+          >
             {rows.map((row) => (
-              <LiveCapacityAccountTile
-                key={row.authIndex}
-                row={row}
-                onRefresh={() => refresh(row.authIndex)}
-              />
+              <div key={row.authIndex} ref={registerItem(row.authIndex)}>
+                <LiveCapacityAccountTile
+                  row={row}
+                  onRefresh={() => refresh(row.authIndex)}
+                />
+              </div>
             ))}
           </div>
         )}
