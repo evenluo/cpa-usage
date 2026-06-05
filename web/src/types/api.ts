@@ -162,6 +162,7 @@ export interface KeyIdentity {
   identity: string
   type: string
   provider: string
+  plan_type?: string | null
   total_tokens: number
   total_cost: number
   cost_available: boolean

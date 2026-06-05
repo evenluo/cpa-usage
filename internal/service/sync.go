@@ -358,12 +358,27 @@ func syncAuthFiles(ctx context.Context, db *gorm.DB, result *response.AuthFilesR
 
 	identities := make([]entities.UsageIdentity, 0, len(result.Payload.Files))
 	for _, file := range result.Payload.Files {
+		if authFileInactive(file) {
+			continue
+		}
 		identities = append(identities, authFileUsageIdentity(file))
 	}
 	if err := repository.ReplaceUsageIdentitiesForAuthType(ctx, db, identities, entities.UsageIdentityAuthTypeAuthFile, now); err != nil {
 		return fmt.Errorf("sync auth file usage identities: %w", err)
 	}
 	return nil
+}
+
+func authFileInactive(file authfiles.AuthFile) bool {
+	if file.Disabled || file.Unavailable {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(file.Status)) {
+	case "deleted", "removed", "disabled", "unavailable", "inactive", "revoked":
+		return true
+	default:
+		return false
+	}
 }
 
 type authFileUsageIdentityExtension func(authfiles.AuthFile, *entities.UsageIdentity)

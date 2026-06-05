@@ -76,7 +76,7 @@ export function buildLiveCapacityRows(input: {
         .slice(0, 3)
         .map(metricFromQuotaRow)
       const isConstrained = quotaRows.some(isConstrainedQuotaRow)
-      const resolvedPlanType = planType(quotaRows)
+      const resolvedPlanType = planType(quotaRows, identity.plan_type)
       const planDisplay = planDisplayFor(providerKind, resolvedPlanType)
       const priorityLabel = planDisplay.tone === "priority" ? planDisplay.label : undefined
 
@@ -291,8 +291,10 @@ function formatResetDuration(seconds: number): string {
   return `${Math.round(hours / 24)}d`
 }
 
-function planType(rows: QuotaRow[]): string {
-  return rows.find((row) => row.planType)?.planType ?? ""
+function planType(rows: QuotaRow[], identityPlanType?: string | null): string {
+  const quotaPlanType = rows.find((row) => row.planType)?.planType?.trim()
+  if (quotaPlanType) return quotaPlanType
+  return identityPlanType?.trim() ?? ""
 }
 
 function rejectionLabel(code: string): string {

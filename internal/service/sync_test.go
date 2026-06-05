@@ -699,6 +699,94 @@ func TestSyncMetadataWritesAuthFilesToUsageIdentities(t *testing.T) {
 	assertTableNotExists(t, db, "auth_files")
 }
 
+func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	now := time.Date(2026, 5, 14, 9, 0, 0, 0, time.UTC)
+	if err := db.Create(&[]entities.UsageIdentity{{
+		Name:         "Deleted Account",
+		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName: "oauth",
+		Identity:     "auth-deleted",
+		Type:         "codex",
+		Provider:     "Codex",
+	}, {
+		Name:         "Disabled Account",
+		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName: "oauth",
+		Identity:     "auth-disabled",
+		Type:         "claude",
+		Provider:     "Claude",
+	}, {
+		Name:         "Unavailable Account",
+		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName: "oauth",
+		Identity:     "auth-unavailable",
+		Type:         "gemini-cli",
+		Provider:     "Gemini",
+	}, {
+		Name:         "Active Account",
+		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName: "oauth",
+		Identity:     "auth-active",
+		Type:         "codex",
+		Provider:     "Codex",
+	}}).Error; err != nil {
+		t.Fatalf("seed usage identities: %v", err)
+	}
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return now },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex: "auth-deleted",
+			Type:      "codex",
+			Provider:  "Codex",
+			Status:    "deleted",
+		}, {
+			AuthIndex: "auth-disabled",
+			Type:      "claude",
+			Provider:  "Claude",
+			Disabled:  true,
+		}, {
+			AuthIndex:   "auth-unavailable",
+			Type:        "gemini-cli",
+			Provider:    "Gemini",
+			Unavailable: true,
+		}, {
+			AuthIndex: "auth-active",
+			Type:      "codex",
+			Provider:  "Codex",
+		}}}}},
+	})
+
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	items, err := repository.ListUsageIdentities(context.Background(), db)
+	if err != nil {
+		t.Fatalf("list usage identities: %v", err)
+	}
+	byIdentity := usageIdentitiesByIdentity(items)
+	for _, authIndex := range []string{"auth-deleted", "auth-disabled", "auth-unavailable"} {
+		row := byIdentity[authIndex]
+		if !row.IsDeleted || row.DeletedAt == nil || !row.DeletedAt.Equal(now) {
+			t.Fatalf("expected inactive auth file %q to be deleted at %s, got %+v", authIndex, now, row)
+		}
+	}
+	active := byIdentity["auth-active"]
+	if active.IsDeleted || active.DeletedAt != nil {
+		t.Fatalf("expected returned active auth file to remain active, got %+v", active)
+	}
+
+	authType := entities.UsageIdentityAuthTypeAuthFile
+	activeItems, total, err := repository.ListActiveUsageIdentitiesPage(context.Background(), db, repository.ListUsageIdentitiesPageRequest{AuthType: &authType, Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list active auth identities: %v", err)
+	}
+	if total != 1 || len(activeItems) != 1 || activeItems[0].Identity != "auth-active" {
+		t.Fatalf("expected only active auth file in active page, total=%d items=%+v", total, activeItems)
+	}
+}
+
 func TestSyncMetadataWritesCodexAuthFileIDTokenFieldsOnlyForCodex(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	activeStart := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)

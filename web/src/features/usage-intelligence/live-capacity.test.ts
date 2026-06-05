@@ -118,6 +118,24 @@ describe("Live Capacity view model", () => {
     expect(rows[0].fiveHour).toBeUndefined()
   })
 
+  it("uses identity plan type for initial priority before quota cache exists", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "plain-codex", displayName: "Codex Team", provider: "Codex", type: "codex", plan_type: "team" }),
+        identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex", plan_type: "pro" }),
+        identity({ identity: "claude-max", displayName: "Claude Max", provider: "Claude", type: "claude", plan_type: "max20" }),
+      ],
+      cachedQuota: { items: [] },
+    })
+
+    expect(rows.map((row) => row.authIndex)).toEqual(["codex-pro", "claude-max", "plain-codex"])
+    expect(rows.map((row) => [row.authIndex, row.planLabel, row.planTone, row.status])).toEqual([
+      ["codex-pro", "Pro", "priority", "no_cache"],
+      ["claude-max", "Max", "priority", "no_cache"],
+      ["plain-codex", "Team", "ordinary", "no_cache"],
+    ])
+  })
+
   it("marks priority accounts only from normalized provider kind and plan type", () => {
     const cache: QuotaCacheResponse = {
       items: [
