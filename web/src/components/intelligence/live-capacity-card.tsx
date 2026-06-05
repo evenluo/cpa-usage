@@ -22,17 +22,31 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
     () => buildLiveCapacityRows({ identities, cachedQuota, taskStates }),
     [identities, cachedQuota, taskStates],
   )
+
+  const [priorityRows, regularDerivedRows] = useMemo(() => {
+    const priority: typeof derivedRows = []
+    const regular: typeof derivedRows = []
+    for (const row of derivedRows) {
+      if (row.isPriorityAccount) priority.push(row)
+      else regular.push(row)
+    }
+    return [priority, regular] as const
+  }, [derivedRows])
+
   const [rowOrder, setRowOrder] = useState<string[]>([])
   useLayoutEffect(() => {
     if (isLoading || error) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- useLayoutEffect blocks paint, so no flash
-    setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, derivedRows))
-  }, [derivedRows, error, isLoading])
-  const rows = useMemo(() => orderLiveCapacityRows(derivedRows, rowOrder), [derivedRows, rowOrder])
+    setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, regularDerivedRows))
+  }, [regularDerivedRows, error, isLoading])
+  const regularRows = useMemo(
+    () => orderLiveCapacityRows(regularDerivedRows, rowOrder),
+    [regularDerivedRows, rowOrder],
+  )
 
-  const rowKeys = useMemo(() => rows.map((r) => r.authIndex), [rows])
-  const flipEnabled = !isLoading && !error && identities.length > 0
-  const { containerRef, registerItem } = useFlipReorder(rowKeys, { enabled: flipEnabled })
+  const regularRowKeys = useMemo(() => regularRows.map((r) => r.authIndex), [regularRows])
+  const flipEnabled = !isLoading && !error && regularRows.length > 0
+  const { containerRef, registerItem } = useFlipReorder(regularRowKeys, { enabled: flipEnabled })
 
   const refreshLabel = identities.length > refreshLimit ? `Refresh first ${refreshLimit}` : "Refresh"
 
@@ -72,18 +86,38 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
             No auth-file accounts
           </div>
         ) : (
-          <div
-            ref={containerRef}
-            className="grid max-h-[560px] grid-cols-1 gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3"
-          >
-            {rows.map((row) => (
-              <div key={row.authIndex} ref={registerItem(row.authIndex)}>
-                <LiveCapacityAccountTile
-                  row={row}
-                  onRefresh={() => refresh(row.authIndex)}
-                />
+          <div className="flex max-h-[560px] flex-col gap-3 overflow-y-auto pr-1">
+            {priorityRows.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {priorityRows.map((row) => (
+                  <LiveCapacityAccountTile
+                    key={row.authIndex}
+                    row={row}
+                    onRefresh={() => refresh(row.authIndex)}
+                  />
+                ))}
               </div>
-            ))}
+            ) : null}
+
+            {priorityRows.length > 0 && regularRows.length > 0 ? (
+              <div className="border-t border-border/50" role="separator" />
+            ) : null}
+
+            {regularRows.length > 0 ? (
+              <div
+                ref={containerRef}
+                className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
+              >
+                {regularRows.map((row) => (
+                  <div key={row.authIndex} ref={registerItem(row.authIndex)}>
+                    <LiveCapacityAccountTile
+                      row={row}
+                      onRefresh={() => refresh(row.authIndex)}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         )}
       </CardContent>

@@ -70,11 +70,23 @@ function setupMock(props: Partial<LiveCapacityReturn> = {}): LiveCapacityReturn 
   return merged
 }
 
+/** Select the section-level grids (not the MetricMeter inner grids). */
+function getSectionGrids(container: Element): Element[] {
+  return Array.from(container.querySelectorAll(".grid.grid-cols-1"))
+}
+
+/** Read authIndex list from a grid element's children. */
+function readGridAuthIndexes(grid: Element): string[] {
+  return Array.from(grid.children).map((child) => {
+    const authIndexEl = child.querySelector("p.truncate.text-xs")
+    return authIndexEl?.textContent ?? ""
+  })
+}
+
 describe("LiveCapacityCard", () => {
   it("shows skeleton while loading", () => {
     setupMock({ isLoading: true })
     const { container } = render(<LiveCapacityCard provider="" />)
-    // Skeleton elements have animate-pulse class
     expect(container.querySelectorAll(".animate-pulse")).toHaveLength(3)
   })
 
@@ -84,15 +96,15 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("No auth-file accounts")).toBeInTheDocument()
   })
 
-  it("renders tiles for each identity in stable order", () => {
+  it("renders tiles for each identity", () => {
     const identities = [
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
     ]
     const cachedQuota: QuotaCacheResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "plain-codex", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
     setupMock({ identities, cachedQuota })
@@ -102,83 +114,75 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("Alpha Codex")).toBeInTheDocument()
   })
 
-  it("preserves tile order synchronously when taskStates change (no flicker)", () => {
+  it("separates priority accounts from regular accounts with a divider", () => {
     const identities = [
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
     ]
     const cachedQuota: QuotaCacheResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "plain-codex", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
     setupMock({ identities, cachedQuota })
+    const { container } = render(<LiveCapacityCard provider="" />)
 
-    const { container, rerender } = render(<LiveCapacityCard provider="" />)
+    // Should have two grid sections (priority + regular)
+    const grids = getSectionGrids(container)
+    expect(grids).toHaveLength(2)
 
-    // Read tile order from grid children (each grid child is one tile wrapper)
-    const getTileOrder = () => {
-      const grid = container.querySelector(".grid")
-      if (!grid) return []
-      return Array.from(grid.children).map((child) => {
-        // The authIndex is shown in a <p> with truncate text-xs
-        const authIndexEl = child.querySelector("p.truncate.text-xs")
-        return authIndexEl?.textContent ?? ""
-      })
-    }
-    const initialOrder = getTileOrder()
+    // Priority grid: only codex-pro
+    expect(readGridAuthIndexes(grids[0])).toEqual(["codex-pro"])
+    // Regular grid: only plain-codex
+    expect(readGridAuthIndexes(grids[1])).toEqual(["plain-codex"])
 
-    // Simulate taskState change (refresh completed for plain-codex with new plan)
-    setupMock({
-      identities,
-      cachedQuota,
-      taskStates: {
-        "plain-codex": {
-          status: "completed",
-          taskId: "task-1",
-          quota: {
-            id: "plain-codex",
-            quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "pro" }],
-          },
-        },
-      },
-    })
-
-    // Rerender synchronously — order should not change mid-frame
-    act(() => {
-      rerender(<LiveCapacityCard provider="" />)
-    })
-
-    // The tile order should be identical — render-time setState prevents any flash
-    expect(getTileOrder()).toEqual(initialOrder)
+    // Divider should be present
+    expect(container.querySelector("[role='separator']")).toBeInTheDocument()
   })
 
-  it("preserves tile order when cachedQuota updates after taskStates (two-phase refresh)", () => {
+  it("shows no divider when all accounts are non-priority", () => {
+    const identities = [
+      identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
+      identity({ identity: "team-codex", displayName: "Team Codex", provider: "Codex", type: "codex" }),
+    ]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [
+        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "team-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+      ],
+    }
+    setupMock({ identities, cachedQuota })
+    const { container } = render(<LiveCapacityCard provider="" />)
+
+    // Only one grid section (regular only)
+    const grids = getSectionGrids(container)
+    expect(grids).toHaveLength(1)
+
+    // No divider
+    expect(container.querySelector("[role='separator']")).not.toBeInTheDocument()
+  })
+
+  it("moves account to priority section when plan upgrades via taskState", () => {
     const identities = [
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
     ]
     const initialCache: QuotaCacheResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "plain-codex", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
     setupMock({ identities, cachedQuota: initialCache })
     const { container, rerender } = render(<LiveCapacityCard provider="" />)
 
-    const getTileOrder = () => {
-      const grid = container.querySelector(".grid")
-      if (!grid) return []
-      return Array.from(grid.children).map((child) => {
-        const authIndexEl = child.querySelector("p.truncate.text-xs")
-        return authIndexEl?.textContent ?? ""
-      })
-    }
-    const initialOrder = getTileOrder()
+    // Initially: 1 priority (codex-pro), 1 regular (plain-codex)
+    let grids = getSectionGrids(container)
+    expect(readGridAuthIndexes(grids[0])).toEqual(["codex-pro"])
+    expect(readGridAuthIndexes(grids[1])).toEqual(["plain-codex"])
 
-    // Phase 1: taskStates updates (completed with new plan)
+    // plain-codex refreshes and upgrades to pro
     setupMock({
       identities,
       cachedQuota: initialCache,
@@ -188,40 +192,57 @@ describe("LiveCapacityCard", () => {
           taskId: "task-1",
           quota: {
             id: "plain-codex",
-            quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "pro" }],
+            quota: [{ key: "quota", label: "5h", usedPercent: 20, planType: "pro" }],
           },
         },
       },
     })
     act(() => { rerender(<LiveCapacityCard provider="" />) })
-    const afterPhase1 = getTileOrder()
 
-    // Phase 2: cachedQuota updates (cache refetch completes)
-    const refreshedCache: QuotaCacheResponse = {
+    // Now both should be in the priority section, regular section empty
+    grids = getSectionGrids(container)
+    expect(grids).toHaveLength(1) // only priority grid
+    // Both are Pro now (priority 0), sorted alphabetically: "Alpha Codex" < "Codex Pro"
+    expect(readGridAuthIndexes(grids[0])).toEqual(["plain-codex", "codex-pro"])
+    // No divider since regular section is empty
+    expect(container.querySelector("[role='separator']")).not.toBeInTheDocument()
+  })
+
+  it("preserves regular section order when taskStates change", () => {
+    const identities = [
+      identity({ identity: "alpha-codex", displayName: "Alpha", provider: "Codex", type: "codex" }),
+      identity({ identity: "beta-codex", displayName: "Beta", provider: "Codex", type: "codex" }),
+    ]
+    const cachedQuota: QuotaCacheResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "plain-codex", quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "pro" }] },
+        { id: "alpha-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "beta-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
+    setupMock({ identities, cachedQuota })
+    const { container, rerender } = render(<LiveCapacityCard provider="" />)
+
+    const grids = getSectionGrids(container)
+    const initialOrder = readGridAuthIndexes(grids[0])
+
+    // Refresh beta-codex (no plan change)
     setupMock({
       identities,
-      cachedQuota: refreshedCache,
+      cachedQuota,
       taskStates: {
-        "plain-codex": {
+        "beta-codex": {
           status: "completed",
           taskId: "task-1",
           quota: {
-            id: "plain-codex",
-            quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "pro" }],
+            id: "beta-codex",
+            quota: [{ key: "quota", label: "5h", usedPercent: 50, planType: "team" }],
           },
         },
       },
     })
     act(() => { rerender(<LiveCapacityCard provider="" />) })
-    const afterPhase2 = getTileOrder()
 
-    // Order should be stable throughout all phases
-    expect(afterPhase1).toEqual(initialOrder)
-    expect(afterPhase2).toEqual(initialOrder)
+    const gridsAfter = getSectionGrids(container)
+    expect(readGridAuthIndexes(gridsAfter[0])).toEqual(initialOrder)
   })
 })
