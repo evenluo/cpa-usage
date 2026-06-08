@@ -188,6 +188,25 @@ describe("Live Capacity view model", () => {
     expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
   })
 
+  it("marks a row refreshing immediately while refresh request is starting", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 25 }],
+        }],
+      },
+      taskStates: {
+        "codex-auth": { status: "starting" },
+      },
+    })
+
+    expect(rows[0].status).toBe("refreshing")
+    expect(rows[0].statusLabel).toBe("Starting")
+    expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
+  })
+
   it("renders supported non-window quota rows as capacity metrics", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "gemini-auth", provider: "Gemini", type: "gemini-cli" })],

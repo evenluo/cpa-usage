@@ -86,9 +86,9 @@ export function buildLiveCapacityRows(input: {
       if (!supported) {
         status = "unsupported"
         statusLabel = "Unsupported"
-      } else if (taskState?.status === "queued" || taskState?.status === "running") {
+      } else if (taskState?.status === "starting" || taskState?.status === "queued" || taskState?.status === "running") {
         status = "refreshing"
-        statusLabel = taskState.status === "queued" ? "Queued" : "Refreshing"
+        statusLabel = taskState.status === "starting" ? "Starting" : taskState.status === "queued" ? "Queued" : "Refreshing"
       } else if (taskState?.status === "failed") {
         status = "failed"
         statusLabel = rejectionLabel(taskState.error)
