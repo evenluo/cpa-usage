@@ -350,6 +350,67 @@ func BuildUsageOverviewWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dt
 	return buildUsageOverviewFromEvents(events, filter, pricingByModel), nil
 }
 
+// BuildUsageRequestHealthWithFilter builds the fixed Request Health grid with bounded SQL aggregates.
+func BuildUsageRequestHealthWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database is nil")
+	}
+
+	health := buildUsageOverviewHealth(filter)
+	type usageRequestHealthTotalRow struct {
+		Success int64
+		Failure int64
+	}
+	var totals usageRequestHealthTotalRow
+	if err := applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter).
+		Select(`
+			COALESCE(SUM(CASE WHEN failed THEN 0 ELSE 1 END), 0) AS success,
+			COALESCE(SUM(CASE WHEN failed THEN 1 ELSE 0 END), 0) AS failure`).
+		Scan(&totals).Error; err != nil {
+		return nil, fmt.Errorf("build usage request health totals: %w", err)
+	}
+	health.TotalSuccess = totals.Success
+	health.TotalFailure = totals.Failure
+	if total := health.TotalSuccess + health.TotalFailure; total > 0 {
+		health.SuccessRate = (float64(health.TotalSuccess) / float64(total)) * 100
+	}
+
+	if len(health.BlockDetails) == 0 {
+		return &health, nil
+	}
+
+	type usageRequestHealthBucketRow struct {
+		BucketIndex int
+		Success     int64
+		Failure     int64
+	}
+	var rows []usageRequestHealthBucketRow
+	if err := applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter).
+		Where("timestamp >= ? AND timestamp < ?", health.WindowStart, health.WindowEnd).
+		Select(`
+			CAST((unixepoch(timestamp) - unixepoch(?)) / ? AS INTEGER) AS bucket_index,
+			COALESCE(SUM(CASE WHEN failed THEN 0 ELSE 1 END), 0) AS success,
+			COALESCE(SUM(CASE WHEN failed THEN 1 ELSE 0 END), 0) AS failure`,
+			health.WindowStart.UTC(), health.BucketSeconds).
+		Group("bucket_index").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("build usage request health buckets: %w", err)
+	}
+	for _, row := range rows {
+		if row.BucketIndex < 0 || row.BucketIndex >= len(health.BlockDetails) {
+			continue
+		}
+		block := &health.BlockDetails[row.BucketIndex]
+		block.Success = row.Success
+		block.Failure = row.Failure
+		if total := block.Success + block.Failure; total > 0 {
+			block.Rate = float64(block.Success) / float64(total)
+		}
+	}
+
+	return &health, nil
+}
+
 func buildUsageOverviewFromEvents(events []entities.UsageEvent, filter dto.UsageQueryFilter, pricingByModel map[string]entities.ModelPriceSetting) *dto.UsageOverviewRecord {
 	windowMinutes := computeWindowMinutes(filter)
 	bucketByDay := shouldBucketUsageOverviewByDay(filter, windowMinutes)

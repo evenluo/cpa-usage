@@ -4,11 +4,11 @@ import type {
   HeatmapData,
   KeyAliasBreakdown,
   ProviderOption,
+  RequestHealthResponse,
   ServiceHealth,
   TimeGranularity,
   TimeRange,
   TrendPoint,
-  UsageOverviewResponse,
 } from "@/types/api"
 
 export const TIME_RANGES: { value: TimeRange; label: string }[] = [
@@ -93,7 +93,8 @@ export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
 
 export function buildUsageDashboardViewModel(input: {
   analytics?: AnalyticsResponse
-  healthOverview?: UsageOverviewResponse
+  fixedHeatmap?: HeatmapData
+  requestHealth?: RequestHealthResponse
   leaderboardScope: LeaderboardScope
 }): UsageDashboardViewModel {
   const trend = input.analytics?.trend ?? []
@@ -108,8 +109,8 @@ export function buildUsageDashboardViewModel(input: {
     apiKeys,
     leaderboardRows: getLeaderboardRows(input.leaderboardScope, apiKeys, keyAliases),
     providerOptions: input.analytics?.provider_options ?? [],
-    fixedHeatmap: input.analytics?.heatmap,
-    serviceHealth: input.healthOverview?.service_health,
+    fixedHeatmap: input.fixedHeatmap,
+    serviceHealth: input.requestHealth?.service_health,
     hasLeaderboardBreakdown,
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
     kpiData: deriveKpiSparklineData(trend),

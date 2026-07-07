@@ -12,12 +12,14 @@ import (
 )
 
 type usageFilterStub struct {
-	usage         *dto.StatisticsSnapshot
-	overview      *servicedto.UsageOverviewSnapshot
-	err           error
-	lastFilter    servicedto.UsageFilter
-	filterCalls   int
-	overviewCalls int
+	usage              *dto.StatisticsSnapshot
+	overview           *servicedto.UsageOverviewSnapshot
+	requestHealth      *servicedto.UsageOverviewHealth
+	err                error
+	lastFilter         servicedto.UsageFilter
+	filterCalls        int
+	overviewCalls      int
+	requestHealthCalls int
 }
 
 func (s *usageFilterStub) GetUsageWithFilter(_ context.Context, filter servicedto.UsageFilter) (*dto.StatisticsSnapshot, error) {
@@ -30,6 +32,12 @@ func (s *usageFilterStub) GetUsageOverview(_ context.Context, filter servicedto.
 	s.lastFilter = filter
 	s.overviewCalls++
 	return s.overview, s.err
+}
+
+func (s *usageFilterStub) GetRequestHealth(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageOverviewHealth, error) {
+	s.lastFilter = filter
+	s.requestHealthCalls++
+	return s.requestHealth, s.err
 }
 
 func (s *usageFilterStub) ListUsageEvents(context.Context, servicedto.UsageFilter) (*servicedto.UsageEventsPage, error) {
@@ -185,6 +193,56 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 	}
 	if provider.lastFilter.Range != "24h" {
 		t.Fatalf("expected range to be passed through, got %+v", provider.lastFilter)
+	}
+	if provider.lastFilter.StartTime == nil || provider.lastFilter.EndTime == nil {
+		t.Fatalf("expected resolved time bounds in filter, got %+v", provider.lastFilter)
+	}
+}
+
+func TestUsageRequestHealthReturnsDedicatedHealthGrid(t *testing.T) {
+	provider := &usageFilterStub{requestHealth: &servicedto.UsageOverviewHealth{
+		TotalSuccess:  2,
+		TotalFailure:  1,
+		SuccessRate:   100.0 * 2.0 / 3.0,
+		Rows:          8,
+		Columns:       60,
+		BucketSeconds: 180,
+		WindowStart:   mustParseTime(t, "2026-04-21T12:00:00Z"),
+		WindowEnd:     mustParseTime(t, "2026-04-22T12:00:00Z"),
+		BlockDetails: []servicedto.UsageOverviewHealthBlock{{
+			StartTime: mustParseTime(t, "2026-04-22T11:57:00Z"),
+			EndTime:   mustParseTime(t, "2026-04-22T12:00:00Z"),
+			Success:   2,
+			Failure:   1,
+			Rate:      2.0 / 3.0,
+		}},
+	}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/request-health?range=24h&provider=OpenAI", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+	body := resp.Body.String()
+	if !contains(body, `"service_health":{"total_success":2,"total_failure":1`) ||
+		!contains(body, `"rows":8,"columns":60,"bucket_seconds":180`) ||
+		!contains(body, `"block_details":[{"start_time":"2026-04-22T11:57:00Z","end_time":"2026-04-22T12:00:00Z","success":2,"failure":1`) {
+		t.Fatalf("expected request health response body, got %s", body)
+	}
+	if contains(body, `"usage":`) || contains(body, `"summary":`) || contains(body, `"series":`) {
+		t.Fatalf("expected request health response to omit full overview fields: %s", body)
+	}
+	if provider.requestHealthCalls != 1 {
+		t.Fatalf("expected GetRequestHealth to be called once, got %d", provider.requestHealthCalls)
+	}
+	if provider.overviewCalls != 0 || provider.filterCalls != 0 {
+		t.Fatalf("expected request health route not to call full overview or snapshot, overview=%d snapshot=%d", provider.overviewCalls, provider.filterCalls)
+	}
+	if provider.lastFilter.Range != "24h" || provider.lastFilter.Provider != "OpenAI" {
+		t.Fatalf("expected range and provider to be passed through, got %+v", provider.lastFilter)
 	}
 	if provider.lastFilter.StartTime == nil || provider.lastFilter.EndTime == nil {
 		t.Fatalf("expected resolved time bounds in filter, got %+v", provider.lastFilter)

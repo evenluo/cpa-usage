@@ -346,3 +346,7 @@ export interface ServiceHealth {
 export interface UsageOverviewResponse {
   service_health: ServiceHealth
 }
+
+export interface RequestHealthResponse {
+  service_health: ServiceHealth
+}

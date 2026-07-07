@@ -112,8 +112,8 @@ describe("Usage Intelligence view model", () => {
       api_key_breakdown: [apiKey],
       provider_options: [{ provider: "OpenAI", request_count: 2, total_tokens: 20, total_cost: 10, cost_available: false, cost_status: "partial" }],
     }
-    analytics.heatmap = { measure: "tokens" as const, max_tokens: 20, max_cost: 10, max_requests: 2, max_failures: 0, rows: [] }
-    const healthOverview = {
+    const fixedHeatmap = { measure: "tokens" as const, max_tokens: 20, max_cost: 10, max_requests: 2, max_failures: 0, rows: [] }
+    const requestHealth = {
       service_health: {
         total_success: 2,
         total_failure: 0,
@@ -129,7 +129,8 @@ describe("Usage Intelligence view model", () => {
 
     const viewModel = buildUsageDashboardViewModel({
       analytics,
-      healthOverview,
+      fixedHeatmap,
+      requestHealth,
       leaderboardScope: "api-key",
     })
 
@@ -137,8 +138,8 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.leaderboardRows).toEqual([apiKey])
     expect(viewModel.keyAliases).toEqual([account])
     expect(viewModel.providerOptions).toEqual(analytics.provider_options)
-    expect(viewModel.fixedHeatmap).toBe(analytics.heatmap)
-    expect(viewModel.serviceHealth).toBe(healthOverview.service_health)
+    expect(viewModel.fixedHeatmap).toBe(fixedHeatmap)
+    expect(viewModel.serviceHealth).toBe(requestHealth.service_health)
     expect(viewModel.hasLeaderboardBreakdown).toBe(true)
     expect(viewModel.leaderboardSortLabel).toBe("Sort: Cost partial")
   })
@@ -177,6 +178,7 @@ describe("Usage Intelligence view model", () => {
 
     const viewModel = buildUsageDashboardViewModel({
       analytics,
+      fixedHeatmap: analytics.heatmap,
       leaderboardScope: "api-key",
     })
 

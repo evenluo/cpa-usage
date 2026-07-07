@@ -53,6 +53,7 @@ function OperationsPage() {
       toast.success("Sync triggered")
       qc.invalidateQueries({ queryKey: ["analytics"] })
       qc.invalidateQueries({ queryKey: ["usage", "overview"] })
+      qc.invalidateQueries({ queryKey: ["usage", "request-health"] })
       qc.invalidateQueries({ queryKey: ["events"] })
       qc.invalidateQueries({ queryKey: ["keys", "identities"] })
       qc.invalidateQueries({ queryKey: ["pricing"] })

@@ -31,6 +31,10 @@ func (s *usageEventsStub) GetUsageOverview(context.Context, servicedto.UsageFilt
 	return nil, nil
 }
 
+func (s *usageEventsStub) GetRequestHealth(context.Context, servicedto.UsageFilter) (*servicedto.UsageOverviewHealth, error) {
+	return nil, nil
+}
+
 func (s *usageEventsStub) ListUsageEvents(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageEventsPage, error) {
 	s.lastFilter = filter
 	s.filterCalls++

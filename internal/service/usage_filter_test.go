@@ -80,3 +80,33 @@ func TestUsageServiceGetUsageOverviewDelegatesToFilteredOverview(t *testing.T) {
 		t.Fatalf("expected hourly cost series values, got %+v", overview.Series)
 	}
 }
+
+func TestUsageServiceGetRequestHealthDelegatesToFilteredProjection(t *testing.T) {
+	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-request-health.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "event-codex-success", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), Failed: false, TotalTokens: 10},
+		{EventKey: "event-codex-failed", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), Failed: true, TotalTokens: 20},
+		{EventKey: "event-other", Provider: "claude", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC), Failed: true, TotalTokens: 30},
+	}); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
+	provider := NewUsageService(db)
+	health, err := provider.GetRequestHealth(context.Background(), servicedto.UsageFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"})
+	if err != nil {
+		t.Fatalf("GetRequestHealth returned error: %v", err)
+	}
+
+	if health.TotalSuccess != 1 || health.TotalFailure != 1 || health.SuccessRate != 50 {
+		t.Fatalf("expected provider-scoped request health totals, got %+v", health)
+	}
+	if health.Rows != 8 || health.Columns != 60 || health.BucketSeconds != 180 {
+		t.Fatalf("expected fixed 24h request health grid, got %+v", health)
+	}
+}

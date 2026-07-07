@@ -23,6 +23,13 @@ type usageOverviewResponse struct {
 	RangeEnd      *time.Time                 `json:"range_end,omitempty"`
 }
 
+type usageRequestHealthResponse struct {
+	ServiceHealth usageOverviewServiceHealth `json:"service_health"`
+	Timezone      string                     `json:"timezone"`
+	RangeStart    *time.Time                 `json:"range_start,omitempty"`
+	RangeEnd      *time.Time                 `json:"range_end,omitempty"`
+}
+
 type usageOverviewPayload struct {
 	TotalRequests  int64                               `json:"total_requests"`
 	SuccessCount   int64                               `json:"success_count"`
@@ -147,6 +154,35 @@ func registerUsageOverviewRoute(router gin.IRoutes, usageProvider service.UsageP
 			HourlySeries:  buildUsageOverviewHourlySeries(overview),
 			DailySeries:   buildUsageOverviewDailySeries(overview),
 			ServiceHealth: buildUsageOverviewServiceHealth(overview),
+			Timezone:      time.Local.String(),
+			RangeStart:    filter.StartTime,
+			RangeEnd:      filter.EndTime,
+		})
+	})
+
+	router.GET("/usage/request-health", func(c *gin.Context) {
+		if usageProvider == nil {
+			c.JSON(http.StatusOK, usageRequestHealthResponse{
+				ServiceHealth: usageOverviewServiceHealth{BlockDetails: []usageOverviewServiceHealthBlock{}},
+				Timezone:      time.Local.String(),
+			})
+			return
+		}
+
+		filter, err := parseUsageTimeFilterQuery(c.Request, time.Now().UTC())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		health, err := usageProvider.GetRequestHealth(c.Request.Context(), filter)
+		if err != nil {
+			writeInternalError(c, "get request health failed", err)
+			return
+		}
+
+		c.JSON(http.StatusOK, usageRequestHealthResponse{
+			ServiceHealth: buildUsageOverviewHealthPayload(health),
 			Timezone:      time.Local.String(),
 			RangeStart:    filter.StartTime,
 			RangeEnd:      filter.EndTime,
@@ -290,8 +326,15 @@ func buildUsageOverviewServiceHealth(overview *servicedto.UsageOverviewSnapshot)
 	if overview == nil {
 		return usageOverviewServiceHealth{BlockDetails: []usageOverviewServiceHealthBlock{}}
 	}
-	blocks := make([]usageOverviewServiceHealthBlock, 0, len(overview.Health.BlockDetails))
-	for _, block := range overview.Health.BlockDetails {
+	return buildUsageOverviewHealthPayload(&overview.Health)
+}
+
+func buildUsageOverviewHealthPayload(health *servicedto.UsageOverviewHealth) usageOverviewServiceHealth {
+	if health == nil {
+		return usageOverviewServiceHealth{BlockDetails: []usageOverviewServiceHealthBlock{}}
+	}
+	blocks := make([]usageOverviewServiceHealthBlock, 0, len(health.BlockDetails))
+	for _, block := range health.BlockDetails {
 		blocks = append(blocks, usageOverviewServiceHealthBlock{
 			StartTime: block.StartTime,
 			EndTime:   block.EndTime,
@@ -301,14 +344,14 @@ func buildUsageOverviewServiceHealth(overview *servicedto.UsageOverviewSnapshot)
 		})
 	}
 	return usageOverviewServiceHealth{
-		TotalSuccess:  overview.Health.TotalSuccess,
-		TotalFailure:  overview.Health.TotalFailure,
-		SuccessRate:   overview.Health.SuccessRate,
-		Rows:          overview.Health.Rows,
-		Columns:       overview.Health.Columns,
-		BucketSeconds: overview.Health.BucketSeconds,
-		WindowStart:   overview.Health.WindowStart,
-		WindowEnd:     overview.Health.WindowEnd,
+		TotalSuccess:  health.TotalSuccess,
+		TotalFailure:  health.TotalFailure,
+		SuccessRate:   health.SuccessRate,
+		Rows:          health.Rows,
+		Columns:       health.Columns,
+		BucketSeconds: health.BucketSeconds,
+		WindowStart:   health.WindowStart,
+		WindowEnd:     health.WindowEnd,
 		BlockDetails:  blocks,
 	}
 }

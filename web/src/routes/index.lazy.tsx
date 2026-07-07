@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { mergeAnalyticsCore, useAnalytics, useAnalyticsCore } from "@/hooks/useAnalytics"
 import { useCountUp } from "@/hooks/useCountUp"
+import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { Sparkline } from "@/components/charts/sparkline"
 import { TrendChart } from "@/components/charts/trend-chart"
 import { KeyLeaderboard } from "@/components/charts/key-leaderboard"
@@ -13,8 +14,8 @@ import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
-import { useUsageOverview } from "@/hooks/useUsageOverview"
 import { formatCost, formatCompact, formatComparison, formatPercent } from "@/lib/format"
+import { buildUsageIntelligenceLoadPlan } from "@/features/usage-intelligence/load-plan"
 import {
   buildUsageDashboardViewModel,
   getEffectiveGranularity,
@@ -38,17 +39,32 @@ function DashboardPage() {
   const [leaderboardScope, setLeaderboardScope] = useState<"account" | "api-key">("api-key")
 
   const g = getEffectiveGranularity(range, granularity)
+  const loadPlan = useMemo(
+    () => buildUsageIntelligenceLoadPlan({ range, granularity: g, provider }),
+    [range, g, provider],
+  )
+  const selectedAnalytics = loadPlan.selectedWindow.analytics
+  const fixedWindow = loadPlan.fixedWindow
   const {
     data: fullAnalyticsData,
     isLoading: isFullAnalyticsLoading,
     error: fullAnalyticsError,
-  } = useAnalytics(range, g, provider)
+  } = useAnalytics(selectedAnalytics.range, selectedAnalytics.granularity, selectedAnalytics.provider)
+  const {
+    data: heatmapAnalyticsData,
+    isLoading: isHeatmapLoading,
+    error: heatmapError,
+  } = useAnalytics(fixedWindow.heatmap.range, fixedWindow.heatmap.granularity, fixedWindow.heatmap.provider)
   const {
     data: coreAnalyticsData,
     isLoading: isCoreAnalyticsLoading,
     error: coreAnalyticsError,
-  } = useAnalyticsCore(range, g, provider)
-  const { data: healthOverviewData, isLoading: isHealthLoading } = useUsageOverview("24h", provider)
+  } = useAnalyticsCore(selectedAnalytics.range, selectedAnalytics.granularity, selectedAnalytics.provider)
+  const {
+    data: requestHealthData,
+    isLoading: isRequestHealthLoading,
+    error: requestHealthError,
+  } = useRequestHealth(fixedWindow.requestHealth.range, fixedWindow.requestHealth.provider)
 
   useEffect(() => {
     writeStoredTimeRange(range)
@@ -61,7 +77,6 @@ function DashboardPage() {
   const hasCoreSurfaceData = Boolean(coreAnalyticsData ?? fullAnalyticsData)
   const isCoreSurfaceLoading = !hasCoreSurfaceData && (isCoreAnalyticsLoading || isFullAnalyticsLoading)
   const coreSurfaceError = hasCoreSurfaceData ? null : coreAnalyticsError ?? fullAnalyticsError
-  const isFullAnalyticsSurfaceLoading = !fullAnalyticsData && isFullAnalyticsLoading
 
   const summary = data?.summary
   const comparison = data?.comparison
@@ -77,12 +92,17 @@ function DashboardPage() {
   } = useMemo(
     () => buildUsageDashboardViewModel({
       analytics: data,
-      healthOverview: healthOverviewData,
+      fixedHeatmap: heatmapAnalyticsData?.heatmap,
+      requestHealth: requestHealthData,
       leaderboardScope,
     }),
-    [data, healthOverviewData, leaderboardScope],
+    [data, heatmapAnalyticsData, requestHealthData, leaderboardScope],
   )
   const isLeaderboardSurfaceLoading = !hasLeaderboardBreakdown && isCoreSurfaceLoading
+  const isHeatmapSurfaceLoading = !fixedHeatmap && isHeatmapLoading
+  const heatmapSurfaceError = fixedHeatmap ? null : heatmapError
+  const isRequestHealthSurfaceLoading = !serviceHealth && isRequestHealthLoading
+  const requestHealthSurfaceError = serviceHealth ? null : requestHealthError
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
@@ -364,7 +384,7 @@ function DashboardPage() {
         <div className="h-px flex-1 bg-border" />
       </div>
 
-      <LiveCapacityCard provider={provider} />
+      <LiveCapacityCard provider={fixedWindow.liveCapacity.provider} />
 
       {/* Activity Heatmap — 30d fixed */}
       <Card>
@@ -379,8 +399,12 @@ function DashboardPage() {
           <Badge variant="terracotta">30d fixed</Badge>
         </CardHeader>
         <CardContent>
-          {isFullAnalyticsSurfaceLoading ? (
+          {isHeatmapSurfaceLoading ? (
             <Skeleton className="h-[260px] w-full" />
+          ) : heatmapSurfaceError ? (
+            <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
+              Failed to load activity heatmap
+            </div>
           ) : fixedHeatmap ? (
             <Heatmap data={fixedHeatmap} />
           ) : (
@@ -405,8 +429,12 @@ function DashboardPage() {
             <Badge variant="green">24h fixed</Badge>
           </CardHeader>
           <CardContent className="min-h-0 min-w-0 flex-1">
-            {isHealthLoading ? (
+            {isRequestHealthSurfaceLoading ? (
               <Skeleton className="h-[180px] w-full" />
+            ) : requestHealthSurfaceError ? (
+              <div className="flex h-[180px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
+                Failed to load request health
+              </div>
             ) : serviceHealth ? (
               <HealthGrid data={serviceHealth} />
             ) : (
@@ -417,7 +445,11 @@ function DashboardPage() {
           </CardContent>
         </Card>
 
-        <RequestEvidence provider={provider} />
+        <RequestEvidence
+          provider={fixedWindow.requestEvidence.provider}
+          range={fixedWindow.requestEvidence.range}
+          pageSize={fixedWindow.requestEvidence.pageSize}
+        />
       </div>
     </div>
   )

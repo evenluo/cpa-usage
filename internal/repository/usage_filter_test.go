@@ -328,6 +328,46 @@ func TestBuildUsageOverviewWithFilterBuilds24hHealthGridFor24hRange(t *testing.T
 	}
 }
 
+func TestBuildUsageRequestHealthWithFilterMatchesOverviewHealthProjection(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-request-health.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	events := []entities.UsageEvent{
+		{EventKey: "event-codex-boundary", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 17, 0, 3, 0, 0, time.UTC), Failed: false, TotalTokens: 5},
+		{EventKey: "event-codex-success", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 17, 9, 31, 0, 0, time.UTC), Failed: false, TotalTokens: 10},
+		{EventKey: "event-codex-failed", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 17, 23, 58, 0, 0, time.UTC), Failed: true, TotalTokens: 20},
+		{EventKey: "event-other", Provider: "claude", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 17, 12, 0, 0, 0, time.UTC), Failed: true, TotalTokens: 30},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC)
+	filter := dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"}
+	overview, err := BuildUsageOverviewWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
+	}
+	health, err := BuildUsageRequestHealthWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildUsageRequestHealthWithFilter returned error: %v", err)
+	}
+
+	if !reflect.DeepEqual(*health, overview.Health) {
+		t.Fatalf("expected request health projection to match overview health\nrequest=%+v\noverview=%+v", *health, overview.Health)
+	}
+	if health.TotalSuccess != 2 || health.TotalFailure != 1 {
+		t.Fatalf("expected provider-scoped health totals, got %+v", health)
+	}
+	if health.BlockDetails[1].Success != 1 || health.BlockDetails[0].Success != 0 {
+		t.Fatalf("expected exact bucket-boundary event in the next half-open bucket, got block0=%+v block1=%+v", health.BlockDetails[0], health.BlockDetails[1])
+	}
+}
+
 func TestBuildUsageOverviewWithFilterAppliesProviderScope(t *testing.T) {
 	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-overview-provider.db")})
 	if err != nil {

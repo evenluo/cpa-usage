@@ -6,8 +6,14 @@ import { useEvents } from "@/hooks/useEvents"
 import { formatCompact, formatDate } from "@/lib/format"
 import type { UsageEvent } from "@/types/api"
 
-export function RequestEvidence({ provider }: { provider: string }) {
-  const { data, isLoading, error } = useEvents("24h", 10, provider)
+interface RequestEvidenceProps {
+  provider: string
+  range?: string
+  pageSize?: number
+}
+
+export function RequestEvidence({ provider, range = "24h", pageSize = 10 }: RequestEvidenceProps) {
+  const { data, isLoading, error } = useEvents(range, pageSize, provider)
   const events = data?.events.slice(0, 5) ?? []
   const eventFingerprint = events.map(getEventIdentity).join("|")
   const rotationKey = `${provider}:${eventFingerprint}`

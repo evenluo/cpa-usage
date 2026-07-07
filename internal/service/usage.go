@@ -43,30 +43,17 @@ func (s *usageService) GetUsageOverview(_ context.Context, filter servicedto.Usa
 		Series:       mapUsageOverviewSeries(overview.Series),
 		HourlySeries: mapUsageOverviewSeries(overview.HourlySeries),
 		DailySeries:  mapUsageOverviewSeries(overview.DailySeries),
-		Health: servicedto.UsageOverviewHealth{
-			TotalSuccess:  overview.Health.TotalSuccess,
-			TotalFailure:  overview.Health.TotalFailure,
-			SuccessRate:   overview.Health.SuccessRate,
-			Rows:          overview.Health.Rows,
-			Columns:       overview.Health.Columns,
-			BucketSeconds: overview.Health.BucketSeconds,
-			WindowStart:   overview.Health.WindowStart,
-			WindowEnd:     overview.Health.WindowEnd,
-			BlockDetails: func() []servicedto.UsageOverviewHealthBlock {
-				blocks := make([]servicedto.UsageOverviewHealthBlock, 0, len(overview.Health.BlockDetails))
-				for _, block := range overview.Health.BlockDetails {
-					blocks = append(blocks, servicedto.UsageOverviewHealthBlock{
-						StartTime: block.StartTime,
-						EndTime:   block.EndTime,
-						Success:   block.Success,
-						Failure:   block.Failure,
-						Rate:      block.Rate,
-					})
-				}
-				return blocks
-			}(),
-		},
+		Health:       mapUsageOverviewHealth(overview.Health),
 	}, nil
+}
+
+func (s *usageService) GetRequestHealth(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageOverviewHealth, error) {
+	health, err := repository.BuildUsageRequestHealthWithFilter(s.db, filter.SelectedWindowQueryFilter())
+	if err != nil {
+		return nil, err
+	}
+	result := mapUsageOverviewHealth(*health)
+	return &result, nil
 }
 
 func mapUsageOverviewSeries(series repodto.UsageOverviewSeriesRecord) servicedto.UsageOverviewSeries {
@@ -85,6 +72,30 @@ func mapUsageOverviewSeries(series repodto.UsageOverviewSeriesRecord) servicedto
 		CachedTokens:    series.CachedTokens,
 		ReasoningTokens: series.ReasoningTokens,
 		Models:          models,
+	}
+}
+
+func mapUsageOverviewHealth(health repodto.UsageOverviewHealthRecord) servicedto.UsageOverviewHealth {
+	blocks := make([]servicedto.UsageOverviewHealthBlock, 0, len(health.BlockDetails))
+	for _, block := range health.BlockDetails {
+		blocks = append(blocks, servicedto.UsageOverviewHealthBlock{
+			StartTime: block.StartTime,
+			EndTime:   block.EndTime,
+			Success:   block.Success,
+			Failure:   block.Failure,
+			Rate:      block.Rate,
+		})
+	}
+	return servicedto.UsageOverviewHealth{
+		TotalSuccess:  health.TotalSuccess,
+		TotalFailure:  health.TotalFailure,
+		SuccessRate:   health.SuccessRate,
+		Rows:          health.Rows,
+		Columns:       health.Columns,
+		BucketSeconds: health.BucketSeconds,
+		WindowStart:   health.WindowStart,
+		WindowEnd:     health.WindowEnd,
+		BlockDetails:  blocks,
 	}
 }
 
