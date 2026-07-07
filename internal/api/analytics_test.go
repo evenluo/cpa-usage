@@ -15,11 +15,13 @@ import (
 )
 
 type analyticsStub struct {
-	snapshot  *repodto.AnalyticsSummarySnapshot
-	core      *repodto.AnalyticsSummarySnapshot
-	filter    servicedto.UsageFilter
-	calls     int
-	coreCalls int
+	snapshot     *repodto.AnalyticsSummarySnapshot
+	core         *repodto.AnalyticsSummarySnapshot
+	heatmap      repodto.AnalyticsHeatmap
+	filter       servicedto.UsageFilter
+	calls        int
+	coreCalls    int
+	heatmapCalls int
 }
 
 func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error) {
@@ -35,6 +37,12 @@ func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter servicedto.Us
 		return s.core, nil
 	}
 	return s.snapshot, nil
+}
+
+func (s *analyticsStub) GetAnalyticsHeatmap(_ context.Context, filter servicedto.UsageFilter) (repodto.AnalyticsHeatmap, error) {
+	s.heatmapCalls++
+	s.filter = filter
+	return s.heatmap, nil
 }
 
 func TestBuildAnalyticsSummaryResponseMatchesContractFixture(t *testing.T) {
@@ -526,6 +534,48 @@ func TestAnalyticsCoreRouteReturnsSummaryAndTrendWithoutHeatmap(t *testing.T) {
 	body := resp.Body.String()
 	if !contains(body, `"summary":`) || !contains(body, `"trend":[`) || !contains(body, `"provider_options":[`) || contains(body, `"heatmap"`) {
 		t.Fatalf("expected core response with summary/trend and no heatmap, got %s", body)
+	}
+}
+
+func TestAnalyticsHeatmapRouteReturnsDedicatedHeatmap(t *testing.T) {
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	provider := &analyticsStub{heatmap: repodto.AnalyticsHeatmap{
+		Measure:     "tokens",
+		MaxTokens:   100,
+		MaxRequests: 1,
+		Rows: []repodto.AnalyticsHeatmapRow{{
+			Date:  "2026-05-11",
+			Label: "05/11 Mon",
+			Cells: []repodto.AnalyticsHeatmapCell{{
+				Hour:          9,
+				InRange:       true,
+				BucketStart:   start,
+				BucketEnd:     start.Add(time.Hour),
+				TotalTokens:   100,
+				RequestCount:  1,
+				CostAvailable: true,
+				CostStatus:    repodto.AnalyticsCostStatusAvailable,
+			}},
+		}},
+	}}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Analytics: provider})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/heatmap?range=30d&granularity=day&provider=OpenAI", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if provider.heatmapCalls != 1 {
+		t.Fatalf("expected heatmap provider to be called once, got %d", provider.heatmapCalls)
+	}
+	if provider.filter.Range != "30d" || provider.filter.Granularity != "day" || provider.filter.Provider != "OpenAI" {
+		t.Fatalf("unexpected heatmap filter: %+v", provider.filter)
+	}
+	body := resp.Body.String()
+	if !contains(body, `"heatmap":{`) || !contains(body, `"date":"2026-05-11"`) || contains(body, `"summary":`) || contains(body, `"trend":`) {
+		t.Fatalf("expected dedicated heatmap response only, got %s", body)
 	}
 }
 

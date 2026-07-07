@@ -56,6 +56,67 @@ func RebuildUsageRollupsForEvents(db *gorm.DB, seedEvents []entities.UsageEvent)
 		events = append(events, bucketEvents...)
 	}
 
+	return rebuildUsageRollupsForBuckets(db, bucketList, events)
+}
+
+func RebuildUsageRollupsForBucketRange(db *gorm.DB, startBucket time.Time, endBucket time.Time) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		return rebuildUsageRollupsForBucketRange(tx, startBucket, endBucket)
+	})
+}
+
+func rebuildUsageRollupsForBucketRange(db *gorm.DB, startBucket time.Time, endBucket time.Time) error {
+	start := startBucket.UTC().Truncate(time.Hour)
+	end := endBucket.UTC().Truncate(time.Hour)
+	if end.Before(start) {
+		return nil
+	}
+
+	bucketList := hourlyBucketRange(start, end)
+	if err := db.Where("bucket_start IN ?", bucketList).Delete(&entities.UsageRollupHourly{}).Error; err != nil {
+		return fmt.Errorf("delete hourly usage rollups: %w", err)
+	}
+	var events []entities.UsageEvent
+	if err := db.
+		Where("timestamp >= ? AND timestamp < ?", start, end.Add(time.Hour)).
+		Find(&events).Error; err != nil {
+		return fmt.Errorf("load usage events for hourly rollup range rebuild: %w", err)
+	}
+	rollups := buildUsageRollupsForBuckets(bucketList, events)
+	if len(rollups) == 0 {
+		return nil
+	}
+	if err := db.Create(&rollups).Error; err != nil {
+		return fmt.Errorf("create hourly usage rollups: %w", err)
+	}
+	return nil
+}
+
+func rebuildUsageRollupsForBuckets(db *gorm.DB, bucketList []time.Time, events []entities.UsageEvent) error {
+	if len(bucketList) == 0 {
+		return nil
+	}
+	rollups := buildUsageRollupsForBuckets(bucketList, events)
+	if err := db.Where("bucket_start IN ?", bucketList).Delete(&entities.UsageRollupHourly{}).Error; err != nil {
+		return fmt.Errorf("delete hourly usage rollups: %w", err)
+	}
+	if len(rollups) == 0 {
+		return nil
+	}
+	if err := db.Create(&rollups).Error; err != nil {
+		return fmt.Errorf("create hourly usage rollups: %w", err)
+	}
+	return nil
+}
+
+func buildUsageRollupsForBuckets(bucketList []time.Time, events []entities.UsageEvent) []entities.UsageRollupHourly {
+	buckets := make(map[time.Time]struct{}, len(bucketList))
+	for _, bucket := range bucketList {
+		buckets[bucket.UTC().Truncate(time.Hour)] = struct{}{}
+	}
 	rollupsByKey := map[hourlyUsageRollupKey]*entities.UsageRollupHourly{}
 	for _, event := range events {
 		bucket := event.Timestamp.UTC().Truncate(time.Hour)
@@ -85,9 +146,6 @@ func RebuildUsageRollupsForEvents(db *gorm.DB, seedEvents []entities.UsageEvent)
 		applyUsageEventToHourlyRollup(rollup, event)
 	}
 
-	if err := db.Where("bucket_start IN ?", bucketList).Delete(&entities.UsageRollupHourly{}).Error; err != nil {
-		return fmt.Errorf("delete hourly usage rollups: %w", err)
-	}
 	if len(rollupsByKey) == 0 {
 		return nil
 	}
@@ -95,10 +153,18 @@ func RebuildUsageRollupsForEvents(db *gorm.DB, seedEvents []entities.UsageEvent)
 	for _, rollup := range rollupsByKey {
 		rollups = append(rollups, *rollup)
 	}
-	if err := db.Create(&rollups).Error; err != nil {
-		return fmt.Errorf("create hourly usage rollups: %w", err)
+	return rollups
+}
+
+func hourlyBucketRange(start time.Time, end time.Time) []time.Time {
+	if end.Before(start) {
+		return nil
 	}
-	return nil
+	buckets := make([]time.Time, 0, int(end.Sub(start)/time.Hour)+1)
+	for bucket := start.UTC().Truncate(time.Hour); !bucket.After(end); bucket = bucket.Add(time.Hour) {
+		buckets = append(buckets, bucket)
+	}
+	return buckets
 }
 
 func applyUsageEventToHourlyRollup(rollup *entities.UsageRollupHourly, event entities.UsageEvent) {

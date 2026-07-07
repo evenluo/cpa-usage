@@ -296,10 +296,10 @@ func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
 	}
 }
 
-func TestBuildAnalyticsCoreWithFilterFallsBackWhenWindowPrecedesCoverage(t *testing.T) {
+func TestBuildAnalyticsCoreWithFilterFallsBackWhenBackfillIncomplete(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 5, 11, 9, 59, 59, 0, time.UTC)
+	end := start.Add(time.Hour).Add(-time.Nanosecond)
 	event := entities.UsageEvent{
 		EventKey: "uncovered-window", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 100, TotalTokens: 100,
 	}
@@ -308,6 +308,40 @@ func TestBuildAnalyticsCoreWithFilterFallsBackWhenWindowPrecedesCoverage(t *test
 	}
 	if err := db.Where("1 = 1").Delete(&entities.UsageRollupHourly{}).Error; err != nil {
 		t.Fatalf("remove rollups to prove raw fallback: %v", err)
+	}
+	target := start
+	covered := start.Add(-time.Hour)
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusRunning,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+
+	if core.Summary.RequestCount != 1 || core.Summary.TotalTokens != 100 {
+		t.Fatalf("expected incomplete backfill to use raw fallback, got %+v", core.Summary)
+	}
+}
+
+func TestBuildAnalyticsCoreWithFilterAllowsIngestionMaintainedBucketsAfterCompletedTarget(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour).Add(-time.Nanosecond)
+	event := entities.UsageEvent{
+		EventKey: "after-target-window", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 100, TotalTokens: 100,
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{event}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	if err := db.Where("1 = 1").Delete(&entities.UsageEvent{}).Error; err != nil {
+		t.Fatalf("remove raw events to prove rollup read: %v", err)
 	}
 	target := start.Add(-time.Hour)
 	covered := target
@@ -326,7 +360,7 @@ func TestBuildAnalyticsCoreWithFilterFallsBackWhenWindowPrecedesCoverage(t *test
 	}
 
 	if core.Summary.RequestCount != 1 || core.Summary.TotalTokens != 100 {
-		t.Fatalf("expected uncovered window to use raw fallback, got %+v", core.Summary)
+		t.Fatalf("expected completed backfill plus later ingestion rollup to cover window, got %+v", core.Summary)
 	}
 }
 
@@ -371,6 +405,59 @@ func TestBuildAnalyticsCoreWithFilterPreservesRawPromptCostClamp(t *testing.T) {
 
 	if math.Abs(core.Summary.TotalCost-rawSummary.TotalCost) > 0.000000001 || core.Summary.TotalTokens != rawSummary.TotalTokens || core.Summary.RequestCount != rawSummary.RequestCount {
 		t.Fatalf("expected rollup cost to preserve raw prompt clamp\ncore=%+v\nraw=%+v", core.Summary, rawSummary)
+	}
+}
+
+func TestBuildAnalyticsHeatmapWithFilterUsesRollupsWhenCovered(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previousLocal })
+
+	db := openTestDatabase(t)
+	windowEnd := time.Date(2026, 5, 31, 12, 30, 0, 0, time.UTC)
+	windowStart := windowEnd.Add(-analyticsHeatmapWindow)
+	eventTime := windowEnd.Add(-2 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "heatmap-rollup", Provider: "OpenAI", Model: "priced-model", Timestamp: eventTime, InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 100_000, TotalTokens: 1_600_000},
+		{EventKey: "heatmap-start-boundary-outside", Provider: "OpenAI", Model: "priced-model", Timestamp: windowStart.Truncate(time.Hour).Add(15 * time.Minute), InputTokens: 9_000_000, TotalTokens: 9_000_000},
+		{EventKey: "heatmap-end-boundary-inside", Provider: "OpenAI", Model: "priced-model", Timestamp: windowEnd.Add(-10 * time.Minute), InputTokens: 300, TotalTokens: 300},
+		{EventKey: "heatmap-end-boundary-outside", Provider: "OpenAI", Model: "priced-model", Timestamp: windowEnd.Truncate(time.Hour).Add(45 * time.Minute), InputTokens: 8_000_000, TotalTokens: 8_000_000},
+		{EventKey: "other-provider-heatmap", Provider: "Claude", Model: "priced-model", Timestamp: eventTime, InputTokens: 1_000_000, TotalTokens: 1_000_000},
+	}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	target := windowEnd.UTC().Truncate(time.Hour)
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &target,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "30d", Granularity: "day", Provider: "OpenAI", FixedWindowEnd: &windowEnd}
+
+	rawHeatmap, err := buildAnalyticsHeatmap(db, filter)
+	if err != nil {
+		t.Fatalf("build raw heatmap: %v", err)
+	}
+	rollupHeatmap, err := BuildAnalyticsHeatmapWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsHeatmapWithFilter returned error: %v", err)
+	}
+
+	if !reflect.DeepEqual(rollupHeatmap, rawHeatmap) {
+		t.Fatalf("expected rollup heatmap to match raw heatmap\nrollup=%+v\nraw=%+v", rollupHeatmap, rawHeatmap)
+	}
+	if rollupHeatmap.MaxTokens != 1_600_000 || math.Abs(rollupHeatmap.MaxCost-1.95) > 0.000000001 {
+		t.Fatalf("expected provider-scoped rollup heatmap metrics, got %+v", rollupHeatmap)
 	}
 }
 

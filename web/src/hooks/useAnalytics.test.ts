@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { AnalyticsCoreResponse, AnalyticsResponse, AnalyticsSummary, TrendPoint } from "@/types/api"
-import { buildAnalyticsCorePath, buildAnalyticsSummaryPath, mergeAnalyticsCore } from "./useAnalytics"
+import { buildAnalyticsCorePath, buildAnalyticsHeatmapPath, buildAnalyticsSummaryPath, mergeAnalyticsCore } from "./useAnalytics"
 
 function summary(totalTokens: number): AnalyticsSummary {
   return {
@@ -48,6 +48,12 @@ describe("useAnalytics", () => {
   it("keeps the full analytics hook on the summary endpoint", () => {
     expect(buildAnalyticsSummaryPath("7d", "hour", "OpenAI")).toBe(
       "/analytics/summary?range=7d&granularity=hour&provider=OpenAI",
+    )
+  })
+
+  it("reads Activity Heatmap from the dedicated heatmap endpoint", () => {
+    expect(buildAnalyticsHeatmapPath("30d", "day", "OpenAI")).toBe(
+      "/analytics/heatmap?range=30d&granularity=day&provider=OpenAI",
     )
   })
 

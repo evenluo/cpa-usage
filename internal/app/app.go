@@ -40,6 +40,7 @@ type App struct {
 	Maintenance       *StorageCleanupRunner
 	MetadataSync      *MetadataSyncRunner
 	BackupMaintenance *DatabaseBackupRunner
+	RollupBackfill    *service.UsageRollupBackfillRunner
 	LogCloser         io.Closer
 
 	backgroundCancel context.CancelFunc
@@ -92,6 +93,11 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	usageIdentityService := service.NewUsageIdentityService(db)
 	analyticsService := service.NewAnalyticsService(db)
 	rollupBackfillService := service.NewRollupBackfillService(db)
+	rollupBackfillRunner := service.NewUsageRollupBackfillRunner(db, service.UsageRollupBackfillRunnerConfig{
+		BatchHours:   cfg.UsageRollupBackfillBatchHours,
+		IdleInterval: cfg.UsageRollupBackfillIdleInterval,
+		RetryBackoff: cfg.UsageRollupBackfillErrorBackoff,
+	})
 	keyAliasService := service.NewKeyAliasService(db)
 	cpaClient := cpa.NewClient(cfg.CPABaseURL, cfg.CPAManagementKey, cfg.RequestTimeout, cfg.TLSSkipVerify)
 	if cfg.TLSSkipVerify {
@@ -122,6 +128,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		Maintenance:       NewStorageCleanupRunner(syncService),
 		MetadataSync:      NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
 		BackupMaintenance: backupMaintenance,
+		RollupBackfill:    rollupBackfillRunner,
 		LogCloser:         logCloser,
 		Router: api.NewRouter(
 			webui.Static,
@@ -208,6 +215,13 @@ func (a *App) Run() error {
 		a.startBackgroundTask(func() {
 			if err := a.BackupMaintenance.Run(ctx); err != nil {
 				logrus.Errorf("database backup stopped: %v", err)
+			}
+		})
+	}
+	if a.RollupBackfill != nil {
+		a.startBackgroundTask(func() {
+			if err := a.RollupBackfill.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				logrus.Errorf("usage rollup backfill stopped: %v", err)
 			}
 		})
 	}

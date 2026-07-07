@@ -12,6 +12,7 @@ import (
 type AnalyticsProvider interface {
 	GetAnalyticsSummary(context.Context, servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error)
 	GetAnalyticsCore(context.Context, servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error)
+	GetAnalyticsHeatmap(context.Context, servicedto.UsageFilter) (repodto.AnalyticsHeatmap, error)
 }
 
 type analyticsService struct {
@@ -28,4 +29,8 @@ func (s *analyticsService) GetAnalyticsSummary(_ context.Context, filter service
 
 func (s *analyticsService) GetAnalyticsCore(_ context.Context, filter servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error) {
 	return repository.BuildAnalyticsCoreWithFilter(s.db, filter.SelectedWindowQueryFilter())
+}
+
+func (s *analyticsService) GetAnalyticsHeatmap(_ context.Context, filter servicedto.UsageFilter) (repodto.AnalyticsHeatmap, error) {
+	return repository.BuildAnalyticsHeatmapWithFilter(s.db, filter.SelectedWindowQueryFilter())
 }

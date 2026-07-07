@@ -163,6 +163,11 @@ export interface AnalyticsCoreResponse {
   provider_options?: ProviderOption[]
 }
 
+export interface AnalyticsHeatmapResponse {
+  granularity?: TimeGranularity
+  heatmap: HeatmapData
+}
+
 export interface KeyIdentity {
   id: number
   name: string

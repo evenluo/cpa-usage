@@ -50,6 +50,16 @@ type analyticsCoreResponse struct {
 	Providers   []analyticsProviderOption `json:"provider_options"`
 }
 
+type analyticsHeatmapResponse struct {
+	Range       string                  `json:"range"`
+	Granularity string                  `json:"granularity"`
+	RangeStart  *time.Time              `json:"range_start,omitempty"`
+	RangeEnd    *time.Time              `json:"range_end,omitempty"`
+	Provider    string                  `json:"provider,omitempty"`
+	Timezone    string                  `json:"timezone"`
+	Heatmap     analyticsHeatmapPayload `json:"heatmap"`
+}
+
 type analyticsSummaryPayload struct {
 	TotalCost             float64  `json:"total_cost"`
 	TotalTokens           int64    `json:"total_tokens"`
@@ -232,6 +242,25 @@ func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.Analy
 			return
 		}
 		c.JSON(http.StatusOK, buildAnalyticsSummaryResponse(filter, snapshot))
+	})
+
+	router.GET("/analytics/heatmap", func(c *gin.Context) {
+		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if analyticsProvider == nil {
+			c.JSON(http.StatusOK, buildAnalyticsHeatmapResponse(filter, dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}))
+			return
+		}
+
+		heatmap, err := analyticsProvider.GetAnalyticsHeatmap(c.Request.Context(), filter)
+		if err != nil {
+			writeInternalError(c, "get analytics heatmap failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, buildAnalyticsHeatmapResponse(filter, heatmap))
 	})
 }
 
@@ -524,6 +553,18 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.
 		})
 	}
 	return response
+}
+
+func buildAnalyticsHeatmapResponse(filter servicedto.UsageFilter, heatmap dto.AnalyticsHeatmap) analyticsHeatmapResponse {
+	return analyticsHeatmapResponse{
+		Range:       filter.Range,
+		Granularity: filter.Granularity,
+		RangeStart:  filter.StartTime,
+		RangeEnd:    filter.EndTime,
+		Provider:    filter.Provider,
+		Timezone:    time.Local.String(),
+		Heatmap:     mapAnalyticsHeatmap(heatmap),
+	}
 }
 
 func mapAnalyticsHeatmap(heatmap dto.AnalyticsHeatmap) analyticsHeatmapPayload {

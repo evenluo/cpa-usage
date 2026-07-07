@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { getDefaultGranularity } from "@/features/usage-intelligence/view-model"
 import { apiFetch } from "@/lib/api"
-import type { AnalyticsCoreResponse, AnalyticsResponse, TimeRange, TimeGranularity } from "@/types/api"
+import type { AnalyticsCoreResponse, AnalyticsHeatmapResponse, AnalyticsResponse, TimeRange, TimeGranularity } from "@/types/api"
 
 function rangeParam(range: TimeRange): string {
   switch (range) {
@@ -27,6 +27,14 @@ export function buildAnalyticsSummaryPath(
   provider: string,
 ): string {
   return buildAnalyticsPath("/analytics/summary", range, granularity, provider)
+}
+
+export function buildAnalyticsHeatmapPath(
+  range: TimeRange,
+  granularity: TimeGranularity,
+  provider: string,
+): string {
+  return buildAnalyticsPath("/analytics/heatmap", range, granularity, provider)
 }
 
 function buildAnalyticsPath(
@@ -75,6 +83,27 @@ export function useAnalyticsCore(
     queryKey: ["analytics", "core", range, g, provider],
     queryFn: () =>
       apiFetch<AnalyticsCoreResponse>(buildAnalyticsCorePath(range, g, provider)),
+    staleTime: 30_000,
+    refetchInterval: () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return false
+      }
+      return 60_000
+    },
+  })
+}
+
+export function useAnalyticsHeatmap(
+  range: TimeRange,
+  granularity: TimeGranularity | null,
+  provider: string,
+) {
+  const g = granularity ?? getDefaultGranularity(range)
+
+  return useQuery({
+    queryKey: ["analytics", "heatmap", range, g, provider],
+    queryFn: () =>
+      apiFetch<AnalyticsHeatmapResponse>(buildAnalyticsHeatmapPath(range, g, provider)),
     staleTime: 30_000,
     refetchInterval: () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {

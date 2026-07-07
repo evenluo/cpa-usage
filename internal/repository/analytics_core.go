@@ -122,13 +122,17 @@ func analyticsRollupReadAllowed(db *gorm.DB, filter dto.UsageQueryFilter) (bool,
 	if status.CoveredBucketStart == nil {
 		return false, "missing_covered_bucket", nil
 	}
-	if filter.EndTime != nil && filter.EndTime.UTC().After(status.CoveredBucketStart.UTC()) {
-		return false, "window_after_covered_bucket", nil
+	if status.CoveredBucketStart.UTC().Truncate(time.Hour).Before(status.TargetBucketStart.UTC().Truncate(time.Hour)) {
+		return false, "covered_before_target", nil
 	}
 	return true, "", nil
 }
 
 func logAnalyticsCoreRawFallback(filter dto.UsageQueryFilter, detail string) {
+	logAnalyticsRawFallback("analytics core raw fallback", filter, detail)
+}
+
+func logAnalyticsRawFallback(message string, filter dto.UsageQueryFilter, detail string) {
 	fields := logrus.Fields{
 		"reason":      "backfill_incomplete",
 		"detail":      detail,
@@ -142,7 +146,7 @@ func logAnalyticsCoreRawFallback(filter dto.UsageQueryFilter, detail string) {
 	if filter.EndTime != nil {
 		fields["end_time"] = filter.EndTime.UTC()
 	}
-	logrus.WithFields(fields).Warn("analytics core raw fallback")
+	logrus.WithFields(fields).Warn(message)
 }
 
 func analyticsCoreRollupWindowPlan(filter dto.UsageQueryFilter) analyticsCoreWindowPlan {

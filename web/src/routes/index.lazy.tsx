@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 
 import { Skeleton } from "@/components/ui/skeleton"
-import { mergeAnalyticsCore, useAnalytics, useAnalyticsCore } from "@/hooks/useAnalytics"
+import { mergeAnalyticsCore, useAnalytics, useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useCountUp } from "@/hooks/useCountUp"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { Sparkline } from "@/components/charts/sparkline"
@@ -51,10 +51,10 @@ function DashboardPage() {
     error: fullAnalyticsError,
   } = useAnalytics(selectedAnalytics.range, selectedAnalytics.granularity, selectedAnalytics.provider)
   const {
-    data: heatmapAnalyticsData,
+    data: heatmapData,
     isLoading: isHeatmapLoading,
     error: heatmapError,
-  } = useAnalytics(fixedWindow.heatmap.range, fixedWindow.heatmap.granularity, fixedWindow.heatmap.provider)
+  } = useAnalyticsHeatmap(fixedWindow.heatmap.range, fixedWindow.heatmap.granularity, fixedWindow.heatmap.provider)
   const {
     data: coreAnalyticsData,
     isLoading: isCoreAnalyticsLoading,
@@ -92,11 +92,11 @@ function DashboardPage() {
   } = useMemo(
     () => buildUsageDashboardViewModel({
       analytics: data,
-      fixedHeatmap: heatmapAnalyticsData?.heatmap,
+      fixedHeatmap: heatmapData?.heatmap,
       requestHealth: requestHealthData,
       leaderboardScope,
     }),
-    [data, heatmapAnalyticsData, requestHealthData, leaderboardScope],
+    [data, heatmapData, requestHealthData, leaderboardScope],
   )
   const isLeaderboardSurfaceLoading = !hasLeaderboardBreakdown && isCoreSurfaceLoading
   const isHeatmapSurfaceLoading = !fixedHeatmap && isHeatmapLoading

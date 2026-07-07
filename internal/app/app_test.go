@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -92,6 +93,33 @@ func TestNewWithConfigCreatesIndependentMaintenanceRunner(t *testing.T) {
 	}
 	if app.Maintenance == nil {
 		t.Fatal("expected independent maintenance runner to be initialized")
+	}
+}
+
+func TestNewWithConfigPassesUsageRollupBackfillConfig(t *testing.T) {
+	cfg := testAppConfig(t)
+	cfg.UsageRollupBackfillBatchHours = 11
+	cfg.UsageRollupBackfillIdleInterval = 4 * time.Second
+	cfg.UsageRollupBackfillErrorBackoff = 13 * time.Second
+
+	app, err := NewWithConfig(cfg)
+	if err != nil {
+		t.Fatalf("NewWithConfig returned error: %v", err)
+	}
+	defer app.Close()
+
+	if app.RollupBackfill == nil {
+		t.Fatal("expected usage rollup backfill runner to be initialized")
+	}
+	runner := reflect.ValueOf(app.RollupBackfill).Elem()
+	if batchHours := int(runner.FieldByName("batchHours").Int()); batchHours != 11 {
+		t.Fatalf("expected configured backfill batch hours, got %d", batchHours)
+	}
+	if idleInterval := time.Duration(runner.FieldByName("idleInterval").Int()); idleInterval != 4*time.Second {
+		t.Fatalf("expected configured backfill idle interval, got %s", idleInterval)
+	}
+	if retryBackoff := time.Duration(runner.FieldByName("retryBackoff").Int()); retryBackoff != 13*time.Second {
+		t.Fatalf("expected configured backfill retry backoff, got %s", retryBackoff)
 	}
 }
 

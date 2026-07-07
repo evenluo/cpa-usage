@@ -25,6 +25,64 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	if err != nil {
 		return dto.AnalyticsHeatmap{}, err
 	}
+	return buildAnalyticsHeatmapFromAggregates(aggregates, windowStart, windowEnd, startDay, endDay), nil
+}
+
+func BuildAnalyticsHeatmapWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
+	if db == nil {
+		return dto.AnalyticsHeatmap{}, fmt.Errorf("database is nil")
+	}
+	heatmapFilter, ok := analyticsFixedHeatmapFilter(filter)
+	if !ok {
+		return dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}, nil
+	}
+	plan := analyticsCoreRollupWindowPlan(heatmapFilter)
+	if plan.rollupFilter == nil {
+		return buildAnalyticsHeatmap(db, filter)
+	}
+	allowed, detail, err := analyticsRollupReadAllowed(db, *plan.rollupFilter)
+	if err != nil {
+		return dto.AnalyticsHeatmap{}, err
+	}
+	if !allowed {
+		logAnalyticsRawFallback("analytics heatmap raw fallback", heatmapFilter, detail)
+		return buildAnalyticsHeatmap(db, filter)
+	}
+	return buildAnalyticsRollupHeatmap(db, filter)
+}
+
+func buildAnalyticsRollupHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
+	heatmap := dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}
+	heatmapFilter, ok := analyticsFixedHeatmapFilter(filter)
+	if !ok {
+		return heatmap, nil
+	}
+
+	windowStart := heatmapFilter.StartTime.UTC()
+	windowEnd := heatmapFilter.EndTime.UTC()
+	startDay := localDateStart(windowStart.In(time.Local))
+	endDay := localDateStart(windowEnd.In(time.Local))
+	plan := analyticsCoreRollupWindowPlan(heatmapFilter)
+	aggregates := map[string]analyticsHeatmapAggregateRow{}
+	for _, rawFilter := range plan.rawFilters {
+		rawAggregates, err := buildAnalyticsHeatmapAggregates(db, rawFilter, startDay, endDay)
+		if err != nil {
+			return dto.AnalyticsHeatmap{}, err
+		}
+		addAnalyticsHeatmapAggregates(aggregates, rawAggregates)
+	}
+	if plan.rollupFilter != nil {
+		rollupAggregates, err := buildAnalyticsRollupHeatmapAggregates(db, *plan.rollupFilter, startDay, endDay)
+		if err != nil {
+			return dto.AnalyticsHeatmap{}, err
+		}
+		addAnalyticsHeatmapAggregates(aggregates, rollupAggregates)
+	}
+	return buildAnalyticsHeatmapFromAggregates(aggregates, windowStart, windowEnd, startDay, endDay), nil
+}
+
+func buildAnalyticsHeatmapFromAggregates(aggregates map[string]analyticsHeatmapAggregateRow, windowStart time.Time, windowEnd time.Time, startDay time.Time, endDay time.Time) dto.AnalyticsHeatmap {
+	heatmap := dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}
 	for day := startDay; !day.After(endDay); day = day.AddDate(0, 0, 1) {
 		row := dto.AnalyticsHeatmapRow{
 			Date:  day.Format(time.DateOnly),
@@ -69,7 +127,20 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 			}
 		}
 	}
-	return heatmap, nil
+	return heatmap
+}
+
+func addAnalyticsHeatmapAggregates(dst map[string]analyticsHeatmapAggregateRow, src map[string]analyticsHeatmapAggregateRow) {
+	for key, row := range src {
+		combined := dst[key]
+		combined.RequestCount += row.RequestCount
+		combined.FailureCount += row.FailureCount
+		combined.TotalTokens += row.TotalTokens
+		combined.TotalCost += row.TotalCost
+		combined.MissingPricingEvents += row.MissingPricingEvents
+		combined.PricedBillableEvents += row.PricedBillableEvents
+		dst[key] = combined
+	}
 }
 
 func analyticsFixedHeatmapFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
@@ -110,6 +181,49 @@ func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, s
 	query += " GROUP BY heatmap_buckets.bucket_key"
 	if err := db.Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics heatmap aggregates: %w", err)
+	}
+	aggregates := make(map[string]analyticsHeatmapAggregateRow, len(rows))
+	for _, row := range rows {
+		aggregate := aggregates[row.BucketKey]
+		aggregate.RequestCount += row.RequestCount
+		aggregate.FailureCount += row.FailureCount
+		aggregate.TotalTokens += row.TotalTokens
+		aggregate.TotalCost += row.TotalCost
+		aggregate.MissingPricingEvents += row.MissingPricingEvents
+		aggregate.PricedBillableEvents += row.PricedBillableEvents
+		aggregates[row.BucketKey] = aggregate
+	}
+	return aggregates, nil
+}
+
+func buildAnalyticsRollupHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
+	var rows []analyticsHeatmapAggregateRow
+	query := `
+		WITH heatmap_buckets(bucket_key, bucket_start_epoch, bucket_end_epoch) AS (VALUES ` + analyticsHeatmapBucketValues(startDay, endDay) + `)
+		SELECT
+			heatmap_buckets.bucket_key AS bucket_key,
+			COALESCE(SUM(usage_rollups_hourly.request_count), 0) AS request_count,
+			COALESCE(SUM(usage_rollups_hourly.failure_count), 0) AS failure_count,
+			COALESCE(SUM(usage_rollups_hourly.total_tokens), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsRollupCostSQLExpression() + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsRollupMissingPricingSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsRollupPricedBillableSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS priced_billable_events
+		FROM usage_rollups_hourly
+		JOIN heatmap_buckets
+			ON unixepoch(usage_rollups_hourly.bucket_start) >= heatmap_buckets.bucket_start_epoch
+			AND unixepoch(usage_rollups_hourly.bucket_start) < heatmap_buckets.bucket_end_epoch
+		LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_rollups_hourly.model)
+		WHERE usage_rollups_hourly.bucket_start >= ? AND usage_rollups_hourly.bucket_start <= ?`
+	startBucket := filter.StartTime.UTC().Truncate(time.Hour)
+	endBucket := filter.EndTime.UTC().Truncate(time.Hour)
+	args := []any{startBucket, endBucket}
+	if provider := strings.TrimSpace(filter.Provider); provider != "" {
+		query += " AND TRIM(usage_rollups_hourly.provider) = ?"
+		args = append(args, provider)
+	}
+	query += " GROUP BY heatmap_buckets.bucket_key"
+	if err := db.Raw(query, args...).Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("build analytics rollup heatmap aggregates: %w", err)
 	}
 	aggregates := make(map[string]analyticsHeatmapAggregateRow, len(rows))
 	for _, row := range rows {
