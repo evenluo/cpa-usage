@@ -43,10 +43,31 @@ func BuildAnalyticsCoreWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dt
 	if err != nil {
 		return nil, err
 	}
+	keyAliasBreakdown, err := buildAnalyticsCoreKeyAliasBreakdown(db, plan, filter)
+	if err != nil {
+		return nil, err
+	}
+	apiKeyBreakdown, err := buildAnalyticsCoreAPIKeyBreakdown(db, plan, filter)
+	if err != nil {
+		return nil, err
+	}
+	modelBreakdown, err := buildAnalyticsCoreModelBreakdown(db, plan)
+	if err != nil {
+		return nil, err
+	}
+	providerOptions, err := buildAnalyticsCoreProviderOptions(db, plan)
+	if err != nil {
+		return nil, err
+	}
 	return &dto.AnalyticsSummarySnapshot{
-		Summary:       summary,
-		Trend:         trend,
-		TimeBreakdown: trend,
+		Summary:           summary,
+		Trend:             trend,
+		KeyAliasBreakdown: keyAliasBreakdown,
+		APIKeyBreakdown:   apiKeyBreakdown,
+		ModelBreakdown:    modelBreakdown,
+		TimeBreakdown:     trend,
+		Insights:          buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
+		ProviderOptions:   providerOptions,
 	}, nil
 }
 
@@ -59,10 +80,31 @@ func buildRawAnalyticsCore(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.Analy
 	if err != nil {
 		return nil, err
 	}
+	keyAliasBreakdown, err := buildAnalyticsKeyAliasBreakdown(db, filter)
+	if err != nil {
+		return nil, err
+	}
+	apiKeyBreakdown, err := buildAnalyticsAPIKeyBreakdown(db, filter)
+	if err != nil {
+		return nil, err
+	}
+	modelBreakdown, err := buildAnalyticsModelBreakdown(db, filter)
+	if err != nil {
+		return nil, err
+	}
+	providerOptions, err := buildAnalyticsProviderOptions(db, filter)
+	if err != nil {
+		return nil, err
+	}
 	return &dto.AnalyticsSummarySnapshot{
-		Summary:       summary,
-		Trend:         trend,
-		TimeBreakdown: trend,
+		Summary:           summary,
+		Trend:             trend,
+		KeyAliasBreakdown: keyAliasBreakdown,
+		APIKeyBreakdown:   apiKeyBreakdown,
+		ModelBreakdown:    modelBreakdown,
+		TimeBreakdown:     trend,
+		Insights:          buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
+		ProviderOptions:   providerOptions,
 	}, nil
 }
 

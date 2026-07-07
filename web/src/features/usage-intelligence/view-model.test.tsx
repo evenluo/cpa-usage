@@ -139,7 +139,37 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.providerOptions).toEqual(analytics.provider_options)
     expect(viewModel.fixedHeatmap).toBe(analytics.heatmap)
     expect(viewModel.serviceHealth).toBe(healthOverview.service_health)
+    expect(viewModel.hasLeaderboardBreakdown).toBe(true)
     expect(viewModel.leaderboardSortLabel).toBe("Sort: Cost partial")
+  })
+
+  it("treats core leaderboard arrays as loaded before fixed full-dashboard data arrives", () => {
+    const viewModel = buildUsageDashboardViewModel({
+      analytics: {
+        summary: {
+          total_cost: 0,
+          total_tokens: 0,
+          request_count: 0,
+          success_count: 0,
+          failure_count: 0,
+          input_tokens: 0,
+          output_tokens: 0,
+          reasoning_tokens: 0,
+          cached_tokens: 0,
+          success_rate: 0,
+          cost_available: true,
+          cost_status: "available",
+          cache_read_share: 0,
+          cache_read_share_state: "no_cache_data",
+        },
+        trend: [],
+        api_key_breakdown: [],
+      },
+      leaderboardScope: "api-key",
+    })
+
+    expect(viewModel.hasLeaderboardBreakdown).toBe(true)
+    expect(viewModel.fixedHeatmap).toBeUndefined()
   })
 
   it("accepts the shared analytics summary HTTP contract fixture", () => {
@@ -164,6 +194,7 @@ describe("Usage Intelligence view model", () => {
       apiKeys: [],
       leaderboardRows: [],
       providerOptions: [],
+      hasLeaderboardBreakdown: false,
       leaderboardSortLabel: "Sort: Cost",
       kpiData: null,
     })

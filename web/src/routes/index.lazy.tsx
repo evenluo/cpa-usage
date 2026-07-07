@@ -71,6 +71,7 @@ function DashboardPage() {
     providerOptions,
     fixedHeatmap,
     serviceHealth,
+    hasLeaderboardBreakdown,
     leaderboardSortLabel,
     kpiData,
   } = useMemo(
@@ -81,6 +82,7 @@ function DashboardPage() {
     }),
     [data, healthOverviewData, leaderboardScope],
   )
+  const isLeaderboardSurfaceLoading = !hasLeaderboardBreakdown && isCoreSurfaceLoading
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
@@ -339,7 +341,7 @@ function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isFullAnalyticsSurfaceLoading ? (
+            {isLeaderboardSurfaceLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />

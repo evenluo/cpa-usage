@@ -94,6 +94,7 @@ export function mergeAnalyticsCore(
   if (!core) return full
   return {
     ...full,
+    ...core,
     granularity: core.granularity ?? full.granularity,
     summary: core.summary,
     trend: core.trend,

@@ -500,6 +500,13 @@ func TestAnalyticsCoreRouteReturnsSummaryAndTrendWithoutHeatmap(t *testing.T) {
 			CostAvailable: true,
 			CostStatus:    repodto.AnalyticsCostStatusAvailable,
 		}},
+		ProviderOptions: []repodto.AnalyticsProviderOption{{
+			Provider:      "OpenAI",
+			RequestCount:  2,
+			TotalTokens:   100,
+			CostAvailable: true,
+			CostStatus:    repodto.AnalyticsCostStatusAvailable,
+		}},
 	}}
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Analytics: provider})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/core?range=7d&granularity=hour&provider=OpenAI", nil)
@@ -517,7 +524,7 @@ func TestAnalyticsCoreRouteReturnsSummaryAndTrendWithoutHeatmap(t *testing.T) {
 		t.Fatalf("unexpected core filter: %+v", provider.filter)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"summary":`) || !contains(body, `"trend":[`) || contains(body, `"heatmap"`) {
+	if !contains(body, `"summary":`) || !contains(body, `"trend":[`) || !contains(body, `"provider_options":[`) || contains(body, `"heatmap"`) {
 		t.Fatalf("expected core response with summary/trend and no heatmap, got %s", body)
 	}
 }

@@ -156,6 +156,11 @@ export interface AnalyticsCoreResponse {
   granularity?: TimeGranularity
   summary: AnalyticsSummary
   trend: TrendPoint[]
+  key_alias_breakdown?: KeyAliasBreakdown[]
+  api_key_breakdown?: KeyAliasBreakdown[]
+  model_distribution?: ModelDistribution[]
+  insights?: Insight[]
+  provider_options?: ProviderOption[]
 }
 
 export interface KeyIdentity {

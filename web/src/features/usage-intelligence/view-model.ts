@@ -39,6 +39,7 @@ export interface UsageDashboardViewModel {
   providerOptions: ProviderOption[]
   fixedHeatmap?: HeatmapData
   serviceHealth?: ServiceHealth
+  hasLeaderboardBreakdown: boolean
   leaderboardSortLabel: string
   kpiData: UsageKpiSparklineData | null
 }
@@ -98,6 +99,9 @@ export function buildUsageDashboardViewModel(input: {
   const trend = input.analytics?.trend ?? []
   const keyAliases = input.analytics?.key_alias_breakdown ?? []
   const apiKeys = input.analytics?.api_key_breakdown ?? []
+  const hasLeaderboardBreakdown = input.leaderboardScope === "api-key"
+    ? Array.isArray(input.analytics?.api_key_breakdown)
+    : Array.isArray(input.analytics?.key_alias_breakdown)
   return {
     trend,
     keyAliases,
@@ -106,6 +110,7 @@ export function buildUsageDashboardViewModel(input: {
     providerOptions: input.analytics?.provider_options ?? [],
     fixedHeatmap: input.analytics?.heatmap,
     serviceHealth: input.healthOverview?.service_health,
+    hasLeaderboardBreakdown,
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
     kpiData: deriveKpiSparklineData(trend),
   }

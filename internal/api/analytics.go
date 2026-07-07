@@ -35,14 +35,19 @@ type analyticsSummaryResponse struct {
 }
 
 type analyticsCoreResponse struct {
-	Range       string                  `json:"range"`
-	Granularity string                  `json:"granularity"`
-	RangeStart  *time.Time              `json:"range_start,omitempty"`
-	RangeEnd    *time.Time              `json:"range_end,omitempty"`
-	Provider    string                  `json:"provider,omitempty"`
-	Timezone    string                  `json:"timezone"`
-	Summary     analyticsSummaryPayload `json:"summary"`
-	Trend       []analyticsTrendPoint   `json:"trend"`
+	Range       string                    `json:"range"`
+	Granularity string                    `json:"granularity"`
+	RangeStart  *time.Time                `json:"range_start,omitempty"`
+	RangeEnd    *time.Time                `json:"range_end,omitempty"`
+	Provider    string                    `json:"provider,omitempty"`
+	Timezone    string                    `json:"timezone"`
+	Summary     analyticsSummaryPayload   `json:"summary"`
+	Trend       []analyticsTrendPoint     `json:"trend"`
+	KeyAliases  []analyticsKeyAliasRow    `json:"key_alias_breakdown"`
+	APIKeys     []analyticsKeyAliasRow    `json:"api_key_breakdown"`
+	Models      []analyticsModelRow       `json:"model_distribution"`
+	Insights    []analyticsInsight        `json:"insights"`
+	Providers   []analyticsProviderOption `json:"provider_options"`
 }
 
 type analyticsSummaryPayload struct {
@@ -263,7 +268,12 @@ func buildAnalyticsCoreResponse(filter servicedto.UsageFilter, snapshot *dto.Ana
 			CostStatus:          dto.AnalyticsCostStatusAvailable,
 			CacheReadShareState: dto.AnalyticsCacheReadShareStateNoPromptInput,
 		},
-		Trend: []analyticsTrendPoint{},
+		Trend:      []analyticsTrendPoint{},
+		KeyAliases: []analyticsKeyAliasRow{},
+		APIKeys:    []analyticsKeyAliasRow{},
+		Models:     []analyticsModelRow{},
+		Insights:   []analyticsInsight{},
+		Providers:  []analyticsProviderOption{},
 	}
 	if snapshot == nil {
 		return response
@@ -302,6 +312,64 @@ func buildAnalyticsCoreResponse(filter servicedto.UsageFilter, snapshot *dto.Ana
 			FailureCount:    point.FailureCount,
 			CostAvailable:   point.CostAvailable,
 			CostStatus:      point.CostStatus,
+		})
+	}
+	response.KeyAliases = make([]analyticsKeyAliasRow, 0, len(snapshot.KeyAliasBreakdown))
+	for _, row := range snapshot.KeyAliasBreakdown {
+		response.KeyAliases = append(response.KeyAliases, mapAnalyticsKeyAliasRow(row))
+	}
+	response.APIKeys = make([]analyticsKeyAliasRow, 0, len(snapshot.APIKeyBreakdown))
+	for _, row := range snapshot.APIKeyBreakdown {
+		response.APIKeys = append(response.APIKeys, mapAnalyticsKeyAliasRow(row))
+	}
+	response.Models = make([]analyticsModelRow, 0, len(snapshot.ModelBreakdown))
+	for _, row := range snapshot.ModelBreakdown {
+		response.Models = append(response.Models, analyticsModelRow{
+			Model:                 row.Model,
+			Provider:              row.Provider,
+			TotalCost:             row.TotalCost,
+			TotalTokens:           row.TotalTokens,
+			RequestCount:          row.RequestCount,
+			SuccessCount:          row.SuccessCount,
+			FailureCount:          row.FailureCount,
+			InputTokens:           row.InputTokens,
+			OutputTokens:          row.OutputTokens,
+			ReasoningTokens:       row.ReasoningTokens,
+			CachedTokens:          row.CachedTokens,
+			SuccessRate:           row.SuccessRate,
+			TotalLatencyMS:        row.TotalLatencyMS,
+			LatencySampleCount:    row.LatencySampleCount,
+			AverageLatencyMS:      row.AverageLatencyMS,
+			CostAvailable:         row.CostAvailable,
+			CostStatus:            row.CostStatus,
+			CacheReadShare:        row.CacheReadShare,
+			CacheReadShareState:   row.CacheReadShareState,
+			EstimatedCacheSavings: row.EstimatedCacheSavings,
+		})
+	}
+	response.Insights = make([]analyticsInsight, 0, len(snapshot.Insights))
+	for _, insight := range snapshot.Insights {
+		response.Insights = append(response.Insights, analyticsInsight{
+			Type:        insight.Type,
+			Severity:    insight.Severity,
+			Title:       insight.Title,
+			Detail:      insight.Detail,
+			Subject:     insight.Subject,
+			MetricLabel: insight.MetricLabel,
+			MetricValue: insight.MetricValue,
+			Count:       insight.Count,
+			CostStatus:  insight.CostStatus,
+		})
+	}
+	response.Providers = make([]analyticsProviderOption, 0, len(snapshot.ProviderOptions))
+	for _, option := range snapshot.ProviderOptions {
+		response.Providers = append(response.Providers, analyticsProviderOption{
+			Provider:      option.Provider,
+			RequestCount:  option.RequestCount,
+			TotalTokens:   option.TotalTokens,
+			TotalCost:     option.TotalCost,
+			CostAvailable: option.CostAvailable,
+			CostStatus:    option.CostStatus,
 		})
 	}
 	return response

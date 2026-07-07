@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 
@@ -128,8 +129,108 @@ func TestBuildAnalyticsCoreWithFilterUsesRollupsForSummaryAndTrend(t *testing.T)
 			t.Fatalf("trend point %d mismatch\nrollup=%+v\nraw=%+v", i, core.Trend[i], rawTrend[i])
 		}
 	}
-	if len(core.Heatmap.Rows) != 0 || len(core.KeyAliasBreakdown) != 0 || len(core.ModelBreakdown) != 0 {
-		t.Fatalf("core analytics should only return summary and trend in this slice, got %+v", core)
+	if len(core.Heatmap.Rows) != 0 || core.Comparison.HasPreviousPeriod {
+		t.Fatalf("core analytics should not return heatmap or comparison in this slice, got %+v", core)
+	}
+}
+
+func TestBuildAnalyticsCoreWithFilterUsesRollupsForBreakdownsAndReadTimeEnrichment(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 11, 10, 59, 59, 0, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if err := db.Create(&[]entities.UsageIdentity{
+		{Name: "OpenAI Account", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-account", Type: "account", Provider: "OpenAI"},
+		{Name: "Provider Key", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "auth-provider", Type: "openai", Provider: "OpenAI"},
+	}).Error; err != nil {
+		t.Fatalf("create usage identities: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAuthFile, "auth-account", "Account Alias", start); err != nil {
+		t.Fatalf("set account alias: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha", "Raw API Alias", start); err != nil {
+		t.Fatalf("set api key alias: %v", err)
+	}
+	events := []entities.UsageEvent{
+		{EventKey: "account-usage", Provider: "OpenAI", Model: "priced-model", AuthType: "oauth", AuthIndex: "auth-account", Timestamp: start.Add(15 * time.Minute), InputTokens: 1_000_000, OutputTokens: 100_000, CachedTokens: 100_000, ReasoningTokens: 50_000, TotalTokens: 1_250_000, LatencyMS: 120},
+		{EventKey: "api-key-usage", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-provider", APIGroupKey: "sk-alpha", Timestamp: start.Add(time.Hour + 10*time.Minute), InputTokens: 500_000, OutputTokens: 100_000, TotalTokens: 600_000, LatencyMS: 240},
+		{EventKey: "missing-price", Provider: "Claude", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-missing", Timestamp: start.Add(time.Hour + 20*time.Minute), Failed: true, InputTokens: 100, TotalTokens: 100},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	target := end.UTC().Truncate(time.Hour)
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &target,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	raw, err := BuildAnalyticsSummaryWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+	assertAnalyticsCoreBreakdownsMatchRaw(t, core, raw)
+
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     3,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("update pricing: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAuthFile, "auth-account", "Renamed Account", start.Add(time.Hour)); err != nil {
+		t.Fatalf("rename account alias: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha", "Renamed Raw Key", start.Add(time.Hour)); err != nil {
+		t.Fatalf("rename api key alias: %v", err)
+	}
+
+	raw, err = BuildAnalyticsSummaryWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter after enrichment changes returned error: %v", err)
+	}
+	core, err = BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter after enrichment changes returned error: %v", err)
+	}
+	assertAnalyticsCoreBreakdownsMatchRaw(t, core, raw)
+	if core.Summary.TotalCost <= 0 || core.KeyAliasBreakdown[0].Label != "Renamed Account" || core.APIKeyBreakdown[0].Label != "Renamed Raw Key" {
+		t.Fatalf("expected read-time pricing and alias enrichment after rollup rows exist, got summary=%+v key_aliases=%+v api_keys=%+v", core.Summary, core.KeyAliasBreakdown, core.APIKeyBreakdown)
+	}
+}
+
+func assertAnalyticsCoreBreakdownsMatchRaw(t *testing.T, core *dto.AnalyticsSummarySnapshot, raw *dto.AnalyticsSummarySnapshot) {
+	t.Helper()
+	if !reflect.DeepEqual(core.ProviderOptions, raw.ProviderOptions) {
+		t.Fatalf("provider options mismatch\ncore=%+v\nraw=%+v", core.ProviderOptions, raw.ProviderOptions)
+	}
+	if !reflect.DeepEqual(core.ModelBreakdown, raw.ModelBreakdown) {
+		t.Fatalf("model breakdown mismatch\ncore=%+v\nraw=%+v", core.ModelBreakdown, raw.ModelBreakdown)
+	}
+	if !reflect.DeepEqual(core.KeyAliasBreakdown, raw.KeyAliasBreakdown) {
+		t.Fatalf("key alias breakdown mismatch\ncore=%+v\nraw=%+v", core.KeyAliasBreakdown, raw.KeyAliasBreakdown)
+	}
+	if !reflect.DeepEqual(core.APIKeyBreakdown, raw.APIKeyBreakdown) {
+		t.Fatalf("api key breakdown mismatch\ncore=%+v\nraw=%+v", core.APIKeyBreakdown, raw.APIKeyBreakdown)
+	}
+	if !reflect.DeepEqual(core.Insights, raw.Insights) {
+		t.Fatalf("insights mismatch\ncore=%+v\nraw=%+v", core.Insights, raw.Insights)
 	}
 }
 
@@ -138,11 +239,11 @@ func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
 	start := time.Date(2026, 5, 11, 9, 30, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 11, 11, 29, 59, 0, time.UTC)
 	events := []entities.UsageEvent{
-		{EventKey: "partial-before-start", Provider: "OpenAI", Model: "model", Timestamp: start.Truncate(time.Hour).Add(10 * time.Minute), InputTokens: 100, TotalTokens: 100},
-		{EventKey: "partial-start-edge", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 10, TotalTokens: 10},
-		{EventKey: "partial-full-hour", Provider: "OpenAI", Model: "model", Timestamp: start.Truncate(time.Hour).Add(time.Hour + 15*time.Minute), InputTokens: 20, TotalTokens: 20},
-		{EventKey: "partial-end-edge", Provider: "OpenAI", Model: "model", Timestamp: end.Truncate(time.Hour).Add(15 * time.Minute), InputTokens: 30, TotalTokens: 30},
-		{EventKey: "partial-after-end", Provider: "OpenAI", Model: "model", Timestamp: end.Truncate(time.Hour).Add(45 * time.Minute), InputTokens: 100, TotalTokens: 100},
+		{EventKey: "partial-before-start", Provider: "Alpha", Model: "model", APIGroupKey: "sk-mixed", Timestamp: start.Truncate(time.Hour).Add(10 * time.Minute), InputTokens: 100, TotalTokens: 100},
+		{EventKey: "partial-start-edge", Provider: "Zulu", Model: "model", APIGroupKey: "sk-mixed", Timestamp: start.Add(15 * time.Minute), InputTokens: 10, TotalTokens: 10},
+		{EventKey: "partial-full-hour", Provider: "Alpha", Model: "model", APIGroupKey: "sk-mixed", Timestamp: start.Truncate(time.Hour).Add(time.Hour + 15*time.Minute), InputTokens: 20, TotalTokens: 20},
+		{EventKey: "partial-end-edge", Provider: "Zulu", Model: "model", APIGroupKey: "sk-mixed", Timestamp: end.Truncate(time.Hour).Add(15 * time.Minute), InputTokens: 30, TotalTokens: 30},
+		{EventKey: "partial-after-end", Provider: "Alpha", Model: "model", APIGroupKey: "sk-mixed", Timestamp: end.Truncate(time.Hour).Add(45 * time.Minute), InputTokens: 100, TotalTokens: 100},
 	}
 	if _, _, err := InsertUsageEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
@@ -156,8 +257,12 @@ func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("mark rollup coverage: %v", err)
 	}
-	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
 
+	raw, err := BuildAnalyticsSummaryWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
 	rawSummary, err := buildAnalyticsSummary(db, filter)
 	if err != nil {
 		t.Fatalf("build raw summary: %v", err)
@@ -184,6 +289,10 @@ func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
 		if core.Trend[i] != rawTrend[i] {
 			t.Fatalf("trend point %d mismatch\ncore=%+v\nraw=%+v", i, core.Trend[i], rawTrend[i])
 		}
+	}
+	assertAnalyticsCoreBreakdownsMatchRaw(t, core, raw)
+	if len(core.APIKeyBreakdown) != 1 || core.APIKeyBreakdown[0].Provider != "Alpha" {
+		t.Fatalf("expected mixed raw/rollup API key provider to match raw MIN(provider), got %+v", core.APIKeyBreakdown)
 	}
 }
 

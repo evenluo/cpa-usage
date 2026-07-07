@@ -69,10 +69,12 @@ describe("useAnalytics", () => {
     const core: AnalyticsCoreResponse = {
       summary: summary(20),
       trend: [trendPoint("core", 20)],
+      provider_options: [{ provider: "Claude", request_count: 1, total_tokens: 20, total_cost: 2, cost_available: true, cost_status: "available" }],
     }
 
     expect(mergeAnalyticsCore(full, core)).toEqual({
       ...full,
+      ...core,
       summary: core.summary,
       trend: core.trend,
       time_breakdown: core.trend,

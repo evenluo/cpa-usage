@@ -118,6 +118,22 @@ func analyticsRollupBucketSQLExpression(bucketByDay bool) string {
 	return "strftime('%Y-%m-%dT%H:00:00Z', usage_rollups_hourly.bucket_start)"
 }
 
+func analyticsRollupUsageIdentityAuthTypeSQLExpression() string {
+	return `(CASE
+		WHEN TRIM(usage_rollups_hourly.auth_type) = 'oauth' THEN 1
+		WHEN TRIM(usage_rollups_hourly.auth_type) = 'apikey' THEN 2
+		ELSE 0
+	END)`
+}
+
+func analyticsRollupUsageIdentitySQLExpression() string {
+	return "TRIM(usage_rollups_hourly.auth_index)"
+}
+
+func analyticsRollupAPIKeyIdentitySQLExpression() string {
+	return "TRIM(usage_rollups_hourly.api_key_identity)"
+}
+
 func analyticsTrendBucketsByDay(filter dto.UsageQueryFilter) bool {
 	return strings.TrimSpace(filter.Granularity) == "day"
 }
