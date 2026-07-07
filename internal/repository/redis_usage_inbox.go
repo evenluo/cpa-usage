@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"cpa-usage/internal/repository/dto"
 	"crypto/sha256"
 	"fmt"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/repository/dto"
 	"gorm.io/gorm"
 )
 
@@ -60,6 +60,54 @@ func MarkRedisUsageInboxProcessed(db *gorm.DB, id uint, eventKey string, process
 	}).Error
 }
 
+type RedisUsageInboxProcessedMark struct {
+	ID            uint
+	UsageEventKey string
+}
+
+func MarkRedisUsageInboxProcessedBatch(db *gorm.DB, marks []RedisUsageInboxProcessedMark, processedAt time.Time) error {
+	if len(marks) == 0 {
+		return nil
+	}
+	const bindVariablesPerProcessedRow = 3
+	maxMarksPerBatch := (sqliteVariableLimit - 3) / bindVariablesPerProcessedRow
+	return db.Transaction(func(tx *gorm.DB) error {
+		for start := 0; start < len(marks); start += maxMarksPerBatch {
+			end := min(start+maxMarksPerBatch, len(marks))
+			if err := markRedisUsageInboxProcessedBatch(tx, marks[start:end], processedAt); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func markRedisUsageInboxProcessedBatch(db *gorm.DB, marks []RedisUsageInboxProcessedMark, processedAt time.Time) error {
+	caseClauses := make([]string, 0, len(marks))
+	idPlaceholders := make([]string, 0, len(marks))
+	args := []any{RedisUsageInboxStatusProcessed}
+	for _, mark := range marks {
+		caseClauses = append(caseClauses, "WHEN ? THEN ?")
+		args = append(args, mark.ID, mark.UsageEventKey)
+		idPlaceholders = append(idPlaceholders, "?")
+	}
+	args = append(args, processedAt.UTC())
+	args = append(args, processedAt.UTC())
+	for _, mark := range marks {
+		args = append(args, mark.ID)
+	}
+	return db.Exec(`
+		UPDATE redis_usage_inboxes
+		SET status = ?,
+		    usage_event_key = CASE id `+strings.Join(caseClauses, " ")+` ELSE usage_event_key END,
+		    processed_at = ?,
+		    updated_at = ?,
+		    last_error = ''
+		WHERE id IN (`+strings.Join(idPlaceholders, ", ")+`)`,
+		args...,
+	).Error
+}
+
 func MarkRedisUsageInboxDecodeFailed(db *gorm.DB, id uint, decodeErr error) error {
 	return markRedisUsageInboxFailed(db, id, RedisUsageInboxStatusDecodeFailed, decodeErr)
 }
@@ -78,14 +126,65 @@ func MarkRedisUsageInboxProcessFailed(db *gorm.DB, id uint, processErr error) er
 	}).Error
 }
 
+func MarkRedisUsageInboxProcessFailedBatch(db *gorm.DB, ids []uint, processErr error) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	maxIDsPerBatch := sqliteVariableLimit - 5
+	return db.Transaction(func(tx *gorm.DB) error {
+		for start := 0; start < len(ids); start += maxIDsPerBatch {
+			end := min(start+maxIDsPerBatch, len(ids))
+			if err := tx.Model(&entities.RedisUsageInbox{}).Where("id IN ?", ids[start:end]).Updates(map[string]any{
+				"status": gorm.Expr(
+					"CASE WHEN attempt_count + ? >= ? THEN ? ELSE ? END",
+					1,
+					redisUsageInboxMaxProcessAttempts,
+					RedisUsageInboxStatusDiscarded,
+					RedisUsageInboxStatusProcessFailed,
+				),
+				"attempt_count": gorm.Expr("attempt_count + ?", 1),
+				"last_error":    boundedRedisUsageInboxError(processErr),
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func ListProcessedRedisUsageInboxEventKeys(db *gorm.DB, eventKeys []string) ([]string, error) {
+	if len(eventKeys) == 0 {
+		return nil, nil
+	}
+	result := make([]string, 0, len(eventKeys))
+	maxKeysPerBatch := sqliteVariableLimit - 1
+	for start := 0; start < len(eventKeys); start += maxKeysPerBatch {
+		end := min(start+maxKeysPerBatch, len(eventKeys))
+		var keys []string
+		if err := db.Model(&entities.RedisUsageInbox{}).
+			Where("status = ? AND usage_event_key IN ?", RedisUsageInboxStatusProcessed, eventKeys[start:end]).
+			Pluck("usage_event_key", &keys).Error; err != nil {
+			return nil, fmt.Errorf("load redis inbox references: %w", err)
+		}
+		result = append(result, keys...)
+	}
+	return result, nil
+}
+
 // ListProcessableRedisUsageInbox 返回待处理和可重试的数据，不返回已解码失败或已丢弃的数据。
 func ListProcessableRedisUsageInbox(db *gorm.DB, limit int) ([]entities.RedisUsageInbox, error) {
-	query := db.Where("status = ? OR status = ?", RedisUsageInboxStatusPending, RedisUsageInboxStatusProcessFailed).Order("id asc")
+	query := `
+		SELECT *
+		FROM redis_usage_inboxes INDEXED BY idx_redis_usage_inboxes_processable_id
+		WHERE status = 'pending' OR status = 'process_failed'
+		ORDER BY id ASC`
+	args := []any{}
 	if limit > 0 {
-		query = query.Limit(limit)
+		query += " LIMIT ?"
+		args = append(args, limit)
 	}
 	var rows []entities.RedisUsageInbox
-	if err := query.Find(&rows).Error; err != nil {
+	if err := db.Raw(query, args...).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil

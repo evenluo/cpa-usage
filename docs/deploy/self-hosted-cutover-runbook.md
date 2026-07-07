@@ -111,6 +111,15 @@ CPA_USAGE_LOGIN_PASSWORD='<secret>' \
 scripts/smoke-cpa-usage.sh
 ```
 
+The smoke script prints `time_total` for the optimized Usage Intelligence paths:
+
+- `analytics core` should represent the first useful KPI/trend read without the fixed heatmap payload.
+- `activity heatmap` should be checked independently because it was one of the observed production slow SQL symptoms.
+- `legacy analytics summary` proves compatibility for bookmarked or scripted callers that still request the full summary.
+- `request health`, `request evidence events`, and `status` prove the remaining first-screen and operations paths.
+
+Compare these timings against the production symptoms by looking for the old shape to disappear: core dashboard timing should no longer track heatmap latency, heatmap timing should be isolated to its own line, and status/events/request-health should stay independently visible even if one analytics path is slower.
+
 Manual checks:
 
 ```sh

@@ -49,6 +49,28 @@ require_body_contains() {
   fi
 }
 
+require_timed_json() {
+  local label="$1"
+  local path="$2"
+  local pattern="$3"
+  local output="$tmpdir/${label//[^A-Za-z0-9_.-]/_}.json"
+  local metrics code duration
+  metrics="$(curl "${curl_args[@]}" -b "$cookie_jar" -c "$cookie_jar" -o "$output" -w '%{http_code} %{time_total}' "$BASE_URL$BASE_PATH$path" || true)"
+  code="${metrics%% *}"
+  duration="${metrics#* }"
+  if [[ "$code" != "200" ]]; then
+    echo "FAIL $label HTTP $code time_total=${duration}s" >&2
+    sed -n '1,20p' "$output" >&2 || true
+    exit 1
+  fi
+  if ! grep -q "$pattern" "$output"; then
+    echo "FAIL $label body missing pattern: $pattern" >&2
+    sed -n '1,20p' "$output" >&2 || true
+    exit 1
+  fi
+  echo "OK $label HTTP $code time_total=${duration}s"
+}
+
 require_code "cpa root" "$BASE_URL/" "200"
 require_code "cpa-usage health" "$BASE_URL$BASE_PATH/healthz" "200"
 require_body_contains "cpa-usage health" '"status":"ok"'
@@ -96,26 +118,9 @@ if [[ "$session_after_code" != "200" ]] || ! grep -q '"authenticated":true' "$tm
 fi
 echo "OK authenticated session"
 
-for granularity in hour day; do
-  url="$BASE_URL$BASE_PATH/api/v1/analytics/summary?range=7d&granularity=$granularity"
-  code="$(curl "${curl_args[@]}" -b "$cookie_jar" -c "$cookie_jar" -o "$tmpdir/analytics-$granularity" -w '%{http_code}' "$url" || true)"
-  if [[ "$code" != "200" ]]; then
-    echo "FAIL analytics $granularity HTTP $code" >&2
-    sed -n '1,20p' "$tmpdir/analytics-$granularity" >&2 || true
-    exit 1
-  fi
-  if ! grep -q "\"granularity\":\"$granularity\"" "$tmpdir/analytics-$granularity"; then
-    echo "FAIL analytics $granularity missing granularity field" >&2
-    sed -n '1,20p' "$tmpdir/analytics-$granularity" >&2 || true
-    exit 1
-  fi
-  echo "OK analytics $granularity"
-done
-
-status_code="$(curl "${curl_args[@]}" -b "$cookie_jar" -c "$cookie_jar" -o "$tmpdir/status" -w '%{http_code}' "$BASE_URL$BASE_PATH/api/v1/status" || true)"
-if [[ "$status_code" != "200" ]] || ! grep -q '"timezone"' "$tmpdir/status"; then
-  echo "FAIL status HTTP $status_code" >&2
-  sed -n '1,20p' "$tmpdir/status" >&2 || true
-  exit 1
-fi
-echo "OK status"
+require_timed_json "analytics core" "/api/v1/analytics/core?range=7d&granularity=day" '"summary":'
+require_timed_json "activity heatmap" "/api/v1/analytics/heatmap?range=30d&granularity=day" '"heatmap":'
+require_timed_json "legacy analytics summary" "/api/v1/analytics/summary?range=7d&granularity=day" '"heatmap":'
+require_timed_json "request health" "/api/v1/usage/request-health?range=24h" '"service_health":'
+require_timed_json "request evidence events" "/api/v1/usage/events?range=24h&page_size=10" '"events":'
+require_timed_json "status" "/api/v1/status" '"timezone"'

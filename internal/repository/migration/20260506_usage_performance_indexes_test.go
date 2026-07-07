@@ -30,6 +30,7 @@ func TestOpenDatabaseAddsUsagePerformanceIndexes(t *testing.T) {
 		"idx_redis_usage_inboxes_status_processed_at",
 		"idx_redis_usage_inboxes_status_updated_at",
 		"idx_redis_usage_inboxes_status_usage_event_key",
+		"idx_redis_usage_inboxes_processable_id",
 		"idx_usage_identities_auth_type_name_id",
 		"idx_usage_identities_auth_type_type",
 	} {
@@ -144,6 +145,13 @@ func TestUsagePerformanceIndexesSupportRepresentativeQueryPlans(t *testing.T) {
 		WHERE status = ?
 		ORDER BY id ASC
 		LIMIT 1000`, "pending")
+
+	assertQueryPlanUsesIndex(t, db, "idx_redis_usage_inboxes_processable_id", `
+		EXPLAIN QUERY PLAN SELECT id FROM redis_usage_inboxes
+		INDEXED BY idx_redis_usage_inboxes_processable_id
+		WHERE status = 'pending' OR status = 'process_failed'
+		ORDER BY id ASC
+		LIMIT 1000`)
 
 	assertQueryPlanUsesIndex(t, db, "idx_redis_usage_inboxes_status_processed_at", `
 		EXPLAIN QUERY PLAN SELECT id FROM redis_usage_inboxes

@@ -90,6 +90,8 @@ The script does not deploy the source app. For cutover, back up `cpa-cliproxyapi
 
 Cutover verification should confirm only one `cpa-usage` container is running, `cliproxyapi` and `postgres` kept their original `Created` / `StartedAt` timestamps, `https://<production-host>/` stays healthy, `https://<production-host>/usage/healthz` and `https://<production-host>/usage/` return 200, and `scripts/smoke-cpa-usage.sh` passes.
 
+For Usage Intelligence performance releases, keep the smoke output lines with `time_total`. Compare `analytics core`, `activity heatmap`, `legacy analytics summary`, `request health`, `request evidence events`, and `status` separately. The production symptom to watch for is the old coupling where the first useful dashboard view waited on full overview or heatmap scans; after this rollout, a slower heatmap line should not hide the core dashboard timing.
+
 ## Local Verification
 
 Render and validate a versioned Compose file:

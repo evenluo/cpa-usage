@@ -125,6 +125,73 @@ func TestRedisUsageInboxStatusTransitions(t *testing.T) {
 	}
 }
 
+func TestMarkRedisUsageInboxProcessedBatch(t *testing.T) {
+	db := openTestDatabase(t)
+	poppedAt := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)
+	processedAt := poppedAt.Add(time.Minute)
+
+	rows, err := InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{
+		{QueueKey: "queue", RawMessage: `{"request_id":"one"}`, PoppedAt: poppedAt},
+		{QueueKey: "queue", RawMessage: `{"request_id":"two"}`, PoppedAt: poppedAt},
+	})
+	if err != nil {
+		t.Fatalf("InsertRedisUsageInboxMessages returned error: %v", err)
+	}
+
+	err = MarkRedisUsageInboxProcessedBatch(db, []RedisUsageInboxProcessedMark{
+		{ID: rows[0].ID, UsageEventKey: "event-1"},
+		{ID: rows[1].ID, UsageEventKey: "event-2"},
+	}, processedAt)
+	if err != nil {
+		t.Fatalf("MarkRedisUsageInboxProcessedBatch returned error: %v", err)
+	}
+
+	var stored []entities.RedisUsageInbox
+	if err := db.Order("id asc").Find(&stored).Error; err != nil {
+		t.Fatalf("load inbox rows: %v", err)
+	}
+	for index, row := range stored {
+		expectedEventKey := fmt.Sprintf("event-%d", index+1)
+		if row.Status != RedisUsageInboxStatusProcessed || row.UsageEventKey != expectedEventKey || row.ProcessedAt == nil || !row.ProcessedAt.Equal(processedAt) || !row.UpdatedAt.Equal(processedAt) {
+			t.Fatalf("unexpected batch processed row %d: %+v", index, row)
+		}
+	}
+}
+
+func TestMarkRedisUsageInboxProcessedBatchChunksFullProcessorBatch(t *testing.T) {
+	db := openTestDatabase(t)
+	poppedAt := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)
+	processedAt := poppedAt.Add(time.Minute)
+	inputs := make([]dto.RedisInboxInsert, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		inputs = append(inputs, dto.RedisInboxInsert{
+			QueueKey:   "queue",
+			RawMessage: fmt.Sprintf(`{"request_id":"batch-%04d"}`, i),
+			PoppedAt:   poppedAt,
+		})
+	}
+	rows, err := InsertRedisUsageInboxMessages(db, inputs)
+	if err != nil {
+		t.Fatalf("InsertRedisUsageInboxMessages returned error: %v", err)
+	}
+	marks := make([]RedisUsageInboxProcessedMark, 0, len(rows))
+	for index, row := range rows {
+		marks = append(marks, RedisUsageInboxProcessedMark{ID: row.ID, UsageEventKey: fmt.Sprintf("event-%04d", index)})
+	}
+
+	if err := MarkRedisUsageInboxProcessedBatch(db, marks, processedAt); err != nil {
+		t.Fatalf("MarkRedisUsageInboxProcessedBatch returned error: %v", err)
+	}
+
+	var processedCount int64
+	if err := db.Model(&entities.RedisUsageInbox{}).Where("status = ? AND processed_at = ? AND updated_at = ?", RedisUsageInboxStatusProcessed, processedAt, processedAt).Count(&processedCount).Error; err != nil {
+		t.Fatalf("count processed rows: %v", err)
+	}
+	if processedCount != int64(len(rows)) {
+		t.Fatalf("expected %d processed rows, got %d", len(rows), processedCount)
+	}
+}
+
 func TestRedisUsageInboxFailureTransitionsBoundErrors(t *testing.T) {
 	db := openTestDatabase(t)
 	poppedAt := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)
@@ -204,6 +271,68 @@ func TestMarkRedisUsageInboxProcessFailedDiscardsRowsAfterMaxAttempts(t *testing
 	}
 	if len(processable) != 0 {
 		t.Fatalf("expected discarded row to be excluded from processing, got %+v", processable)
+	}
+}
+
+func TestMarkRedisUsageInboxProcessFailedBatchDiscardsRowsAfterMaxAttempts(t *testing.T) {
+	db := openTestDatabase(t)
+	poppedAt := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)
+
+	rows, err := InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{
+		{QueueKey: "queue", RawMessage: `{"request_id":"retry-1"}`, PoppedAt: poppedAt},
+		{QueueKey: "queue", RawMessage: `{"request_id":"retry-2"}`, PoppedAt: poppedAt},
+	})
+	if err != nil {
+		t.Fatalf("InsertRedisUsageInboxMessages returned error: %v", err)
+	}
+	ids := []uint{rows[0].ID, rows[1].ID}
+	for i := 0; i < redisUsageInboxMaxProcessAttempts; i++ {
+		if err := MarkRedisUsageInboxProcessFailedBatch(db, ids, fmt.Errorf("insert failed %d", i+1)); err != nil {
+			t.Fatalf("MarkRedisUsageInboxProcessFailedBatch attempt %d returned error: %v", i+1, err)
+		}
+	}
+
+	var stored []entities.RedisUsageInbox
+	if err := db.Order("id asc").Find(&stored).Error; err != nil {
+		t.Fatalf("load inbox rows: %v", err)
+	}
+	for _, row := range stored {
+		if row.Status != RedisUsageInboxStatusDiscarded || row.AttemptCount != redisUsageInboxMaxProcessAttempts || row.LastError != "insert failed 5" {
+			t.Fatalf("expected batch failed row to be discarded, got %+v", row)
+		}
+	}
+}
+
+func TestMarkRedisUsageInboxProcessFailedBatchChunksFullProcessorBatch(t *testing.T) {
+	db := openTestDatabase(t)
+	poppedAt := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)
+	inputs := make([]dto.RedisInboxInsert, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		inputs = append(inputs, dto.RedisInboxInsert{
+			QueueKey:   "queue",
+			RawMessage: fmt.Sprintf(`{"request_id":"failed-%04d"}`, i),
+			PoppedAt:   poppedAt,
+		})
+	}
+	rows, err := InsertRedisUsageInboxMessages(db, inputs)
+	if err != nil {
+		t.Fatalf("InsertRedisUsageInboxMessages returned error: %v", err)
+	}
+	ids := make([]uint, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+
+	if err := MarkRedisUsageInboxProcessFailedBatch(db, ids, fmt.Errorf("insert failed")); err != nil {
+		t.Fatalf("MarkRedisUsageInboxProcessFailedBatch returned error: %v", err)
+	}
+
+	var failedCount int64
+	if err := db.Model(&entities.RedisUsageInbox{}).Where("status = ? AND attempt_count = 1", RedisUsageInboxStatusProcessFailed).Count(&failedCount).Error; err != nil {
+		t.Fatalf("count process_failed rows: %v", err)
+	}
+	if failedCount != int64(len(rows)) {
+		t.Fatalf("expected %d process_failed rows, got %d", len(rows), failedCount)
 	}
 }
 

@@ -14,7 +14,6 @@ import (
 	"cpa-usage/internal/cpa/dto/authfiles"
 	"cpa-usage/internal/cpa/dto/providerconfig"
 	"cpa-usage/internal/cpa/dto/response"
-	"cpa-usage/internal/repository/dto"
 	servicedto "cpa-usage/internal/service/dto"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -214,102 +213,6 @@ func (s *SyncService) SyncRedisBatch(ctx context.Context) (*servicedto.RedisBatc
 
 func (s *SyncService) redisUsageIntake() redisUsageIntake {
 	return newRedisUsageIntake(s.db, s.redisQueue, s.redisQueueKey, s.now)
-}
-
-func alignUsageEventKeysWithExistingCanonicalEvents(db *gorm.DB, events []entities.UsageEvent) ([]entities.UsageEvent, error) {
-	if len(events) == 0 {
-		return events, nil
-	}
-	canonicalEventKeys := make(map[string]string, len(events))
-	consumedCanonicalKeys := make(map[string]struct{}, len(events))
-	for i := range events {
-		events[i].Timestamp = events[i].Timestamp.UTC()
-		canonicalKey := canonicalUsageEventKey(events[i])
-		incomingKey := strings.TrimSpace(events[i].EventKey)
-		if strings.TrimSpace(events[i].RequestID) != "" {
-			canonicalEventKeys[canonicalKey] = incomingKey
-			continue
-		}
-		if existingKey := canonicalEventKeys[canonicalKey]; existingKey != "" {
-			if incomingKey == canonicalKey {
-				events[i].EventKey = existingKey
-			} else if existingKey == canonicalKey {
-				if _, consumed := consumedCanonicalKeys[canonicalKey]; !consumed {
-					events[i].EventKey = existingKey
-					consumedCanonicalKeys[canonicalKey] = struct{}{}
-				}
-			}
-			continue
-		}
-
-		var existing entities.UsageEvent
-		result := db.Select("event_key").Where(
-			"TRIM(api_group_key) = ? AND TRIM(model) = ? AND timestamp = ? AND TRIM(source) = ? AND TRIM(auth_index) = ? AND failed = ? AND input_tokens = ? AND output_tokens = ? AND reasoning_tokens = ? AND cached_tokens = ? AND total_tokens = ?",
-			strings.TrimSpace(events[i].APIGroupKey),
-			strings.TrimSpace(events[i].Model),
-			events[i].Timestamp,
-			strings.TrimSpace(events[i].Source),
-			strings.TrimSpace(events[i].AuthIndex),
-			events[i].Failed,
-			events[i].InputTokens,
-			events[i].OutputTokens,
-			events[i].ReasoningTokens,
-			events[i].CachedTokens,
-			events[i].TotalTokens,
-		).Order("id ASC").Limit(1).Find(&existing)
-		if result.Error != nil {
-			return nil, fmt.Errorf("find equivalent usage event: %w", result.Error)
-		}
-		if result.RowsAffected == 0 {
-			canonicalEventKeys[canonicalKey] = incomingKey
-			continue
-		}
-		existingKey := strings.TrimSpace(existing.EventKey)
-		if existingKey != "" {
-			if incomingKey == canonicalKey {
-				events[i].EventKey = existingKey
-			} else if existingKey == canonicalKey {
-				alreadyConsumed, err := redisInboxAlreadyReferencesEventKey(db, canonicalKey)
-				if err != nil {
-					return nil, err
-				}
-				if !alreadyConsumed {
-					events[i].EventKey = existingKey
-					consumedCanonicalKeys[canonicalKey] = struct{}{}
-				}
-			}
-			canonicalEventKeys[canonicalKey] = existingKey
-		} else {
-			canonicalEventKeys[canonicalKey] = incomingKey
-		}
-	}
-	return events, nil
-}
-
-func redisInboxAlreadyReferencesEventKey(db *gorm.DB, eventKey string) (bool, error) {
-	var count int64
-	if err := db.Model(&entities.RedisUsageInbox{}).Where("status = ? AND usage_event_key = ?", repository.RedisUsageInboxStatusProcessed, eventKey).Count(&count).Error; err != nil {
-		return false, fmt.Errorf("count redis inbox references: %w", err)
-	}
-	return count > 0, nil
-}
-
-func canonicalUsageEventKey(event entities.UsageEvent) string {
-	return BuildEventKey(
-		event.APIGroupKey,
-		event.Model,
-		event.Timestamp,
-		event.Source,
-		event.AuthIndex,
-		event.Failed,
-		dto.TokenStats{
-			InputTokens:     event.InputTokens,
-			OutputTokens:    event.OutputTokens,
-			ReasoningTokens: event.ReasoningTokens,
-			CachedTokens:    event.CachedTokens,
-			TotalTokens:     event.TotalTokens,
-		},
-	)
 }
 
 func (s *SyncService) validate(syncMetadata bool) error {
