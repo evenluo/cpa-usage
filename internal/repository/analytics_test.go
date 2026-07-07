@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -231,6 +232,171 @@ func assertAnalyticsCoreBreakdownsMatchRaw(t *testing.T, core *dto.AnalyticsSumm
 	}
 	if !reflect.DeepEqual(core.Insights, raw.Insights) {
 		t.Fatalf("insights mismatch\ncore=%+v\nraw=%+v", core.Insights, raw.Insights)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenRollupCovered(t *testing.T) {
+	withRepositoryTestLocation(t, "UTC")
+
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 11, 10, 59, 59, 999999999, time.UTC)
+	previousStart := start.Add(-2 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if err := db.Create(&[]entities.UsageIdentity{
+		{Name: "OpenAI Account", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-account", Type: "account", Provider: "OpenAI"},
+		{Name: "Provider Key", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "auth-provider", Type: "openai", Provider: "OpenAI"},
+	}).Error; err != nil {
+		t.Fatalf("create usage identities: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAuthFile, "auth-account", "Account Alias", start); err != nil {
+		t.Fatalf("set account alias: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha", "Raw Key Alias", start); err != nil {
+		t.Fatalf("set api key alias: %v", err)
+	}
+	events := []entities.UsageEvent{
+		{EventKey: "previous-openai", Provider: "OpenAI", Model: "priced-model", AuthType: "oauth", AuthIndex: "auth-account", Timestamp: previousStart.Add(15 * time.Minute), InputTokens: 1_000_000, TotalTokens: 1_000_000},
+		{EventKey: "current-account", Provider: "OpenAI", Model: "priced-model", AuthType: "oauth", AuthIndex: "auth-account", Timestamp: start.Add(15 * time.Minute), InputTokens: 1_000_000, OutputTokens: 100_000, CachedTokens: 100_000, ReasoningTokens: 50_000, TotalTokens: 1_250_000, LatencyMS: 120},
+		{EventKey: "current-api-key", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-provider", APIGroupKey: "sk-alpha", Timestamp: start.Add(time.Hour + 10*time.Minute), InputTokens: 500_000, OutputTokens: 100_000, TotalTokens: 600_000, LatencyMS: 240},
+		{EventKey: "current-unpriced", Provider: "OpenAI", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-missing", Timestamp: start.Add(time.Hour + 20*time.Minute), Failed: true, InputTokens: 100, TotalTokens: 100},
+		{EventKey: "other-provider", Provider: "Anthropic", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-other", Timestamp: start.Add(30 * time.Minute), InputTokens: 9_000_000, TotalTokens: 9_000_000},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	target := end.UTC().Truncate(time.Hour)
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &target,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	summary, err := BuildAnalyticsSummaryWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+	heatmap, err := BuildAnalyticsHeatmapWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsHeatmapWithFilter returned error: %v", err)
+	}
+
+	assertAnalyticsSummaryCompatibilityMatchesCoreAndHeatmap(t, summary, core, heatmap)
+	if summary.Summary.RequestCount != 3 || summary.Summary.CostStatus != dto.AnalyticsCostStatusPartial {
+		t.Fatalf("expected provider-scoped partial summary, got %+v", summary.Summary)
+	}
+	if len(summary.Trend) != 2 || summary.Trend[0].Label != "2026-05-11 09:00 +0000" || summary.Trend[1].Label != "2026-05-11 10:00 +0000" {
+		t.Fatalf("expected hourly selected-window trend, got %+v", summary.Trend)
+	}
+	if len(summary.KeyAliasBreakdown) == 0 || summary.KeyAliasBreakdown[0].Label != "Account Alias" {
+		t.Fatalf("expected read-time Key Alias enrichment, got %+v", summary.KeyAliasBreakdown)
+	}
+	if len(summary.APIKeyBreakdown) == 0 || summary.APIKeyBreakdown[0].Label != "Raw Key Alias" {
+		t.Fatalf("expected raw API key alias enrichment, got %+v", summary.APIKeyBreakdown)
+	}
+	if !summary.Comparison.HasPreviousPeriod || summary.PreviousRangeStart == nil || !summary.PreviousRangeStart.Equal(previousStart) {
+		t.Fatalf("expected previous-period comparison metadata, got start=%v comparison=%+v", summary.PreviousRangeStart, summary.Comparison)
+	}
+	if summary.Comparison.TotalCostChangePct != nil || summary.Comparison.TotalTokensChangePct == nil {
+		t.Fatalf("expected incomplete Cost comparison to omit cost delta while keeping token delta, got %+v", summary.Comparison)
+	}
+	if len(summary.Heatmap.Rows) < 30 || summary.Heatmap.MaxTokens != 1_250_000 {
+		t.Fatalf("expected fixed-window Activity Heatmap in compatibility summary, got %+v", summary.Heatmap)
+	}
+}
+
+func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenBackfillIncomplete(t *testing.T) {
+	withRepositoryTestLocation(t, "UTC")
+
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour).Add(-time.Nanosecond)
+	event := entities.UsageEvent{
+		EventKey: "uncovered-summary-window", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 100, CachedTokens: 25, TotalTokens: 100,
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{event}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	if err := db.Where("1 = 1").Delete(&entities.UsageRollupHourly{}).Error; err != nil {
+		t.Fatalf("remove rollups to prove raw fallback: %v", err)
+	}
+	target := start
+	covered := start.Add(-time.Hour)
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusRunning,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+	}); err != nil {
+		t.Fatalf("mark incomplete rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+	logs := captureRepositoryLogs(t)
+
+	summary, err := BuildAnalyticsSummaryWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+	heatmap, err := BuildAnalyticsHeatmapWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsHeatmapWithFilter returned error: %v", err)
+	}
+
+	assertAnalyticsSummaryCompatibilityMatchesCoreAndHeatmap(t, summary, core, heatmap)
+	if summary.Summary.RequestCount != 1 || summary.Summary.TotalTokens != 100 {
+		t.Fatalf("expected summary compatibility fallback data from raw events, got %+v", summary.Summary)
+	}
+	logOutput := logs.String()
+	if !strings.Contains(logOutput, `reason=backfill_incomplete`) || !strings.Contains(logOutput, `analytics core raw fallback`) || !strings.Contains(logOutput, `analytics heatmap raw fallback`) {
+		t.Fatalf("expected observable backfill-incomplete fallback logs, got %s", logOutput)
+	}
+}
+
+func assertAnalyticsSummaryCompatibilityMatchesCoreAndHeatmap(t *testing.T, summary *dto.AnalyticsSummarySnapshot, core *dto.AnalyticsSummarySnapshot, heatmap dto.AnalyticsHeatmap) {
+	t.Helper()
+	if !reflect.DeepEqual(summary.Summary, core.Summary) {
+		t.Fatalf("summary mismatch\nsummary=%+v\ncore=%+v", summary.Summary, core.Summary)
+	}
+	if !reflect.DeepEqual(summary.Trend, core.Trend) {
+		t.Fatalf("trend mismatch\nsummary=%+v\ncore=%+v", summary.Trend, core.Trend)
+	}
+	if !reflect.DeepEqual(summary.KeyAliasBreakdown, core.KeyAliasBreakdown) {
+		t.Fatalf("key alias breakdown mismatch\nsummary=%+v\ncore=%+v", summary.KeyAliasBreakdown, core.KeyAliasBreakdown)
+	}
+	if !reflect.DeepEqual(summary.APIKeyBreakdown, core.APIKeyBreakdown) {
+		t.Fatalf("api key breakdown mismatch\nsummary=%+v\ncore=%+v", summary.APIKeyBreakdown, core.APIKeyBreakdown)
+	}
+	if !reflect.DeepEqual(summary.ModelBreakdown, core.ModelBreakdown) {
+		t.Fatalf("model breakdown mismatch\nsummary=%+v\ncore=%+v", summary.ModelBreakdown, core.ModelBreakdown)
+	}
+	if !reflect.DeepEqual(summary.TimeBreakdown, core.Trend) {
+		t.Fatalf("time breakdown should mirror selected-window trend\nsummary=%+v\ncore=%+v", summary.TimeBreakdown, core.Trend)
+	}
+	if !reflect.DeepEqual(summary.Insights, core.Insights) {
+		t.Fatalf("insights mismatch\nsummary=%+v\ncore=%+v", summary.Insights, core.Insights)
+	}
+	if !reflect.DeepEqual(summary.ProviderOptions, core.ProviderOptions) {
+		t.Fatalf("provider options mismatch\nsummary=%+v\ncore=%+v", summary.ProviderOptions, core.ProviderOptions)
+	}
+	if !reflect.DeepEqual(summary.Heatmap, heatmap) {
+		t.Fatalf("heatmap mismatch\nsummary=%+v\nheatmap=%+v", summary.Heatmap, heatmap)
 	}
 }
 
