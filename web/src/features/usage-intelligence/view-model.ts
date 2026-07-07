@@ -1,4 +1,5 @@
 import type {
+  AnalyticsCoreResponse,
   AnalyticsResponse,
   CostStatus,
   HeatmapData,
@@ -92,7 +93,7 @@ export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
 }
 
 export function buildUsageDashboardViewModel(input: {
-  analytics?: AnalyticsResponse
+  analytics?: AnalyticsResponse | AnalyticsCoreResponse
   fixedHeatmap?: HeatmapData
   requestHealth?: RequestHealthResponse
   leaderboardScope: LeaderboardScope

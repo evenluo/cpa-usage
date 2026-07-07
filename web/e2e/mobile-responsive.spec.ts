@@ -157,6 +157,8 @@ const dashboardAnalyticsSummary = {
   ],
 }
 
+const { comparison: _comparison, heatmap, previous_range_start: _previousRangeStart, previous_range_end: _previousRangeEnd, ...dashboardAnalyticsCore } = dashboardAnalyticsSummary
+
 test.beforeEach(async ({ page }) => {
   await mockAPI(page)
 })
@@ -269,7 +271,19 @@ async function mockAPI(page: Page) {
       await route.fulfill({ json: dashboardAnalyticsSummary })
       return
     }
+    if (path === "/analytics/core") {
+      await route.fulfill({ json: dashboardAnalyticsCore })
+      return
+    }
+    if (path === "/analytics/heatmap") {
+      await route.fulfill({ json: { ...dashboardAnalyticsCore, heatmap } })
+      return
+    }
     if (path === "/usage/overview") {
+      await route.fulfill({ json: usageOverviewPayload })
+      return
+    }
+    if (path === "/usage/request-health") {
       await route.fulfill({ json: usageOverviewPayload })
       return
     }
