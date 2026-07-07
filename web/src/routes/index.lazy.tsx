@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 
 import { Skeleton } from "@/components/ui/skeleton"
-import { mergeAnalyticsCore, useAnalytics, useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
+import { useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useCountUp } from "@/hooks/useCountUp"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { Sparkline } from "@/components/charts/sparkline"
@@ -14,7 +14,7 @@ import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
-import { formatCost, formatCompact, formatComparison, formatPercent } from "@/lib/format"
+import { formatCost, formatCompact, formatPercent } from "@/lib/format"
 import { buildUsageIntelligenceLoadPlan } from "@/features/usage-intelligence/load-plan"
 import {
   buildUsageDashboardViewModel,
@@ -46,11 +46,6 @@ function DashboardPage() {
   const selectedAnalytics = loadPlan.selectedWindow.analytics
   const fixedWindow = loadPlan.fixedWindow
   const {
-    data: fullAnalyticsData,
-    isLoading: isFullAnalyticsLoading,
-    error: fullAnalyticsError,
-  } = useAnalytics(selectedAnalytics.range, selectedAnalytics.granularity, selectedAnalytics.provider)
-  const {
     data: heatmapData,
     isLoading: isHeatmapLoading,
     error: heatmapError,
@@ -70,16 +65,12 @@ function DashboardPage() {
     writeStoredTimeRange(range)
   }, [range])
 
-  const data = useMemo(
-    () => mergeAnalyticsCore(fullAnalyticsData, coreAnalyticsData),
-    [fullAnalyticsData, coreAnalyticsData],
-  )
-  const hasCoreSurfaceData = Boolean(coreAnalyticsData ?? fullAnalyticsData)
-  const isCoreSurfaceLoading = !hasCoreSurfaceData && (isCoreAnalyticsLoading || isFullAnalyticsLoading)
-  const coreSurfaceError = hasCoreSurfaceData ? null : coreAnalyticsError ?? fullAnalyticsError
+  const data = coreAnalyticsData
+  const hasCoreSurfaceData = Boolean(coreAnalyticsData)
+  const isCoreSurfaceLoading = !hasCoreSurfaceData && isCoreAnalyticsLoading
+  const coreSurfaceError = hasCoreSurfaceData ? null : coreAnalyticsError
 
   const summary = data?.summary
-  const comparison = data?.comparison
   const {
     trend,
     leaderboardRows,
@@ -224,7 +215,6 @@ function DashboardPage() {
           formatter={formatCost}
           valueDecimals={4}
           caption={summary?.cost_status}
-          comparison={comparison?.has_previous_period ? formatComparison(comparison.total_cost_change_pct, "%") : undefined}
           sparkline={kpiData?.cost}
           isLoading={isCoreSurfaceLoading}
           tone="terracotta"
@@ -233,7 +223,6 @@ function DashboardPage() {
           label="Tokens"
           rawValue={summary?.total_tokens}
           formatter={(n) => formatCompact(n, 2)}
-          comparison={comparison?.has_previous_period ? formatComparison(comparison.total_tokens_change_pct, "%") : undefined}
           sparkline={kpiData?.tokens}
           isLoading={isCoreSurfaceLoading}
           tone="blue"
@@ -242,7 +231,6 @@ function DashboardPage() {
           label="Requests"
           rawValue={summary?.request_count}
           formatter={(n) => n.toLocaleString("en")}
-          comparison={comparison?.has_previous_period ? formatComparison(comparison.request_count_change_pct, "%") : undefined}
           sparkline={kpiData?.requests}
           isLoading={isCoreSurfaceLoading}
           tone="violet"
@@ -253,7 +241,6 @@ function DashboardPage() {
           formatter={formatPercent}
           valueDecimals={1}
           caption={`${summary?.failure_count ?? 0} failed`}
-          comparison={comparison?.has_previous_period ? formatComparison(comparison.success_rate_change_pp, "pp") : undefined}
           sparkline={kpiData?.successRate}
           isLoading={isCoreSurfaceLoading}
           tone="green"
