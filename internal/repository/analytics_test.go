@@ -319,6 +319,89 @@ func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenRollup
 	}
 }
 
+func TestBuildAnalyticsSummaryWithFilterUsesRollupAwareReadModelsWhenCovered(t *testing.T) {
+	withRepositoryTestLocation(t, "UTC")
+
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 11, 10, 59, 59, 999999999, time.UTC)
+	previousStart := start.Add(-2 * time.Hour)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	if err := db.Create(&[]entities.UsageIdentity{
+		{Name: "OpenAI Account", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-account", Type: "account", Provider: "OpenAI"},
+		{Name: "Provider Key", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: "apikey", Identity: "auth-provider", Type: "openai", Provider: "OpenAI"},
+	}).Error; err != nil {
+		t.Fatalf("create usage identities: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAuthFile, "auth-account", "Account Alias", start); err != nil {
+		t.Fatalf("set account alias: %v", err)
+	}
+	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha", "Raw Key Alias", start); err != nil {
+		t.Fatalf("set api key alias: %v", err)
+	}
+	events := []entities.UsageEvent{
+		{EventKey: "previous-openai-rollup", Provider: "OpenAI", Model: "priced-model", AuthType: "oauth", AuthIndex: "auth-account", Timestamp: previousStart.Add(15 * time.Minute), InputTokens: 1_000_000, TotalTokens: 1_000_000},
+		{EventKey: "current-account-rollup", Provider: "OpenAI", Model: "priced-model", AuthType: "oauth", AuthIndex: "auth-account", Timestamp: start.Add(15 * time.Minute), InputTokens: 1_000_000, OutputTokens: 100_000, CachedTokens: 100_000, ReasoningTokens: 50_000, TotalTokens: 1_250_000, LatencyMS: 120},
+		{EventKey: "current-api-key-rollup", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-provider", APIGroupKey: "sk-alpha", Timestamp: start.Add(time.Hour + 10*time.Minute), InputTokens: 500_000, OutputTokens: 100_000, TotalTokens: 600_000, LatencyMS: 240},
+		{EventKey: "current-unpriced-rollup", Provider: "OpenAI", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-missing", Timestamp: start.Add(time.Hour + 20*time.Minute), Failed: true, InputTokens: 100, TotalTokens: 100},
+		{EventKey: "other-provider-rollup", Provider: "Anthropic", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-other", Timestamp: start.Add(30 * time.Minute), InputTokens: 9_000_000, TotalTokens: 9_000_000},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	if err := db.Where("1 = 1").Delete(&entities.UsageEvent{}).Error; err != nil {
+		t.Fatalf("remove raw events to prove summary uses rollups: %v", err)
+	}
+	var rawCount int64
+	if err := db.Model(&entities.UsageEvent{}).Count(&rawCount).Error; err != nil {
+		t.Fatalf("count raw events: %v", err)
+	}
+	if rawCount != 0 {
+		t.Fatalf("test setup expected raw events removed, got %d", rawCount)
+	}
+	target := end.UTC().Truncate(time.Hour)
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &target,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	summary, err := BuildAnalyticsSummaryWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
+	}
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+	heatmap, err := BuildAnalyticsHeatmapWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsHeatmapWithFilter returned error: %v", err)
+	}
+
+	assertAnalyticsSummaryCompatibilityMatchesCoreAndHeatmap(t, summary, core, heatmap)
+	if summary.Summary.RequestCount != 3 || summary.Summary.TotalTokens != 1_850_100 || summary.Summary.CostStatus != dto.AnalyticsCostStatusPartial {
+		t.Fatalf("expected summary to read selected-window rollups, got %+v", summary.Summary)
+	}
+	if !summary.Comparison.HasPreviousPeriod || summary.Comparison.TotalTokensChangePct == nil || *summary.Comparison.TotalTokensChangePct <= 80 {
+		t.Fatalf("expected previous-period comparison from rollups, got %+v", summary.Comparison)
+	}
+	row := analyticsHeatmapRowByDate(t, summary.Heatmap, "2026-05-11")
+	if row.Cells[9].TotalTokens != 1_250_000 || row.Cells[10].RequestCount != 2 {
+		t.Fatalf("expected summary heatmap to read fixed-window rollups, got row %+v", row)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenBackfillIncomplete(t *testing.T) {
 	withRepositoryTestLocation(t, "UTC")
 

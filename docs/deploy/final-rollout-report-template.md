@@ -54,6 +54,7 @@ Date:
 - `GET /usage/api/v1/auth/session`:
 - `GET /usage/api/v1/analytics/summary?range=7d&granularity=hour`:
 - `GET /usage/api/v1/analytics/summary?range=7d&granularity=day`:
+- Concurrent smoke: start `GET /usage/api/v1/analytics/summary?range=7d&granularity=hour`, then issue `GET /usage/api/v1/analytics/core?range=24h&granularity=hour`; core analytics should remain fast rather than waiting behind summary:
 - `GET /usage/api/v1/status`:
 - `GET /`:
 - `GET /cpa-usage/healthz`:
@@ -73,3 +74,5 @@ Date:
 ## Compatibility Decision
 
 This cutover intentionally ends the old `/usage` dashboard path. CPA root service and adjacent infrastructure services remain compatible and unchanged unless stated above.
+
+The analytics summary route remains a compatibility interface. Its response contract is preserved, but the backend implementation should read through the rollup-aware Usage Intelligence read models rather than maintaining a separate raw analytics implementation.

@@ -3,6 +3,8 @@ package repository
 import (
 	"cpa-usage/internal/repository/dto"
 	"fmt"
+	"time"
+
 	"gorm.io/gorm"
 )
 
@@ -11,51 +13,44 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 		return nil, fmt.Errorf("database is nil")
 	}
 
-	summary, err := buildAnalyticsSummary(db, filter)
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
 	if err != nil {
 		return nil, err
 	}
-	trend, err := buildAnalyticsTrend(db, filter)
+	previousRangeStart, previousRangeEnd, comparison, err := buildAnalyticsSummaryComparison(db, filter, core.Summary)
 	if err != nil {
 		return nil, err
 	}
-	keyAliasBreakdown, err := buildAnalyticsKeyAliasBreakdown(db, filter)
-	if err != nil {
-		return nil, err
-	}
-	apiKeyBreakdown, err := buildAnalyticsAPIKeyBreakdown(db, filter)
-	if err != nil {
-		return nil, err
-	}
-	modelBreakdown, err := buildAnalyticsModelBreakdown(db, filter)
-	if err != nil {
-		return nil, err
-	}
-	providerOptions, err := buildAnalyticsProviderOptions(db, filter)
-	if err != nil {
-		return nil, err
-	}
-	previousRangeStart, previousRangeEnd, comparison, err := buildAnalyticsComparison(db, filter, summary)
-	if err != nil {
-		return nil, err
-	}
-	heatmap, err := buildAnalyticsHeatmap(db, filter)
+	heatmap, err := BuildAnalyticsHeatmapWithFilter(db, filter)
 	if err != nil {
 		return nil, err
 	}
 
 	return &dto.AnalyticsSummarySnapshot{
-		Summary:            summary,
-		Trend:              trend,
-		KeyAliasBreakdown:  keyAliasBreakdown,
-		APIKeyBreakdown:    apiKeyBreakdown,
-		ModelBreakdown:     modelBreakdown,
-		TimeBreakdown:      trend,
-		Insights:           buildAnalyticsInsights(summary, trend, keyAliasBreakdown, modelBreakdown),
-		ProviderOptions:    providerOptions,
+		Summary:            core.Summary,
+		Trend:              core.Trend,
+		KeyAliasBreakdown:  core.KeyAliasBreakdown,
+		APIKeyBreakdown:    core.APIKeyBreakdown,
+		ModelBreakdown:     core.ModelBreakdown,
+		TimeBreakdown:      core.Trend,
+		Insights:           core.Insights,
+		ProviderOptions:    core.ProviderOptions,
 		PreviousRangeStart: previousRangeStart,
 		PreviousRangeEnd:   previousRangeEnd,
 		Comparison:         comparison,
 		Heatmap:            heatmap,
 	}, nil
+}
+
+func buildAnalyticsSummaryComparison(db *gorm.DB, filter dto.UsageQueryFilter, current dto.AnalyticsSummary) (*time.Time, *time.Time, dto.AnalyticsComparison, error) {
+	previousFilter, ok := analyticsPreviousPeriodFilter(filter)
+	if !ok {
+		return nil, nil, dto.AnalyticsComparison{}, nil
+	}
+	previous, err := BuildAnalyticsCoreWithFilter(db, previousFilter)
+	if err != nil {
+		return nil, nil, dto.AnalyticsComparison{}, err
+	}
+	comparison := mapAnalyticsComparison(current, previous.Summary)
+	return previousFilter.StartTime, previousFilter.EndTime, comparison, nil
 }

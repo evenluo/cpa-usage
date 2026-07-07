@@ -41,19 +41,6 @@ func buildAnalyticsSummaryAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter)
 	return row, nil
 }
 
-func buildAnalyticsComparison(db *gorm.DB, filter dto.UsageQueryFilter, current dto.AnalyticsSummary) (*time.Time, *time.Time, dto.AnalyticsComparison, error) {
-	previousFilter, ok := analyticsPreviousPeriodFilter(filter)
-	if !ok {
-		return nil, nil, dto.AnalyticsComparison{}, nil
-	}
-	previous, err := buildAnalyticsSummary(db, previousFilter)
-	if err != nil {
-		return nil, nil, dto.AnalyticsComparison{}, err
-	}
-	comparison := mapAnalyticsComparison(current, previous)
-	return previousFilter.StartTime, previousFilter.EndTime, comparison, nil
-}
-
 func analyticsPreviousPeriodFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
 	if filter.StartTime == nil || filter.EndTime == nil {
 		return dto.UsageQueryFilter{}, false
