@@ -72,6 +72,274 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 	}
 }
 
+func TestBuildAnalyticsCoreWithFilterUsesRollupsForSummaryAndTrend(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 12, 23, 59, 59, 0, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	events := []entities.UsageEvent{
+		{EventKey: "priced-hour-1", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha", Timestamp: start.Add(9*time.Hour + 15*time.Minute), InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 100_000, TotalTokens: 1_600_000},
+		{EventKey: "priced-hour-2", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha", Timestamp: start.AddDate(0, 0, 1).Add(10 * time.Hour), InputTokens: 500_000, TotalTokens: 500_000},
+		{EventKey: "unpriced-hour-2", Provider: "OpenAI", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-2", Timestamp: start.AddDate(0, 0, 1).Add(11 * time.Hour), Failed: true, InputTokens: 100, TotalTokens: 100},
+		{EventKey: "other-provider", Provider: "Claude", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-3", Timestamp: start.Add(12 * time.Hour), InputTokens: 700, TotalTokens: 700},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	target := end.UTC().Truncate(time.Hour)
+	covered := target
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "7d", Granularity: "day", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	rawSummary, err := buildAnalyticsSummary(db, filter)
+	if err != nil {
+		t.Fatalf("build raw summary: %v", err)
+	}
+	rawTrend, err := buildAnalyticsTrend(db, filter)
+	if err != nil {
+		t.Fatalf("build raw trend: %v", err)
+	}
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+
+	if core.Summary != rawSummary {
+		t.Fatalf("expected rollup summary to match raw summary\nrollup=%+v\nraw=%+v", core.Summary, rawSummary)
+	}
+	if len(core.Trend) != len(rawTrend) {
+		t.Fatalf("expected %d trend points, got %+v", len(rawTrend), core.Trend)
+	}
+	for i := range rawTrend {
+		if core.Trend[i] != rawTrend[i] {
+			t.Fatalf("trend point %d mismatch\nrollup=%+v\nraw=%+v", i, core.Trend[i], rawTrend[i])
+		}
+	}
+	if len(core.Heatmap.Rows) != 0 || len(core.KeyAliasBreakdown) != 0 || len(core.ModelBreakdown) != 0 {
+		t.Fatalf("core analytics should only return summary and trend in this slice, got %+v", core)
+	}
+}
+
+func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 30, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 11, 11, 29, 59, 0, time.UTC)
+	events := []entities.UsageEvent{
+		{EventKey: "partial-before-start", Provider: "OpenAI", Model: "model", Timestamp: start.Truncate(time.Hour).Add(10 * time.Minute), InputTokens: 100, TotalTokens: 100},
+		{EventKey: "partial-start-edge", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 10, TotalTokens: 10},
+		{EventKey: "partial-full-hour", Provider: "OpenAI", Model: "model", Timestamp: start.Truncate(time.Hour).Add(time.Hour + 15*time.Minute), InputTokens: 20, TotalTokens: 20},
+		{EventKey: "partial-end-edge", Provider: "OpenAI", Model: "model", Timestamp: end.Truncate(time.Hour).Add(15 * time.Minute), InputTokens: 30, TotalTokens: 30},
+		{EventKey: "partial-after-end", Provider: "OpenAI", Model: "model", Timestamp: end.Truncate(time.Hour).Add(45 * time.Minute), InputTokens: 100, TotalTokens: 100},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	target := end.UTC().Truncate(time.Hour)
+	covered := target
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	rawSummary, err := buildAnalyticsSummary(db, filter)
+	if err != nil {
+		t.Fatalf("build raw summary: %v", err)
+	}
+	rawTrend, err := buildAnalyticsTrend(db, filter)
+	if err != nil {
+		t.Fatalf("build raw trend: %v", err)
+	}
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+
+	if rawSummary.RequestCount != 3 || rawSummary.TotalTokens != 60 {
+		t.Fatalf("test setup expected three in-window events, got %+v", rawSummary)
+	}
+	if core.Summary != rawSummary {
+		t.Fatalf("expected partial-hour core summary to match raw summary\ncore=%+v\nraw=%+v", core.Summary, rawSummary)
+	}
+	if len(core.Trend) != len(rawTrend) {
+		t.Fatalf("expected %d trend points, got %+v", len(rawTrend), core.Trend)
+	}
+	for i := range rawTrend {
+		if core.Trend[i] != rawTrend[i] {
+			t.Fatalf("trend point %d mismatch\ncore=%+v\nraw=%+v", i, core.Trend[i], rawTrend[i])
+		}
+	}
+}
+
+func TestBuildAnalyticsCoreWithFilterFallsBackWhenWindowPrecedesCoverage(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 11, 9, 59, 59, 0, time.UTC)
+	event := entities.UsageEvent{
+		EventKey: "uncovered-window", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 100, TotalTokens: 100,
+	}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{event}); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	if err := db.Where("1 = 1").Delete(&entities.UsageRollupHourly{}).Error; err != nil {
+		t.Fatalf("remove rollups to prove raw fallback: %v", err)
+	}
+	target := start.Add(-time.Hour)
+	covered := target
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+
+	if core.Summary.RequestCount != 1 || core.Summary.TotalTokens != 100 {
+		t.Fatalf("expected uncovered window to use raw fallback, got %+v", core.Summary)
+	}
+}
+
+func TestBuildAnalyticsCoreWithFilterPreservesRawPromptCostClamp(t *testing.T) {
+	db := openTestDatabase(t)
+	start := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 5, 11, 9, 59, 59, 0, time.UTC)
+	if _, err := UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
+		Model:                "priced-model",
+		PromptPricePer1M:     1,
+		CompletionPricePer1M: 2,
+		CachePricePer1M:      0.5,
+	}); err != nil {
+		t.Fatalf("upsert pricing: %v", err)
+	}
+	events := []entities.UsageEvent{
+		{EventKey: "clamped-cache-heavy", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha", Timestamp: start.Add(10 * time.Minute), InputTokens: 100, CachedTokens: 200, TotalTokens: 300},
+		{EventKey: "clamped-prompt-heavy", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha", Timestamp: start.Add(20 * time.Minute), InputTokens: 200, TotalTokens: 200},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+	target := start
+	covered := start
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+	}); err != nil {
+		t.Fatalf("mark rollup coverage: %v", err)
+	}
+	filter := dto.UsageQueryFilter{Range: "custom", Granularity: "hour", Provider: "OpenAI", StartTime: &start, EndTime: &end, FixedWindowEnd: &end}
+
+	rawSummary, err := buildAnalyticsSummary(db, filter)
+	if err != nil {
+		t.Fatalf("build raw summary: %v", err)
+	}
+	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	if err != nil {
+		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
+	}
+
+	if math.Abs(core.Summary.TotalCost-rawSummary.TotalCost) > 0.000000001 || core.Summary.TotalTokens != rawSummary.TotalTokens || core.Summary.RequestCount != rawSummary.RequestCount {
+		t.Fatalf("expected rollup cost to preserve raw prompt clamp\ncore=%+v\nraw=%+v", core.Summary, rawSummary)
+	}
+}
+
+func TestInsertUsageEventsRebuildsHourlyRollupsIdempotently(t *testing.T) {
+	db := openTestDatabase(t)
+	bucket := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	event := entities.UsageEvent{
+		EventKey: "rollup-idempotent", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha",
+		Timestamp: bucket.Add(5 * time.Minute), InputTokens: 100, OutputTokens: 50, CachedTokens: 10, TotalTokens: 160,
+	}
+	inserted, deduped, err := InsertUsageEvents(db, []entities.UsageEvent{event})
+	if err != nil {
+		t.Fatalf("first InsertUsageEvents returned error: %v", err)
+	}
+	if inserted != 1 || deduped != 0 {
+		t.Fatalf("expected first insert inserted=1 deduped=0, got inserted=%d deduped=%d", inserted, deduped)
+	}
+	inserted, deduped, err = InsertUsageEvents(db, []entities.UsageEvent{event})
+	if err != nil {
+		t.Fatalf("second InsertUsageEvents returned error: %v", err)
+	}
+	if inserted != 0 || deduped != 1 {
+		t.Fatalf("expected second insert inserted=0 deduped=1, got inserted=%d deduped=%d", inserted, deduped)
+	}
+
+	var rollups []entities.UsageRollupHourly
+	if err := db.Find(&rollups).Error; err != nil {
+		t.Fatalf("load rollups: %v", err)
+	}
+	if len(rollups) != 1 {
+		t.Fatalf("expected one rollup row after retry, got %+v", rollups)
+	}
+	rollup := rollups[0]
+	if rollup.RequestCount != 1 || rollup.SuccessCount != 1 || rollup.FailureCount != 0 || rollup.TotalTokens != 160 || rollup.InputTokens != 100 || rollup.BillablePromptTokens != 90 || rollup.OutputTokens != 50 || rollup.CachedTokens != 10 {
+		t.Fatalf("unexpected rollup metrics after retry: %+v", rollup)
+	}
+	if !rollup.BucketStart.Equal(bucket) || rollup.APIKeyIdentity != "sk-alpha" {
+		t.Fatalf("unexpected rollup dimensions after retry: %+v", rollup)
+	}
+}
+
+func TestInsertUsageEventsDoesNotRebuildDuplicateEventBuckets(t *testing.T) {
+	db := openTestDatabase(t)
+	oldBucket := time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)
+	oldEvent := entities.UsageEvent{EventKey: "duplicate-old", Provider: "OpenAI", Model: "model", Timestamp: oldBucket.Add(5 * time.Minute), InputTokens: 10, TotalTokens: 10}
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{oldEvent}); err != nil {
+		t.Fatalf("insert old event: %v", err)
+	}
+	if err := db.Model(&entities.UsageRollupHourly{}).Where("bucket_start = ?", oldBucket).Update("total_tokens", 999).Error; err != nil {
+		t.Fatalf("mark old rollup bucket: %v", err)
+	}
+	newBucket := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
+	newEvent := entities.UsageEvent{EventKey: "new-event", Provider: "OpenAI", Model: "model", Timestamp: newBucket.Add(5 * time.Minute), InputTokens: 20, TotalTokens: 20}
+
+	inserted, deduped, err := InsertUsageEvents(db, []entities.UsageEvent{oldEvent, newEvent})
+	if err != nil {
+		t.Fatalf("insert mixed duplicate and new event: %v", err)
+	}
+	if inserted != 1 || deduped != 1 {
+		t.Fatalf("expected inserted=1 deduped=1, got inserted=%d deduped=%d", inserted, deduped)
+	}
+
+	var oldRollup entities.UsageRollupHourly
+	if err := db.Where("bucket_start = ?", oldBucket).First(&oldRollup).Error; err != nil {
+		t.Fatalf("load old rollup: %v", err)
+	}
+	if oldRollup.TotalTokens != 999 {
+		t.Fatalf("duplicate old event should not rebuild old bucket, got %+v", oldRollup)
+	}
+	var newRollup entities.UsageRollupHourly
+	if err := db.Where("bucket_start = ?", newBucket).First(&newRollup).Error; err != nil {
+		t.Fatalf("load new rollup: %v", err)
+	}
+	if newRollup.TotalTokens != 20 {
+		t.Fatalf("expected new bucket to be rebuilt, got %+v", newRollup)
+	}
+}
+
 func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsComplete(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)

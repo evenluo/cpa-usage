@@ -39,6 +39,9 @@ func TestOpenDatabaseAutoMigratesCoreTables(t *testing.T) {
 	if !db.Migrator().HasTable("usage_rollup_backfill_states") {
 		t.Fatal("expected usage_rollup_backfill_states table to exist")
 	}
+	if !db.Migrator().HasTable("usage_rollups_hourly") {
+		t.Fatal("expected usage_rollups_hourly table to exist")
+	}
 	var state entities.UsageRollupBackfillState
 	if err := db.Where("name = ?", entities.UsageRollupBackfillStateName).First(&state).Error; err != nil {
 		t.Fatalf("expected fresh database to seed usage rollup backfill state: %v", err)
@@ -62,8 +65,8 @@ func TestOpenDatabaseCreatesFreshDatabaseFromCurrentSchemaWithoutRunningMigratio
 	if err := db.Table("schema_migrations").Count(&count).Error; err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if count != 21 {
-		t.Fatalf("expected fresh database to mark 21 migrations applied, got %d", count)
+	if count != 22 {
+		t.Fatalf("expected fresh database to mark 22 migrations applied, got %d", count)
 	}
 	if strings.Contains(logs.String(), "schema migration started") {
 		t.Fatalf("expected fresh database creation not to run version migrations, got logs:\n%s", logs.String())

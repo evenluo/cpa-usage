@@ -15,14 +15,25 @@ import (
 )
 
 type analyticsStub struct {
-	snapshot *repodto.AnalyticsSummarySnapshot
-	filter   servicedto.UsageFilter
-	calls    int
+	snapshot  *repodto.AnalyticsSummarySnapshot
+	core      *repodto.AnalyticsSummarySnapshot
+	filter    servicedto.UsageFilter
+	calls     int
+	coreCalls int
 }
 
 func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error) {
 	s.calls++
 	s.filter = filter
+	return s.snapshot, nil
+}
+
+func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error) {
+	s.coreCalls++
+	s.filter = filter
+	if s.core != nil {
+		return s.core, nil
+	}
 	return s.snapshot, nil
 }
 
@@ -459,6 +470,55 @@ func TestAnalyticsSummaryRouteReturnsSummaryTrendAndRangeMetadata(t *testing.T) 
 	}
 	if provider.filter.Granularity != "hour" {
 		t.Fatalf("expected default hour granularity to be passed through, got %+v", provider.filter)
+	}
+}
+
+func TestAnalyticsCoreRouteReturnsSummaryAndTrendWithoutHeatmap(t *testing.T) {
+	previousLocal := time.Local
+	time.Local = time.UTC
+	t.Cleanup(func() { time.Local = previousLocal })
+
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	provider := &analyticsStub{core: &repodto.AnalyticsSummarySnapshot{
+		Summary: repodto.AnalyticsSummary{
+			TotalTokens:         100,
+			RequestCount:        2,
+			SuccessCount:        1,
+			FailureCount:        1,
+			CostAvailable:       true,
+			CostStatus:          repodto.AnalyticsCostStatusAvailable,
+			CacheReadShareState: repodto.AnalyticsCacheReadShareStateNoPromptInput,
+		},
+		Trend: []repodto.AnalyticsTrendPoint{{
+			Label:         "2026-05-11 00:00 +0000",
+			BucketStart:   start,
+			BucketEnd:     start.Add(time.Hour),
+			TotalTokens:   100,
+			RequestCount:  2,
+			SuccessCount:  1,
+			FailureCount:  1,
+			CostAvailable: true,
+			CostStatus:    repodto.AnalyticsCostStatusAvailable,
+		}},
+	}}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Analytics: provider})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/analytics/core?range=7d&granularity=hour&provider=OpenAI", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if provider.coreCalls != 1 {
+		t.Fatalf("expected core provider to be called once, got %d", provider.coreCalls)
+	}
+	if provider.filter.Provider != "OpenAI" || provider.filter.Granularity != "hour" {
+		t.Fatalf("unexpected core filter: %+v", provider.filter)
+	}
+	body := resp.Body.String()
+	if !contains(body, `"summary":`) || !contains(body, `"trend":[`) || contains(body, `"heatmap"`) {
+		t.Fatalf("expected core response with summary/trend and no heatmap, got %s", body)
 	}
 }
 

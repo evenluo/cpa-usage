@@ -34,6 +34,17 @@ type analyticsSummaryResponse struct {
 	Providers          []analyticsProviderOption  `json:"provider_options"`
 }
 
+type analyticsCoreResponse struct {
+	Range       string                  `json:"range"`
+	Granularity string                  `json:"granularity"`
+	RangeStart  *time.Time              `json:"range_start,omitempty"`
+	RangeEnd    *time.Time              `json:"range_end,omitempty"`
+	Provider    string                  `json:"provider,omitempty"`
+	Timezone    string                  `json:"timezone"`
+	Summary     analyticsSummaryPayload `json:"summary"`
+	Trend       []analyticsTrendPoint   `json:"trend"`
+}
+
 type analyticsSummaryPayload struct {
 	TotalCost             float64  `json:"total_cost"`
 	TotalTokens           int64    `json:"total_tokens"`
@@ -180,6 +191,25 @@ type analyticsHeatmapCell struct {
 }
 
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider service.AnalyticsProvider) {
+	router.GET("/analytics/core", func(c *gin.Context) {
+		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if analyticsProvider == nil {
+			c.JSON(http.StatusOK, buildAnalyticsCoreResponse(filter, nil))
+			return
+		}
+
+		snapshot, err := analyticsProvider.GetAnalyticsCore(c.Request.Context(), filter)
+		if err != nil {
+			writeInternalError(c, "get analytics core failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, buildAnalyticsCoreResponse(filter, snapshot))
+	})
+
 	router.GET("/analytics/summary", func(c *gin.Context) {
 		filter, err := parseAnalyticsSummaryFilterQuery(c.Request, time.Now().UTC())
 		if err != nil {
@@ -218,6 +248,63 @@ func parseAnalyticsSummaryFilterQuery(req *http.Request, anchor time.Time) (serv
 		}
 	}
 	return filter, nil
+}
+
+func buildAnalyticsCoreResponse(filter servicedto.UsageFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsCoreResponse {
+	response := analyticsCoreResponse{
+		Range:       filter.Range,
+		Granularity: filter.Granularity,
+		RangeStart:  filter.StartTime,
+		RangeEnd:    filter.EndTime,
+		Provider:    filter.Provider,
+		Timezone:    time.Local.String(),
+		Summary: analyticsSummaryPayload{
+			CostAvailable:       true,
+			CostStatus:          dto.AnalyticsCostStatusAvailable,
+			CacheReadShareState: dto.AnalyticsCacheReadShareStateNoPromptInput,
+		},
+		Trend: []analyticsTrendPoint{},
+	}
+	if snapshot == nil {
+		return response
+	}
+	response.Summary = analyticsSummaryPayload{
+		TotalCost:             snapshot.Summary.TotalCost,
+		TotalTokens:           snapshot.Summary.TotalTokens,
+		RequestCount:          snapshot.Summary.RequestCount,
+		SuccessCount:          snapshot.Summary.SuccessCount,
+		FailureCount:          snapshot.Summary.FailureCount,
+		InputTokens:           snapshot.Summary.InputTokens,
+		OutputTokens:          snapshot.Summary.OutputTokens,
+		ReasoningTokens:       snapshot.Summary.ReasoningTokens,
+		CachedTokens:          snapshot.Summary.CachedTokens,
+		SuccessRate:           snapshot.Summary.SuccessRate,
+		CostAvailable:         snapshot.Summary.CostAvailable,
+		CostStatus:            snapshot.Summary.CostStatus,
+		CacheReadShare:        snapshot.Summary.CacheReadShare,
+		CacheReadShareState:   snapshot.Summary.CacheReadShareState,
+		EstimatedCacheSavings: snapshot.Summary.EstimatedCacheSavings,
+	}
+	response.Trend = make([]analyticsTrendPoint, 0, len(snapshot.Trend))
+	for _, point := range snapshot.Trend {
+		response.Trend = append(response.Trend, analyticsTrendPoint{
+			Label:           point.Label,
+			BucketStart:     point.BucketStart,
+			BucketEnd:       point.BucketEnd,
+			TotalCost:       point.TotalCost,
+			TotalTokens:     point.TotalTokens,
+			InputTokens:     point.InputTokens,
+			OutputTokens:    point.OutputTokens,
+			ReasoningTokens: point.ReasoningTokens,
+			CachedTokens:    point.CachedTokens,
+			RequestCount:    point.RequestCount,
+			SuccessCount:    point.SuccessCount,
+			FailureCount:    point.FailureCount,
+			CostAvailable:   point.CostAvailable,
+			CostStatus:      point.CostStatus,
+		})
+	}
+	return response
 }
 
 func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsSummaryResponse {

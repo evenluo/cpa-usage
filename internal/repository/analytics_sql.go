@@ -6,10 +6,18 @@ import (
 )
 
 func analyticsCostSQLExpression() string {
-	inputTokens := analyticsPositiveTokenSQLExpression("usage_events.input_tokens")
-	outputTokens := analyticsPositiveTokenSQLExpression("usage_events.output_tokens")
-	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return analyticsCostSQLExpressionFor("usage_events.input_tokens", "usage_events.output_tokens", "usage_events.cached_tokens")
+}
+
+func analyticsCostSQLExpressionFor(inputColumn string, outputColumn string, cachedColumn string) string {
+	inputTokens := analyticsPositiveTokenSQLExpression(inputColumn)
+	outputTokens := analyticsPositiveTokenSQLExpression(outputColumn)
+	cachedTokens := analyticsPositiveTokenSQLExpression(cachedColumn)
 	promptTokens := "(CASE WHEN " + inputTokens + " - " + cachedTokens + " > 0 THEN " + inputTokens + " - " + cachedTokens + " ELSE 0 END)"
+	return analyticsCostSQLExpressionWithPromptTokens(promptTokens, outputTokens, cachedTokens)
+}
+
+func analyticsCostSQLExpressionWithPromptTokens(promptTokens string, outputTokens string, cachedTokens string) string {
 	return `CASE
 		WHEN model_price_settings.id IS NULL THEN 0
 		ELSE
@@ -20,7 +28,11 @@ func analyticsCostSQLExpression() string {
 }
 
 func analyticsCacheSavingsSQLExpression() string {
-	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return analyticsCacheSavingsSQLExpressionFor("usage_events.cached_tokens")
+}
+
+func analyticsCacheSavingsSQLExpressionFor(cachedColumn string) string {
+	cachedTokens := analyticsPositiveTokenSQLExpression(cachedColumn)
 	return `CASE
 		WHEN ` + cachedTokens + ` > 0
 			AND model_price_settings.id IS NOT NULL
@@ -31,25 +43,33 @@ func analyticsCacheSavingsSQLExpression() string {
 }
 
 func analyticsCacheSavingsEligibleSQLExpression() string {
-	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return analyticsCacheSavingsEligibleSQLExpressionFor("usage_events.cached_tokens", "1")
+}
+
+func analyticsCacheSavingsEligibleSQLExpressionFor(cachedColumn string, countExpression string) string {
+	cachedTokens := analyticsPositiveTokenSQLExpression(cachedColumn)
 	return `CASE
 		WHEN ` + cachedTokens + ` > 0
 			AND model_price_settings.id IS NOT NULL
 			AND model_price_settings.prompt_price_per1_m >= model_price_settings.cache_price_per1_m
-		THEN 1
+		THEN ` + countExpression + `
 		ELSE 0
 	END`
 }
 
 func analyticsCacheSavingsIneligibleSQLExpression() string {
-	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	return analyticsCacheSavingsIneligibleSQLExpressionFor("usage_events.cached_tokens", "1")
+}
+
+func analyticsCacheSavingsIneligibleSQLExpressionFor(cachedColumn string, countExpression string) string {
+	cachedTokens := analyticsPositiveTokenSQLExpression(cachedColumn)
 	return `CASE
 		WHEN ` + cachedTokens + ` > 0
 			AND (
 				model_price_settings.id IS NULL
 				OR model_price_settings.prompt_price_per1_m < model_price_settings.cache_price_per1_m
 			)
-		THEN 1
+		THEN ` + countExpression + `
 		ELSE 0
 	END`
 }
@@ -59,19 +79,27 @@ func analyticsPositiveTokenSQLExpression(column string) string {
 }
 
 func analyticsMissingPricingSQLExpression() string {
+	return analyticsMissingPricingSQLExpressionFor("usage_events.input_tokens", "usage_events.output_tokens", "usage_events.cached_tokens", "1")
+}
+
+func analyticsMissingPricingSQLExpressionFor(inputColumn string, outputColumn string, cachedColumn string, countExpression string) string {
 	return `CASE
 		WHEN model_price_settings.id IS NULL
-			AND (usage_events.input_tokens > 0 OR usage_events.output_tokens > 0 OR usage_events.cached_tokens > 0)
-		THEN 1
+			AND (` + inputColumn + ` > 0 OR ` + outputColumn + ` > 0 OR ` + cachedColumn + ` > 0)
+		THEN ` + countExpression + `
 		ELSE 0
 	END`
 }
 
 func analyticsPricedBillableSQLExpression() string {
+	return analyticsPricedBillableSQLExpressionFor("usage_events.input_tokens", "usage_events.output_tokens", "usage_events.cached_tokens", "1")
+}
+
+func analyticsPricedBillableSQLExpressionFor(inputColumn string, outputColumn string, cachedColumn string, countExpression string) string {
 	return `CASE
 		WHEN model_price_settings.id IS NOT NULL
-			AND (usage_events.input_tokens > 0 OR usage_events.output_tokens > 0 OR usage_events.cached_tokens > 0)
-		THEN 1
+			AND (` + inputColumn + ` > 0 OR ` + outputColumn + ` > 0 OR ` + cachedColumn + ` > 0)
+		THEN ` + countExpression + `
 		ELSE 0
 	END`
 }
@@ -81,6 +109,13 @@ func analyticsBucketSQLExpression(bucketByDay bool) string {
 		return "strftime('%Y-%m-%d', usage_events.timestamp, 'localtime')"
 	}
 	return "strftime('%Y-%m-%dT%H:00:00Z', usage_events.timestamp)"
+}
+
+func analyticsRollupBucketSQLExpression(bucketByDay bool) string {
+	if bucketByDay {
+		return "strftime('%Y-%m-%d', usage_rollups_hourly.bucket_start, 'localtime')"
+	}
+	return "strftime('%Y-%m-%dT%H:00:00Z', usage_rollups_hourly.bucket_start)"
 }
 
 func analyticsTrendBucketsByDay(filter dto.UsageQueryFilter) bool {

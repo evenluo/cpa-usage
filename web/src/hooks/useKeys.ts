@@ -61,7 +61,7 @@ export function useUpdateAlias() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["keys", "identities"] })
       qc.invalidateQueries({ queryKey: ["keys", "api-keys"] })
-      qc.invalidateQueries({ queryKey: ["analytics", "summary"] })
+      qc.invalidateQueries({ queryKey: ["analytics"] })
     },
   })
 }
@@ -78,7 +78,7 @@ export function useUpdateAPIKeyAlias() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["keys", "api-keys"] })
-      qc.invalidateQueries({ queryKey: ["analytics", "summary"] })
+      qc.invalidateQueries({ queryKey: ["analytics"] })
     },
   })
 }
@@ -92,7 +92,7 @@ export function useDeleteAlias() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["keys", "identities"] })
       qc.invalidateQueries({ queryKey: ["keys", "api-keys"] })
-      qc.invalidateQueries({ queryKey: ["analytics", "summary"] })
+      qc.invalidateQueries({ queryKey: ["analytics"] })
     },
   })
 }
@@ -105,7 +105,7 @@ export function useDeleteAPIKeyAlias() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["keys", "api-keys"] })
-      qc.invalidateQueries({ queryKey: ["analytics", "summary"] })
+      qc.invalidateQueries({ queryKey: ["analytics"] })
     },
   })
 }

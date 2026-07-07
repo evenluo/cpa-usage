@@ -30,6 +30,7 @@ const (
 	migrationCreateKeyAliases                       = "20260513_create_key_aliases"
 	migrationEnsureUsageEventEventKeyUnique         = "20260518_ensure_usage_event_event_key_unique"
 	migrationCreateUsageRollupBackfillState         = "20260707_create_usage_rollup_backfill_state"
+	migrationCreateUsageRollupsHourly               = "20260707_create_usage_rollups_hourly"
 )
 
 type schemaMigration struct {
@@ -104,6 +105,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationCreateKeyAliases, run: createKeyAliasesMigration},
 		{version: migrationEnsureUsageEventEventKeyUnique, run: ensureUsageEventEventKeyUniqueMigration},
 		{version: migrationCreateUsageRollupBackfillState, run: createUsageRollupBackfillStateMigration},
+		{version: migrationCreateUsageRollupsHourly, run: createUsageRollupsHourlyMigration},
 	}
 }
 

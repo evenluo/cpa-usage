@@ -9,6 +9,16 @@ import (
 
 func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsSummary, error) {
 	var row analyticsAggregateRow
+	row, err := buildAnalyticsSummaryAggregateRow(db, filter)
+	if err != nil {
+		return dto.AnalyticsSummary{}, err
+	}
+
+	return mapAnalyticsSummary(row), nil
+}
+
+func buildAnalyticsSummaryAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter) (analyticsAggregateRow, error) {
+	var row analyticsAggregateRow
 	if err := analyticsEventsWithPricingQuery(db, filter).
 		Select(`
 			COUNT(*) AS request_count,
@@ -26,10 +36,9 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
 		Scan(&row).Error; err != nil {
-		return dto.AnalyticsSummary{}, fmt.Errorf("build analytics summary: %w", err)
+		return analyticsAggregateRow{}, fmt.Errorf("build analytics summary: %w", err)
 	}
-
-	return mapAnalyticsSummary(row), nil
+	return row, nil
 }
 
 func buildAnalyticsComparison(db *gorm.DB, filter dto.UsageQueryFilter, current dto.AnalyticsSummary) (*time.Time, *time.Time, dto.AnalyticsComparison, error) {

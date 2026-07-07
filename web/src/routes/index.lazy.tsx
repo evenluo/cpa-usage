@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 
 import { Skeleton } from "@/components/ui/skeleton"
-import { useAnalytics } from "@/hooks/useAnalytics"
+import { mergeAnalyticsCore, useAnalytics, useAnalyticsCore } from "@/hooks/useAnalytics"
 import { useCountUp } from "@/hooks/useCountUp"
 import { Sparkline } from "@/components/charts/sparkline"
 import { TrendChart } from "@/components/charts/trend-chart"
@@ -38,12 +38,30 @@ function DashboardPage() {
   const [leaderboardScope, setLeaderboardScope] = useState<"account" | "api-key">("api-key")
 
   const g = getEffectiveGranularity(range, granularity)
-  const { data, isLoading, error } = useAnalytics(range, g, provider)
+  const {
+    data: fullAnalyticsData,
+    isLoading: isFullAnalyticsLoading,
+    error: fullAnalyticsError,
+  } = useAnalytics(range, g, provider)
+  const {
+    data: coreAnalyticsData,
+    isLoading: isCoreAnalyticsLoading,
+    error: coreAnalyticsError,
+  } = useAnalyticsCore(range, g, provider)
   const { data: healthOverviewData, isLoading: isHealthLoading } = useUsageOverview("24h", provider)
 
   useEffect(() => {
     writeStoredTimeRange(range)
   }, [range])
+
+  const data = useMemo(
+    () => mergeAnalyticsCore(fullAnalyticsData, coreAnalyticsData),
+    [fullAnalyticsData, coreAnalyticsData],
+  )
+  const hasCoreSurfaceData = Boolean(coreAnalyticsData ?? fullAnalyticsData)
+  const isCoreSurfaceLoading = !hasCoreSurfaceData && (isCoreAnalyticsLoading || isFullAnalyticsLoading)
+  const coreSurfaceError = hasCoreSurfaceData ? null : coreAnalyticsError ?? fullAnalyticsError
+  const isFullAnalyticsSurfaceLoading = !fullAnalyticsData && isFullAnalyticsLoading
 
   const summary = data?.summary
   const comparison = data?.comparison
@@ -186,7 +204,7 @@ function DashboardPage() {
           caption={summary?.cost_status}
           comparison={comparison?.has_previous_period ? formatComparison(comparison.total_cost_change_pct, "%") : undefined}
           sparkline={kpiData?.cost}
-          isLoading={isLoading}
+          isLoading={isCoreSurfaceLoading}
           tone="terracotta"
         />
         <KpiCard
@@ -195,7 +213,7 @@ function DashboardPage() {
           formatter={(n) => formatCompact(n, 2)}
           comparison={comparison?.has_previous_period ? formatComparison(comparison.total_tokens_change_pct, "%") : undefined}
           sparkline={kpiData?.tokens}
-          isLoading={isLoading}
+          isLoading={isCoreSurfaceLoading}
           tone="blue"
         />
         <KpiCard
@@ -204,7 +222,7 @@ function DashboardPage() {
           formatter={(n) => n.toLocaleString("en")}
           comparison={comparison?.has_previous_period ? formatComparison(comparison.request_count_change_pct, "%") : undefined}
           sparkline={kpiData?.requests}
-          isLoading={isLoading}
+          isLoading={isCoreSurfaceLoading}
           tone="violet"
         />
         <KpiCard
@@ -215,7 +233,7 @@ function DashboardPage() {
           caption={`${summary?.failure_count ?? 0} failed`}
           comparison={comparison?.has_previous_period ? formatComparison(comparison.success_rate_change_pp, "pp") : undefined}
           sparkline={kpiData?.successRate}
-          isLoading={isLoading}
+          isLoading={isCoreSurfaceLoading}
           tone="green"
         />
         <KpiCard
@@ -224,7 +242,7 @@ function DashboardPage() {
           formatter={formatPercent}
           valueDecimals={1}
           caption={summary?.cache_read_share_state === "available" ? "Cache Read Share" : summary?.cache_read_share_state?.replace(/_/g, " ")}
-          isLoading={isLoading}
+          isLoading={isCoreSurfaceLoading}
           tone="amber"
         />
       </div>
@@ -269,9 +287,9 @@ function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isCoreSurfaceLoading ? (
               <Skeleton className="h-[260px] w-full" />
-            ) : error ? (
+            ) : coreSurfaceError ? (
               <div className="flex h-[260px] items-center justify-center text-sm text-red-500">
                 Failed to load trend data
               </div>
@@ -321,7 +339,7 @@ function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {isFullAnalyticsSurfaceLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
@@ -359,7 +377,7 @@ function DashboardPage() {
           <Badge variant="terracotta">30d fixed</Badge>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isFullAnalyticsSurfaceLoading ? (
             <Skeleton className="h-[260px] w-full" />
           ) : fixedHeatmap ? (
             <Heatmap data={fixedHeatmap} />

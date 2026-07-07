@@ -32,7 +32,7 @@ export function useSavePricing() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pricing"] })
-      qc.invalidateQueries({ queryKey: ["analytics", "summary"] })
+      qc.invalidateQueries({ queryKey: ["analytics"] })
     },
   })
 }

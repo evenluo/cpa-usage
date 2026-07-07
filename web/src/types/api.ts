@@ -152,6 +152,12 @@ export interface AnalyticsResponse {
   provider_options?: ProviderOption[]
 }
 
+export interface AnalyticsCoreResponse {
+  granularity?: TimeGranularity
+  summary: AnalyticsSummary
+  trend: TrendPoint[]
+}
+
 export interface KeyIdentity {
   id: number
   name: string

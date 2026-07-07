@@ -135,21 +135,65 @@ func InsertUsageEvents(db *gorm.DB, events []entities.UsageEvent) (int, int, err
 	}
 
 	inserted := 0
+	affectedEventKeys := map[string]struct{}{}
 
 	// 按仓储默认批次拆分写入，避免单条 INSERT 的 SQLite 变量数量过多。
-	for start := 0; start < len(events); start += insertBatchSize(entities.UsageEvent{}) {
-		end := min(start+insertBatchSize(entities.UsageEvent{}), len(events))
-		batch := events[start:end]
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		for start := 0; start < len(events); start += insertBatchSize(entities.UsageEvent{}) {
+			end := min(start+insertBatchSize(entities.UsageEvent{}), len(events))
+			batch := events[start:end]
+			batchKeys := make([]string, 0, len(batch))
+			for _, event := range batch {
+				if key := strings.TrimSpace(event.EventKey); key != "" {
+					batchKeys = append(batchKeys, key)
+				}
+			}
+			existingKeys := map[string]struct{}{}
+			if len(batchKeys) > 0 {
+				var persistedKeys []string
+				if err := tx.Model(&entities.UsageEvent{}).Where("event_key IN ?", batchKeys).Pluck("event_key", &persistedKeys).Error; err != nil {
+					return fmt.Errorf("load existing usage event keys: %w", err)
+				}
+				for _, key := range persistedKeys {
+					existingKeys[strings.TrimSpace(key)] = struct{}{}
+				}
+			}
 
-		// 每批仍按 event_key 去重，保持原有重复事件忽略语义。
-		result := db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "event_key"}},
-			DoNothing: true,
-		}).Create(&batch)
-		if result.Error != nil {
-			return 0, 0, fmt.Errorf("insert usage events: %w", result.Error)
+			// 每批仍按 event_key 去重，保持原有重复事件忽略语义。
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "event_key"}},
+				DoNothing: true,
+			}).Create(&batch)
+			if result.Error != nil {
+				return fmt.Errorf("insert usage events: %w", result.Error)
+			}
+			if result.RowsAffected > 0 {
+				for _, key := range batchKeys {
+					if _, existed := existingKeys[key]; !existed {
+						affectedEventKeys[key] = struct{}{}
+					}
+				}
+			}
+			inserted += int(result.RowsAffected)
 		}
-		inserted += int(result.RowsAffected)
+
+		if len(affectedEventKeys) == 0 {
+			return nil
+		}
+		keys := make([]string, 0, len(affectedEventKeys))
+		for key := range affectedEventKeys {
+			keys = append(keys, key)
+		}
+		var affectedEvents []entities.UsageEvent
+		if err := tx.Where("event_key IN ?", keys).Find(&affectedEvents).Error; err != nil {
+			return fmt.Errorf("load affected usage events for hourly rollup rebuild: %w", err)
+		}
+		if err := RebuildUsageRollupsForEvents(tx, affectedEvents); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return 0, 0, err
 	}
 
 	deduped := len(events) - inserted

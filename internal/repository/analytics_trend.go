@@ -11,6 +11,24 @@ import (
 
 func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPoint, error) {
 	bucketByDay := analyticsTrendBucketsByDay(filter)
+	rows, err := buildAnalyticsTrendAggregateRows(db, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	trend := make([]dto.AnalyticsTrendPoint, 0, len(rows))
+	for _, row := range rows {
+		point, err := mapAnalyticsTrendPoint(row, bucketByDay)
+		if err != nil {
+			return nil, err
+		}
+		trend = append(trend, point)
+	}
+	return trend, nil
+}
+
+func buildAnalyticsTrendAggregateRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsAggregateRow, error) {
+	bucketByDay := analyticsTrendBucketsByDay(filter)
 	bucketExpr := analyticsBucketSQLExpression(bucketByDay)
 	var rows []analyticsAggregateRow
 	if err := analyticsEventsWithPricingQuery(db, filter).
@@ -32,16 +50,7 @@ func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.Analyt
 		Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics trend: %w", err)
 	}
-
-	trend := make([]dto.AnalyticsTrendPoint, 0, len(rows))
-	for _, row := range rows {
-		point, err := mapAnalyticsTrendPoint(row, bucketByDay)
-		if err != nil {
-			return nil, err
-		}
-		trend = append(trend, point)
-	}
-	return trend, nil
+	return rows, nil
 }
 
 func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {

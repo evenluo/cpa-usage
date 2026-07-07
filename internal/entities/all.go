@@ -9,5 +9,6 @@ func All() []any {
 		&UsageIdentity{},
 		&KeyAlias{},
 		&UsageRollupBackfillState{},
+		&UsageRollupHourly{},
 	}
 }

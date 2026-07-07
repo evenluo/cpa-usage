@@ -51,7 +51,7 @@ function OperationsPage() {
     mutationFn: () => apiFetch("/sync", { method: "POST" }),
     onSuccess: () => {
       toast.success("Sync triggered")
-      qc.invalidateQueries({ queryKey: ["analytics", "summary"] })
+      qc.invalidateQueries({ queryKey: ["analytics"] })
       qc.invalidateQueries({ queryKey: ["usage", "overview"] })
       qc.invalidateQueries({ queryKey: ["events"] })
       qc.invalidateQueries({ queryKey: ["keys", "identities"] })
