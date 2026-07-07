@@ -14,6 +14,7 @@ import (
 var configEnvKeys = []string{
 	"APP_PORT", "APP_BASE_PATH", "WORK_DIR", "CPA_BASE_URL", "CPA_MANAGEMENT_KEY", "POLL_INTERVAL",
 	"USAGE_SYNC_MODE", "REDIS_QUEUE_ADDR", "REDIS_QUEUE_TLS", "REDIS_QUEUE_BATCH_SIZE", "REDIS_QUEUE_IDLE_INTERVAL",
+	"USAGE_ROLLUP_BACKFILL_BATCH_HOURS", "USAGE_ROLLUP_BACKFILL_IDLE_INTERVAL", "USAGE_ROLLUP_BACKFILL_ERROR_BACKOFF",
 	"SQLITE_PATH", "BACKUP_ENABLED", "BACKUP_DIR", "BACKUP_INTERVAL", "BACKUP_RETENTION_DAYS",
 	"REQUEST_TIMEOUT", "LOG_LEVEL", "LOG_FILE_ENABLED", "LOG_DIR", "LOG_RETENTION_DAYS",
 	"AUTH_ENABLED", "CPA_USAGE_LOGIN_PASSWORD", "AUTH_SESSION_TTL", "TRUSTED_PROXIES", "TZ", "TLS_SKIP_VERIFY",
@@ -163,6 +164,15 @@ func TestLoadFromEnvAppliesDefaults(t *testing.T) {
 	}
 	if cfg.MetadataSyncInterval != MetadataSyncIntervalDefault {
 		t.Fatalf("expected default metadata sync interval 30s, got %s", cfg.MetadataSyncInterval)
+	}
+	if cfg.UsageRollupBackfillBatchHours != UsageRollupBackfillBatchHoursDefault {
+		t.Fatalf("expected default rollup backfill batch hours %d, got %d", UsageRollupBackfillBatchHoursDefault, cfg.UsageRollupBackfillBatchHours)
+	}
+	if cfg.UsageRollupBackfillIdleInterval != UsageRollupBackfillIdleIntervalDefault {
+		t.Fatalf("expected default rollup backfill idle interval %s, got %s", UsageRollupBackfillIdleIntervalDefault, cfg.UsageRollupBackfillIdleInterval)
+	}
+	if cfg.UsageRollupBackfillErrorBackoff != UsageRollupBackfillErrorBackoffDefault {
+		t.Fatalf("expected default rollup backfill error backoff %s, got %s", UsageRollupBackfillErrorBackoffDefault, cfg.UsageRollupBackfillErrorBackoff)
 	}
 	if !cfg.LogFileEnabled {
 		t.Fatal("expected log file output to be enabled by default")
@@ -484,6 +494,9 @@ func TestLoadFromEnvParsesOverrides(t *testing.T) {
 	t.Setenv("AUTH_SESSION_TTL", "12h")
 	t.Setenv("TRUSTED_PROXIES", "198.51.100.10, 10.0.0.0/8")
 	t.Setenv("REDIS_QUEUE_IDLE_INTERVAL", "2s")
+	t.Setenv("USAGE_ROLLUP_BACKFILL_BATCH_HOURS", "12")
+	t.Setenv("USAGE_ROLLUP_BACKFILL_IDLE_INTERVAL", "3s")
+	t.Setenv("USAGE_ROLLUP_BACKFILL_ERROR_BACKOFF", "45s")
 	t.Setenv("TLS_SKIP_VERIFY", "true")
 	t.Setenv("REDIS_QUEUE_TLS", "true")
 
@@ -498,7 +511,7 @@ func TestLoadFromEnvParsesOverrides(t *testing.T) {
 	if !cfg.RedisQueueTLS {
 		t.Fatal("expected redis queue TLS to be enabled when set to true")
 	}
-	if cfg.AppPort != "9090" || cfg.AppBasePath != "/cpa" || cfg.WorkDir != "/tmp/work" || cfg.SQLitePath != filepath.Join("/tmp/work", "app.db") || cfg.BackupEnabled || cfg.BackupDir != filepath.Join("/tmp/work", "backups") || cfg.BackupInterval != 2*time.Hour || cfg.BackupRetentionDays != 7 || cfg.RequestTimeout != 15*time.Second || cfg.LogLevel != "debug" || cfg.LogFileEnabled || cfg.LogDir != filepath.Join("/tmp/work", "logs") || cfg.LogRetentionDays != 14 || !cfg.AuthEnabled || cfg.LoginPassword != "top-secret" || cfg.AuthSessionTTL != 12*time.Hour || cfg.AuthSessionSecret != "0123456789abcdef0123456789abcdef" || cfg.AuthSessionCookieName != "shared_cpa_session" || cfg.AuthSessionCookieDomain != "cpa.example.com" || cfg.AuthSessionCookiePath != "/" || cfg.RedisQueueIdleInterval != 2*time.Second {
+	if cfg.AppPort != "9090" || cfg.AppBasePath != "/cpa" || cfg.WorkDir != "/tmp/work" || cfg.SQLitePath != filepath.Join("/tmp/work", "app.db") || cfg.BackupEnabled || cfg.BackupDir != filepath.Join("/tmp/work", "backups") || cfg.BackupInterval != 2*time.Hour || cfg.BackupRetentionDays != 7 || cfg.RequestTimeout != 15*time.Second || cfg.LogLevel != "debug" || cfg.LogFileEnabled || cfg.LogDir != filepath.Join("/tmp/work", "logs") || cfg.LogRetentionDays != 14 || !cfg.AuthEnabled || cfg.LoginPassword != "top-secret" || cfg.AuthSessionTTL != 12*time.Hour || cfg.AuthSessionSecret != "0123456789abcdef0123456789abcdef" || cfg.AuthSessionCookieName != "shared_cpa_session" || cfg.AuthSessionCookieDomain != "cpa.example.com" || cfg.AuthSessionCookiePath != "/" || cfg.RedisQueueIdleInterval != 2*time.Second || cfg.UsageRollupBackfillBatchHours != 12 || cfg.UsageRollupBackfillIdleInterval != 3*time.Second || cfg.UsageRollupBackfillErrorBackoff != 45*time.Second {
 		t.Fatalf("unexpected config override result: %+v", cfg)
 	}
 	if !slices.Equal(cfg.TrustedProxies, []string{"198.51.100.10", "10.0.0.0/8"}) {
@@ -551,6 +564,30 @@ func TestLoadFromEnvRejectsNonPositiveRedisQueueIdleInterval(t *testing.T) {
 	_, err := LoadFromEnv()
 	if err == nil || err.Error() != "REDIS_QUEUE_IDLE_INTERVAL must be positive" {
 		t.Fatalf("expected REDIS_QUEUE_IDLE_INTERVAL validation error, got %v", err)
+	}
+}
+
+func TestLoadFromEnvRejectsNonPositiveUsageRollupBackfillConfig(t *testing.T) {
+	for _, testCase := range []struct {
+		name    string
+		key     string
+		value   string
+		message string
+	}{
+		{name: "batch hours", key: "USAGE_ROLLUP_BACKFILL_BATCH_HOURS", value: "0", message: "USAGE_ROLLUP_BACKFILL_BATCH_HOURS must be positive"},
+		{name: "idle interval", key: "USAGE_ROLLUP_BACKFILL_IDLE_INTERVAL", value: "0s", message: "USAGE_ROLLUP_BACKFILL_IDLE_INTERVAL must be positive"},
+		{name: "error backoff", key: "USAGE_ROLLUP_BACKFILL_ERROR_BACKOFF", value: "-1s", message: "USAGE_ROLLUP_BACKFILL_ERROR_BACKOFF must be positive"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Setenv("CPA_BASE_URL", "http://127.0.0.1:"+cpa.ManagementRedisDefaultPort)
+			t.Setenv("CPA_MANAGEMENT_KEY", "secret")
+			t.Setenv(testCase.key, testCase.value)
+
+			_, err := LoadFromEnv()
+			if err == nil || err.Error() != testCase.message {
+				t.Fatalf("expected %s validation error, got %v", testCase.key, err)
+			}
+		})
 	}
 }
 

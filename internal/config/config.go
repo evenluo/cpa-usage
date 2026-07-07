@@ -16,10 +16,13 @@ import (
 )
 
 const (
-	DefaultTimeZone               = "Asia/Shanghai"
-	RedisQueueKeyDefault          = cpa.ManagementUsageQueueKey
-	RedisQueueErrorBackoffDefault = 10 * time.Second
-	MetadataSyncIntervalDefault   = 30 * time.Second
+	DefaultTimeZone                        = "Asia/Shanghai"
+	RedisQueueKeyDefault                   = cpa.ManagementUsageQueueKey
+	RedisQueueErrorBackoffDefault          = 10 * time.Second
+	MetadataSyncIntervalDefault            = 30 * time.Second
+	UsageRollupBackfillBatchHoursDefault   = 24
+	UsageRollupBackfillIdleIntervalDefault = 2 * time.Second
+	UsageRollupBackfillErrorBackoffDefault = 30 * time.Second
 )
 
 var (
@@ -55,6 +58,12 @@ type Config struct {
 	RedisQueueErrorBackoff time.Duration
 	// MetadataSyncInterval 是 auth files 和 provider metadata 的固定刷新间隔。
 	MetadataSyncInterval time.Duration
+	// UsageRollupBackfillBatchHours 是后台 Usage Rollup backfill 单批处理的小时桶数量。
+	UsageRollupBackfillBatchHours int
+	// UsageRollupBackfillIdleInterval 是后台 Usage Rollup backfill 两个成功批次之间的空闲间隔。
+	UsageRollupBackfillIdleInterval time.Duration
+	// UsageRollupBackfillErrorBackoff 是后台 Usage Rollup backfill 失败后的退避间隔。
+	UsageRollupBackfillErrorBackoff time.Duration
 	// WorkDir 是应用工作目录，数据库、日志和备份默认从这里派生。
 	WorkDir string
 	// SQLitePath 是 SQLite 数据库文件路径。
@@ -138,6 +147,30 @@ func Load(options LoadOptions) (*Config, error) {
 		return nil, fmt.Errorf("REDIS_QUEUE_IDLE_INTERVAL must be positive")
 	}
 
+	usageRollupBackfillBatchHours, err := getInt("USAGE_ROLLUP_BACKFILL_BATCH_HOURS", UsageRollupBackfillBatchHoursDefault)
+	if err != nil {
+		return nil, err
+	}
+	if usageRollupBackfillBatchHours <= 0 {
+		return nil, fmt.Errorf("USAGE_ROLLUP_BACKFILL_BATCH_HOURS must be positive")
+	}
+
+	usageRollupBackfillIdleInterval, err := getDuration("USAGE_ROLLUP_BACKFILL_IDLE_INTERVAL", UsageRollupBackfillIdleIntervalDefault)
+	if err != nil {
+		return nil, err
+	}
+	if usageRollupBackfillIdleInterval <= 0 {
+		return nil, fmt.Errorf("USAGE_ROLLUP_BACKFILL_IDLE_INTERVAL must be positive")
+	}
+
+	usageRollupBackfillErrorBackoff, err := getDuration("USAGE_ROLLUP_BACKFILL_ERROR_BACKOFF", UsageRollupBackfillErrorBackoffDefault)
+	if err != nil {
+		return nil, err
+	}
+	if usageRollupBackfillErrorBackoff <= 0 {
+		return nil, fmt.Errorf("USAGE_ROLLUP_BACKFILL_ERROR_BACKOFF must be positive")
+	}
+
 	requestTimeout, err := getDuration("REQUEST_TIMEOUT", 30*time.Second)
 	if err != nil {
 		return nil, err
@@ -215,37 +248,40 @@ func Load(options LoadOptions) (*Config, error) {
 	workDir := getString("WORK_DIR", DefaultWorkDir)
 
 	cfg := &Config{
-		AppPort:                 getString("APP_PORT", "8080"),
-		AppBasePath:             appBasePath,
-		CPABaseURL:              strings.TrimSpace(os.Getenv("CPA_BASE_URL")),
-		CPAManagementKey:        strings.TrimSpace(os.Getenv("CPA_MANAGEMENT_KEY")),
-		RedisQueueAddr:          strings.TrimSpace(os.Getenv("REDIS_QUEUE_ADDR")),
-		RedisQueueTLS:           redisQueueTLS,
-		RedisQueueKey:           RedisQueueKeyDefault,
-		RedisQueueBatchSize:     redisQueueBatchSize,
-		RedisQueueIdleInterval:  redisQueueIdleInterval,
-		RedisQueueErrorBackoff:  RedisQueueErrorBackoffDefault,
-		MetadataSyncInterval:    MetadataSyncIntervalDefault,
-		WorkDir:                 workDir,
-		SQLitePath:              filepath.Join(workDir, workDirDatabaseName),
-		BackupEnabled:           backupEnabled,
-		BackupDir:               filepath.Join(workDir, workDirBackupsName),
-		BackupInterval:          backupInterval,
-		BackupRetentionDays:     backupRetentionDays,
-		RequestTimeout:          requestTimeout,
-		TLSSkipVerify:           tlsSkipVerify,
-		LogLevel:                getString("LOG_LEVEL", "info"),
-		LogFileEnabled:          logFileEnabled,
-		LogDir:                  filepath.Join(workDir, workDirLogsName),
-		LogRetentionDays:        logRetentionDays,
-		AuthEnabled:             authEnabled,
-		LoginPassword:           strings.TrimSpace(os.Getenv("CPA_USAGE_LOGIN_PASSWORD")),
-		AuthSessionTTL:          authSessionTTL,
-		AuthSessionSecret:       strings.TrimSpace(os.Getenv("AUTH_SESSION_SECRET")),
-		AuthSessionCookieName:   getString("AUTH_SESSION_COOKIE_NAME", "cpa_usage_session"),
-		AuthSessionCookieDomain: strings.TrimSpace(os.Getenv("AUTH_SESSION_COOKIE_DOMAIN")),
-		AuthSessionCookiePath:   authSessionCookiePath,
-		TrustedProxies:          trustedProxies,
+		AppPort:                         getString("APP_PORT", "8080"),
+		AppBasePath:                     appBasePath,
+		CPABaseURL:                      strings.TrimSpace(os.Getenv("CPA_BASE_URL")),
+		CPAManagementKey:                strings.TrimSpace(os.Getenv("CPA_MANAGEMENT_KEY")),
+		RedisQueueAddr:                  strings.TrimSpace(os.Getenv("REDIS_QUEUE_ADDR")),
+		RedisQueueTLS:                   redisQueueTLS,
+		RedisQueueKey:                   RedisQueueKeyDefault,
+		RedisQueueBatchSize:             redisQueueBatchSize,
+		RedisQueueIdleInterval:          redisQueueIdleInterval,
+		RedisQueueErrorBackoff:          RedisQueueErrorBackoffDefault,
+		MetadataSyncInterval:            MetadataSyncIntervalDefault,
+		UsageRollupBackfillBatchHours:   usageRollupBackfillBatchHours,
+		UsageRollupBackfillIdleInterval: usageRollupBackfillIdleInterval,
+		UsageRollupBackfillErrorBackoff: usageRollupBackfillErrorBackoff,
+		WorkDir:                         workDir,
+		SQLitePath:                      filepath.Join(workDir, workDirDatabaseName),
+		BackupEnabled:                   backupEnabled,
+		BackupDir:                       filepath.Join(workDir, workDirBackupsName),
+		BackupInterval:                  backupInterval,
+		BackupRetentionDays:             backupRetentionDays,
+		RequestTimeout:                  requestTimeout,
+		TLSSkipVerify:                   tlsSkipVerify,
+		LogLevel:                        getString("LOG_LEVEL", "info"),
+		LogFileEnabled:                  logFileEnabled,
+		LogDir:                          filepath.Join(workDir, workDirLogsName),
+		LogRetentionDays:                logRetentionDays,
+		AuthEnabled:                     authEnabled,
+		LoginPassword:                   strings.TrimSpace(os.Getenv("CPA_USAGE_LOGIN_PASSWORD")),
+		AuthSessionTTL:                  authSessionTTL,
+		AuthSessionSecret:               strings.TrimSpace(os.Getenv("AUTH_SESSION_SECRET")),
+		AuthSessionCookieName:           getString("AUTH_SESSION_COOKIE_NAME", "cpa_usage_session"),
+		AuthSessionCookieDomain:         strings.TrimSpace(os.Getenv("AUTH_SESSION_COOKIE_DOMAIN")),
+		AuthSessionCookiePath:           authSessionCookiePath,
+		TrustedProxies:                  trustedProxies,
 	}
 	if cfg.CPABaseURL == "" {
 		return nil, fmt.Errorf("CPA_BASE_URL is required")

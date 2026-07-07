@@ -16,6 +16,7 @@ import (
 
 	"cpa-usage/internal/poller"
 	"cpa-usage/internal/quota"
+	repodto "cpa-usage/internal/repository/dto"
 	"cpa-usage/internal/service"
 	"cpa-usage/internal/version"
 	"github.com/gin-gonic/gin"
@@ -56,10 +57,11 @@ type QuotaProvider interface {
 }
 
 type OptionalProviders struct {
-	Analytics     service.AnalyticsProvider
-	UsageIdentity service.UsageIdentityProvider
-	KeyAlias      service.KeyAliasProvider
-	Quota         QuotaProvider
+	Analytics      service.AnalyticsProvider
+	UsageIdentity  service.UsageIdentityProvider
+	KeyAlias       service.KeyAliasProvider
+	Quota          QuotaProvider
+	RollupBackfill service.RollupBackfillStatusProvider
 }
 
 type syncUserMessageError interface {
@@ -100,16 +102,18 @@ func NewRouter(
 	var analyticsProvider service.AnalyticsProvider
 	var keyAliasProvider service.KeyAliasProvider
 	var quotaProvider QuotaProvider
+	var rollupBackfillProvider service.RollupBackfillStatusProvider
 	if len(optionalProviders) > 0 {
 		analyticsProvider = optionalProviders[0].Analytics
 		usageIdentityProvider = optionalProviders[0].UsageIdentity
 		keyAliasProvider = optionalProviders[0].KeyAlias
 		quotaProvider = optionalProviders[0].Quota
+		rollupBackfillProvider = optionalProviders[0].RollupBackfill
 	}
 
 	protected := apiV1.Group("")
 	protected.Use(authHandler.middleware())
-	registerStatusRoutes(protected, statusProvider)
+	registerStatusRoutes(protected, statusProvider, rollupBackfillProvider)
 	registerUpdateRoutes(protected, nil)
 	registerSyncRoutes(protected, statusProvider, &syncLimiter{window: manualSyncRateLimitWindow})
 	registerUsageOverviewRoute(protected, usageProvider)
@@ -258,6 +262,18 @@ func stripBasePath(basePath, requestPath string) (string, bool) {
 }
 
 type statusResponse struct {
+	Running        bool                         `json:"running"`
+	SyncRunning    bool                         `json:"sync_running"`
+	Timezone       string                       `json:"timezone"`
+	Version        string                       `json:"version"`
+	RollupBackfill rollupBackfillStatusResponse `json:"rollup_backfill"`
+	LastRunAt      *time.Time                   `json:"last_run_at,omitempty"`
+	LastError      string                       `json:"last_error,omitempty"`
+	LastWarning    string                       `json:"last_warning,omitempty"`
+	LastStatus     string                       `json:"last_status,omitempty"`
+}
+
+type syncStatusResponse struct {
 	Running     bool       `json:"running"`
 	SyncRunning bool       `json:"sync_running"`
 	Timezone    string     `json:"timezone"`
@@ -268,14 +284,29 @@ type statusResponse struct {
 	LastStatus  string     `json:"last_status,omitempty"`
 }
 
-func registerStatusRoutes(router gin.IRoutes, statusProvider StatusProvider) {
+type rollupBackfillStatusResponse struct {
+	Status             string     `json:"status"`
+	TargetBucketStart  *time.Time `json:"target_bucket_start,omitempty"`
+	CoveredBucketStart *time.Time `json:"covered_bucket_start,omitempty"`
+	StartedAt          *time.Time `json:"started_at,omitempty"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+	FailedAt           *time.Time `json:"failed_at,omitempty"`
+	LastError          string     `json:"last_error,omitempty"`
+}
+
+func registerStatusRoutes(router gin.IRoutes, statusProvider StatusProvider, rollupBackfillProvider service.RollupBackfillStatusProvider) {
 	router.GET("/status", func(c *gin.Context) {
+		rollupBackfillStatus, err := loadRollupBackfillStatus(c.Request.Context(), rollupBackfillProvider)
+		if err != nil {
+			writeInternalError(c, "rollup backfill status is unavailable", err)
+			return
+		}
 		if statusProvider == nil {
-			c.JSON(http.StatusOK, buildStatusResponse(poller.Status{}))
+			c.JSON(http.StatusOK, buildStatusResponse(poller.Status{}, rollupBackfillStatus))
 			return
 		}
 
-		c.JSON(http.StatusOK, buildStatusResponse(statusProvider.Status()))
+		c.JSON(http.StatusOK, buildStatusResponse(statusProvider.Status(), rollupBackfillStatus))
 	})
 }
 
@@ -311,15 +342,44 @@ func registerSyncRoutes(router gin.IRoutes, statusProvider StatusProvider, limit
 		}
 
 		if statusProvider, ok := syncRunner.(StatusProvider); ok {
-			c.JSON(http.StatusOK, buildStatusResponse(statusProvider.Status()))
+			c.JSON(http.StatusOK, buildSyncStatusResponse(statusProvider.Status()))
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"sync_running": false})
 	})
 }
 
-func buildStatusResponse(status poller.Status) statusResponse {
+func loadRollupBackfillStatus(ctx context.Context, provider service.RollupBackfillStatusProvider) (repodto.RollupBackfillStatus, error) {
+	if provider == nil {
+		return repodto.RollupBackfillStatus{Status: repodto.RollupBackfillStatusPending}, nil
+	}
+	status, err := provider.GetRollupBackfillStatus(ctx)
+	if err != nil {
+		return repodto.RollupBackfillStatus{}, err
+	}
+	return repodto.NormalizeRollupBackfillStatus(status), nil
+}
+
+func buildStatusResponse(status poller.Status, rollupBackfill repodto.RollupBackfillStatus) statusResponse {
 	response := statusResponse{
+		Running:        status.Running,
+		SyncRunning:    status.SyncRunning,
+		Timezone:       time.Local.String(),
+		Version:        version.Version,
+		RollupBackfill: buildRollupBackfillStatusResponse(rollupBackfill),
+		LastError:      status.LastError,
+		LastWarning:    status.LastWarning,
+		LastStatus:     status.LastStatus,
+	}
+	if !status.LastRunAt.IsZero() {
+		lastRunAt := status.LastRunAt.UTC()
+		response.LastRunAt = &lastRunAt
+	}
+	return response
+}
+
+func buildSyncStatusResponse(status poller.Status) syncStatusResponse {
+	response := syncStatusResponse{
 		Running:     status.Running,
 		SyncRunning: status.SyncRunning,
 		Timezone:    time.Local.String(),
@@ -333,4 +393,17 @@ func buildStatusResponse(status poller.Status) statusResponse {
 		response.LastRunAt = &lastRunAt
 	}
 	return response
+}
+
+func buildRollupBackfillStatusResponse(status repodto.RollupBackfillStatus) rollupBackfillStatusResponse {
+	status = repodto.NormalizeRollupBackfillStatus(status)
+	return rollupBackfillStatusResponse{
+		Status:             status.Status,
+		TargetBucketStart:  status.TargetBucketStart,
+		CoveredBucketStart: status.CoveredBucketStart,
+		StartedAt:          status.StartedAt,
+		CompletedAt:        status.CompletedAt,
+		FailedAt:           status.FailedAt,
+		LastError:          status.LastError,
+	}
 }

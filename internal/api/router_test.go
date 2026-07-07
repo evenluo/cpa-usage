@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"cpa-usage/internal/poller"
+	repodto "cpa-usage/internal/repository/dto"
 	"cpa-usage/internal/version"
 	"github.com/gin-gonic/gin"
 )
@@ -30,6 +31,11 @@ type statusStub struct {
 type syncStatusStub struct {
 	status poller.Status
 	calls  int
+	err    error
+}
+
+type rollupBackfillStatusStub struct {
+	status repodto.RollupBackfillStatus
 	err    error
 }
 
@@ -56,6 +62,10 @@ func (s *syncStatusStub) Status() poller.Status {
 func (s *syncStatusStub) SyncNow(context.Context) error {
 	s.calls++
 	return s.err
+}
+
+func (s rollupBackfillStatusStub) GetRollupBackfillStatus(context.Context) (repodto.RollupBackfillStatus, error) {
+	return s.status, s.err
 }
 
 func TestHealthzReturnsOK(t *testing.T) {
@@ -124,6 +134,32 @@ func TestStatusReturnsPollerState(t *testing.T) {
 	}
 	body := resp.Body.String()
 	if !(contains(body, `"running":true`) && contains(body, `"sync_running":false`) && contains(body, `"last_error":"boom"`) && contains(body, `"last_warning":"metadata unavailable"`) && contains(body, `"last_status":"completed_with_warnings"`) && contains(body, `"last_run_at":"2026-04-16T12:00:00Z"`)) {
+		t.Fatalf("unexpected response body: %s", body)
+	}
+}
+
+func TestStatusReturnsRollupBackfillState(t *testing.T) {
+	target := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+	covered := time.Date(2026, 7, 7, 8, 0, 0, 0, time.UTC)
+	started := time.Date(2026, 7, 7, 1, 0, 0, 0, time.UTC)
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{
+		RollupBackfill: rollupBackfillStatusStub{status: repodto.RollupBackfillStatus{
+			Status:             repodto.RollupBackfillStatusRunning,
+			TargetBucketStart:  &target,
+			CoveredBucketStart: &covered,
+			StartedAt:          &started,
+		}},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+	body := resp.Body.String()
+	if !(contains(body, `"rollup_backfill":{`) && contains(body, `"status":"running"`) && contains(body, `"target_bucket_start":"2026-07-07T12:00:00Z"`) && contains(body, `"covered_bucket_start":"2026-07-07T08:00:00Z"`) && contains(body, `"started_at":"2026-07-07T01:00:00Z"`)) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }
@@ -220,6 +256,9 @@ func TestManualSyncTriggersSyncRunner(t *testing.T) {
 	body := resp.Body.String()
 	if !(contains(body, `"last_status":"completed"`) && contains(body, `"last_run_at":"2026-04-16T12:00:00Z"`)) {
 		t.Fatalf("unexpected response body: %s", body)
+	}
+	if contains(body, `"rollup_backfill"`) {
+		t.Fatalf("manual sync response should not expose rollup backfill status, got %s", body)
 	}
 }
 

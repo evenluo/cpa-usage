@@ -36,6 +36,16 @@ func TestOpenDatabaseAutoMigratesCoreTables(t *testing.T) {
 	if !db.Migrator().HasTable("redis_usage_inboxes") {
 		t.Fatal("expected redis_usage_inboxes table to exist")
 	}
+	if !db.Migrator().HasTable("usage_rollup_backfill_states") {
+		t.Fatal("expected usage_rollup_backfill_states table to exist")
+	}
+	var state entities.UsageRollupBackfillState
+	if err := db.Where("name = ?", entities.UsageRollupBackfillStateName).First(&state).Error; err != nil {
+		t.Fatalf("expected fresh database to seed usage rollup backfill state: %v", err)
+	}
+	if state.Status != entities.UsageRollupBackfillStateStatusPending {
+		t.Fatalf("expected seeded rollup backfill state to be pending, got %+v", state)
+	}
 }
 
 func TestOpenDatabaseCreatesFreshDatabaseFromCurrentSchemaWithoutRunningMigrations(t *testing.T) {
@@ -52,11 +62,50 @@ func TestOpenDatabaseCreatesFreshDatabaseFromCurrentSchemaWithoutRunningMigratio
 	if err := db.Table("schema_migrations").Count(&count).Error; err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if count != 20 {
-		t.Fatalf("expected fresh database to mark 20 migrations applied, got %d", count)
+	if count != 21 {
+		t.Fatalf("expected fresh database to mark 21 migrations applied, got %d", count)
 	}
 	if strings.Contains(logs.String(), "schema migration started") {
 		t.Fatalf("expected fresh database creation not to run version migrations, got logs:\n%s", logs.String())
+	}
+}
+
+func TestOpenDatabasePreservesExistingUsageRollupBackfillProgress(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "app.db")
+	db, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get sql database: %v", err)
+	}
+
+	target := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
+	covered := time.Date(2026, 7, 7, 8, 0, 0, 0, time.UTC)
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+	}); err != nil {
+		t.Fatalf("seed completed backfill state: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close first database handle: %v", err)
+	}
+
+	reopened, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("reopen database: %v", err)
+	}
+	defer closeTestDatabase(t, reopened)
+
+	status, err := GetUsageRollupBackfillStatus(reopened)
+	if err != nil {
+		t.Fatalf("GetUsageRollupBackfillStatus returned error: %v", err)
+	}
+	if status.Status != dto.RollupBackfillStatusCompleted || !status.TargetBucketStart.Equal(target) || !status.CoveredBucketStart.Equal(covered) {
+		t.Fatalf("expected OpenDatabase to preserve completed backfill progress, got %+v", status)
 	}
 }
 

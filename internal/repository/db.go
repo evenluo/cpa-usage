@@ -55,6 +55,9 @@ func OpenDatabase(cfg config.Config) (*gorm.DB, error) {
 		if err := db.AutoMigrate(entities.All()...); err != nil {
 			return nil, fmt.Errorf("auto migrate fresh database: %w", err)
 		}
+		if err := EnsureUsageRollupBackfillState(db); err != nil {
+			return nil, fmt.Errorf("seed usage rollup backfill state: %w", err)
+		}
 		if err := migration.MarkAllAsApplied(db); err != nil {
 			return nil, fmt.Errorf("mark schema migrations applied: %w", err)
 		}
@@ -63,6 +66,9 @@ func OpenDatabase(cfg config.Config) (*gorm.DB, error) {
 
 	if err := migration.Run(db); err != nil {
 		return nil, fmt.Errorf("run schema migrations: %w", err)
+	}
+	if err := EnsureUsageRollupBackfillState(db); err != nil {
+		return nil, fmt.Errorf("seed usage rollup backfill state: %w", err)
 	}
 
 	return db, nil

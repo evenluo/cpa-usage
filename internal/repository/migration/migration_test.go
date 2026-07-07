@@ -38,6 +38,7 @@ func TestOrderedMigrationsPreservesExecutionOrder(t *testing.T) {
 		"20260511_add_usage_identity_base_url",
 		"20260513_create_key_aliases",
 		"20260518_ensure_usage_event_event_key_unique",
+		"20260707_create_usage_rollup_backfill_state",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected ordered migrations %v, got %v", want, got)
@@ -93,6 +94,7 @@ func TestOpenDatabaseRunsSchemaMigrationsAndAddsUsageEventRedisFields(t *testing
 		"20260511_add_usage_identity_base_url",
 		"20260513_create_key_aliases",
 		"20260518_ensure_usage_event_event_key_unique",
+		"20260707_create_usage_rollup_backfill_state",
 	}
 	if len(versions) != len(expected) {
 		t.Fatalf("expected migration versions %v, got %v", expected, versions)

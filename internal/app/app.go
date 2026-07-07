@@ -91,6 +91,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	usageService := service.NewUsageService(db)
 	usageIdentityService := service.NewUsageIdentityService(db)
 	analyticsService := service.NewAnalyticsService(db)
+	rollupBackfillService := service.NewRollupBackfillService(db)
 	keyAliasService := service.NewKeyAliasService(db)
 	cpaClient := cpa.NewClient(cfg.CPABaseURL, cfg.CPAManagementKey, cfg.RequestTimeout, cfg.TLSSkipVerify)
 	if cfg.TLSSkipVerify {
@@ -140,7 +141,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 			},
 			authHandler,
 			cfg.AppBasePath,
-			api.OptionalProviders{Analytics: analyticsService, UsageIdentity: usageIdentityService, KeyAlias: keyAliasService, Quota: quotaService},
+			api.OptionalProviders{Analytics: analyticsService, UsageIdentity: usageIdentityService, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillService},
 		),
 	}, nil
 }
