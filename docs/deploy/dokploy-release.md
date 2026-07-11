@@ -2,7 +2,7 @@
 
 ## Goal
 
-Dokploy is the source of truth for the production `cpa-usage` Compose app. Release tags build immutable GHCR images, render the repository Compose template, update only the `cpa-usage` Dokploy app through its API, and trigger a Dokploy deployment.
+Dokploy is the source of truth for the production `cpa-usage` Compose app. Pushes to `main` and release tags build immutable GHCR images, render the repository Compose template, update only the `cpa-usage` Dokploy app through its API, and trigger a Dokploy deployment.
 
 ## Production Compose
 
@@ -15,9 +15,8 @@ deploy/dokploy/cpa-usage.compose.yml
 The production template contains only the `cpa-usage` service:
 
 - external path: `/usage`
-- data volume: external `cpa-cliproxyapi-hazmcp_cpa-usage-data`
-- internal network: external `cpa-cliproxyapi-hazmcp_cliproxyapi-internal`
-- public network: external `dokploy-network`
+- data volume: external `cpa-dmit-us-usage-data`
+- internal network: external `cpa-dmit-us-internal`
 - internal CPA address: `http://cliproxyapi:8317`
 - Redis queue address: `cliproxyapi:8317`
 - no `postgres` or `cliproxyapi` services, and no `cpa-usage-keeper` or `KEEPER_LOGIN_PASSWORD`
@@ -31,7 +30,7 @@ The production template contains only the `cpa-usage` service:
 ghcr.io/evenluo/cpa-usage:v0.1.0
 ```
 
-Do not deploy production from `latest` or a date tag.
+Do not deploy production from `latest`, a branch-name tag, or a date tag. `main` deploys `sha-<12 hex>` and release tags deploy their SemVer tag.
 
 ## Required GitHub Configuration
 
@@ -45,7 +44,7 @@ variable: DOKPLOY_CPA_USAGE_COMPOSE_ID=<new cpa-usage compose id>
 
 Do not keep using `DOKPLOY_COMPOSE_ID` for this repository after the split. That variable points at the old full-stack compose app and would put `postgres` / `cliproxyapi` back into the release blast radius.
 
-The workflow is `.github/workflows/release.yml` and runs on tags matching `v*.*.*`. It accepts:
+The workflow is `.github/workflows/release.yml` and runs on pushes to `main` plus tags matching `v*.*.*`. It accepts:
 
 - stable: `v0.1.0`
 - release candidate: `v0.2.0-rc.1`
@@ -62,7 +61,7 @@ AUTH_SESSION_SECRET=<random secret with at least 32 characters>
 AUTH_SESSION_COOKIE_DOMAIN=<production CPA host>
 ```
 
-The template defaults the current Dokploy runtime facts that are not personal hostnames: `dokploy-network`, `cpa-cliproxyapi-hazmcp_cliproxyapi-internal`, and `cpa-cliproxyapi-hazmcp_cpa-usage-data`. Override these only when the Dokploy runtime topology changes.
+The template defaults the current dmit-us runtime facts: `cpa-dmit-us-internal` and `cpa-dmit-us-usage-data`. Override these only when the Dokploy runtime topology changes.
 
 The release script migrates `KEEPER_LOGIN_PASSWORD` to `CPA_USAGE_LOGIN_PASSWORD` once through `compose.saveEnvironment`, then removes the old key from the Dokploy env text. Runtime auth only reads `CPA_USAGE_LOGIN_PASSWORD`.
 
@@ -73,20 +72,20 @@ Prepare the new app and update the old app source without deploying the old app:
 ```bash
 DOKPLOY_URL=https://<dokploy-host> \
 DOKPLOY_API_KEY=<api-key> \
-CPA_USAGE_VERSION=v0.1.2 \
+CPA_USAGE_VERSION=v0.1.25 \
 make dokploy-migrate-cpa-usage-compose
 ```
 
 The migration script:
 
-- reads the source app `DOKPLOY_SOURCE_COMPOSE_ID`, defaulting to `bqmnXzfYoIuSln9Ndbx1x`
+- reads the dmit-us source app `DOKPLOY_SOURCE_COMPOSE_ID`, defaulting to `qq0poZq0j2Rq3XJTUqH1c`
 - creates or updates a Dokploy compose app named `cpa-usage`
 - copies the source app env into the new app, migrating `KEEPER_LOGIN_PASSWORD` to `CPA_USAGE_LOGIN_PASSWORD`
 - writes `deploy/dokploy/cpa-usage.compose.yml` into the new app
 - writes `deploy/dokploy/cpa-cliproxyapi.compose.yml` into the source app so it no longer contains `cpa-usage`
 - prints the `DOKPLOY_CPA_USAGE_COMPOSE_ID` value to set as the GitHub repo variable
 
-The script does not deploy the source app. For cutover, back up `cpa-cliproxyapi-hazmcp_cpa-usage-data`, pre-pull `ghcr.io/evenluo/cpa-usage:v0.1.2`, stop and remove `cpa-cliproxyapi-hazmcp-cpa-usage-1`, then deploy the new `cpa-usage` app.
+The script does not deploy the source app. For cutover, back up `cpa-dmit-us-usage-data`, pre-pull the selected immutable image, stop the old source app's `cpa-usage` container, deploy the new `cpa-usage` app, verify it, and finally deploy the updated source app to remove the old service definition.
 
 Cutover verification should confirm only one `cpa-usage` container is running, `cliproxyapi` and `postgres` kept their original `Created` / `StartedAt` timestamps, `https://<production-host>/` stays healthy, `https://<production-host>/usage/healthz` and `https://<production-host>/usage/` return 200, and `scripts/smoke-cpa-usage.sh` passes.
 

@@ -25,8 +25,8 @@ if [[ "$image" != ghcr.io/evenluo/cpa-usage:* ]]; then
 fi
 
 tag="${image##*:}"
-if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
-  echo "CPA_USAGE_IMAGE tag must be SemVer, for example v0.1.0 or v0.2.0-rc.1" >&2
+if [[ ! "$tag" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?|sha-[0-9a-f]{12})$ ]]; then
+  echo "CPA_USAGE_IMAGE tag must be SemVer or an immutable sha-<12 hex> tag" >&2
   exit 2
 fi
 

@@ -17,7 +17,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 2
 fi
 
-source_compose_id="${DOKPLOY_SOURCE_COMPOSE_ID:-bqmnXzfYoIuSln9Ndbx1x}"
+source_compose_id="${DOKPLOY_SOURCE_COMPOSE_ID:-qq0poZq0j2Rq3XJTUqH1c}"
 cpa_usage_compose_id="${DOKPLOY_CPA_USAGE_COMPOSE_ID:-}"
 cpa_usage_compose_name="${DOKPLOY_CPA_USAGE_COMPOSE_NAME:-cpa-usage}"
 base_url="${DOKPLOY_URL%/}"
@@ -25,7 +25,7 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 cpa_usage_compose_file="$tmpdir/cpa-usage.compose.yml"
-CPA_USAGE_VERSION="${CPA_USAGE_VERSION:-v0.1.2}" scripts/render-dokploy-compose.sh "${CPA_USAGE_VERSION:-v0.1.2}" "$cpa_usage_compose_file"
+CPA_USAGE_VERSION="${CPA_USAGE_VERSION:-v0.1.25}" scripts/render-dokploy-compose.sh "${CPA_USAGE_VERSION:-v0.1.25}" "$cpa_usage_compose_file"
 scripts/verify-dokploy-compose.sh "$cpa_usage_compose_file"
 
 api_get() {
@@ -89,8 +89,13 @@ source_json="$tmpdir/source-compose.json"
 api_get "compose.one?composeId=$source_compose_id" > "$source_json"
 
 environment_id="$(jq -r '.environmentId // empty' "$source_json")"
+server_id="$(jq -r '.serverId // empty' "$source_json")"
 if [[ -z "$environment_id" ]]; then
   echo "source compose did not expose environmentId" >&2
+  exit 1
+fi
+if [[ -z "$server_id" ]]; then
+  echo "source compose did not expose serverId" >&2
   exit 1
 fi
 
@@ -102,11 +107,13 @@ if [[ -z "$cpa_usage_compose_id" ]]; then
     --arg name "$cpa_usage_compose_name" \
     --arg appName "$cpa_usage_compose_name" \
     --arg environmentId "$environment_id" \
+    --arg serverId "$server_id" \
     --rawfile composeFile "$cpa_usage_compose_file" \
     '{
       name: $name,
       appName: $appName,
       environmentId: $environmentId,
+      serverId: $serverId,
       composeType: "docker-compose",
       composeFile: $composeFile
     }' > "$tmpdir/create-cpa-usage.json"

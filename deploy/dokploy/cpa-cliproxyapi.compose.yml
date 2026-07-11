@@ -2,6 +2,7 @@ services:
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
     restart: unless-stopped
+    mem_limit: 256m
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cliproxyapi}
       POSTGRES_USER: ${POSTGRES_USER:-cliproxyapi}
@@ -12,14 +13,15 @@ services:
     networks:
       - cpa-internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   cliproxyapi:
-    image: ${CLIPROXYAPI_IMAGE:-eceasy/cli-proxy-api:v7.1.11}
+    image: ${CLIPROXYAPI_IMAGE:-eceasy/cli-proxy-api:v7.2.62}
     restart: unless-stopped
+    mem_limit: 384m
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,42 +33,44 @@ services:
       TZ: Asia/Shanghai
     networks:
       - cpa-internal
-      - dokploy-network
     labels:
       - traefik.enable=true
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.entrypoints=web
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.middlewares=redirect-to-https@file
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-web.service=cpa-cliproxyapi-hazmcp-6-web
-      - traefik.http.services.cpa-cliproxyapi-hazmcp-6-web.loadbalancer.server.port=8317
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.entrypoints=websecure
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.service=cpa-cliproxyapi-hazmcp-6-websecure
-      - traefik.http.routers.cpa-cliproxyapi-hazmcp-6-websecure.tls.certresolver=letsencrypt
-      - traefik.http.services.cpa-cliproxyapi-hazmcp-6-websecure.loadbalancer.server.port=8317
-      - traefik.http.routers.cliproxyapi-web.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
-      - traefik.http.routers.cliproxyapi-web.entrypoints=web
-      - traefik.http.routers.cliproxyapi-web.priority=10
-      - traefik.http.routers.cliproxyapi-web.middlewares=redirect-to-https@file
-      - traefik.http.routers.cliproxyapi-web.service=cliproxyapi-web
-      - traefik.http.services.cliproxyapi-web.loadbalancer.server.port=8317
-      - traefik.http.routers.cliproxyapi-websecure.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
-      - traefik.http.routers.cliproxyapi-websecure.entrypoints=websecure
-      - traefik.http.routers.cliproxyapi-websecure.priority=10
-      - traefik.http.routers.cliproxyapi-websecure.service=cliproxyapi-websecure
-      - traefik.http.routers.cliproxyapi-websecure.tls.certresolver=letsencrypt
-      - traefik.http.services.cliproxyapi-websecure.loadbalancer.server.port=8317
+      - traefik.docker.network=cpa-dmit-us-internal
+      - traefik.http.routers.cpa-api.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`)
+      - traefik.http.routers.cpa-api.entrypoints=websecure
+      - traefik.http.routers.cpa-api.priority=10
+      - traefik.http.routers.cpa-api.tls.certresolver=letsencrypt
+      - traefik.http.services.cpa-api.loadbalancer.server.port=8317
+
+  ingress:
+    image: traefik:v3.6.7
+    restart: unless-stopped
+    mem_limit: 96m
+    command:
+      - --entrypoints.websecure.address=:8443
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --accesslog=true
+      - --certificatesresolvers.letsencrypt.acme.email=ops@maxtap.net
+      - --certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+    ports:
+      - 127.0.0.1:8443:8443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/acme
+    networks:
+      - cpa-internal
 
 volumes:
   postgres-data:
     external: true
-    name: ${POSTGRES_DATA_VOLUME:-cpa-cliproxyapi-hazmcp_cliproxyapi-postgres-data}
+    name: cpa-dmit-us-postgres-data
+  traefik-acme:
+    external: true
+    name: cpa-dmit-us-traefik-acme
 
 networks:
   cpa-internal:
     external: true
-    name: ${CPA_INTERNAL_NETWORK:-cpa-cliproxyapi-hazmcp_cliproxyapi-internal}
-  dokploy-network:
-    external: true
-    name: ${DOKPLOY_NETWORK:-dokploy-network}
+    name: cpa-dmit-us-internal

@@ -2,6 +2,7 @@ services:
   cpa-usage:
     image: __CPA_USAGE_IMAGE__
     restart: unless-stopped
+    mem_limit: 256m
     environment:
       GIN_MODE: release
       TZ: Asia/Shanghai
@@ -31,32 +32,21 @@ services:
       - cpa-usage-data:/data
     networks:
       - cpa-internal
-      - dokploy-network
     labels:
       - traefik.enable=true
-      - traefik.docker.network=dokploy-network
-      - traefik.http.routers.cpa-usage-web.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`) && PathPrefix(`/usage`)
-      - traefik.http.routers.cpa-usage-web.entrypoints=web
-      - traefik.http.routers.cpa-usage-web.priority=110
-      - traefik.http.routers.cpa-usage-web.middlewares=redirect-to-https@file
-      - traefik.http.routers.cpa-usage-web.service=cpa-usage-web
-      - traefik.http.services.cpa-usage-web.loadbalancer.server.port=8080
-      - traefik.http.routers.cpa-usage-websecure.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`) && PathPrefix(`/usage`)
-      - traefik.http.routers.cpa-usage-websecure.entrypoints=websecure
-      - traefik.http.routers.cpa-usage-websecure.priority=110
-      - traefik.http.routers.cpa-usage-websecure.service=cpa-usage-websecure
-      - traefik.http.routers.cpa-usage-websecure.tls.certresolver=letsencrypt
-      - traefik.http.services.cpa-usage-websecure.loadbalancer.server.port=8080
+      - traefik.docker.network=cpa-dmit-us-internal
+      - traefik.http.routers.cpa-usage.rule=Host(`${PUBLIC_HOST:?set PUBLIC_HOST}`) && PathPrefix(`/usage`)
+      - traefik.http.routers.cpa-usage.entrypoints=websecure
+      - traefik.http.routers.cpa-usage.priority=110
+      - traefik.http.routers.cpa-usage.tls.certresolver=letsencrypt
+      - traefik.http.services.cpa-usage.loadbalancer.server.port=8080
 
 volumes:
   cpa-usage-data:
     external: true
-    name: ${CPA_USAGE_DATA_VOLUME:-cpa-cliproxyapi-hazmcp_cpa-usage-data}
+    name: ${CPA_USAGE_DATA_VOLUME:-cpa-dmit-us-usage-data}
 
 networks:
   cpa-internal:
     external: true
-    name: ${CPA_INTERNAL_NETWORK:-cpa-cliproxyapi-hazmcp_cliproxyapi-internal}
-  dokploy-network:
-    external: true
-    name: ${DOKPLOY_NETWORK:-dokploy-network}
+    name: ${CPA_INTERNAL_NETWORK:-cpa-dmit-us-internal}
