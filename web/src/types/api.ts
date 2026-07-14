@@ -298,6 +298,10 @@ export interface UsageEvent {
 
 export interface UsageEventsPage {
   events: UsageEvent[]
+  total_count: number
+  page: number
+  page_size: number
+  total_pages: number
 }
 
 export interface PricingEntry {

@@ -435,7 +435,6 @@ function DashboardPage() {
         <RequestEvidence
           provider={fixedWindow.requestEvidence.provider}
           range={fixedWindow.requestEvidence.range}
-          pageSize={fixedWindow.requestEvidence.pageSize}
         />
       </div>
     </div>

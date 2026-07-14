@@ -108,7 +108,7 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - Request health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent samples; it is not the complete request event inspection surface.
 - **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.
-- Future **Request Evidence** drill-down belongs inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
+- **Request Evidence** drill-down lives inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
 - First-version insights are deterministic metrics and warnings, not AI-generated summaries.
 - **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.
 - CPA native quota administration remains out of scope; the supported capacity surface is the restricted **Live Capacity** probe inside **Usage Intelligence**.

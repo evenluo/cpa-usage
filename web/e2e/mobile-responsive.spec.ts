@@ -32,10 +32,9 @@ const usageOverviewPayload = {
   },
 }
 
-const usageEventsPayload = {
-  events: Array.from({ length: 6 }, (_, index) => ({
+const usageEvents = Array.from({ length: 11 }, (_, index) => ({
     id: index + 1,
-    timestamp: `2026-05-18T09:0${index}:00Z`,
+    timestamp: `2026-05-18T09:${String(index).padStart(2, "0")}:00Z`,
     model: "mobile-overflow-regression-model-with-extra-long-provider-suffix",
     source: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
     auth_index: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
@@ -49,8 +48,7 @@ const usageEventsPayload = {
       output_tokens: index === 0 ? 976 : 0,
       total_tokens: index === 0 ? 105_091 : 1_700_000_000 + index,
     },
-  })),
-}
+  }))
 
 const authFileIdentitiesPayload = {
   identities: [
@@ -229,9 +227,17 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(evidenceCard.getByText("21.25s", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("Tokens", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("105.09K", { exact: true })).toBeVisible()
-  await evidenceCard.getByRole("button", { name: "Show request evidence 2" }).click()
-  await expect(evidenceCard.getByText("Output TPS", { exact: true }).locator("..").getByText("-", { exact: true })).toBeVisible()
+  await expect(evidenceCard.getByRole("button", { name: /Show request evidence/ })).toHaveCount(0)
   await expectFixedOverviewCardHeights(page)
+  await evidenceCard.getByRole("link", { name: "View all requests" }).click()
+  await expect(page).toHaveURL(/\/requests$/)
+  await expect(page.getByRole("heading", { name: "Request Evidence" })).toBeVisible()
+  await expect(page.getByText("Page 1 of 2", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Select request 2" }).click()
+  const selectedRequest = page.getByRole("region", { name: "Selected request" })
+  await expect(selectedRequest.getByText("Output TPS", { exact: true }).locator("..").getByText("-", { exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Next page" }).click()
+  await expect(page.getByText("Page 2 of 2", { exact: true })).toBeVisible()
   await expectNoDocumentOverflow(page)
 })
 
@@ -302,7 +308,16 @@ async function mockAPI(page: Page) {
       return
     }
     if (path === "/usage/events") {
-      await route.fulfill({ json: usageEventsPayload })
+      const page = Number(url.searchParams.get("page") ?? "1")
+      const pageSize = Number(url.searchParams.get("page_size") ?? "100")
+      const start = (page - 1) * pageSize
+      await route.fulfill({ json: {
+        events: usageEvents.slice(start, start + pageSize),
+        total_count: usageEvents.length,
+        page,
+        page_size: pageSize,
+        total_pages: Math.ceil(usageEvents.length / pageSize),
+      } })
       return
     }
     if (path === "/usage/identities/page") {

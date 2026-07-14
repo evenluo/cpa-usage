@@ -1,42 +1,19 @@
-import { useEffect, useState } from "react"
+import { Link } from "@tanstack/react-router"
+import { ArrowRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { RequestEvidenceEvent } from "@/components/intelligence/request-evidence-event"
 import { useEvents } from "@/hooks/useEvents"
-import { formatCompact, formatDate } from "@/lib/format"
-import type { UsageEvent } from "@/types/api"
 
 interface RequestEvidenceProps {
   provider: string
   range?: string
-  pageSize?: number
 }
 
-export function RequestEvidence({ provider, range = "24h", pageSize = 10 }: RequestEvidenceProps) {
-  const { data, isLoading, error } = useEvents(range, pageSize, provider)
-  const events = data?.events.slice(0, 5) ?? []
-  const eventFingerprint = events.map(getEventIdentity).join("|")
-  const rotationKey = `${provider}:${eventFingerprint}`
-  const [rotation, setRotation] = useState({ key: rotationKey, index: 0 })
-  const activeIndex = rotation.key === rotationKey ? rotation.index : 0
-  const activeEvent = events[activeIndex % events.length]
-  const queuedEvents = events.length === 0
-    ? []
-    : events.map((_, index) => events[(activeIndex + index) % events.length])
-
-  useEffect(() => {
-    if (events.length <= 1) return
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === "hidden") return
-      setRotation((current) => ({
-        key: rotationKey,
-        index: current.key === rotationKey ? (current.index + 1) % events.length : 1 % events.length,
-      }))
-    }, 5_500)
-
-    return () => window.clearInterval(interval)
-  }, [events.length, rotationKey])
+export function RequestEvidence({ provider, range = "24h" }: RequestEvidenceProps) {
+  const { data, isLoading, error } = useEvents(range, 1, provider)
+  const latestEvent = data?.events[0]
 
   return (
     <Card className="flex h-full min-w-0 flex-col overflow-hidden xl:h-[300px]">
@@ -49,126 +26,28 @@ export function RequestEvidence({ provider, range = "24h", pageSize = 10 }: Requ
       </CardHeader>
       <CardContent className="min-h-0 min-w-0 flex-1 p-4 pt-0">
         {isLoading ? (
-          <div className="h-full space-y-2 overflow-y-auto pr-1">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={index} className="h-[58px] w-full" />
-            ))}
-          </div>
+          <Skeleton className="h-[154px] w-full" />
         ) : error ? (
           <div className="flex h-[180px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
             Failed to load request evidence
           </div>
-        ) : events.length === 0 ? (
+        ) : !latestEvent ? (
           <div className="flex h-[180px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
             No recent request evidence
           </div>
         ) : (
-          <div className="flex h-full min-w-0 flex-col gap-2">
-            {activeEvent && <EvidenceSpotlight event={activeEvent} key={getEventIdentity(activeEvent)} />}
-            <div className="grid grid-cols-5 gap-1">
-              {events.map((event, index) => (
-                <button
-                  key={getEventIdentity(event)}
-                  type="button"
-                  aria-label={`Show request evidence ${index + 1}`}
-                  aria-pressed={activeIndex % events.length === index}
-                  onClick={() => setRotation({ key: rotationKey, index })}
-                  className={
-                    activeIndex % events.length === index
-                      ? "h-1.5 rounded-full bg-terracotta-500 transition-colors"
-                      : "h-1.5 rounded-full bg-muted transition-colors hover:bg-muted-foreground/30"
-                  }
-                />
-              ))}
-            </div>
-            <div className="min-h-0 min-w-0 flex-1 space-y-1.5 overflow-hidden">
-              {queuedEvents.slice(1, 4).map((event) => (
-                <EvidenceQueueRow event={event} key={getEventIdentity(event)} />
-              ))}
-            </div>
+          <div className="flex h-full min-w-0 flex-col justify-between gap-3">
+            <RequestEvidenceEvent event={latestEvent} label="Latest request" />
+            <Link
+              to="/requests"
+              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-terracotta-700 transition-colors hover:bg-terracotta-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
+            >
+              View all requests
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
           </div>
         )}
       </CardContent>
     </Card>
   )
-}
-
-function EvidenceSpotlight({ event }: { event: UsageEvent }) {
-  const { keyLabel, keyTrace } = getEventLabels(event)
-
-  return (
-    <div className="animate-slide-up min-w-0 rounded-lg border border-terracotta-200 bg-terracotta-50/70 p-3 dark:border-terracotta-900/60 dark:bg-terracotta-950/20">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">{keyLabel}</p>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{keyTrace}</p>
-        </div>
-        <Badge variant={event.failed ? "amber" : "green"} className="shrink-0 text-[10px]">
-          {event.failed ? "Failed" : "Success"}
-        </Badge>
-      </div>
-      <div className="mt-2 grid min-w-0 grid-cols-3 gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-[10px] text-muted-foreground">Output TPS</p>
-          <p className="whitespace-nowrap text-xs font-medium">{formatOutputTPS(event.output_tps)}</p>
-        </div>
-        <div className="min-w-0 text-center">
-          <p className="truncate text-[10px] text-muted-foreground">Latency</p>
-          <p className="whitespace-nowrap text-xs font-medium">{formatLatency(event.latency_ms)}</p>
-        </div>
-        <div className="min-w-0 text-right">
-          <p className="truncate text-[10px] text-muted-foreground">Tokens</p>
-          <p className="whitespace-nowrap text-xs font-medium">{formatCompact(event.tokens?.total_tokens ?? 0, 2)}</p>
-        </div>
-      </div>
-      <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 text-xs text-muted-foreground">
-        <p className="truncate">{event.model || "Unknown model"}</p>
-        <p className="whitespace-nowrap">{formatDate(event.timestamp)}</p>
-      </div>
-    </div>
-  )
-}
-
-function EvidenceQueueRow({ event }: { event: UsageEvent }) {
-  const { keyLabel } = getEventLabels(event)
-
-  return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-background/45 px-2.5 py-1.5 text-xs">
-      <div className="min-w-0">
-        <p className="truncate font-medium">{keyLabel}</p>
-        <p className="truncate text-muted-foreground">{event.model || "Unknown model"}</p>
-      </div>
-      <div className="shrink-0 text-right text-muted-foreground">
-        <p className="font-medium text-foreground">{formatOutputTPS(event.output_tps)}</p>
-        <p>{formatCompact(event.tokens?.total_tokens ?? 0, 2)} · {event.failed ? "Failed" : "Success"}</p>
-      </div>
-    </div>
-  )
-}
-
-function getEventLabels(event: UsageEvent) {
-  const keyLabel = event.api_key_alias || event.api_key_display || event.source || event.auth_index || "No key trace"
-  const keyTrace = [
-    event.api_key_alias ? event.api_key_display : "",
-    event.source || event.auth_index || "",
-  ]
-    .filter(Boolean)
-    .join(" · ")
-
-  return { keyLabel, keyTrace }
-}
-
-function getEventIdentity(event: UsageEvent) {
-  return `${event.id ?? event.timestamp}-${event.auth_index ?? event.source}-${event.model}`
-}
-
-function formatOutputTPS(value: number | null | undefined) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-"
-  return `${value.toFixed(1)} tok/s`
-}
-
-function formatLatency(latencyMS: number) {
-  if (!Number.isFinite(latencyMS) || latencyMS <= 0) return "-"
-  const seconds = latencyMS / 1000
-  return `${seconds.toLocaleString("en", { maximumFractionDigits: 2 })}s`
 }
