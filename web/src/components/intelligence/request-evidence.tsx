@@ -4,15 +4,16 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RequestEvidenceEvent } from "@/components/intelligence/request-evidence-event"
-import { useEvents } from "@/hooks/useEvents"
+import type { UsageEventsPage } from "@/types/api"
 
 interface RequestEvidenceProps {
-  provider: string
-  range?: string
+  data: UsageEventsPage | undefined
+  isLoading: boolean
+  isRefreshing: boolean
+  error: unknown
 }
 
-export function RequestEvidence({ provider, range = "24h" }: RequestEvidenceProps) {
-  const { data, isLoading, error } = useEvents(range, 1, provider)
+export function RequestEvidence({ data, isLoading, isRefreshing, error }: RequestEvidenceProps) {
   const latestEvent = data?.events[0]
 
   return (
@@ -37,7 +38,11 @@ export function RequestEvidence({ provider, range = "24h" }: RequestEvidenceProp
           </div>
         ) : (
           <div className="flex h-full min-w-0 flex-col justify-between gap-3">
-            <RequestEvidenceEvent event={latestEvent} label="Latest request" />
+            <RequestEvidenceEvent
+              event={latestEvent}
+              label="Latest request"
+              syncState={isRefreshing ? "refreshing" : "synced"}
+            />
             <Link
               to="/requests"
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-terracotta-700 transition-colors hover:bg-terracotta-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"

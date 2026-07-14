@@ -76,6 +76,7 @@ export function useAnalyticsCore(
   range: TimeRange,
   granularity: TimeGranularity | null,
   provider: string,
+  refetchInterval: number | false = 60_000,
 ) {
   const g = granularity ?? getDefaultGranularity(range)
 
@@ -85,10 +86,11 @@ export function useAnalyticsCore(
       apiFetch<AnalyticsCoreResponse>(buildAnalyticsCorePath(range, g, provider)),
     staleTime: 30_000,
     refetchInterval: () => {
+      if (refetchInterval === false) return false
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false
       }
-      return 60_000
+      return refetchInterval
     },
   })
 }

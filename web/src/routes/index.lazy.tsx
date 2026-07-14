@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useCountUp } from "@/hooks/useCountUp"
+import { useEvents } from "@/hooks/useEvents"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { Sparkline } from "@/components/charts/sparkline"
 import { TrendChart } from "@/components/charts/trend-chart"
@@ -31,6 +32,8 @@ export const Route = createLazyFileRoute("/")({
   component: DashboardPage,
 })
 
+const DASHBOARD_REFRESH_INTERVAL_MS = 60_000
+
 function DashboardPage() {
   const [range, setRange] = useState<TimeRange>(() => readStoredTimeRange())
   const [granularity, setGranularity] = useState<TimeGranularity | null>(null)
@@ -53,8 +56,27 @@ function DashboardPage() {
   const {
     data: coreAnalyticsData,
     isLoading: isCoreAnalyticsLoading,
+    refetch: refetchCoreAnalytics,
     error: coreAnalyticsError,
-  } = useAnalyticsCore(selectedAnalytics.range, selectedAnalytics.granularity, selectedAnalytics.provider)
+  } = useAnalyticsCore(
+    selectedAnalytics.range,
+    selectedAnalytics.granularity,
+    selectedAnalytics.provider,
+    false,
+  )
+  const {
+    data: requestEvidenceData,
+    isLoading: isRequestEvidenceLoading,
+    isFetching: isRequestEvidenceFetching,
+    refetch: refetchRequestEvidence,
+    error: requestEvidenceError,
+  } = useEvents(
+    fixedWindow.requestEvidence.range,
+    1,
+    fixedWindow.requestEvidence.provider,
+    1,
+    false,
+  )
   const {
     data: requestHealthData,
     isLoading: isRequestHealthLoading,
@@ -64,6 +86,18 @@ function DashboardPage() {
   useEffect(() => {
     writeStoredTimeRange(range)
   }, [range])
+
+  useEffect(() => {
+    const intervalID = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return
+      void Promise.allSettled([
+        refetchCoreAnalytics(),
+        refetchRequestEvidence(),
+      ])
+    }, DASHBOARD_REFRESH_INTERVAL_MS)
+
+    return () => window.clearInterval(intervalID)
+  }, [refetchCoreAnalytics, refetchRequestEvidence])
 
   const data = coreAnalyticsData
   const hasCoreSurfaceData = Boolean(coreAnalyticsData)
@@ -433,8 +467,10 @@ function DashboardPage() {
         </Card>
 
         <RequestEvidence
-          provider={fixedWindow.requestEvidence.provider}
-          range={fixedWindow.requestEvidence.range}
+          data={requestEvidenceData}
+          isLoading={isRequestEvidenceLoading}
+          isRefreshing={isRequestEvidenceFetching && Boolean(requestEvidenceData)}
+          error={requestEvidenceError}
         />
       </div>
     </div>

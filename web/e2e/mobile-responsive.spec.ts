@@ -221,6 +221,8 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expect(page.getByText("Agent API Key").first()).toBeVisible()
   const evidenceCard = page.getByText("Request Evidence").locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]")
+  await expect(evidenceCard.getByRole("status")).toHaveText("Synced with trend")
+  await expect(evidenceCard.getByText("Latest request", { exact: true })).toHaveCount(0)
   await expect(evidenceCard.getByText("Output TPS", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("48.3 tok/s", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("Latency", { exact: true })).toBeVisible()
