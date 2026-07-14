@@ -187,6 +187,40 @@ func TestInsertUsageEventsDeduplicatesByEventKey(t *testing.T) {
 	}
 }
 
+func TestInsertUsageEventsPersistsTTFTAgainstMigrationSchema(t *testing.T) {
+	db := openTestDatabase(t)
+	if db.Migrator().HasColumn("usage_events", "ttftms") {
+		if err := db.Migrator().RenameColumn("usage_events", "ttftms", "ttft_ms"); err != nil {
+			t.Fatalf("align fresh database with migrated TTFT column: %v", err)
+		}
+	}
+
+	ttftMS := int64(1052)
+	inserted, deduped, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey:     "event-with-ttft",
+		Model:        "gpt-5.6-luna",
+		Timestamp:    time.Date(2026, 7, 14, 12, 55, 50, 0, time.UTC),
+		LatencyMS:    21245,
+		TTFTMS:       &ttftMS,
+		OutputTokens: 976,
+		TotalTokens:  105091,
+	}})
+	if err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+	if inserted != 1 || deduped != 0 {
+		t.Fatalf("expected inserted=1 deduped=0, got inserted=%d deduped=%d", inserted, deduped)
+	}
+
+	var storedTTFT int64
+	if err := db.Raw("SELECT ttft_ms FROM usage_events WHERE event_key = ?", "event-with-ttft").Scan(&storedTTFT).Error; err != nil {
+		t.Fatalf("load persisted TTFT: %v", err)
+	}
+	if storedTTFT != 1052 {
+		t.Fatalf("expected persisted ttft_ms 1052, got %d", storedTTFT)
+	}
+}
+
 func TestInsertUsageEventsBatchesLargeInsertSet(t *testing.T) {
 	db := openTestDatabase(t)
 	events := make([]entities.UsageEvent, 0, 300)
