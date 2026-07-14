@@ -310,6 +310,10 @@ async function mockAPI(page: Page) {
     if (path === "/usage/events") {
       const page = Number(url.searchParams.get("page") ?? "1")
       const pageSize = Number(url.searchParams.get("page_size") ?? "100")
+      if (![1, 10, 20, 50, 100, 500, 1000].includes(pageSize)) {
+        await route.fulfill({ status: 400, json: { error: `invalid page_size ${pageSize}` } })
+        return
+      }
       const start = (page - 1) * pageSize
       await route.fulfill({ json: {
         events: usageEvents.slice(start, start + pageSize),
