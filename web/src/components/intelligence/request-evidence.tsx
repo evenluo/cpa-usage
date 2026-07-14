@@ -107,20 +107,24 @@ function EvidenceSpotlight({ event }: { event: UsageEvent }) {
           {event.failed ? "Failed" : "Success"}
         </Badge>
       </div>
-      <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 text-xs">
+      <div className="mt-2 grid min-w-0 grid-cols-3 gap-2">
         <div className="min-w-0">
-          <p className="truncate text-muted-foreground">Model</p>
-          <p className="truncate font-medium">{event.model || "Unknown model"}</p>
+          <p className="truncate text-[10px] text-muted-foreground">Output TPS</p>
+          <p className="whitespace-nowrap text-xs font-medium">{formatOutputTPS(event.output_tps)}</p>
+        </div>
+        <div className="min-w-0 text-center">
+          <p className="truncate text-[10px] text-muted-foreground">Latency</p>
+          <p className="whitespace-nowrap text-xs font-medium">{formatLatency(event.latency_ms)}</p>
         </div>
         <div className="min-w-0 text-right">
-          <p className="truncate text-muted-foreground">Tokens</p>
-          <p className="truncate font-medium">
-            {formatCompact(event.tokens?.total_tokens ?? 0, 2)}
-            {event.latency_ms > 0 ? ` · ${event.latency_ms}ms` : ""}
-          </p>
+          <p className="truncate text-[10px] text-muted-foreground">Tokens</p>
+          <p className="whitespace-nowrap text-xs font-medium">{formatCompact(event.tokens?.total_tokens ?? 0, 2)}</p>
         </div>
       </div>
-      <p className="mt-2 truncate text-xs text-muted-foreground">{formatDate(event.timestamp)}</p>
+      <div className="mt-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 text-xs text-muted-foreground">
+        <p className="truncate">{event.model || "Unknown model"}</p>
+        <p className="whitespace-nowrap">{formatDate(event.timestamp)}</p>
+      </div>
     </div>
   )
 }
@@ -135,8 +139,8 @@ function EvidenceQueueRow({ event }: { event: UsageEvent }) {
         <p className="truncate text-muted-foreground">{event.model || "Unknown model"}</p>
       </div>
       <div className="shrink-0 text-right text-muted-foreground">
-        <p>{formatCompact(event.tokens?.total_tokens ?? 0, 1)}</p>
-        <p>{event.failed ? "Failed" : "Success"}</p>
+        <p className="font-medium text-foreground">{formatOutputTPS(event.output_tps)}</p>
+        <p>{formatCompact(event.tokens?.total_tokens ?? 0, 2)} · {event.failed ? "Failed" : "Success"}</p>
       </div>
     </div>
   )
@@ -156,4 +160,15 @@ function getEventLabels(event: UsageEvent) {
 
 function getEventIdentity(event: UsageEvent) {
   return `${event.id ?? event.timestamp}-${event.auth_index ?? event.source}-${event.model}`
+}
+
+function formatOutputTPS(value: number | null | undefined) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return "-"
+  return `${value.toFixed(1)} tok/s`
+}
+
+function formatLatency(latencyMS: number) {
+  if (!Number.isFinite(latencyMS) || latencyMS <= 0) return "-"
+  const seconds = latencyMS / 1000
+  return `${seconds.toLocaleString("en", { maximumFractionDigits: 2 })}s`
 }

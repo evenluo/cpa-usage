@@ -15,6 +15,7 @@ func TestDecodeRedisUsageMessageMapsPayloadToUsageEvent(t *testing.T) {
 	event, raw, err := DecodeRedisUsageMessage(`{
 		"timestamp":"2026-04-27T07:59:00Z",
 		"latency_ms":1234,
+		"ttft_ms":234,
 		"source":"sk-test",
 		"auth_index":"auth-1",
 		"tokens":{"input_tokens":10,"output_tokens":20,"reasoning_tokens":3,"cached_tokens":4,"total_tokens":0},
@@ -33,6 +34,9 @@ func TestDecodeRedisUsageMessageMapsPayloadToUsageEvent(t *testing.T) {
 	}
 	if event.EventKey != "req-123" || event.APIGroupKey != "raw-key" || event.Model != "claude-sonnet-4-6" || event.Source != "sk-test" || event.AuthIndex != "auth-1" || !event.Failed || event.LatencyMS != 1234 {
 		t.Fatalf("unexpected event: %+v", event)
+	}
+	if event.TTFTMS == nil || *event.TTFTMS != 234 {
+		t.Fatalf("expected ttft_ms 234, got %+v", event.TTFTMS)
 	}
 	if event.Provider != "claude" || event.Endpoint != "/v1/messages" || event.AuthType != "apikey" || event.RequestID != "req-123" {
 		t.Fatalf("unexpected redis identity fields: %+v", event)

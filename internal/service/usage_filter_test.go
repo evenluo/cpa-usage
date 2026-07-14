@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"cpa-usage/internal/repository/dto"
 	"math"
 	"path/filepath"
 	"testing"
@@ -11,6 +10,7 @@ import (
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository"
+	"cpa-usage/internal/repository/dto"
 	servicedto "cpa-usage/internal/service/dto"
 )
 
@@ -36,6 +36,82 @@ func TestUsageServiceGetUsageWithFilterDelegatesToFilteredSnapshot(t *testing.T)
 	}
 	if snapshot.TotalRequests != 1 || snapshot.TotalTokens != 20 {
 		t.Fatalf("expected service filter to keep only in-range event, got %+v", snapshot)
+	}
+}
+
+func TestUsageServiceListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
+	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-events.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+	ttftMS := int64(1052)
+	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey:     "event-tps",
+		Model:        "gpt-5.6-sol",
+		Timestamp:    time.Date(2026, 7, 14, 9, 7, 50, 0, time.UTC),
+		LatencyMS:    21245,
+		TTFTMS:       &ttftMS,
+		OutputTokens: 976,
+		TotalTokens:  105091,
+	}}); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	provider := NewUsageService(db)
+	page, err := provider.ListUsageEvents(context.Background(), servicedto.UsageFilter{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListUsageEvents returned error: %v", err)
+	}
+	if len(page.Events) != 1 {
+		t.Fatalf("expected one usage event, got %+v", page.Events)
+	}
+	event := page.Events[0]
+	if event.TTFTMS == nil || *event.TTFTMS != 1052 {
+		t.Fatalf("expected ttft_ms 1052, got %+v", event.TTFTMS)
+	}
+	if event.OutputTPS == nil || math.Abs(*event.OutputTPS-48.33358094488189) > 0.000000001 {
+		t.Fatalf("expected output TPS 48.33358094488189, got %+v", event.OutputTPS)
+	}
+}
+
+func TestUsageServiceListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing.T) {
+	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-invalid-tps.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+	zeroTTFT := int64(0)
+	equalTTFT := int64(21245)
+	validTTFT := int64(1052)
+	events := []entities.UsageEvent{
+		{EventKey: "missing-ttft", Model: "missing-ttft", Timestamp: time.Date(2026, 7, 14, 9, 7, 50, 0, time.UTC), LatencyMS: 21245, OutputTokens: 976},
+		{EventKey: "zero-ttft", Model: "zero-ttft", Timestamp: time.Date(2026, 7, 14, 9, 7, 51, 0, time.UTC), LatencyMS: 21245, TTFTMS: &zeroTTFT, OutputTokens: 976},
+		{EventKey: "inconsistent-duration", Model: "inconsistent-duration", Timestamp: time.Date(2026, 7, 14, 9, 7, 52, 0, time.UTC), LatencyMS: 21245, TTFTMS: &equalTTFT, OutputTokens: 976},
+		{EventKey: "zero-output", Model: "zero-output", Timestamp: time.Date(2026, 7, 14, 9, 7, 53, 0, time.UTC), LatencyMS: 21245, TTFTMS: &validTTFT},
+		{EventKey: "failed-valid", Model: "failed-valid", Timestamp: time.Date(2026, 7, 14, 9, 7, 54, 0, time.UTC), Failed: true, LatencyMS: 21245, TTFTMS: &validTTFT, OutputTokens: 976},
+	}
+	if _, _, err := repository.InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	provider := NewUsageService(db)
+	page, err := provider.ListUsageEvents(context.Background(), servicedto.UsageFilter{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("ListUsageEvents returned error: %v", err)
+	}
+	byModel := make(map[string]servicedto.UsageEventRecord, len(page.Events))
+	for _, event := range page.Events {
+		byModel[event.Model] = event
+	}
+	for _, model := range []string{"missing-ttft", "zero-ttft", "inconsistent-duration", "zero-output"} {
+		if byModel[model].OutputTPS != nil {
+			t.Fatalf("expected %s Output TPS to be unavailable, got %+v", model, byModel[model].OutputTPS)
+		}
+	}
+	failedEvent := byModel["failed-valid"]
+	if !failedEvent.Failed || failedEvent.OutputTPS == nil || math.Abs(*failedEvent.OutputTPS-48.33358094488189) > 0.000000001 {
+		t.Fatalf("expected failed event with valid facts to retain Output TPS, got %+v", failedEvent)
 	}
 }
 

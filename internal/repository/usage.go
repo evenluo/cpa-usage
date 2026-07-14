@@ -77,6 +77,7 @@ func ListUsageEventsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.U
 			AuthIndex:       strings.TrimSpace(event.AuthIndex),
 			Failed:          event.Failed,
 			LatencyMS:       event.LatencyMS,
+			TTFTMS:          event.TTFTMS,
 			InputTokens:     event.InputTokens,
 			OutputTokens:    event.OutputTokens,
 			ReasoningTokens: event.ReasoningTokens,

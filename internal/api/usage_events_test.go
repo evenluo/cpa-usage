@@ -58,6 +58,8 @@ func (s *usageEventsStub) GetUsageAnalysis(context.Context, servicedto.UsageFilt
 }
 
 func TestUsageEventsReturnsFilteredRows(t *testing.T) {
+	ttftMS := int64(1052)
+	outputTPS := 48.33358094488189
 	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
 		ID:              42,
 		Timestamp:       time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
@@ -67,12 +69,14 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 		Source:          "sk-provider-key",
 		AuthIndex:       "2",
 		Failed:          false,
-		LatencyMS:       321,
+		LatencyMS:       21245,
+		TTFTMS:          &ttftMS,
+		OutputTPS:       &outputTPS,
 		InputTokens:     10,
-		OutputTokens:    5,
+		OutputTokens:    976,
 		ReasoningTokens: 2,
 		CachedTokens:    1,
-		TotalTokens:     18,
+		TotalTokens:     105091,
 	}}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h", nil)
@@ -102,6 +106,9 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	if !contains(body, `"auth_index":"2"`) {
 		t.Fatalf("expected auth index in response body: %s", body)
 	}
+	if !contains(body, `"ttft_ms":1052`) || !contains(body, `"output_tps":48.33358094488189`) {
+		t.Fatalf("expected TTFT and Output TPS in response body: %s", body)
+	}
 	if provider.filterCalls != 1 {
 		t.Fatalf("expected ListUsageEvents to be called once, got %d", provider.filterCalls)
 	}
@@ -113,6 +120,30 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	}
 	if provider.lastFilter.StartTime == nil || provider.lastFilter.EndTime == nil {
 		t.Fatalf("expected resolved time bounds in filter, got %+v", provider.lastFilter)
+	}
+}
+
+func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
+	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+		ID:           43,
+		Timestamp:    time.Date(2026, 4, 22, 11, 1, 0, 0, time.UTC),
+		Model:        "historical-model",
+		LatencyMS:    21245,
+		OutputTokens: 976,
+		TotalTokens:  105091,
+	}}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", resp.Code)
+	}
+	body := resp.Body.String()
+	if !contains(body, `"ttft_ms":null`) || !contains(body, `"output_tps":null`) {
+		t.Fatalf("expected missing TTFT and Output TPS to remain null: %s", body)
 	}
 }
 

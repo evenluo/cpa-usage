@@ -42,8 +42,13 @@ const usageEventsPayload = {
     api_key_alias: "Agent API Key With A Very Long Mobile Label",
     api_key_display: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
     failed: index === 2,
-    latency_ms: 240 + index,
-    tokens: { total_tokens: 1_700_000_000 + index },
+    latency_ms: index === 0 ? 21_245 : 240 + index,
+    ttft_ms: index === 0 ? 1_052 : null,
+    output_tps: index === 0 ? 48.33358094488189 : null,
+    tokens: {
+      output_tokens: index === 0 ? 976 : 0,
+      total_tokens: index === 0 ? 105_091 : 1_700_000_000 + index,
+    },
   })),
 }
 
@@ -217,6 +222,15 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
     .toContain("255, 255, 255")
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expect(page.getByText("Agent API Key").first()).toBeVisible()
+  const evidenceCard = page.getByText("Request Evidence").locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]")
+  await expect(evidenceCard.getByText("Output TPS", { exact: true })).toBeVisible()
+  await expect(evidenceCard.getByText("48.3 tok/s", { exact: true })).toBeVisible()
+  await expect(evidenceCard.getByText("Latency", { exact: true })).toBeVisible()
+  await expect(evidenceCard.getByText("21.25s", { exact: true })).toBeVisible()
+  await expect(evidenceCard.getByText("Tokens", { exact: true })).toBeVisible()
+  await expect(evidenceCard.getByText("105.09K", { exact: true })).toBeVisible()
+  await evidenceCard.getByRole("button", { name: "Show request evidence 2" }).click()
+  await expect(evidenceCard.getByText("Output TPS", { exact: true }).locator("..").getByText("-", { exact: true })).toBeVisible()
   await expectFixedOverviewCardHeights(page)
   await expectNoDocumentOverflow(page)
 })

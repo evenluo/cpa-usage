@@ -291,7 +291,9 @@ export interface UsageEvent {
   api_key_display?: string
   failed: boolean
   latency_ms: number
-  tokens: { total_tokens: number }
+  ttft_ms: number | null
+  output_tps: number | null
+  tokens: { output_tokens: number; total_tokens: number }
 }
 
 export interface UsageEventsPage {

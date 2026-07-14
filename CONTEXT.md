@@ -60,6 +60,10 @@ _Avoid_: Settings, admin panel, analytics controls
 Recent request samples shown inside **Usage Intelligence** to support aggregate health and usage readings.
 _Avoid_: Request event workbench, full event search, audit log
 
+**Output TPS**:
+The per-request provider-normalized output tokens generated per second after the first token; it excludes input and cached tokens.
+_Avoid_: Total token TPS, Effective TPS, Visible TPS
+
 ## Relationships
 
 - A **CPA Key** may have zero or one global **Key Alias**
@@ -103,6 +107,7 @@ _Avoid_: Request event workbench, full event search, audit log
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
 - Request health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent samples; it is not the complete request event inspection surface.
+- **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.
 - Future **Request Evidence** drill-down belongs inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
 - First-version insights are deterministic metrics and warnings, not AI-generated summaries.
 - **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.

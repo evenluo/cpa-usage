@@ -32,6 +32,7 @@ const (
 	migrationCreateUsageRollupBackfillState         = "20260707_create_usage_rollup_backfill_state"
 	migrationCreateUsageRollupsHourly               = "20260707_create_usage_rollups_hourly"
 	migrationAddRedisInboxProcessableIndex          = "20260707_add_redis_inbox_processable_index"
+	migrationAddUsageEventTTFT                      = "20260714_add_usage_event_ttft"
 )
 
 type schemaMigration struct {
@@ -108,6 +109,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationCreateUsageRollupBackfillState, run: createUsageRollupBackfillStateMigration},
 		{version: migrationCreateUsageRollupsHourly, run: createUsageRollupsHourlyMigration},
 		{version: migrationAddRedisInboxProcessableIndex, run: addRedisInboxProcessableIndexMigration},
+		{version: migrationAddUsageEventTTFT, run: addUsageEventTTFTMigration},
 	}
 }
 

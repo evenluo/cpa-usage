@@ -119,6 +119,8 @@ func (s *usageService) ListUsageEvents(_ context.Context, filter servicedto.Usag
 			AuthIndex:       row.AuthIndex,
 			Failed:          row.Failed,
 			LatencyMS:       row.LatencyMS,
+			TTFTMS:          row.TTFTMS,
+			OutputTPS:       usageEventOutputTPS(row.OutputTokens, row.LatencyMS, row.TTFTMS),
 			InputTokens:     row.InputTokens,
 			OutputTokens:    row.OutputTokens,
 			ReasoningTokens: row.ReasoningTokens,
@@ -127,6 +129,14 @@ func (s *usageService) ListUsageEvents(_ context.Context, filter servicedto.Usag
 		})
 	}
 	return &servicedto.UsageEventsPage{Events: result, Models: page.Models, TotalCount: page.TotalCount, Page: page.Page, PageSize: page.PageSize, TotalPages: page.TotalPages}, nil
+}
+
+func usageEventOutputTPS(outputTokens, latencyMS int64, ttftMS *int64) *float64 {
+	if outputTokens <= 0 || ttftMS == nil || *ttftMS <= 0 || latencyMS <= *ttftMS {
+		return nil
+	}
+	value := float64(outputTokens) * 1000 / float64(latencyMS-*ttftMS)
+	return &value
 }
 
 // Usage 页面里的 Request Event Log tab 的 model 筛选项只按当前时间窗口加载候选值。
