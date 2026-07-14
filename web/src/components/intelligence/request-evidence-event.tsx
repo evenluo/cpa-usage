@@ -5,9 +5,10 @@ import type { UsageEvent } from "@/types/api"
 interface RequestEvidenceEventProps {
   event: UsageEvent
   label: string
+  syncState?: "synced" | "refreshing"
 }
 
-export function RequestEvidenceEvent({ event, label }: RequestEvidenceEventProps) {
+export function RequestEvidenceEvent({ event, label, syncState }: RequestEvidenceEventProps) {
   const { keyLabel, keyTrace } = getRequestEventLabels(event)
 
   return (
@@ -15,7 +16,11 @@ export function RequestEvidenceEvent({ event, label }: RequestEvidenceEventProps
       aria-label={label}
       className="min-w-0 rounded-lg border border-terracotta-200 bg-terracotta-50/70 p-3 dark:border-terracotta-900/60 dark:bg-terracotta-950/20"
     >
-      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      {syncState ? (
+        <EvidenceSyncSignal state={syncState} />
+      ) : (
+        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      )}
       <div className="mt-1.5 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{keyLabel}</p>
@@ -34,6 +39,26 @@ export function RequestEvidenceEvent({ event, label }: RequestEvidenceEventProps
         <RequestMetric label="Tokens" value={formatCompact(event.tokens?.total_tokens ?? 0, 2)} />
       </div>
     </section>
+  )
+}
+
+function EvidenceSyncSignal({ state }: { state: "synced" | "refreshing" }) {
+  const label = state === "refreshing" ? "Syncing with trend" : "Synced with trend"
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex h-3 items-center gap-2 text-terracotta-700 dark:text-terracotta-300"
+    >
+      <span className="flex h-3 items-center gap-0.5" aria-hidden="true">
+        <span className="h-1.5 w-0.5 origin-center rounded-full bg-current motion-safe:animate-evidence-signal motion-reduce:animate-none [animation-delay:-0.6s]" />
+        <span className="h-2.5 w-0.5 origin-center rounded-full bg-current motion-safe:animate-evidence-signal motion-reduce:animate-none [animation-delay:-0.4s]" />
+        <span className="h-3 w-0.5 origin-center rounded-full bg-current motion-safe:animate-evidence-signal motion-reduce:animate-none [animation-delay:-0.2s]" />
+        <span className="h-2 w-0.5 origin-center rounded-full bg-current motion-safe:animate-evidence-signal motion-reduce:animate-none" />
+      </span>
+      <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
+    </div>
   )
 }
 
