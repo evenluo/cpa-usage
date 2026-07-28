@@ -126,7 +126,7 @@ The validation checks that the rendered Compose does not contain:
 
 It also runs `docker compose config` with sample non-secret values when Docker is available.
 
-`make verify` also checks every repository shell script with `bash -n` and runs this Compose validation. The frontend and CI/Docker build use Node.js 22; local contributors can select the same major version through `.nvmrc`.
+`make verify` also checks every repository shell script with `bash -n` and runs this Compose validation. The frontend requires Node.js 22.12 or newer. CI and Docker stay on the Node 22 release line, and `.nvmrc` selects the latest compatible 22.x runtime for local contributors.
 
 ## Compatibility Decision
 
