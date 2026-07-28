@@ -23,7 +23,7 @@ export function Badge({
       className={cn(
         "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
         {
-          "border-transparent bg-terracotta-500 text-white":
+          "border-transparent bg-terracotta-700 text-white":
             variant === "default",
           "border-transparent bg-secondary text-secondary-foreground":
             variant === "secondary",

@@ -20,6 +20,13 @@ function formatTimeLabel(iso: string): string {
   return d.toLocaleTimeString("en", { hour: "2-digit", minute: "2-digit", hour12: false })
 }
 
+function healthBlockLabel(block: ServiceHealthBlock): string {
+  if (block.rate < 0 || block.success + block.failure === 0) {
+    return `${formatTimeLabel(block.start_time)}, no request data`
+  }
+  return `${formatTimeLabel(block.start_time)}, ${(block.rate * 100).toFixed(1)}% success, ${block.failure} failures, ${block.success + block.failure} requests`
+}
+
 function divisors(value: number): number[] {
   const result: number[] = []
   for (let candidate = 1; candidate <= value; candidate++) {
@@ -118,10 +125,10 @@ export function HealthGrid({ data }: HealthGridProps) {
             {(data.total_success + data.total_failure).toLocaleString("en")} requests
           </span>
           {data.total_failure > 0 && (
-            <span className="text-red-400">{data.total_failure} failed</span>
+            <span className="text-red-700">{data.total_failure} failed</span>
           )}
         </div>
-        <span className="font-medium text-emerald-500">
+        <span className="font-medium text-emerald-700">
           {data.success_rate.toFixed(1)}%
         </span>
       </div>
@@ -136,7 +143,7 @@ export function HealthGrid({ data }: HealthGridProps) {
               style={{ gridTemplateColumns }}
             >
               {/* Row label */}
-              <div className="flex h-full items-center justify-end truncate pr-2 text-right text-[10px] font-medium tabular-nums text-muted-foreground/60">
+              <div className="flex h-full items-center justify-end truncate pr-2 text-right text-[10px] font-medium tabular-nums text-muted-foreground">
                 {formatTimeLabel(rowBlocks[0]?.start_time)}
               </div>
 
@@ -156,15 +163,13 @@ export function HealthGrid({ data }: HealthGridProps) {
                 return (
                   <button
                     key={`${rowIdx}-${colIdx}`}
+                    type="button"
+                    aria-label={healthBlockLabel(block)}
                     className={`group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${cellColor(block)}`}
-                    title={
-                      block.rate < 0 || (block.success + block.failure) === 0
-                        ? `${formatTimeLabel(block.start_time)} - no data`
-                        : `${formatTimeLabel(block.start_time)} - ${(block.rate * 100).toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} requests)`
-                    }
+                    title={healthBlockLabel(block)}
                   >
                     {hasData && block.failure > 0 && (
-                      <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-white/60" />
+                      <span aria-hidden="true" className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-white/60" />
                     )}
                   </button>
                 )
@@ -175,7 +180,7 @@ export function HealthGrid({ data }: HealthGridProps) {
       </div>
 
       {/* Legend */}
-      <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground/60">
+      <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
         <div className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-[1px] bg-emerald-500" />
           Perfect

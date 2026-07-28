@@ -146,15 +146,17 @@ function DashboardPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Provider Filter */}
         {providerOptions.length > 0 ? (
-          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-            <Filter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label="Provider filter">
+            <Filter className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
             <button
+              type="button"
+              aria-pressed={provider === ""}
               onClick={() => setProvider("")}
               className={cn(
                 "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                 provider === ""
                   ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                  : "bg-muted text-foreground hover:bg-muted/80"
               )}
             >
               All
@@ -162,16 +164,18 @@ function DashboardPage() {
             {providerOptions.map((opt) => (
               <button
                 key={opt.provider}
+                type="button"
+                aria-pressed={provider === opt.provider}
                 onClick={() => setProvider(opt.provider)}
                 className={cn(
                   "rounded-full px-3 py-1 text-xs font-medium transition-colors",
                   provider === opt.provider
                     ? "bg-foreground text-background"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    : "bg-muted text-foreground hover:bg-muted/80"
                 )}
               >
                 {opt.provider}
-                <span className="ml-1 text-[10px] opacity-60">
+                <span className="ml-1 text-[10px] opacity-80">
                   {formatCompact(opt.request_count, 0)}
                 </span>
               </button>
@@ -184,10 +188,12 @@ function DashboardPage() {
         <div className="flex w-full flex-col items-end gap-1 sm:w-auto">
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
             {/* Time Range */}
-            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
+            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1" role="group" aria-label="Analysis time range">
               {TIME_RANGES.map((tr) => (
                 <button
                   key={tr.value}
+                  type="button"
+                  aria-pressed={range === tr.value}
                   onClick={() => {
                     setRange(tr.value)
                     setGranularity(null)
@@ -195,7 +201,7 @@ function DashboardPage() {
                   className={cn(
                     "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                     range === tr.value
-                      ? "bg-terracotta-500 text-white"
+                      ? "bg-terracotta-700 text-white"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
@@ -205,36 +211,40 @@ function DashboardPage() {
             </div>
 
             {/* Granularity Toggle */}
-            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
+            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1" role="group" aria-label="Time granularity">
               <button
+                type="button"
+                aria-pressed={g === "hour"}
                 onClick={() => setGranularity("hour")}
                 className={cn(
                   "flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                   g === "hour"
-                    ? "bg-terracotta-500 text-white"
+                    ? "bg-terracotta-700 text-white"
                     : "text-muted-foreground hover:bg-muted"
                 )}
               >
-                <Clock className="h-3 w-3" />
+                <Clock className="h-3 w-3" aria-hidden="true" />
                 Hour
               </button>
               <button
+                type="button"
+                aria-pressed={g === "day"}
                 onClick={() => setGranularity("day")}
                 className={cn(
                   "flex shrink-0 items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                   g === "day"
-                    ? "bg-terracotta-500 text-white"
+                    ? "bg-terracotta-700 text-white"
                     : "text-muted-foreground hover:bg-muted"
                 )}
               >
-                <CalendarRange className="h-3 w-3" />
+                <CalendarRange className="h-3 w-3" aria-hidden="true" />
                 Day
               </button>
             </div>
           </div>
 
           {/* Scope indicator */}
-          <span className="flex items-center justify-end gap-1 text-right text-[10px] text-muted-foreground/60">
+          <span className="flex items-center justify-end gap-1 text-right text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3" />
             Applies to KPIs, Trend & Leaderboard
           </span>
@@ -306,7 +316,7 @@ function DashboardPage() {
                 {trendView === "tokens" && "Total, input, output, reasoning, and cached tokens"}
               </CardDescription>
             </div>
-            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
+            <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1" role="group" aria-label="Trend view">
               {[
                 { value: "cost-token", label: "Cost" },
                 { value: "requests-token", label: "Requests" },
@@ -314,13 +324,14 @@ function DashboardPage() {
               ].map((item) => (
                 <button
                   key={item.value}
+                  type="button"
                   onClick={() => setTrendView(item.value as typeof trendView)}
                   aria-label={`Trend view: ${item.label}`}
                   aria-pressed={trendView === item.value}
                   className={cn(
                     "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                     trendView === item.value
-                      ? "bg-terracotta-500 text-white"
+                      ? "bg-terracotta-700 text-white"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >
@@ -357,20 +368,21 @@ function DashboardPage() {
               </CardDescription>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-              <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
+              <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1" role="group" aria-label="Leaderboard scope">
                 {[
                   { value: "api-key", label: "API Keys" },
                   { value: "account", label: "Accounts" },
                 ].map((item) => (
                   <button
                     key={item.value}
+                    type="button"
                     onClick={() => setLeaderboardScope(item.value as typeof leaderboardScope)}
                     aria-label={`Leaderboard scope: ${item.label}`}
                     aria-pressed={leaderboardScope === item.value}
                     className={cn(
                       "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                       leaderboardScope === item.value
-                        ? "bg-terracotta-500 text-white"
+                        ? "bg-terracotta-700 text-white"
                         : "text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
                   >

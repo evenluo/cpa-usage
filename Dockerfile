@@ -21,7 +21,7 @@ ARG REVISION=unknown
 ARG SOURCE=https://github.com/evenluo/cpa-usage
 ARG CREATED=unknown
 RUN CGO_ENABLED=1 GOOS=linux go build \
-    -ldflags="-s -w -X cpa-usage/internal/version.Version=${VERSION}" \
+    -ldflags="-s -w -X cpa-usage/internal/version.Version=${VERSION} -X cpa-usage/internal/version.Revision=${REVISION}" \
     -o /out/cpa-usage ./cmd/server/main.go
 
 FROM alpine:3.20

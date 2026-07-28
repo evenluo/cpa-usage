@@ -156,6 +156,7 @@ function LiveCapacityAccountTile({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-start gap-2">
           <div
+            role="img"
             className="flex h-[42px] w-9 shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/20 dark:border-white/10 dark:bg-white/90"
             title={row.providerLabel}
             aria-label={row.providerLabel}
@@ -173,7 +174,7 @@ function LiveCapacityAccountTile({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <span className="max-w-[92px] truncate rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium leading-4 text-muted-foreground" title={row.statusLabel}>
+          <span className="max-w-[92px] truncate rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium leading-4 text-foreground" title={row.statusLabel}>
             {row.statusLabel}
           </span>
           {hasAttention ? (
@@ -221,7 +222,7 @@ function PlanBadge({
       variant={tone === "priority" ? "terracotta" : "secondary"}
       className={cn(
         "shrink-0 px-1.5 py-0 text-[10px] leading-4",
-        tone === "ordinary" && "border-border/70 bg-muted text-muted-foreground",
+        tone === "ordinary" && "border-border/70 bg-muted text-foreground",
       )}
       title={rawPlanType}
     >
@@ -254,6 +255,10 @@ function MetricMeter({
         <span className="truncate font-medium">{metric?.valueLabel ?? "-"}</span>
       </div>
       <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={progress ?? undefined}
         className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
         aria-label={metric ? `${title}: ${metric.valueLabel}` : `${title}: no capacity reading`}
       >

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import { useReducedMotion } from "./useReducedMotion"
 
 function easeOutQuart(t: number): number {
   return 1 - Math.pow(1 - t, 4)
@@ -9,6 +10,7 @@ export function useCountUp(
   options: { duration?: number; decimals?: number; enabled?: boolean } = {}
 ) {
   const { duration = 800, decimals = 0, enabled = true } = options
+  const reduceMotion = useReducedMotion()
   const [value, setValue] = useState(target)
   const startRef = useRef<number | null>(null)
   const fromRef = useRef(0)
@@ -16,7 +18,8 @@ export function useCountUp(
   const valueRef = useRef(target)
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || reduceMotion) {
+      valueRef.current = target
       return
     }
 
@@ -42,9 +45,9 @@ export function useCountUp(
 
     rafId = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(rafId)
-  }, [target, duration, enabled])
+  }, [target, duration, enabled, reduceMotion])
 
   const factor = Math.pow(10, decimals)
-  const displayValue = enabled ? value : target
+  const displayValue = enabled && !reduceMotion ? value : target
   return Math.round(displayValue * factor) / factor
 }

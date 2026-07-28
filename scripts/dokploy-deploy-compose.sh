@@ -26,6 +26,18 @@ compose_id="$DOKPLOY_CPA_USAGE_COMPOSE_ID"
 compose_file="$tmpdir/cpa-usage.compose.yml"
 scripts/render-dokploy-compose.sh "${CPA_USAGE_VERSION:-}" "$compose_file"
 scripts/verify-dokploy-compose.sh "$compose_file"
+deployment_title="${DOKPLOY_DEPLOYMENT_TITLE:-cpa-usage-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+deployment_timeout_seconds="${DOKPLOY_DEPLOYMENT_TIMEOUT_SECONDS:-600}"
+deployment_poll_seconds="${DOKPLOY_DEPLOYMENT_POLL_SECONDS:-5}"
+
+if [[ ! "$deployment_timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
+  echo "DOKPLOY_DEPLOYMENT_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 2
+fi
+if [[ ! "$deployment_poll_seconds" =~ ^[1-9][0-9]*$ ]]; then
+  echo "DOKPLOY_DEPLOYMENT_POLL_SECONDS must be a positive integer" >&2
+  exit 2
+fi
 
 api_get() {
   local path="$1"
@@ -84,6 +96,74 @@ migrate_env_file() {
   ' "$input" > "$output"
 }
 
+read_env_value() {
+  local name="$1"
+  local file="$2"
+  local value
+  value="$(awk -v wanted="$name" '
+    /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+    {
+      line = $0
+      sub(/^[[:space:]]*export[[:space:]]+/, "", line)
+      key = line
+      sub(/=.*/, "", key)
+      sub(/[[:space:]]+$/, "", key)
+      if (key == wanted) {
+        print substr(line, index(line, "=") + 1)
+        exit
+      }
+    }
+  ' "$file")"
+  if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+  printf '%s' "$value"
+}
+
+wait_for_deployment() {
+  local deadline=$(( $(date +%s) + deployment_timeout_seconds ))
+  local deployments_file="$tmpdir/deployments.json"
+  local deployment_json status error_message
+
+  while (( $(date +%s) < deadline )); do
+    api_get "deployment.allByCompose?composeId=$compose_id" > "$deployments_file"
+    if ! jq -e 'type == "array"' "$deployments_file" >/dev/null; then
+      echo "Dokploy deployment list returned an unexpected payload" >&2
+      exit 1
+    fi
+    deployment_json="$(jq -c --arg title "$deployment_title" 'map(select(.title == $title)) | sort_by(.createdAt) | last // empty' "$deployments_file")"
+    if [[ -z "$deployment_json" ]]; then
+      sleep "$deployment_poll_seconds"
+      continue
+    fi
+
+    status="$(jq -r '.status // ""' <<<"$deployment_json")"
+    case "$status" in
+      done)
+        echo "OK Dokploy deployment completed"
+        return 0
+        ;;
+      error|cancelled)
+        error_message="$(jq -r '.errorMessage // "no error message"' <<<"$deployment_json")"
+        echo "Dokploy deployment $status: $error_message" >&2
+        return 1
+        ;;
+      running)
+        sleep "$deployment_poll_seconds"
+        ;;
+      *)
+        echo "Dokploy deployment returned unknown status: ${status:-missing}" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  echo "Dokploy deployment did not complete within ${deployment_timeout_seconds}s" >&2
+  return 1
+}
+
 current_json="$tmpdir/compose-one.json"
 api_get "compose.one?composeId=$compose_id" > "$current_json"
 
@@ -112,9 +192,44 @@ jq -n \
 api_post "compose.update" "$tmpdir/update-compose.json" >/dev/null
 echo "OK updated Dokploy compose"
 
-api_get "compose.getConvertedCompose?composeId=$compose_id" >/dev/null
+converted_compose_file="$tmpdir/converted-compose.json"
+api_get "compose.getConvertedCompose?composeId=$compose_id" > "$converted_compose_file"
+if [[ -n "${CPA_USAGE_IMAGE:-}" ]] && ! jq -e --arg image "$CPA_USAGE_IMAGE" '[.. | strings | contains($image)] | any' "$converted_compose_file" >/dev/null; then
+  echo "Dokploy converted compose does not contain expected image $CPA_USAGE_IMAGE" >&2
+  exit 1
+fi
 echo "OK Dokploy converted compose"
 
-jq -n --arg composeId "$compose_id" '{composeId: $composeId}' > "$tmpdir/deploy.json"
+jq -n \
+  --arg composeId "$compose_id" \
+  --arg title "$deployment_title" \
+  --arg description "${CPA_USAGE_IMAGE:-${CPA_USAGE_VERSION:-manual deployment}}" \
+  '{composeId: $composeId, title: $title, description: $description}' > "$tmpdir/deploy.json"
 api_post "compose.deploy" "$tmpdir/deploy.json" >/dev/null
 echo "OK triggered Dokploy deployment"
+
+wait_for_deployment
+
+public_host="$(read_env_value PUBLIC_HOST "$tmpdir/migrated.env")"
+login_password="$(read_env_value CPA_USAGE_LOGIN_PASSWORD "$tmpdir/migrated.env")"
+if [[ -z "$public_host" ]]; then
+  echo "PUBLIC_HOST is required in the Dokploy environment for release smoke" >&2
+  exit 1
+fi
+if [[ -z "$login_password" ]]; then
+  echo "CPA_USAGE_LOGIN_PASSWORD is required in the Dokploy environment for release smoke" >&2
+  exit 1
+fi
+if [[ "$public_host" == http://* || "$public_host" == https://* ]]; then
+  public_base_url="$public_host"
+else
+  public_base_url="https://$public_host"
+fi
+image_value="${CPA_USAGE_IMAGE:-}"
+expected_version="${CPA_USAGE_VERSION:-${image_value##*:}}"
+BASE_URL="$public_base_url" \
+BASE_PATH="/usage" \
+CPA_USAGE_LOGIN_PASSWORD="$login_password" \
+EXPECTED_VERSION="$expected_version" \
+EXPECTED_REVISION="${CPA_USAGE_EXPECTED_REVISION:-}" \
+scripts/smoke-cpa-usage.sh

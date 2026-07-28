@@ -70,6 +70,7 @@ type DatabaseBackupRunner struct {
 	retryDelay    time.Duration
 	retryAttempts int
 	pendingRetry  bool
+	location      *time.Location
 	now           func() time.Time
 	sleep         func(context.Context, time.Duration) bool
 
@@ -86,6 +87,7 @@ func NewDatabaseBackupRunner(writer DatabaseBackupWriter, cleaner DatabaseBackup
 		interval:      interval,
 		retentionDays: retentionDays,
 		retryDelay:    15 * time.Minute,
+		location:      time.Local,
 		now:           time.Now,
 		sleep:         maintenanceSleepContext,
 	}
@@ -146,11 +148,11 @@ func (r *DatabaseBackupRunner) cleanup(now time.Time) {
 }
 
 func (r *DatabaseBackupRunner) nextDailyDelay(now time.Time) time.Duration {
-	localNow := now.In(time.Local)
-	nextBackupAt := nextDailyBackupAt(localNow)
+	localNow := now.In(r.location)
+	nextBackupAt := nextDailyBackupAt(localNow, r.location)
 	if lastBackupAt, ok := r.lastBackupAtFromHistory(); ok {
-		lastLocalBackup := lastBackupAt.In(time.Local)
-		lastBackupDay := time.Date(lastLocalBackup.Year(), lastLocalBackup.Month(), lastLocalBackup.Day(), 4, 0, 0, 0, time.Local)
+		lastLocalBackup := lastBackupAt.In(r.location)
+		lastBackupDay := time.Date(lastLocalBackup.Year(), lastLocalBackup.Month(), lastLocalBackup.Day(), 4, 0, 0, 0, r.location)
 		candidate := lastBackupDay.AddDate(0, 0, r.dailyScheduleDays())
 		if localNow.Before(candidate) {
 			nextBackupAt = candidate
@@ -180,9 +182,9 @@ func (r *DatabaseBackupRunner) lastBackupAtFromHistory() (time.Time, bool) {
 	return lastBackupAt, !lastBackupAt.IsZero()
 }
 
-func nextDailyBackupAt(now time.Time) time.Time {
-	localNow := now.In(time.Local)
-	backupAt := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 4, 0, 0, 0, time.Local)
+func nextDailyBackupAt(now time.Time, location *time.Location) time.Time {
+	localNow := now.In(location)
+	backupAt := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 4, 0, 0, 0, location)
 	if !localNow.Before(backupAt) {
 		backupAt = backupAt.AddDate(0, 0, 1)
 	}
@@ -201,6 +203,9 @@ func (r *DatabaseBackupRunner) validate() error {
 	}
 	if r.retryDelay <= 0 {
 		r.retryDelay = 15 * time.Minute
+	}
+	if r.location == nil {
+		r.location = time.Local
 	}
 	if r.now == nil {
 		r.now = time.Now

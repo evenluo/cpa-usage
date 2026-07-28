@@ -26,6 +26,7 @@ web-v2/
 coverage/
 bin/
 screenshots/
+web/test-results/
 scripts/debug_*.go
 scripts/seed_mock.go
 /seed_mock

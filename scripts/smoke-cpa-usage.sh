@@ -6,6 +6,9 @@ BASE_PATH="${BASE_PATH:-/usage}"
 CPA_USAGE_LOGIN_PASSWORD="${CPA_USAGE_LOGIN_PASSWORD:-}"
 EXPECT_KEEPER_STOPPED="${EXPECT_KEEPER_STOPPED:-false}"
 CURL_INSECURE="${CURL_INSECURE:-false}"
+EXPECTED_VERSION="${EXPECTED_VERSION:-}"
+EXPECTED_REVISION="${EXPECTED_REVISION:-}"
+LAST_JSON_OUTPUT=""
 
 curl_args=(-sS -L --max-time 20)
 if [[ "$CURL_INSECURE" == "true" ]]; then
@@ -68,7 +71,25 @@ require_timed_json() {
     sed -n '1,20p' "$output" >&2 || true
     exit 1
   fi
+  LAST_JSON_OUTPUT="$output"
   echo "OK $label HTTP $code time_total=${duration}s"
+}
+
+require_json_field_equals() {
+  local label="$1"
+  local field="$2"
+  local expected="$3"
+  local actual
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "FAIL jq is required to verify $label" >&2
+    exit 1
+  fi
+  actual="$(jq -r --arg field "$field" '.[$field] // ""' "$LAST_JSON_OUTPUT")"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "FAIL $label expected $expected got $actual" >&2
+    exit 1
+  fi
+  echo "OK $label $actual"
 }
 
 require_code "cpa root" "$BASE_URL/" "200"
@@ -124,3 +145,9 @@ require_timed_json "legacy analytics summary" "/api/v1/analytics/summary?range=7
 require_timed_json "request health" "/api/v1/usage/request-health?range=24h" '"service_health":'
 require_timed_json "request evidence events" "/api/v1/usage/events?range=24h&page_size=10" '"events":'
 require_timed_json "status" "/api/v1/status" '"timezone"'
+if [[ -n "$EXPECTED_VERSION" ]]; then
+  require_json_field_equals "deployed version" "version" "$EXPECTED_VERSION"
+fi
+if [[ -n "$EXPECTED_REVISION" ]]; then
+  require_json_field_equals "deployed revision" "revision" "$EXPECTED_REVISION"
+fi

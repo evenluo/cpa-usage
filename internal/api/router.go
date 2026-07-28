@@ -266,6 +266,7 @@ type statusResponse struct {
 	SyncRunning    bool                         `json:"sync_running"`
 	Timezone       string                       `json:"timezone"`
 	Version        string                       `json:"version"`
+	Revision       string                       `json:"revision"`
 	RollupBackfill rollupBackfillStatusResponse `json:"rollup_backfill"`
 	LastRunAt      *time.Time                   `json:"last_run_at,omitempty"`
 	LastError      string                       `json:"last_error,omitempty"`
@@ -278,6 +279,7 @@ type syncStatusResponse struct {
 	SyncRunning bool       `json:"sync_running"`
 	Timezone    string     `json:"timezone"`
 	Version     string     `json:"version"`
+	Revision    string     `json:"revision"`
 	LastRunAt   *time.Time `json:"last_run_at,omitempty"`
 	LastError   string     `json:"last_error,omitempty"`
 	LastWarning string     `json:"last_warning,omitempty"`
@@ -366,6 +368,7 @@ func buildStatusResponse(status poller.Status, rollupBackfill repodto.RollupBack
 		SyncRunning:    status.SyncRunning,
 		Timezone:       time.Local.String(),
 		Version:        version.Version,
+		Revision:       version.Revision,
 		RollupBackfill: buildRollupBackfillStatusResponse(rollupBackfill),
 		LastError:      status.LastError,
 		LastWarning:    status.LastWarning,
@@ -384,6 +387,7 @@ func buildSyncStatusResponse(status poller.Status) syncStatusResponse {
 		SyncRunning: status.SyncRunning,
 		Timezone:    time.Local.String(),
 		Version:     version.Version,
+		Revision:    version.Revision,
 		LastError:   status.LastError,
 		LastWarning: status.LastWarning,
 		LastStatus:  status.LastStatus,

@@ -39,6 +39,11 @@ function cellTooltipLabel(fc: FlatCell): string {
   return `${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}r · ${cellCostLabel(fc.cell)}`
 }
 
+function cellAccessibleLabel(fc: FlatCell): string {
+  if (!fc.cell) return ""
+  return `${fc.dateLabel} ${fc.hour}:00, ${formatCompact(fc.cell.total_tokens, 1)} tokens, ${fc.cell.request_count} requests, cost ${cellCostLabel(fc.cell)}`
+}
+
 function fallbackDateLabel(date: string): string {
   const match = date.match(/^\d{4}-(\d{2})-(\d{2})$/)
   return match ? `${match[1]}/${match[2]}` : date
@@ -172,7 +177,7 @@ export function Heatmap({ data }: HeatmapProps) {
               style={{ gridTemplateColumns }}
             >
               {/* Row start date label */}
-              <div className="grid h-full grid-cols-[5ch_3ch] items-center gap-1 pr-2 text-[10px] font-medium text-muted-foreground/60">
+              <div className="grid h-full grid-cols-[5ch_3ch] items-center gap-1 pr-2 text-[10px] font-medium text-muted-foreground">
                 <span className="text-right tabular-nums">{row.label.dateLabel}</span>
                 <span className="text-left">{row.label.weekdayLabel}</span>
               </div>
@@ -206,6 +211,8 @@ export function Heatmap({ data }: HeatmapProps) {
                     return (
                       <button
                         key={`${rowIdx}-${ci}`}
+                        type="button"
+                        aria-label={cellAccessibleLabel(fc)}
                         className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
                         style={{
                           backgroundColor: fc.cell.in_range
@@ -219,7 +226,7 @@ export function Heatmap({ data }: HeatmapProps) {
                         onBlur={hideTooltip}
                       >
                         {intensity > 0.6 && (
-                          <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
+                          <span aria-hidden="true" className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
                         )}
                       </button>
                     )
@@ -249,6 +256,8 @@ export function Heatmap({ data }: HeatmapProps) {
                 return (
                   <button
                     key={`${rowIdx}-${ci}`}
+                    type="button"
+                    aria-label={cellAccessibleLabel(fc)}
                     className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
                     style={{
                       backgroundColor: fc.cell.in_range
@@ -262,7 +271,7 @@ export function Heatmap({ data }: HeatmapProps) {
                     onBlur={hideTooltip}
                   >
                     {intensity > 0.6 && (
-                      <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
+                      <span aria-hidden="true" className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
                     )}
                   </button>
                 )

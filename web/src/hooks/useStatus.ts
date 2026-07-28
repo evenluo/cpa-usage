@@ -9,11 +9,3 @@ export function useStatus() {
     staleTime: 30_000,
   })
 }
-
-export function useSyncNow() {
-  return useQuery({
-    queryKey: ["sync", "trigger"],
-    queryFn: () => apiFetch<StatusPayload>("/sync", { method: "POST" }),
-    enabled: false,
-  })
-}

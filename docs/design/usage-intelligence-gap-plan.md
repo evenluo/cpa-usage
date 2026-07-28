@@ -1,5 +1,8 @@
 # Usage Intelligence Gap Closure Plan
 
+Status: fulfilled; retained as implementation history
+Current SoT: `CONTEXT.md`, `docs/project/`, and the current `/` Intelligence implementation
+
 ## Conclusion
 
 The `/cpa-usage/` page should evolve from the current functional analytics view into a Usage Intelligence workspace that matches the target dashboard at the level of information architecture, data-backed visual shape, and operational density. The goal is not pixel-perfect replication. The goal is to make the primary analytics page feel complete: hourly-first trends, real previous-period comparisons, a date-by-hour heatmap, deterministic insights, and cost/token leaderboards.

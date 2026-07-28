@@ -328,6 +328,16 @@ export interface StatusPayload {
   last_warning?: string
   timezone?: string
   version?: string
+  revision?: string
+  rollup_backfill?: {
+    status: string
+    target_bucket_start?: string
+    covered_bucket_start?: string
+    started_at?: string
+    completed_at?: string
+    failed_at?: string
+    last_error?: string
+  }
 }
 
 export interface AuthSessionPayload {

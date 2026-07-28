@@ -11,6 +11,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: cpa-usage-production
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -31,7 +35,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
 
@@ -108,4 +112,6 @@ jobs:
       - name: Deploy via Dokploy API
         env:
           CPA_USAGE_IMAGE: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.deploy-tag }}
+          CPA_USAGE_EXPECTED_REVISION: ${{ github.sha }}
+          DOKPLOY_DEPLOYMENT_TITLE: cpa-usage-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.image.outputs.deploy-tag }}
         run: scripts/dokploy-deploy-compose.sh

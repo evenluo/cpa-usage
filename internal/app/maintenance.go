@@ -14,9 +14,10 @@ type StorageCleanupSyncer interface {
 }
 
 type StorageCleanupRunner struct {
-	syncer StorageCleanupSyncer
-	now    func() time.Time
-	sleep  func(context.Context, time.Duration) bool
+	syncer   StorageCleanupSyncer
+	location *time.Location
+	now      func() time.Time
+	sleep    func(context.Context, time.Duration) bool
 
 	mu      sync.Mutex
 	running bool
@@ -24,9 +25,10 @@ type StorageCleanupRunner struct {
 
 func NewStorageCleanupRunner(syncer StorageCleanupSyncer) *StorageCleanupRunner {
 	return &StorageCleanupRunner{
-		syncer: syncer,
-		now:    time.Now,
-		sleep:  maintenanceSleepContext,
+		syncer:   syncer,
+		location: time.Local,
+		now:      time.Now,
+		sleep:    maintenanceSleepContext,
 	}
 }
 
@@ -41,7 +43,7 @@ func (r *StorageCleanupRunner) Run(ctx context.Context) error {
 
 	for {
 		now := r.now()
-		delay := nextDailyCleanupAt(now).Sub(now)
+		delay := nextDailyCleanupAt(now, r.location).Sub(now)
 		if delay < 0 {
 			delay = 0
 		}
@@ -54,10 +56,10 @@ func (r *StorageCleanupRunner) Run(ctx context.Context) error {
 	}
 }
 
-// nextDailyCleanupAt 用 time.Local 计算下一次 03:00，因此 TZ 同时控制业务日期边界和清理触发时间。
-func nextDailyCleanupAt(now time.Time) time.Time {
-	localNow := now.In(time.Local)
-	cleanupAt := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 3, 0, 0, 0, time.Local)
+// nextDailyCleanupAt 用传入的项目时区计算下一次 03:00；运行时构造器会固定当时的 time.Local。
+func nextDailyCleanupAt(now time.Time, location *time.Location) time.Time {
+	localNow := now.In(location)
+	cleanupAt := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 3, 0, 0, 0, location)
 	if !localNow.Before(cleanupAt) {
 		cleanupAt = cleanupAt.AddDate(0, 0, 1)
 	}
@@ -70,6 +72,9 @@ func (r *StorageCleanupRunner) validate() error {
 	}
 	if r.syncer == nil {
 		return fmt.Errorf("storage cleanup syncer is nil")
+	}
+	if r.location == nil {
+		r.location = time.Local
 	}
 	if r.now == nil {
 		r.now = time.Now

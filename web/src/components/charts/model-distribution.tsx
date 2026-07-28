@@ -23,7 +23,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
       <div className="h-[180px]">
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
+            <PieChart accessibilityLayer>
               <Pie
                 data={chartData}
                 cx="50%"

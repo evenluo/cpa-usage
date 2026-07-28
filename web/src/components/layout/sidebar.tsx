@@ -26,7 +26,7 @@ export function Sidebar() {
     <aside aria-label="Desktop navigation" className="fixed left-0 top-0 z-40 hidden h-screen w-16 flex-col items-center border-r border-border bg-card py-4 transition-all duration-300 md:flex">
       {/* Logo */}
       <div className="mb-6 flex h-9 w-9 items-center justify-center rounded-lg bg-terracotta-500 text-white">
-        <BarChart3 className="h-5 w-5" />
+        <BarChart3 className="h-5 w-5" aria-hidden="true" />
       </div>
 
       {/* Nav Icons */}
@@ -70,14 +70,16 @@ export function Sidebar() {
       {/* Theme Toggle */}
       <div className="flex flex-col items-center gap-1">
         <button
+          type="button"
+          aria-label={`Switch to ${resolvedTheme === "dark" ? "light" : "dark"} theme`}
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           title={`Current: ${resolvedTheme}`}
         >
           {resolvedTheme === "dark" ? (
-            <Moon className="h-[18px] w-[18px]" />
+            <Moon className="h-[18px] w-[18px]" aria-hidden="true" />
           ) : (
-            <Sun className="h-[18px] w-[18px]" />
+            <Sun className="h-[18px] w-[18px]" aria-hidden="true" />
           )}
         </button>
       </div>

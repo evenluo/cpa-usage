@@ -29,7 +29,7 @@ export function MobileNav() {
               className={cn(
                 "flex flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-1.5 transition-colors",
                 isActive
-                  ? "text-terracotta-600"
+                  ? "text-terracotta-700"
                   : "text-muted-foreground hover:text-foreground"
               )}
             >

@@ -74,25 +74,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           return (
             <div
               key={t.id}
+              role={t.type === "error" ? "alert" : "status"}
               className={cn(
                 "flex w-80 max-w-full items-start gap-3 rounded-lg border p-4 shadow-lg animate-slide-in-right",
                 styles[t.type]
               )}
             >
-              <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+              <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <p className="flex-1 text-sm font-medium">{t.message}</p>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => navigator.clipboard.writeText(t.message)}
-                  className="text-xs opacity-60 hover:opacity-100"
+                  className="text-xs opacity-80 hover:opacity-100"
                 >
                   Copy
                 </button>
                 <button
+                  type="button"
+                  aria-label="Dismiss notification"
                   onClick={() => removeToast(t.id)}
-                  className="opacity-60 hover:opacity-100"
+                  className="opacity-80 hover:opacity-100"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>
               <div className="absolute bottom-0 left-0 h-0.5 w-full overflow-hidden rounded-b-lg">

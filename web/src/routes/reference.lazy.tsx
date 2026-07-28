@@ -174,7 +174,7 @@ function ReferencePage() {
                   className={cn(
                     "shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
                     keyAliasScope === item.value
-                      ? "bg-terracotta-500 text-white"
+                      ? "bg-terracotta-700 text-white"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   )}
                 >

@@ -44,7 +44,7 @@ variable: DOKPLOY_CPA_USAGE_COMPOSE_ID=<new cpa-usage compose id>
 
 Do not keep using `DOKPLOY_COMPOSE_ID` for this repository after the split. That variable points at the old full-stack compose app and would put `postgres` / `cliproxyapi` back into the release blast radius.
 
-The workflow is `.github/workflows/release.yml` and runs on pushes to `main` plus tags matching `v*.*.*`. It accepts:
+The workflow is `.github/workflows/release.yml` and runs on pushes to `main` plus tags matching `v*.*.*`. Production releases share one non-cancelling concurrency group, so a later push waits for the in-flight deployment instead of racing or cancelling it. It accepts:
 
 - stable: `v0.1.0`
 - release candidate: `v0.2.0-rc.1`
@@ -64,6 +64,19 @@ AUTH_SESSION_COOKIE_DOMAIN=<production CPA host>
 The template defaults the current dmit-us runtime facts: `cpa-dmit-us-internal` and `cpa-dmit-us-usage-data`. Override these only when the Dokploy runtime topology changes.
 
 The release script migrates `KEEPER_LOGIN_PASSWORD` to `CPA_USAGE_LOGIN_PASSWORD` once through `compose.saveEnvironment`, then removes the old key from the Dokploy env text. Runtime auth only reads `CPA_USAGE_LOGIN_PASSWORD`.
+
+## Automated Release Acceptance
+
+The workflow does not treat `compose.deploy` acceptance as a successful release. `scripts/dokploy-deploy-compose.sh`:
+
+1. updates the single-service Compose definition and reads back Dokploy's converted Compose;
+2. verifies the converted definition contains the exact immutable `CPA_USAGE_IMAGE`;
+3. assigns a unique deployment title and polls `deployment.allByCompose` until that deployment is `done`;
+4. fails on `error`, `cancelled`, an unknown state, or the 10-minute default timeout;
+5. reads `PUBLIC_HOST` and `CPA_USAGE_LOGIN_PASSWORD` from the Dokploy environment without printing the password;
+6. runs the authenticated public smoke and verifies both the deployed version tag and exact Git revision reported by `/api/v1/status`.
+
+`jq` and `curl` are required on the release runner. Polling can be tuned with positive integer values in `DOKPLOY_DEPLOYMENT_TIMEOUT_SECONDS` and `DOKPLOY_DEPLOYMENT_POLL_SECONDS`; the defaults are 600 and 5 seconds. A failed acceptance keeps the GitHub release job failed and visible for operator repair. It does not attempt a speculative rollback.
 
 ## One-time Dokploy Split
 
@@ -109,6 +122,8 @@ The validation checks that the rendered Compose does not contain:
 
 It also runs `docker compose config` with sample non-secret values when Docker is available.
 
+`make verify` also checks every repository shell script with `bash -n` and runs this Compose validation. The frontend and CI/Docker build use Node.js 22; local contributors can select the same major version through `.nvmrc`.
+
 ## Compatibility Decision
 
-External compatibility is kept for the public path `/usage`, CPA management password semantics, CPA internal DNS, Redis usage queue address, and the existing `cpa-usage` SQLite data volume. The production release chain intentionally stops managing `postgres` and `cliproxyapi`. The old keeper service name and `KEEPER_LOGIN_PASSWORD` are not kept as runtime compatibility paths.
+External compatibility is kept for the public path `/usage`, CPA management password semantics, CPA internal DNS, Redis usage queue address, and the existing `cpa-usage` SQLite data volume. `/api/v1/status` adds the build `revision` beside the existing `version`; additive JSON consumers remain compatible. The production release chain intentionally stops managing `postgres` and `cliproxyapi`. The old keeper service name and `KEEPER_LOGIN_PASSWORD` are not kept as runtime compatibility paths.

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"sync"
+	"time"
 
 	"cpa-usage/internal/api"
 	"cpa-usage/internal/auth"
@@ -46,6 +48,8 @@ type App struct {
 	backgroundCancel context.CancelFunc
 	backgroundWG     sync.WaitGroup
 }
+
+const serverShutdownTimeout = 10 * time.Second
 
 func New() (*App, error) {
 	return NewWithOptions(Options{})
@@ -183,54 +187,85 @@ func (a *App) Close() error {
 	return closeErr
 }
 
-func (a *App) Run() error {
+func (a *App) Run(ctx context.Context) error {
 	if a == nil || a.Router == nil || a.Config == nil {
 		return fmt.Errorf("application is not initialized")
 	}
+	if ctx == nil {
+		return fmt.Errorf("application context is required")
+	}
 
-	ctx := a.startBackgroundContext()
+	backgroundCtx := a.startBackgroundContext(ctx)
 	defer a.stopBackgroundTasks()
 	if a.Poller != nil {
 		a.startBackgroundTask(func() {
-			if err := a.Poller.Run(ctx); err != nil {
+			if err := a.Poller.Run(backgroundCtx); err != nil {
 				logrus.Errorf("poller stopped: %v", err)
 			}
 		})
 	}
 	if a.Maintenance != nil {
 		a.startBackgroundTask(func() {
-			if err := a.Maintenance.Run(ctx); err != nil {
+			if err := a.Maintenance.Run(backgroundCtx); err != nil {
 				logrus.Errorf("maintenance cleanup stopped: %v", err)
 			}
 		})
 	}
 	if a.MetadataSync != nil {
 		a.startBackgroundTask(func() {
-			if err := a.MetadataSync.Run(ctx); err != nil {
+			if err := a.MetadataSync.Run(backgroundCtx); err != nil {
 				logrus.Errorf("metadata sync stopped: %v", err)
 			}
 		})
 	}
 	if a.BackupMaintenance != nil {
 		a.startBackgroundTask(func() {
-			if err := a.BackupMaintenance.Run(ctx); err != nil {
+			if err := a.BackupMaintenance.Run(backgroundCtx); err != nil {
 				logrus.Errorf("database backup stopped: %v", err)
 			}
 		})
 	}
 	if a.RollupBackfill != nil {
 		a.startBackgroundTask(func() {
-			if err := a.RollupBackfill.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			if err := a.RollupBackfill.Run(backgroundCtx); err != nil && !errors.Is(err, context.Canceled) {
 				logrus.Errorf("usage rollup backfill stopped: %v", err)
 			}
 		})
 	}
 
-	return a.Router.Run(":" + a.Config.AppPort)
+	server := &http.Server{
+		Addr:    ":" + a.Config.AppPort,
+		Handler: a.Router,
+	}
+	serverErr := make(chan error, 1)
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErr:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
+		defer cancel()
+		shutdownErr := server.Shutdown(shutdownCtx)
+		listenErr := <-serverErr
+		if errors.Is(listenErr, http.ErrServerClosed) {
+			listenErr = nil
+		}
+		if shutdownErr != nil {
+			closeErr := server.Close()
+			return errors.Join(fmt.Errorf("shutdown http server: %w", shutdownErr), listenErr, closeErr)
+		}
+		return listenErr
+	}
 }
 
-func (a *App) startBackgroundContext() context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
+func (a *App) startBackgroundContext(parent context.Context) context.Context {
+	ctx, cancel := context.WithCancel(parent)
 	a.backgroundCancel = cancel
 	return ctx
 }

@@ -154,7 +154,7 @@ func TestRunStartsPollerAndMaintenanceIndependently(t *testing.T) {
 		BackupMaintenance: backupRunner,
 	}
 
-	if err := app.Run(); err == nil {
+	if err := app.Run(context.Background()); err == nil {
 		t.Fatal("expected Run to return an error for invalid port")
 	}
 	select {
@@ -197,7 +197,7 @@ func TestRunCancelsBackgroundTasksWhenRouterStops(t *testing.T) {
 		BackupMaintenance: backupRunner,
 	}
 
-	if err := app.Run(); err == nil {
+	if err := app.Run(context.Background()); err == nil {
 		t.Fatal("expected Run to return an error for invalid port")
 	}
 	select {
@@ -212,8 +212,66 @@ func TestRunCancelsBackgroundTasksWhenRouterStops(t *testing.T) {
 	}
 }
 
+func TestRunShutsDownHTTPServerAndBackgroundTasksWhenContextIsCanceled(t *testing.T) {
+	cfg := testAppConfig(t)
+	cfg.AppPort = "0"
+	started := make(chan struct{})
+	stopped := make(chan struct{})
+	app := &App{
+		Config: &cfg,
+		Router: gin.New(),
+		Poller: &appRunContextStub{started: started, stopped: stopped},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		result <- app.Run(ctx)
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("expected poller runner to start")
+	}
+	cancel()
+
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("expected graceful shutdown, got %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected application to stop after context cancellation")
+	}
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("expected background context to be canceled")
+	}
+}
+
 type appRunStub struct {
 	started chan struct{}
+}
+
+type appRunContextStub struct {
+	started chan struct{}
+	stopped chan struct{}
+}
+
+func (s *appRunContextStub) Run(ctx context.Context) error {
+	close(s.started)
+	<-ctx.Done()
+	close(s.stopped)
+	return nil
+}
+
+func (s *appRunContextStub) Status() poller.Status {
+	return poller.Status{}
+}
+
+func (s *appRunContextStub) SyncNow(context.Context) error {
+	return nil
 }
 
 func (s *appRunStub) Run(context.Context) error {

@@ -1,0 +1,16 @@
+{
+  "running": true,
+  "sync_running": false,
+  "timezone": "UTC",
+  "version": "v1.2.3",
+  "revision": "0123456789abcdef",
+  "rollup_backfill": {
+    "status": "running",
+    "target_bucket_start": "2026-07-28T07:00:00Z",
+    "covered_bucket_start": "2026-07-28T06:00:00Z",
+    "started_at": "2026-07-28T07:30:00Z"
+  },
+  "last_run_at": "2026-07-28T08:00:00Z",
+  "last_warning": "metadata unavailable",
+  "last_status": "completed_with_warnings"
+}

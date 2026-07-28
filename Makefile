@@ -1,6 +1,6 @@
 WEB_DIR := ./web
 
-.PHONY: dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose dokploy-migrate-cpa-usage-compose
+.PHONY: dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-scripts verify-docker render-dokploy-compose verify-dokploy-compose dokploy-migrate-cpa-usage-compose
 
 dev-backend:
 	go run ./cmd/server/main.go --env .env
@@ -50,7 +50,7 @@ lint-frontend:
 typecheck-frontend:
 	npm --prefix $(WEB_DIR) run typecheck
 
-verify: verify-backend verify-frontend
+verify: verify-backend verify-frontend verify-scripts verify-dokploy-compose
 
 verify-backend: test-backend vet-backend
 
@@ -59,6 +59,9 @@ verify-frontend:
 	$(MAKE) lint-frontend
 	$(MAKE) test-frontend
 	$(MAKE) test-frontend-mobile
+
+verify-scripts:
+	bash -n scripts/*.sh
 
 verify-docker:
 	docker build -t cpa-usage:ci .

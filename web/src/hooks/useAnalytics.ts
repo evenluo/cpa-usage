@@ -51,27 +51,6 @@ function buildAnalyticsPath(
   return `${path}?${params.toString()}`
 }
 
-export function useAnalytics(
-  range: TimeRange,
-  granularity: TimeGranularity | null,
-  provider: string,
-) {
-  const g = granularity ?? getDefaultGranularity(range)
-
-  return useQuery({
-    queryKey: ["analytics", "summary", range, g, provider],
-    queryFn: () =>
-      apiFetch<AnalyticsResponse>(buildAnalyticsSummaryPath(range, g, provider)),
-    staleTime: 30_000,
-    refetchInterval: () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return false
-      }
-      return 60_000
-    },
-  })
-}
-
 export function useAnalyticsCore(
   range: TimeRange,
   granularity: TimeGranularity | null,

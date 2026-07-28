@@ -162,6 +162,11 @@ function OperationsPage() {
               ) : (
                 <>
                   <p className="text-sm font-semibold">{status?.version || "dev"}</p>
+                  {status?.revision && status.revision !== "unknown" ? (
+                    <p className="mt-1 font-mono text-xs text-muted-foreground" title={status.revision}>
+                      {status.revision.slice(0, 12)}
+                    </p>
+                  ) : null}
                   <Badge variant="outline" className="mt-3">
                     {status?.timezone || "Local timezone"}
                   </Badge>

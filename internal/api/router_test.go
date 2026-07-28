@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -138,6 +139,41 @@ func TestStatusReturnsPollerState(t *testing.T) {
 	}
 }
 
+func TestBuildStatusResponseMatchesContractFixture(t *testing.T) {
+	previousLocal := time.Local
+	previousVersion := version.Version
+	previousRevision := version.Revision
+	t.Cleanup(func() {
+		time.Local = previousLocal
+		version.Version = previousVersion
+		version.Revision = previousRevision
+	})
+	time.Local = time.UTC
+	version.Version = "v1.2.3"
+	version.Revision = "0123456789abcdef"
+
+	lastRunAt := time.Date(2026, 7, 28, 8, 0, 0, 0, time.UTC)
+	target := time.Date(2026, 7, 28, 7, 0, 0, 0, time.UTC)
+	covered := time.Date(2026, 7, 28, 6, 0, 0, 0, time.UTC)
+	started := time.Date(2026, 7, 28, 7, 30, 0, 0, time.UTC)
+	actual, err := json.Marshal(buildStatusResponse(poller.Status{
+		Running:     true,
+		SyncRunning: false,
+		LastRunAt:   lastRunAt,
+		LastWarning: "metadata unavailable",
+		LastStatus:  "completed_with_warnings",
+	}, repodto.RollupBackfillStatus{
+		Status:             repodto.RollupBackfillStatusRunning,
+		TargetBucketStart:  &target,
+		CoveredBucketStart: &covered,
+		StartedAt:          &started,
+	}))
+	if err != nil {
+		t.Fatalf("marshal status response: %v", err)
+	}
+	assertJSONMatchesContractFixture(t, actual, "status.json")
+}
+
 func TestStatusReturnsRollupBackfillState(t *testing.T) {
 	target := time.Date(2026, 7, 7, 12, 0, 0, 0, time.UTC)
 	covered := time.Date(2026, 7, 7, 8, 0, 0, 0, time.UTC)
@@ -202,8 +238,13 @@ func TestStatusReturnsEmptyStateWithoutProvider(t *testing.T) {
 
 func TestStatusReturnsVersionWithoutUpdateCheckState(t *testing.T) {
 	previousVersion := version.Version
-	t.Cleanup(func() { version.Version = previousVersion })
+	previousRevision := version.Revision
+	t.Cleanup(func() {
+		version.Version = previousVersion
+		version.Revision = previousRevision
+	})
 	version.Version = "v1.2.3"
+	version.Revision = "0123456789abcdef"
 
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
@@ -214,15 +255,20 @@ func TestStatusReturnsVersionWithoutUpdateCheckState(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"version":"v1.2.3"`) || contains(body, `"updateCheckEnabled"`) {
+	if !contains(body, `"version":"v1.2.3"`) || !contains(body, `"revision":"0123456789abcdef"`) || contains(body, `"updateCheckEnabled"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }
 
 func TestStatusReturnsDevVersionWithoutUpdateCheckState(t *testing.T) {
 	previousVersion := version.Version
-	t.Cleanup(func() { version.Version = previousVersion })
+	previousRevision := version.Revision
+	t.Cleanup(func() {
+		version.Version = previousVersion
+		version.Revision = previousRevision
+	})
 	version.Version = "dev"
+	version.Revision = "unknown"
 
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
@@ -233,7 +279,7 @@ func TestStatusReturnsDevVersionWithoutUpdateCheckState(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"version":"dev"`) || contains(body, `"updateCheckEnabled"`) {
+	if !contains(body, `"version":"dev"`) || !contains(body, `"revision":"unknown"`) || contains(body, `"updateCheckEnabled"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }

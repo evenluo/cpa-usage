@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test"
+import AxeBuilder from "@axe-core/playwright"
 import analyticsSummary from "../src/test/contracts/analytics_summary.json" with { type: "json" }
 import apiKeyAliasTargets from "../src/test/contracts/api_key_alias_targets_page.json" with { type: "json" }
 import usageIdentities from "../src/test/contracts/usage_identities_page.json" with { type: "json" }
@@ -10,6 +11,7 @@ const statusPayload = {
   last_run_at: "2026-05-18T09:30:00Z",
   timezone: "Asia/Shanghai",
   version: "e2e",
+  revision: "0123456789abcdef",
 }
 
 const usageOverviewPayload = {
@@ -164,6 +166,22 @@ const { comparison: _comparison, heatmap, previous_range_start: _previousRangeSt
 
 test.beforeEach(async ({ page }) => {
   await mockAPI(page)
+})
+
+test("primary dashboard has no automated WCAG A or AA violations", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
+
+  const results = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa"])
+    .analyze()
+
+  expect(results.violations.map((violation) => ({
+    id: violation.id,
+    impact: violation.impact,
+    targets: violation.nodes.map((node) => node.target.join(" ")),
+  }))).toEqual([])
 })
 
 test("mobile uses bottom navigation without the fixed desktop sidebar", async ({ page }) => {

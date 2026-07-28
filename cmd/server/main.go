@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"cpa-usage/internal/app"
 )
@@ -18,7 +21,10 @@ func main() {
 	}
 	defer application.Close()
 
-	if err := application.Run(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := application.Run(ctx); err != nil {
 		log.Printf("run app: %v", err)
 		if closeErr := application.Close(); closeErr != nil {
 			log.Printf("close app: %v", closeErr)
