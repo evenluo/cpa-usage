@@ -56,6 +56,7 @@ verify-backend: test-backend vet-backend
 
 verify-frontend:
 	npm --prefix $(WEB_DIR) ci
+	npm --prefix $(WEB_DIR) ls --all >/dev/null
 	$(MAKE) lint-frontend
 	$(MAKE) test-frontend
 	$(MAKE) test-frontend-mobile

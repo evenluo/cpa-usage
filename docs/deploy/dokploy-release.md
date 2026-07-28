@@ -78,6 +78,10 @@ The workflow does not treat `compose.deploy` acceptance as a successful release.
 
 `jq` and `curl` are required on the release runner. Polling can be tuned with positive integer values in `DOKPLOY_DEPLOYMENT_TIMEOUT_SECONDS` and `DOKPLOY_DEPLOYMENT_POLL_SECONDS`; the defaults are 600 and 5 seconds. A failed acceptance keeps the GitHub release job failed and visible for operator repair. It does not attempt a speculative rollback.
 
+## Runtime Shutdown
+
+The server handles `SIGINT` and `SIGTERM` as graceful shutdown requests. It stops accepting new HTTP work, allows in-flight requests up to 10 seconds to drain, propagates cancellation to the poller and maintenance runners, waits for those background tasks to stop, and then closes application resources. This is a compatible lifecycle hardening: public API, ingestion authority, persistence, and data semantics are unchanged; an unresponsive HTTP handler now produces an explicit shutdown error after the timeout instead of leaving the process ambiguous.
+
 ## One-time Dokploy Split
 
 Prepare the new app and update the old app source without deploying the old app:

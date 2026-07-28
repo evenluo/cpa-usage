@@ -122,6 +122,34 @@ read_env_value() {
   printf '%s' "$value"
 }
 
+read_compose_service_image() {
+  local file="$1"
+  local service="$2"
+  awk -v wanted="$service" '
+    /^services:[[:space:]]*$/ {
+      in_services = 1
+      next
+    }
+    in_services && /^[^[:space:]]/ { exit }
+    in_services && $0 ~ "^  " wanted ":[[:space:]]*$" {
+      in_service = 1
+      next
+    }
+    in_service && /^  [^[:space:]][^:]*:[[:space:]]*$/ { exit }
+    in_service && /^    image:[[:space:]]*/ {
+      value = $0
+      sub(/^    image:[[:space:]]*/, "", value)
+      sub(/[[:space:]]+#.*$/, "", value)
+      if ((substr(value, 1, 1) == "\"" && substr(value, length(value), 1) == "\"") ||
+          (substr(value, 1, 1) == "\047" && substr(value, length(value), 1) == "\047")) {
+        value = substr(value, 2, length(value) - 2)
+      }
+      print value
+      exit
+    }
+  ' "$file"
+}
+
 wait_for_deployment() {
   local deadline=$(( $(date +%s) + deployment_timeout_seconds ))
   local deployments_file="$tmpdir/deployments.json"
@@ -192,13 +220,24 @@ jq -n \
 api_post "compose.update" "$tmpdir/update-compose.json" >/dev/null
 echo "OK updated Dokploy compose"
 
-converted_compose_file="$tmpdir/converted-compose.json"
-api_get "compose.getConvertedCompose?composeId=$compose_id" > "$converted_compose_file"
-if [[ -n "${CPA_USAGE_IMAGE:-}" ]] && ! jq -e --arg image "$CPA_USAGE_IMAGE" '[.. | strings | contains($image)] | any' "$converted_compose_file" >/dev/null; then
-  echo "Dokploy converted compose does not contain expected image $CPA_USAGE_IMAGE" >&2
+converted_compose_response="$tmpdir/converted-compose.json"
+converted_compose_file="$tmpdir/converted-compose.yml"
+api_get "compose.getConvertedCompose?composeId=$compose_id" > "$converted_compose_response"
+if ! jq -er 'if type == "string" then . else error("expected converted Compose YAML string") end' "$converted_compose_response" > "$converted_compose_file"; then
+  echo "Dokploy converted compose returned an unexpected payload" >&2
   exit 1
 fi
-echo "OK Dokploy converted compose"
+expected_image="$(read_compose_service_image "$compose_file" "cpa-usage")"
+converted_image="$(read_compose_service_image "$converted_compose_file" "cpa-usage")"
+if [[ -z "$expected_image" || -z "$converted_image" ]]; then
+  echo "cpa-usage image is missing from the rendered or converted Compose" >&2
+  exit 1
+fi
+if [[ "$converted_image" != "$expected_image" ]]; then
+  echo "Dokploy converted compose image mismatch: expected $expected_image got $converted_image" >&2
+  exit 1
+fi
+echo "OK Dokploy converted compose image $converted_image"
 
 jq -n \
   --arg composeId "$compose_id" \
