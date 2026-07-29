@@ -11,7 +11,7 @@ import (
 
 func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPoint, error) {
 	bucketByDay := analyticsTrendBucketsByDay(filter)
-	rows, err := buildAnalyticsTrendAggregateRows(db, filter)
+	rows, err := buildAnalyticsAggregateRowsByBucket(db, filter, analyticsEventsAggregateSource())
 	if err != nil {
 		return nil, err
 	}
@@ -25,32 +25,6 @@ func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.Analyt
 		trend = append(trend, point)
 	}
 	return trend, nil
-}
-
-func buildAnalyticsTrendAggregateRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsAggregateRow, error) {
-	bucketByDay := analyticsTrendBucketsByDay(filter)
-	bucketExpr := analyticsBucketSQLExpression(bucketByDay)
-	var rows []analyticsAggregateRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
-		Select(`
-			` + bucketExpr + ` AS bucket,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.output_tokens") + `), 0) AS output_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
-		Group("bucket").
-		Order("bucket ASC").
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics trend: %w", err)
-	}
-	return rows, nil
 }
 
 func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {

@@ -202,14 +202,14 @@ func minTime(a time.Time, b time.Time) time.Time {
 func buildAnalyticsCoreSummary(db *gorm.DB, plan analyticsCoreWindowPlan) (dto.AnalyticsSummary, error) {
 	var combined analyticsAggregateRow
 	for _, rawFilter := range plan.rawFilters {
-		row, err := buildAnalyticsSummaryAggregateRow(db, rawFilter)
+		row, err := buildAnalyticsAggregateRow(db, rawFilter, analyticsEventsAggregateSource())
 		if err != nil {
 			return dto.AnalyticsSummary{}, err
 		}
 		addAnalyticsAggregateRow(&combined, row)
 	}
 	if plan.rollupFilter != nil {
-		row, err := buildAnalyticsRollupSummaryAggregateRow(db, *plan.rollupFilter)
+		row, err := buildAnalyticsAggregateRow(db, *plan.rollupFilter, analyticsRollupsAggregateSource())
 		if err != nil {
 			return dto.AnalyticsSummary{}, err
 		}
@@ -222,14 +222,14 @@ func buildAnalyticsCoreTrend(db *gorm.DB, plan analyticsCoreWindowPlan, filter d
 	bucketByDay := analyticsTrendBucketsByDay(filter)
 	combined := map[string]analyticsAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
-		rows, err := buildAnalyticsTrendAggregateRows(db, rawFilter)
+		rows, err := buildAnalyticsAggregateRowsByBucket(db, rawFilter, analyticsEventsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
 		addAnalyticsAggregateRowsByBucket(combined, rows)
 	}
 	if plan.rollupFilter != nil {
-		rows, err := buildAnalyticsRollupTrendAggregateRows(db, *plan.rollupFilter)
+		rows, err := buildAnalyticsAggregateRowsByBucket(db, *plan.rollupFilter, analyticsRollupsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
@@ -278,29 +278,6 @@ func addAnalyticsAggregateRow(dst *analyticsAggregateRow, src analyticsAggregate
 	dst.PricedBillableEvents += src.PricedBillableEvents
 }
 
-func buildAnalyticsRollupSummaryAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter) (analyticsAggregateRow, error) {
-	var row analyticsAggregateRow
-	if err := analyticsRollupsWithPricingQuery(db, filter).
-		Select(analyticsRollupAggregateSelect()).
-		Scan(&row).Error; err != nil {
-		return analyticsAggregateRow{}, fmt.Errorf("build analytics rollup summary: %w", err)
-	}
-	return row, nil
-}
-
-func buildAnalyticsRollupTrendAggregateRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsAggregateRow, error) {
-	bucketExpr := analyticsRollupBucketSQLExpression(analyticsTrendBucketsByDay(filter))
-	var rows []analyticsAggregateRow
-	if err := analyticsRollupsWithPricingQuery(db, filter).
-		Select(bucketExpr + " AS bucket,\n" + analyticsRollupAggregateSelect()).
-		Group("bucket").
-		Order("bucket ASC").
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics rollup trend: %w", err)
-	}
-	return rows, nil
-}
-
 func analyticsRollupsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
 	return applyAnalyticsRollupQueryFilter(db.Model(&entities.UsageRollupHourly{}), filter).
 		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_rollups_hourly.model)")
@@ -317,28 +294,4 @@ func applyAnalyticsRollupQueryFilter(query *gorm.DB, filter dto.UsageQueryFilter
 		query = query.Where("TRIM(usage_rollups_hourly.provider) = ?", provider)
 	}
 	return query
-}
-
-func analyticsRollupAggregateSelect() string {
-	requestCount := "usage_rollups_hourly.request_count"
-	inputTokens := "usage_rollups_hourly.input_tokens"
-	billablePromptTokens := "usage_rollups_hourly.billable_prompt_tokens"
-	outputTokens := "usage_rollups_hourly.output_tokens"
-	reasoningTokens := "usage_rollups_hourly.reasoning_tokens"
-	cachedTokens := "usage_rollups_hourly.cached_tokens"
-	return `
-			COALESCE(SUM(` + requestCount + `), 0) AS request_count,
-			COALESCE(SUM(usage_rollups_hourly.success_count), 0) AS success_count,
-			COALESCE(SUM(usage_rollups_hourly.failure_count), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(inputTokens) + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(outputTokens) + `), 0) AS output_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(reasoningTokens) + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(cachedTokens) + `), 0) AS cached_tokens,
-			COALESCE(SUM(usage_rollups_hourly.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(cachedTokens) + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(cachedTokens, requestCount) + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(cachedTokens, requestCount) + `), 0) AS cache_savings_ineligible_rows,
-			COALESCE(SUM(` + analyticsCostSQLExpressionWithPromptTokens(billablePromptTokens, analyticsPositiveTokenSQLExpression(outputTokens), analyticsPositiveTokenSQLExpression(cachedTokens)) + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpressionFor(inputTokens, outputTokens, cachedTokens, requestCount) + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpressionFor(inputTokens, outputTokens, cachedTokens, requestCount) + `), 0) AS priced_billable_events`
 }
