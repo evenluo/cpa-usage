@@ -18,14 +18,14 @@ type analyticsIdentityTrendKey struct {
 func buildAnalyticsCoreProviderOptions(db *gorm.DB, plan analyticsCoreWindowPlan) ([]dto.AnalyticsProviderOption, error) {
 	combined := map[string]analyticsProviderOptionRow{}
 	for _, filter := range plan.rawFilters {
-		rows, err := buildAnalyticsProviderOptionSegmentRows(db, filter)
+		rows, err := buildAnalyticsProviderOptionSegmentRows(db, filter, analyticsEventsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
 		addAnalyticsProviderOptionRows(combined, rows)
 	}
 	if plan.rollupFilter != nil {
-		rows, err := buildAnalyticsRollupProviderOptionSegmentRows(db, *plan.rollupFilter)
+		rows, err := buildAnalyticsProviderOptionSegmentRows(db, *plan.rollupFilter, analyticsRollupsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
@@ -65,14 +65,14 @@ func buildAnalyticsCoreModelBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan)
 	combined := map[string]analyticsModelAggregateRow{}
 	providersByModel := map[string]map[string]struct{}{}
 	for _, filter := range plan.rawFilters {
-		rows, err := buildAnalyticsModelSegmentRows(db, filter)
+		rows, err := buildAnalyticsModelSegmentRows(db, filter, analyticsEventsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
 		addAnalyticsModelRows(combined, providersByModel, rows)
 	}
 	if plan.rollupFilter != nil {
-		rows, err := buildAnalyticsRollupModelSegmentRows(db, *plan.rollupFilter)
+		rows, err := buildAnalyticsModelSegmentRows(db, *plan.rollupFilter, analyticsRollupsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
@@ -114,14 +114,14 @@ func buildAnalyticsCoreModelBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan)
 func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	combined := map[analyticsIdentityKey]analyticsIdentityAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
-		rows, err := buildAnalyticsKeyAliasSegmentRows(db, rawFilter)
+		rows, err := buildAnalyticsKeyAliasSegmentRows(db, rawFilter, analyticsEventsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
 		addAnalyticsIdentityRows(combined, rows)
 	}
 	if plan.rollupFilter != nil {
-		rows, err := buildAnalyticsRollupKeyAliasSegmentRows(db, *plan.rollupFilter)
+		rows, err := buildAnalyticsKeyAliasSegmentRows(db, *plan.rollupFilter, analyticsRollupsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
@@ -133,14 +133,14 @@ func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPl
 func buildAnalyticsCoreAPIKeyBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	combined := map[analyticsIdentityKey]analyticsIdentityAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
-		rows, err := buildAnalyticsAPIKeySegmentRows(db, rawFilter)
+		rows, err := buildAnalyticsAPIKeySegmentRows(db, rawFilter, analyticsEventsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
 		addAnalyticsIdentityRows(combined, rows)
 	}
 	if plan.rollupFilter != nil {
-		rows, err := buildAnalyticsRollupAPIKeySegmentRows(db, *plan.rollupFilter)
+		rows, err := buildAnalyticsAPIKeySegmentRows(db, *plan.rollupFilter, analyticsRollupsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
@@ -200,150 +200,77 @@ func mapAnalyticsCoreIdentityBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan
 	return breakdown, nil
 }
 
-func buildAnalyticsProviderOptionSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsProviderOptionRow, error) {
+// buildAnalyticsProviderOptionSegmentRows 按聚合源渲染 provider 选项段查询，raw 与 rollup 共用同一份列定义。
+func buildAnalyticsProviderOptionSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsProviderOptionRow, error) {
 	var rows []analyticsProviderOptionRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
+	if err := source.query(db, filter).
 		Select(`
-			TRIM(usage_events.provider) AS provider,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
-		Where("TRIM(usage_events.provider) <> ''").
-		Group("TRIM(usage_events.provider)").
+			` + source.providerExpr + ` AS provider,
+			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
+			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
+		Where(source.providerExpr + " <> ''").
+		Group(source.providerExpr).
 		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics provider option segment rows: %w", err)
+		return nil, fmt.Errorf("build analytics %s provider option segment rows: %w", source.name, err)
 	}
 	return rows, nil
 }
 
-func buildAnalyticsRollupProviderOptionSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsProviderOptionRow, error) {
-	var rows []analyticsProviderOptionRow
-	if err := analyticsRollupsWithPricingQuery(db, filter).
-		Select(`
-			TRIM(usage_rollups_hourly.provider) AS provider,
-			COALESCE(SUM(usage_rollups_hourly.request_count), 0) AS request_count,
-			COALESCE(SUM(usage_rollups_hourly.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsRollupCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsRollupMissingPricingSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsRollupPricedBillableSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS priced_billable_events`).
-		Where("TRIM(usage_rollups_hourly.provider) <> ''").
-		Group("TRIM(usage_rollups_hourly.provider)").
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics rollup provider option segment rows: %w", err)
-	}
-	return rows, nil
-}
-
-func buildAnalyticsModelSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsModelAggregateRow, error) {
+// buildAnalyticsModelSegmentRows 按聚合源渲染 model 段查询，raw 与 rollup 共用同一份列定义。
+func buildAnalyticsModelSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsModelAggregateRow, error) {
 	var rows []analyticsModelAggregateRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
+	if err := source.query(db, filter).
 		Select(`
-			TRIM(usage_events.model) AS model,
-			TRIM(usage_events.provider) AS provider,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.output_tokens") + `), 0) AS output_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpression() + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpression() + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpression() + `), 0) AS cache_savings_ineligible_rows,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END), 0) AS total_latency_ms,
-			COALESCE(SUM(CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END), 0) AS latency_sample_count,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
-		Where("TRIM(usage_events.model) <> ''").
-		Group("TRIM(usage_events.model), TRIM(usage_events.provider)").
+			` + source.modelExpr + ` AS model,
+			` + source.providerExpr + ` AS provider,
+			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
+			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
+			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokens) + `), 0) AS input_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokens) + `), 0) AS output_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokens) + `), 0) AS reasoning_tokens,
+			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokens) + `), 0) AS cached_tokens,
+			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(source.cachedTokens) + `), 0) AS cache_savings,
+			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_eligible_rows,
+			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + source.latencySumExpr + `), 0) AS total_latency_ms,
+			COALESCE(SUM(` + source.latencyCountExpr + `), 0) AS latency_sample_count,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
+		Where(source.modelExpr + " <> ''").
+		Group(source.modelExpr + ", " + source.providerExpr).
 		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics model segment rows: %w", err)
+		return nil, fmt.Errorf("build analytics %s model segment rows: %w", source.name, err)
 	}
 	return rows, nil
 }
 
-func buildAnalyticsRollupModelSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsModelAggregateRow, error) {
-	var rows []analyticsModelAggregateRow
-	if err := analyticsRollupsWithPricingQuery(db, filter).
-		Select(`
-			TRIM(usage_rollups_hourly.model) AS model,
-			TRIM(usage_rollups_hourly.provider) AS provider,
-			COALESCE(SUM(usage_rollups_hourly.request_count), 0) AS request_count,
-			COALESCE(SUM(usage_rollups_hourly.success_count), 0) AS success_count,
-			COALESCE(SUM(usage_rollups_hourly.failure_count), 0) AS failure_count,
-			COALESCE(SUM(usage_rollups_hourly.input_tokens), 0) AS input_tokens,
-			COALESCE(SUM(usage_rollups_hourly.output_tokens), 0) AS output_tokens,
-			COALESCE(SUM(usage_rollups_hourly.reasoning_tokens), 0) AS reasoning_tokens,
-			COALESCE(SUM(usage_rollups_hourly.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(usage_rollups_hourly.cached_tokens), 0) AS cached_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor("usage_rollups_hourly.cached_tokens") + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor("usage_rollups_hourly.cached_tokens", "usage_rollups_hourly.request_count") + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor("usage_rollups_hourly.cached_tokens", "usage_rollups_hourly.request_count") + `), 0) AS cache_savings_ineligible_rows,
-			COALESCE(SUM(` + analyticsRollupCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(usage_rollups_hourly.total_latency_ms), 0) AS total_latency_ms,
-			COALESCE(SUM(usage_rollups_hourly.latency_sample_count), 0) AS latency_sample_count,
-			COALESCE(SUM(` + analyticsRollupMissingPricingSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsRollupPricedBillableSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS priced_billable_events`).
-		Where("TRIM(usage_rollups_hourly.model) <> ''").
-		Group("TRIM(usage_rollups_hourly.model), TRIM(usage_rollups_hourly.provider)").
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics rollup model segment rows: %w", err)
-	}
-	return rows, nil
-}
-
-func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsIdentityAggregateRow, error) {
-	authTypeExpr := analyticsUsageIdentityAuthTypeSQLExpression()
-	identityExpr := analyticsUsageIdentitySQLExpression()
+// buildAnalyticsKeyAliasSegmentRows 按聚合源渲染 Key Alias 段查询，raw 与 rollup 共用同一份列定义。
+func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
 	var rows []analyticsIdentityAggregateRow
-	if err := analyticsIdentityEventsWithPricingQuery(db, filter).
-		Select(analyticsIdentityAggregateSelect(authTypeExpr, identityExpr, "usage_events", analyticsCostSQLExpression(), analyticsMissingPricingSQLExpression(), analyticsPricedBillableSQLExpression())).
-		Group(authTypeExpr + ", " + identityExpr).
+	if err := source.identityQuery(db, filter).
+		Select(analyticsIdentityAggregateSelect(source, source.identityAuthTypeExpr, source.identityExpr)).
+		Group(source.identityAuthTypeExpr + ", " + source.identityExpr).
 		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics key alias segment rows: %w", err)
+		return nil, fmt.Errorf("build analytics %s key alias segment rows: %w", source.name, err)
 	}
 	return rows, nil
 }
 
-func buildAnalyticsRollupKeyAliasSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsIdentityAggregateRow, error) {
-	authTypeExpr := analyticsRollupUsageIdentityAuthTypeSQLExpression()
-	identityExpr := analyticsRollupUsageIdentitySQLExpression()
+// buildAnalyticsAPIKeySegmentRows 按聚合源渲染 API Key 段查询，raw 与 rollup 共用同一份列定义。
+func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
+	identityExpr := source.apiKeyIdentityExpr
 	var rows []analyticsIdentityAggregateRow
-	if err := analyticsRollupIdentityWithPricingQuery(db, filter).
-		Select(analyticsIdentityAggregateSelect(authTypeExpr, identityExpr, "usage_rollups_hourly", analyticsRollupCostSQLExpression(), analyticsRollupMissingPricingSQLExpression("usage_rollups_hourly.request_count"), analyticsRollupPricedBillableSQLExpression("usage_rollups_hourly.request_count"))).
-		Group(authTypeExpr + ", " + identityExpr).
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics rollup key alias segment rows: %w", err)
-	}
-	return rows, nil
-}
-
-func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsIdentityAggregateRow, error) {
-	authTypeExpr := analyticsAPIKeyAuthTypeSQLExpression()
-	identityExpr := analyticsAPIKeyIdentitySQLExpression()
-	var rows []analyticsIdentityAggregateRow
-	if err := analyticsAPIKeyEventsWithPricingQuery(db, filter).
-		Select(analyticsAPIKeyAggregateSelect(authTypeExpr, identityExpr, "usage_events", analyticsCostSQLExpression(), analyticsMissingPricingSQLExpression(), analyticsPricedBillableSQLExpression())).
+	if err := source.apiKeyQuery(db, filter).
+		Select(analyticsAPIKeyAggregateSelect(source, analyticsAPIKeyAuthTypeSQLExpression(), identityExpr)).
 		Group(identityExpr).
 		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics api key segment rows: %w", err)
-	}
-	return rows, nil
-}
-
-func buildAnalyticsRollupAPIKeySegmentRows(db *gorm.DB, filter dto.UsageQueryFilter) ([]analyticsIdentityAggregateRow, error) {
-	authTypeExpr := analyticsAPIKeyAuthTypeSQLExpression()
-	identityExpr := analyticsRollupAPIKeyIdentitySQLExpression()
-	var rows []analyticsIdentityAggregateRow
-	if err := analyticsRollupAPIKeyWithPricingQuery(db, filter).
-		Select(analyticsAPIKeyAggregateSelect(authTypeExpr, identityExpr, "usage_rollups_hourly", analyticsRollupCostSQLExpression(), analyticsRollupMissingPricingSQLExpression("usage_rollups_hourly.request_count"), analyticsRollupPricedBillableSQLExpression("usage_rollups_hourly.request_count"))).
-		Group(identityExpr).
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics rollup api key segment rows: %w", err)
+		return nil, fmt.Errorf("build analytics %s api key segment rows: %w", source.name, err)
 	}
 	return rows, nil
 }
@@ -351,14 +278,14 @@ func buildAnalyticsRollupAPIKeySegmentRows(db *gorm.DB, filter dto.UsageQueryFil
 func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter, keys []analyticsIdentityKey, apiKeys bool) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
 	combined := map[analyticsIdentityTrendKey]analyticsIdentityTrendRow{}
 	for _, rawFilter := range plan.rawFilters {
-		rows, err := buildAnalyticsIdentityTrendSegmentRows(db, rawFilter, keys, apiKeys, false)
+		rows, err := buildAnalyticsIdentityTrendSegmentRows(db, rawFilter, keys, apiKeys, analyticsEventsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
 		addAnalyticsIdentityTrendRows(combined, rows)
 	}
 	if plan.rollupFilter != nil {
-		rows, err := buildAnalyticsIdentityTrendSegmentRows(db, *plan.rollupFilter, keys, apiKeys, true)
+		rows, err := buildAnalyticsIdentityTrendSegmentRows(db, *plan.rollupFilter, keys, apiKeys, analyticsRollupsAggregateSource())
 		if err != nil {
 			return nil, err
 		}
@@ -389,54 +316,25 @@ func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan,
 	return trends, nil
 }
 
-func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey, apiKeys bool, rollup bool) ([]analyticsIdentityTrendRow, error) {
+func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey, apiKeys bool, source analyticsAggregateSource) ([]analyticsIdentityTrendRow, error) {
 	if len(keys) == 0 {
 		return []analyticsIdentityTrendRow{}, nil
 	}
-	bucketByDay := analyticsTrendBucketsByDay(filter)
+	bucketExpr := source.bucketExpr(analyticsTrendBucketsByDay(filter))
 	var query *gorm.DB
 	var authTypeExpr string
 	var identityExpr string
-	var bucketExpr string
-	var totalTokensExpr string
-	var costExpr string
-	var missingPricingExpr string
-	var pricedBillableExpr string
 	var groupExpr string
-	if rollup {
-		bucketExpr = analyticsRollupBucketSQLExpression(bucketByDay)
-		totalTokensExpr = "usage_rollups_hourly.total_tokens"
-		costExpr = analyticsRollupCostSQLExpression()
-		missingPricingExpr = analyticsRollupMissingPricingSQLExpression("usage_rollups_hourly.request_count")
-		pricedBillableExpr = analyticsRollupPricedBillableSQLExpression("usage_rollups_hourly.request_count")
-		if apiKeys {
-			authTypeExpr = analyticsAPIKeyAuthTypeSQLExpression()
-			identityExpr = analyticsRollupAPIKeyIdentitySQLExpression()
-			query = analyticsRollupAPIKeyWithPricingQuery(db, filter)
-			groupExpr = identityExpr + ", bucket"
-		} else {
-			authTypeExpr = analyticsRollupUsageIdentityAuthTypeSQLExpression()
-			identityExpr = analyticsRollupUsageIdentitySQLExpression()
-			query = analyticsRollupIdentityWithPricingQuery(db, filter)
-			groupExpr = authTypeExpr + ", " + identityExpr + ", bucket"
-		}
+	if apiKeys {
+		authTypeExpr = analyticsAPIKeyAuthTypeSQLExpression()
+		identityExpr = source.apiKeyIdentityExpr
+		query = source.apiKeyQuery(db, filter)
+		groupExpr = identityExpr + ", bucket"
 	} else {
-		bucketExpr = analyticsBucketSQLExpression(bucketByDay)
-		totalTokensExpr = "usage_events.total_tokens"
-		costExpr = analyticsCostSQLExpression()
-		missingPricingExpr = analyticsMissingPricingSQLExpression()
-		pricedBillableExpr = analyticsPricedBillableSQLExpression()
-		if apiKeys {
-			authTypeExpr = analyticsAPIKeyAuthTypeSQLExpression()
-			identityExpr = analyticsAPIKeyIdentitySQLExpression()
-			query = analyticsAPIKeyEventsWithPricingQuery(db, filter)
-			groupExpr = identityExpr + ", bucket"
-		} else {
-			authTypeExpr = analyticsUsageIdentityAuthTypeSQLExpression()
-			identityExpr = analyticsUsageIdentitySQLExpression()
-			query = analyticsIdentityEventsWithPricingQuery(db, filter)
-			groupExpr = authTypeExpr + ", " + identityExpr + ", bucket"
-		}
+		authTypeExpr = source.identityAuthTypeExpr
+		identityExpr = source.identityExpr
+		query = source.identityQuery(db, filter)
+		groupExpr = authTypeExpr + ", " + identityExpr + ", bucket"
 	}
 
 	var rows []analyticsIdentityTrendRow
@@ -445,13 +343,13 @@ func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFi
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
 			` + bucketExpr + ` AS bucket,
-			COALESCE(SUM(` + totalTokensExpr + `), 0) AS total_tokens,
-			COALESCE(SUM(` + costExpr + `), 0) AS total_cost,
-			COALESCE(SUM(` + missingPricingExpr + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + pricedBillableExpr + `), 0) AS priced_billable_events`).
+			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
 		Group(groupExpr).
 		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics identity trend segment rows: %w", err)
+		return nil, fmt.Errorf("build analytics %s identity trend segment rows: %w", source.name, err)
 	}
 	return rows, nil
 }
@@ -473,7 +371,8 @@ func analyticsRollupAPIKeyWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFil
 		Where(identityExpr + " <> ''")
 }
 
-func analyticsIdentityAggregateSelect(authTypeExpr string, identityExpr string, table string, costExpr string, missingPricingExpr string, pricedBillableExpr string) string {
+// analyticsIdentityAggregateSelect 按聚合源渲染 Key Alias 维度的身份聚合列。
+func analyticsIdentityAggregateSelect(source analyticsAggregateSource, authTypeExpr string, identityExpr string) string {
 	return `
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
@@ -485,17 +384,18 @@ func analyticsIdentityAggregateSelect(authTypeExpr string, identityExpr string, 
 			COALESCE(MAX(usage_identities.prefix), '') AS prefix,
 			COALESCE(MAX(usage_identities.base_url), '') AS base_url,
 			COALESCE(MAX(CASE WHEN usage_identities.is_deleted THEN 1 ELSE 0 END), 0) AS is_deleted,
-			` + analyticsRequestCountSQLExpression(table) + ` AS request_count,
-			` + analyticsSuccessCountSQLExpression(table) + ` AS success_count,
-			` + analyticsFailureCountSQLExpression(table) + ` AS failure_count,
-			COALESCE(SUM(` + table + `.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + costExpr + `), 0) AS total_cost,
-			COALESCE(SUM(` + missingPricingExpr + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + pricedBillableExpr + `), 0) AS priced_billable_events,
-			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', ` + analyticsLastUsedAtColumn(table) + `)) AS last_used_at`
+			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
+			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
+			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
+			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', ` + source.lastUsedAtExpr + `)) AS last_used_at`
 }
 
-func analyticsAPIKeyAggregateSelect(authTypeExpr string, identityExpr string, table string, costExpr string, missingPricingExpr string, pricedBillableExpr string) string {
+// analyticsAPIKeyAggregateSelect 按聚合源渲染 API Key 维度的身份聚合列。
+func analyticsAPIKeyAggregateSelect(source analyticsAggregateSource, authTypeExpr string, identityExpr string) string {
 	return `
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
@@ -503,46 +403,18 @@ func analyticsAPIKeyAggregateSelect(authTypeExpr string, identityExpr string, ta
 			'' AS name,
 			'apikey' AS auth_type_name,
 			'' AS type,
-			COALESCE(MIN(NULLIF(TRIM(` + table + `.provider), '')), '') AS provider,
+			COALESCE(MIN(NULLIF(` + source.providerExpr + `, '')), '') AS provider,
 			'' AS prefix,
 			'' AS base_url,
 			0 AS is_deleted,
-			` + analyticsRequestCountSQLExpression(table) + ` AS request_count,
-			` + analyticsSuccessCountSQLExpression(table) + ` AS success_count,
-			` + analyticsFailureCountSQLExpression(table) + ` AS failure_count,
-			COALESCE(SUM(` + table + `.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + costExpr + `), 0) AS total_cost,
-			COALESCE(SUM(` + missingPricingExpr + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + pricedBillableExpr + `), 0) AS priced_billable_events,
-			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', ` + analyticsLastUsedAtColumn(table) + `)) AS last_used_at`
-}
-
-func analyticsRequestCountSQLExpression(table string) string {
-	if table == "usage_rollups_hourly" {
-		return "COALESCE(SUM(usage_rollups_hourly.request_count), 0)"
-	}
-	return "COUNT(*)"
-}
-
-func analyticsSuccessCountSQLExpression(table string) string {
-	if table == "usage_rollups_hourly" {
-		return "COALESCE(SUM(usage_rollups_hourly.success_count), 0)"
-	}
-	return "COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0)"
-}
-
-func analyticsFailureCountSQLExpression(table string) string {
-	if table == "usage_rollups_hourly" {
-		return "COALESCE(SUM(usage_rollups_hourly.failure_count), 0)"
-	}
-	return "COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0)"
-}
-
-func analyticsLastUsedAtColumn(table string) string {
-	if table == "usage_rollups_hourly" {
-		return "usage_rollups_hourly.last_event_at"
-	}
-	return "usage_events.timestamp"
+			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
+			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
+			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
+			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', ` + source.lastUsedAtExpr + `)) AS last_used_at`
 }
 
 func addAnalyticsProviderOptionRows(dst map[string]analyticsProviderOptionRow, rows []analyticsProviderOptionRow) {
@@ -646,20 +518,4 @@ func minNonEmpty(current string, next string) string {
 		return current
 	}
 	return next
-}
-
-func analyticsRollupCostSQLExpression() string {
-	return analyticsCostSQLExpressionWithPromptTokens(
-		"usage_rollups_hourly.billable_prompt_tokens",
-		analyticsPositiveTokenSQLExpression("usage_rollups_hourly.output_tokens"),
-		analyticsPositiveTokenSQLExpression("usage_rollups_hourly.cached_tokens"),
-	)
-}
-
-func analyticsRollupMissingPricingSQLExpression(countExpression string) string {
-	return analyticsMissingPricingSQLExpressionFor("usage_rollups_hourly.input_tokens", "usage_rollups_hourly.output_tokens", "usage_rollups_hourly.cached_tokens", countExpression)
-}
-
-func analyticsRollupPricedBillableSQLExpression(countExpression string) string {
-	return analyticsPricedBillableSQLExpressionFor("usage_rollups_hourly.input_tokens", "usage_rollups_hourly.output_tokens", "usage_rollups_hourly.cached_tokens", countExpression)
 }
