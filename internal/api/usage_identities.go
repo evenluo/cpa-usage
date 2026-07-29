@@ -357,7 +357,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 	return usageIdentityResponse{
 		ID:                         item.ID,
 		Name:                       item.Name,
-		DisplayName:                usageIdentityDisplayName(item),
+		DisplayName:                item.DisplayName(),
 		Alias:                      alias,
 		AuthType:                   item.AuthType,
 		AuthTypeName:               item.AuthTypeName,

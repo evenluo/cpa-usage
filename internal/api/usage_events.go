@@ -7,6 +7,7 @@ import (
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/redact"
+	repodto "cpa-usage/internal/repository/dto"
 	"cpa-usage/internal/service"
 	servicedto "cpa-usage/internal/service/dto"
 
@@ -60,7 +61,7 @@ type usageEventTokenPayload struct {
 
 func registerUsageEventsRoute(
 	router gin.IRoutes,
-	usageProvider service.UsageProvider,
+	usageProvider UsageProvider,
 	usageIdentityProvider service.UsageIdentityProvider,
 	keyAliasProvider service.KeyAliasProvider,
 ) {
@@ -98,7 +99,7 @@ func registerUsageEventsRoute(
 			return
 		}
 
-		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter)
+		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter.EventListQueryFilter())
 		if err != nil {
 			writeInternalError(c, "list usage events failed", err)
 			return
@@ -125,7 +126,7 @@ func registerUsageEventsRoute(
 	})
 }
 
-func loadUsageEventAPIKeyAliases(c *gin.Context, keyAliasProvider service.KeyAliasProvider, rows []servicedto.UsageEventRecord) (map[string]string, error) {
+func loadUsageEventAPIKeyAliases(c *gin.Context, keyAliasProvider service.KeyAliasProvider, rows []repodto.UsageEventRecord) (map[string]string, error) {
 	result := map[string]string{}
 	if keyAliasProvider == nil || len(rows) == 0 {
 		return result, nil
@@ -164,7 +165,7 @@ func applyUsageEventsSourceFilter(filter *servicedto.UsageFilter) error {
 }
 
 // 列表结果先按 auth_index 解析展示名，再组装前端需要的事件 payload。
-func buildUsageEventsPayload(rows []servicedto.UsageEventRecord, resolver usageIdentityResolver, apiKeyAliases map[string]string) []usageEventPayload {
+func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIdentityResolver, apiKeyAliases map[string]string) []usageEventPayload {
 	if len(rows) == 0 {
 		return []usageEventPayload{}
 	}
@@ -207,7 +208,7 @@ func usageEventAPIKeyDisplay(identity string) string {
 	return redact.APIKeyDisplayName(identity)
 }
 
-func usageEventPublicSource(row servicedto.UsageEventRecord, identity resolvedUsageIdentity, matched bool) (string, bool) {
+func usageEventPublicSource(row repodto.UsageEventRecord, identity resolvedUsageIdentity, matched bool) (string, bool) {
 	if matched {
 		return identity.DisplayName, false
 	}
@@ -222,11 +223,11 @@ func usageEventPublicSource(row servicedto.UsageEventRecord, identity resolvedUs
 	}
 }
 
-func loadUsageEventModelFilterOptions(c *gin.Context, usageProvider service.UsageProvider) ([]string, error) {
+func loadUsageEventModelFilterOptions(c *gin.Context, usageProvider UsageProvider) ([]string, error) {
 	if usageProvider == nil {
 		return []string{}, nil
 	}
-	options, err := usageProvider.ListUsageEventFilterOptions(c.Request.Context(), servicedto.UsageFilter{})
+	options, err := usageProvider.ListUsageEventFilterOptions(c.Request.Context(), repodto.UsageQueryFilter{})
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +275,7 @@ func usageSourceFilterOptionFromIdentity(identity entities.UsageIdentity) (usage
 			return usageSourceFilterOption{}, false
 		}
 		label := strings.TrimSpace(identity.Name)
-		displayName := usageIdentityDisplayName(identity)
+		displayName := identity.DisplayName()
 		return usageSourceFilterOption{Value: value, Label: label, DisplayName: displayName}, true
 	default:
 		return usageSourceFilterOption{}, false

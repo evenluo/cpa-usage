@@ -10,57 +10,56 @@ import (
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/redact"
 	"cpa-usage/internal/repository/dto"
-	servicedto "cpa-usage/internal/service/dto"
 )
 
 type usageEventsStub struct {
-	events             []servicedto.UsageEventRecord
-	eventsPage         *servicedto.UsageEventsPage
-	eventFilterOptions *servicedto.UsageEventFilterOptions
+	events             []dto.UsageEventRecord
+	eventsPage         *dto.UsageEventsPageRecord
+	eventFilterOptions *dto.UsageEventFilterOptionsRecord
 	err                error
-	lastFilter         servicedto.UsageFilter
+	lastFilter         dto.UsageQueryFilter
 	filterCalls        int
 	filterOptionCalls  int
 }
 
-func (s *usageEventsStub) GetUsageWithFilter(context.Context, servicedto.UsageFilter) (*dto.StatisticsSnapshot, error) {
+func (s *usageEventsStub) GetUsageWithFilter(context.Context, dto.UsageQueryFilter) (*dto.StatisticsSnapshot, error) {
 	return nil, nil
 }
 
-func (s *usageEventsStub) GetUsageOverview(context.Context, servicedto.UsageFilter) (*servicedto.UsageOverviewSnapshot, error) {
+func (s *usageEventsStub) GetUsageOverview(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
 	return nil, nil
 }
 
-func (s *usageEventsStub) GetRequestHealth(context.Context, servicedto.UsageFilter) (*servicedto.UsageOverviewHealth, error) {
+func (s *usageEventsStub) GetRequestHealth(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
 	return nil, nil
 }
 
-func (s *usageEventsStub) ListUsageEvents(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageEventsPage, error) {
+func (s *usageEventsStub) ListUsageEvents(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
 	s.lastFilter = filter
 	s.filterCalls++
 	if s.eventsPage != nil {
 		return s.eventsPage, s.err
 	}
-	return &servicedto.UsageEventsPage{Events: s.events, TotalCount: int64(len(s.events)), Page: 1, PageSize: servicedto.DefaultUsageEventsLimit, TotalPages: 1}, s.err
+	return &dto.UsageEventsPageRecord{Events: s.events, TotalCount: int64(len(s.events)), Page: 1, PageSize: dto.DefaultUsageEventsLimit, TotalPages: 1}, s.err
 }
 
-func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageEventFilterOptions, error) {
+func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
 	s.lastFilter = filter
 	s.filterOptionCalls++
 	if s.eventFilterOptions != nil {
 		return s.eventFilterOptions, s.err
 	}
-	return &servicedto.UsageEventFilterOptions{}, s.err
+	return &dto.UsageEventFilterOptionsRecord{}, s.err
 }
 
-func (s *usageEventsStub) GetUsageAnalysis(context.Context, servicedto.UsageFilter) (*servicedto.UsageAnalysisSnapshot, error) {
-	return nil, s.err
+func (s *usageEventsStub) GetUsageAnalysis(context.Context, dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+	return nil, nil, s.err
 }
 
 func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	ttftMS := int64(1052)
 	outputTPS := 48.33358094488189
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:              42,
 		Timestamp:       time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:           "claude-sonnet",
@@ -112,9 +111,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	if provider.filterCalls != 1 {
 		t.Fatalf("expected ListUsageEvents to be called once, got %d", provider.filterCalls)
 	}
-	if provider.lastFilter.Range != "24h" {
-		t.Fatalf("expected range to be passed through, got %+v", provider.lastFilter)
-	}
+	// 事件列表查询只下传解析后的时间窗口，不携带 Range 标签。
 	if provider.lastFilter.Page != 1 || provider.lastFilter.PageSize != 100 || provider.lastFilter.Offset != 0 {
 		t.Fatalf("expected default pagination to be passed through, got %+v", provider.lastFilter)
 	}
@@ -124,7 +121,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 }
 
 func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:           43,
 		Timestamp:    time.Date(2026, 4, 22, 11, 1, 0, 0, time.UTC),
 		Model:        "historical-model",
@@ -147,114 +144,10 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 	}
 }
 
-func TestUsageIdentityDisplayNameFormatsProviderNameAndPrefix(t *testing.T) {
-	identity := entities.UsageIdentity{
-		Name:     "Provider Name",
-		Prefix:   "Team Prefix",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Identity: "provider-auth-index",
-	}
-
-	if got := usageIdentityDisplayName(identity); got != "Provider Name(Team Prefix)" {
-		t.Fatalf("expected provider displayName to include name and prefix, got %q", got)
-	}
-}
-
-func TestUsageIdentityDisplayNameAddsProviderBaseURLQualifier(t *testing.T) {
-	withPrefix := entities.UsageIdentity{
-		Name:     "Provider Name",
-		Prefix:   "Team Prefix",
-		BaseURL:  "https://api.openai.com/v1/",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Identity: "provider-auth-index",
-	}
-	providerOnly := entities.UsageIdentity{
-		Name:     "codex",
-		BaseURL:  "https://chatgpt.com/backend-api/codex/",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Identity: "codex-auth-index",
-	}
-
-	if got := usageIdentityDisplayName(withPrefix); got != "Provider Name(Team Prefix @ api.openai.com/v1)" {
-		t.Fatalf("expected base URL to be an extra display qualifier, got %q", got)
-	}
-	if got := usageIdentityDisplayName(providerOnly); got != "codex(chatgpt.com/backend-api/codex)" {
-		t.Fatalf("expected provider displayName to include base URL qualifier, got %q", got)
-	}
-}
-
-func TestUsageIdentityDisplayNameKeepsOpenAICompatibilityName(t *testing.T) {
-	identity := entities.UsageIdentity{
-		Name:     "OpenRouter",
-		Prefix:   "openrouter",
-		BaseURL:  "https://openrouter.ai/api/v1",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Type:     "openai",
-		Provider: "OpenRouter",
-		Identity: "openrouter-auth-index",
-	}
-
-	if got := usageIdentityDisplayName(identity); got != "OpenRouter" {
-		t.Fatalf("expected openai compatibility displayName to keep name without qualifiers, got %q", got)
-	}
-}
-
-func TestUsageIdentityDisplayNameFallsBackWhenOpenAICompatibilityNameIsMissing(t *testing.T) {
-	identity := entities.UsageIdentity{
-		Prefix:   "openrouter",
-		BaseURL:  "https://openrouter.ai/api/v1",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Type:     "openai",
-		Provider: "openai",
-		Identity: "openrouter-auth-index",
-	}
-
-	if got := usageIdentityDisplayName(identity); got != "openrouter(openrouter.ai/api/v1)" {
-		t.Fatalf("expected unnamed openai compatibility displayName to fall back to provider qualifier rules, got %q", got)
-	}
-}
-
-func TestUsageIdentityDisplayNameUsesProviderWhenAuthFileNameIsMissing(t *testing.T) {
-	identity := entities.UsageIdentity{
-		AuthType: entities.UsageIdentityAuthTypeAuthFile,
-		Provider: "Claude",
-	}
-
-	if got := usageIdentityDisplayName(identity); got != "Claude" {
-		t.Fatalf("expected auth file displayName to fall back to provider, got %q", got)
-	}
-}
-
-func TestUsageIdentityDisplayNameFallsBackWhenProviderNameOrPrefixIsMissing(t *testing.T) {
-	prefixOnly := entities.UsageIdentity{
-		Prefix:   "Team Prefix",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Identity: "provider-auth-index",
-	}
-	nameOnly := entities.UsageIdentity{
-		Name:     "Provider Name",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Identity: "provider-auth-index",
-	}
-	providerOnly := entities.UsageIdentity{
-		Provider: "OpenAI",
-		AuthType: entities.UsageIdentityAuthTypeAIProvider,
-		Identity: "provider-auth-index",
-	}
-
-	if got := usageIdentityDisplayName(prefixOnly); got != "Team Prefix" {
-		t.Fatalf("expected prefix-only provider displayName, got %q", got)
-	}
-	if got := usageIdentityDisplayName(nameOnly); got != "Provider Name" {
-		t.Fatalf("expected name-only provider displayName, got %q", got)
-	}
-	if got := usageIdentityDisplayName(providerOnly); got != "OpenAI" {
-		t.Fatalf("expected provider-only displayName, got %q", got)
-	}
-}
+// usage identity 展示名规则的行为测试已随 DisplayName 收拢到 internal/entities 包。
 
 func TestUsageEventsResponseDoesNotExposeSourceKey(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:        48,
 		Timestamp: time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:     "claude-sonnet",
@@ -284,7 +177,7 @@ func TestUsageEventsResponseDoesNotExposeSourceKey(t *testing.T) {
 }
 
 func TestUsageEventsIncludesAPIKeyAliasAndMaskedKey(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:             49,
 		Timestamp:      time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:          "claude-sonnet",
@@ -318,7 +211,7 @@ func TestUsageEventsIncludesAPIKeyAliasAndMaskedKey(t *testing.T) {
 }
 
 func TestUsageEventsResolvesAPIKeySourceFromProviderIdentity(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:        44,
 		Timestamp: time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:     "claude-sonnet",
@@ -362,7 +255,7 @@ func TestUsageEventsResolvesAPIKeySourceFromProviderIdentity(t *testing.T) {
 }
 
 func TestUsageEventsDoesNotResolveProviderIdentityFromSource(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:        45,
 		Timestamp: time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:     "claude-sonnet",
@@ -400,7 +293,7 @@ func TestUsageEventsDoesNotResolveProviderIdentityFromSource(t *testing.T) {
 }
 
 func TestUsageEventsMarksRowDeletedWhenAuthIndexHasNoIdentity(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:        46,
 		Timestamp: time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:     "claude-sonnet",
@@ -430,7 +323,7 @@ func TestUsageEventsMarksRowDeletedWhenAuthIndexHasNoIdentity(t *testing.T) {
 }
 
 func TestUsageEventsDoesNotMarkRowDeletedWhenAuthIndexMatchesIdentity(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:        47,
 		Timestamp: time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:     "claude-sonnet",
@@ -460,7 +353,7 @@ func TestUsageEventsDoesNotMarkRowDeletedWhenAuthIndexMatchesIdentity(t *testing
 }
 
 func TestUsageEventsKeepsFallbackSourceWhenAuthIndexIsMissing(t *testing.T) {
-	provider := &usageEventsStub{events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:        43,
 		Timestamp: time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:     "claude-sonnet",
@@ -484,7 +377,7 @@ func TestUsageEventsKeepsFallbackSourceWhenAuthIndexIsMissing(t *testing.T) {
 }
 
 func TestUsageEventsPassesPaginationAndAuthIndexSourceFilter(t *testing.T) {
-	provider := &usageEventsStub{eventsPage: &servicedto.UsageEventsPage{Events: []servicedto.UsageEventRecord{}, TotalCount: 0, Page: 3, PageSize: 100, TotalPages: 0}}
+	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 3, PageSize: 100, TotalPages: 0}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?page=3&page_size=100&model=claude-sonnet&source=authidx-openai-main&result=failed", nil)
 	resp := httptest.NewRecorder()
@@ -507,7 +400,7 @@ func TestUsageEventsPassesPaginationAndAuthIndexSourceFilter(t *testing.T) {
 }
 
 func TestUsageEventsAcceptsCompactEvidencePageSize(t *testing.T) {
-	provider := &usageEventsStub{eventsPage: &servicedto.UsageEventsPage{Events: []servicedto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 10, TotalPages: 0}}
+	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 10, TotalPages: 0}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h&page_size=10", nil)
 	resp := httptest.NewRecorder()
@@ -523,7 +416,7 @@ func TestUsageEventsAcceptsCompactEvidencePageSize(t *testing.T) {
 }
 
 func TestUsageEventsAcceptsLatestEvidencePageSize(t *testing.T) {
-	provider := &usageEventsStub{eventsPage: &servicedto.UsageEventsPage{Events: []servicedto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 1, TotalPages: 0}}
+	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 1, TotalPages: 0}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h&page_size=1", nil)
 	resp := httptest.NewRecorder()
@@ -539,7 +432,7 @@ func TestUsageEventsAcceptsLatestEvidencePageSize(t *testing.T) {
 }
 
 func TestUsageEventsPassesAuthFileIdentitySourceFilterAsAuthIndex(t *testing.T) {
-	provider := &usageEventsStub{eventsPage: &servicedto.UsageEventsPage{Events: []servicedto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 100, TotalPages: 0}}
+	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 100, TotalPages: 0}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?source=auth-file-index", nil)
 	resp := httptest.NewRecorder()
@@ -555,8 +448,8 @@ func TestUsageEventsPassesAuthFileIdentitySourceFilterAsAuthIndex(t *testing.T) 
 }
 
 func TestUsageEventsDoesNotReturnFilterOptions(t *testing.T) {
-	provider := &usageEventsStub{eventsPage: &servicedto.UsageEventsPage{
-		Events: []servicedto.UsageEventRecord{{
+	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{
+		Events: []dto.UsageEventRecord{{
 			ID: 7, Timestamp: time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC), Model: "gpt-5", AuthType: "apikey", Provider: "Provider A", Source: "source-a", Failed: true,
 		}},
 		TotalCount: 2, Page: 1, PageSize: 20, TotalPages: 1,
@@ -577,7 +470,7 @@ func TestUsageEventsDoesNotReturnFilterOptions(t *testing.T) {
 }
 
 func TestUsageEventModelFilterOptionsReturnsStableModels(t *testing.T) {
-	provider := &usageEventsStub{eventFilterOptions: &servicedto.UsageEventFilterOptions{
+	provider := &usageEventsStub{eventFilterOptions: &dto.UsageEventFilterOptionsRecord{
 		Models: []string{"claude-sonnet", "gpt-5"},
 	}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")

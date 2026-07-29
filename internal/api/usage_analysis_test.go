@@ -9,52 +9,52 @@ import (
 
 	"cpa-usage/internal/redact"
 	"cpa-usage/internal/repository/dto"
-	servicedto "cpa-usage/internal/service/dto"
 )
 
 type usageAnalysisStub struct {
-	analysis      *servicedto.UsageAnalysisSnapshot
+	apiRows       []dto.UsageAnalysisAPIStatRecord
+	modelRows     []dto.UsageAnalysisModelStatRecord
 	err           error
-	lastFilter    servicedto.UsageFilter
+	lastFilter    dto.UsageQueryFilter
 	analysisCalls int
 }
 
-func (s *usageAnalysisStub) GetUsageWithFilter(context.Context, servicedto.UsageFilter) (*dto.StatisticsSnapshot, error) {
+func (s *usageAnalysisStub) GetUsageWithFilter(context.Context, dto.UsageQueryFilter) (*dto.StatisticsSnapshot, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) GetUsageOverview(context.Context, servicedto.UsageFilter) (*servicedto.UsageOverviewSnapshot, error) {
+func (s *usageAnalysisStub) GetUsageOverview(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) GetRequestHealth(context.Context, servicedto.UsageFilter) (*servicedto.UsageOverviewHealth, error) {
+func (s *usageAnalysisStub) GetRequestHealth(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) ListUsageEvents(context.Context, servicedto.UsageFilter) (*servicedto.UsageEventsPage, error) {
+func (s *usageAnalysisStub) ListUsageEvents(context.Context, dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) ListUsageEventFilterOptions(context.Context, servicedto.UsageFilter) (*servicedto.UsageEventFilterOptions, error) {
+func (s *usageAnalysisStub) ListUsageEventFilterOptions(context.Context, dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) GetUsageAnalysis(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageAnalysisSnapshot, error) {
+func (s *usageAnalysisStub) GetUsageAnalysis(_ context.Context, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
 	s.lastFilter = filter
 	s.analysisCalls++
-	return s.analysis, s.err
+	return s.apiRows, s.modelRows, s.err
 }
 
 func TestUsageAnalysisReturnsAggregatedRows(t *testing.T) {
-	provider := &usageAnalysisStub{analysis: &servicedto.UsageAnalysisSnapshot{
-		APIs: []servicedto.UsageAnalysisAPIStat{{
-			APIKey:        "provider-a",
+	provider := &usageAnalysisStub{
+		apiRows: []dto.UsageAnalysisAPIStatRecord{{
+			APIGroupKey:   "provider-a",
 			DisplayName:   "provider-a",
 			TotalRequests: 2,
 			SuccessCount:  1,
 			FailureCount:  1,
 			TotalTokens:   42,
-			Models: []servicedto.UsageAnalysisModelStat{{
+			Models: []dto.UsageAnalysisModelStatRecord{{
 				Model:              "claude-sonnet",
 				TotalRequests:      2,
 				SuccessCount:       1,
@@ -68,7 +68,7 @@ func TestUsageAnalysisReturnsAggregatedRows(t *testing.T) {
 				LatencySampleCount: 2,
 			}},
 		}},
-		Models: []servicedto.UsageAnalysisModelStat{{
+		modelRows: []dto.UsageAnalysisModelStatRecord{{
 			Model:              "claude-sonnet",
 			TotalRequests:      2,
 			SuccessCount:       1,
@@ -81,7 +81,7 @@ func TestUsageAnalysisReturnsAggregatedRows(t *testing.T) {
 			TotalLatencyMS:     350,
 			LatencySampleCount: 2,
 		}},
-	}}
+	}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/analysis?range=24h", nil)
 	resp := httptest.NewRecorder()

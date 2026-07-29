@@ -89,9 +89,9 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		backupMaintenance = NewDatabaseBackupRunner(backupStore, backupStore, cfg.BackupInterval, cfg.BackupRetentionDays)
 	}
 
-	usageService := service.NewUsageService(db)
+	usageReader := repository.NewUsageReader(db)
 	usageIdentityService := service.NewUsageIdentityService(db)
-	analyticsService := service.NewAnalyticsService(db)
+	analyticsReader := repository.NewAnalyticsReader(db)
 	rollupBackfillService := service.NewRollupBackfillService(db)
 	rollupBackfillRunner := service.NewUsageRollupBackfillRunner(db, service.UsageRollupBackfillRunnerConfig{
 		BatchHours:   cfg.UsageRollupBackfillBatchHours,
@@ -133,7 +133,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		Router: api.NewRouter(
 			webui.Static,
 			newManualSyncRunner(backgroundPoller, syncService),
-			usageService,
+			usageReader,
 			pricingService,
 			api.AuthConfig{
 				Enabled:             cfg.AuthEnabled,
@@ -148,7 +148,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 			},
 			authHandler,
 			cfg.AppBasePath,
-			api.OptionalProviders{Analytics: analyticsService, UsageIdentity: usageIdentityService, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillService},
+			api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityService, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillService},
 		),
 	}, nil
 }

@@ -31,6 +31,7 @@ type UsageEventRecord struct {
 	Failed          bool
 	LatencyMS       int64
 	TTFTMS          *int64
+	OutputTPS       *float64
 	InputTokens     int64
 	OutputTokens    int64
 	ReasoningTokens int64

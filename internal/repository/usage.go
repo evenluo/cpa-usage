@@ -78,6 +78,7 @@ func ListUsageEventsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.U
 			Failed:          event.Failed,
 			LatencyMS:       event.LatencyMS,
 			TTFTMS:          event.TTFTMS,
+			OutputTPS:       usageEventOutputTPS(event.OutputTokens, event.LatencyMS, event.TTFTMS),
 			InputTokens:     event.InputTokens,
 			OutputTokens:    event.OutputTokens,
 			ReasoningTokens: event.ReasoningTokens,
@@ -90,6 +91,15 @@ func ListUsageEventsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.U
 		totalPages = int((totalCount + int64(pageSize) - 1) / int64(pageSize))
 	}
 	return &dto.UsageEventsPageRecord{Events: rows, Models: modelOptions, TotalCount: totalCount, Page: page, PageSize: pageSize, TotalPages: totalPages}, nil
+}
+
+// usageEventOutputTPS 是 Request Evidence 的 Output TPS 规则：仅当 output tokens、总延迟与 TTFT 可用且自洽时才计算，否则保持 nil，不估算回退值。
+func usageEventOutputTPS(outputTokens, latencyMS int64, ttftMS *int64) *float64 {
+	if outputTokens <= 0 || ttftMS == nil || *ttftMS <= 0 || latencyMS <= *ttftMS {
+		return nil
+	}
+	value := float64(outputTokens) * 1000 / float64(latencyMS-*ttftMS)
+	return &value
 }
 
 func usageEventAPIKeyIdentity(event entities.UsageEvent) string {

@@ -6,8 +6,6 @@ import (
 
 	"cpa-usage/internal/redact"
 	repodto "cpa-usage/internal/repository/dto"
-	"cpa-usage/internal/service"
-	servicedto "cpa-usage/internal/service/dto"
 	"github.com/gin-gonic/gin"
 )
 
@@ -115,7 +113,7 @@ type usageOverviewModelSnapshot struct {
 	TotalTokens   int64 `json:"total_tokens"`
 }
 
-func registerUsageOverviewRoute(router gin.IRoutes, usageProvider service.UsageProvider) {
+func registerUsageOverviewRoute(router gin.IRoutes, usageProvider UsageProvider) {
 	router.GET("/usage/overview", func(c *gin.Context) {
 		if usageProvider == nil {
 			c.JSON(http.StatusOK, usageOverviewResponse{
@@ -136,7 +134,7 @@ func registerUsageOverviewRoute(router gin.IRoutes, usageProvider service.UsageP
 			return
 		}
 
-		overview, err := usageProvider.GetUsageOverview(c.Request.Context(), filter)
+		overview, err := usageProvider.GetUsageOverview(c.Request.Context(), filter.SelectedWindowQueryFilter())
 		if err != nil {
 			writeInternalError(c, "get usage overview failed", err)
 			return
@@ -175,7 +173,7 @@ func registerUsageOverviewRoute(router gin.IRoutes, usageProvider service.UsageP
 			return
 		}
 
-		health, err := usageProvider.GetRequestHealth(c.Request.Context(), filter)
+		health, err := usageProvider.GetRequestHealth(c.Request.Context(), filter.SelectedWindowQueryFilter())
 		if err != nil {
 			writeInternalError(c, "get request health failed", err)
 			return
@@ -236,7 +234,7 @@ func buildUsageOverviewPayload(snapshot *repodto.StatisticsSnapshot) usageOvervi
 	return payload
 }
 
-func buildUsageOverviewSummary(overview *servicedto.UsageOverviewSnapshot) usageOverviewSummary {
+func buildUsageOverviewSummary(overview *repodto.UsageOverviewRecord) usageOverviewSummary {
 	if overview == nil {
 		return usageOverviewSummary{}
 	}
@@ -268,7 +266,7 @@ func emptyUsageOverviewSeries() usageOverviewSeries {
 	}
 }
 
-func mapUsageOverviewSeriesLine(series servicedto.UsageOverviewSeries) usageOverviewSeriesLine {
+func mapUsageOverviewSeriesLine(series repodto.UsageOverviewSeriesRecord) usageOverviewSeriesLine {
 	return usageOverviewSeriesLine{
 		Requests:        cloneInt64Map(series.Requests),
 		Tokens:          cloneInt64Map(series.Tokens),
@@ -282,7 +280,7 @@ func mapUsageOverviewSeriesLine(series servicedto.UsageOverviewSeries) usageOver
 	}
 }
 
-func mapUsageOverviewSeries(series servicedto.UsageOverviewSeries) usageOverviewSeries {
+func mapUsageOverviewSeries(series repodto.UsageOverviewSeriesRecord) usageOverviewSeries {
 	models := make(map[string]usageOverviewSeriesLine, len(series.Models))
 	for model, modelSeries := range series.Models {
 		models[model] = mapUsageOverviewSeriesLine(modelSeries)
@@ -301,35 +299,35 @@ func mapUsageOverviewSeries(series servicedto.UsageOverviewSeries) usageOverview
 	}
 }
 
-func buildUsageOverviewSeries(overview *servicedto.UsageOverviewSnapshot) usageOverviewSeries {
+func buildUsageOverviewSeries(overview *repodto.UsageOverviewRecord) usageOverviewSeries {
 	if overview == nil {
 		return emptyUsageOverviewSeries()
 	}
 	return mapUsageOverviewSeries(overview.Series)
 }
 
-func buildUsageOverviewHourlySeries(overview *servicedto.UsageOverviewSnapshot) usageOverviewSeries {
+func buildUsageOverviewHourlySeries(overview *repodto.UsageOverviewRecord) usageOverviewSeries {
 	if overview == nil {
 		return emptyUsageOverviewSeries()
 	}
 	return mapUsageOverviewSeries(overview.HourlySeries)
 }
 
-func buildUsageOverviewDailySeries(overview *servicedto.UsageOverviewSnapshot) usageOverviewSeries {
+func buildUsageOverviewDailySeries(overview *repodto.UsageOverviewRecord) usageOverviewSeries {
 	if overview == nil {
 		return emptyUsageOverviewSeries()
 	}
 	return mapUsageOverviewSeries(overview.DailySeries)
 }
 
-func buildUsageOverviewServiceHealth(overview *servicedto.UsageOverviewSnapshot) usageOverviewServiceHealth {
+func buildUsageOverviewServiceHealth(overview *repodto.UsageOverviewRecord) usageOverviewServiceHealth {
 	if overview == nil {
 		return usageOverviewServiceHealth{BlockDetails: []usageOverviewServiceHealthBlock{}}
 	}
 	return buildUsageOverviewHealthPayload(&overview.Health)
 }
 
-func buildUsageOverviewHealthPayload(health *servicedto.UsageOverviewHealth) usageOverviewServiceHealth {
+func buildUsageOverviewHealthPayload(health *repodto.UsageOverviewHealthRecord) usageOverviewServiceHealth {
 	if health == nil {
 		return usageOverviewServiceHealth{BlockDetails: []usageOverviewServiceHealthBlock{}}
 	}

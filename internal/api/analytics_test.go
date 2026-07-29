@@ -18,19 +18,19 @@ type analyticsStub struct {
 	snapshot     *repodto.AnalyticsSummarySnapshot
 	core         *repodto.AnalyticsSummarySnapshot
 	heatmap      repodto.AnalyticsHeatmap
-	filter       servicedto.UsageFilter
+	filter       repodto.UsageQueryFilter
 	calls        int
 	coreCalls    int
 	heatmapCalls int
 }
 
-func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error) {
+func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter repodto.UsageQueryFilter) (*repodto.AnalyticsSummarySnapshot, error) {
 	s.calls++
 	s.filter = filter
 	return s.snapshot, nil
 }
 
-func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter servicedto.UsageFilter) (*repodto.AnalyticsSummarySnapshot, error) {
+func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter repodto.UsageQueryFilter) (*repodto.AnalyticsSummarySnapshot, error) {
 	s.coreCalls++
 	s.filter = filter
 	if s.core != nil {
@@ -39,7 +39,7 @@ func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter servicedto.Us
 	return s.snapshot, nil
 }
 
-func (s *analyticsStub) GetAnalyticsHeatmap(_ context.Context, filter servicedto.UsageFilter) (repodto.AnalyticsHeatmap, error) {
+func (s *analyticsStub) GetAnalyticsHeatmap(_ context.Context, filter repodto.UsageQueryFilter) (repodto.AnalyticsHeatmap, error) {
 	s.heatmapCalls++
 	s.filter = filter
 	return s.heatmap, nil
