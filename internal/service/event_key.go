@@ -39,10 +39,3 @@ func normalizeTokens(tokens dto.TokenStats) dto.TokenStats {
 	}
 	return tokens
 }
-
-func max(value, floor int64) int64 {
-	if value < floor {
-		return floor
-	}
-	return value
-}

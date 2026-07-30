@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -29,7 +30,7 @@ func TestRedisUsageProcessorBatchMarksProcessedRows(t *testing.T) {
 		t.Fatalf("seed inbox rows: %v", err)
 	}
 
-	result, err := newRedisUsageProcessor(db).process(fetchedAt)
+	result, err := newRedisUsageProcessor(db).process(context.Background(), fetchedAt)
 	if err != nil {
 		t.Fatalf("processor returned error: %v", err)
 	}
@@ -81,7 +82,7 @@ func TestRedisUsageProcessorRetriesOnlyProcessableRows(t *testing.T) {
 		}
 	}
 
-	result, err := newRedisUsageProcessor(db).process(fetchedAt)
+	result, err := newRedisUsageProcessor(db).process(context.Background(), fetchedAt)
 	if err != nil {
 		t.Fatalf("processor returned error: %v", err)
 	}
