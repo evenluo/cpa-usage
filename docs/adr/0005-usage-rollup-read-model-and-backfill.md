@@ -29,3 +29,7 @@ Usage Intelligence will use an hourly Usage Rollup read model for selected-windo
 This is an additive read-model and status-surface decision. Existing ingestion semantics, Cost Rate storage, Key Alias semantics, Usage Intelligence response fields, Request Evidence, Live Capacity, full Usage Overview, authentication, and deployment topology remain compatible.
 
 Unsupported or uncovered states do not silently select arbitrary fallbacks. The migration window permits only the observable `backfill_incomplete` raw fallback for analytics windows that are not yet covered.
+
+## Amendment (2026-07-30): read-path assembly moved to the HTTP seam
+
+The analytics/usage read-path assembly that this decision placed in `internal/service` has moved: handlers in `internal/api` now own the read-path provider seams and consume read DTOs produced directly by the repository readers (`AnalyticsReader`, `UsageReader`). Read-model selection still lives in `internal/repository`, no new top-level package was introduced, and `internal/service` retains write-path use-case assembly (usage intake, sync, reference data, rollup backfill).
