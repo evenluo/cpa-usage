@@ -1,5 +1,5 @@
 import { createLazyFileRoute } from "@tanstack/react-router"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
@@ -17,6 +17,8 @@ import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
 import { formatCost, formatCompact, formatPercent } from "@/lib/format"
 import { buildUsageIntelligenceLoadPlan } from "@/features/usage-intelligence/load-plan"
+import { useVisibilityRefresh } from "@/features/usage-intelligence/refresh"
+import { buildUsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
 import {
   buildUsageDashboardViewModel,
   getEffectiveGranularity,
@@ -31,8 +33,6 @@ import { cn } from "@/lib/utils"
 export const Route = createLazyFileRoute("/")({
   component: DashboardPage,
 })
-
-const DASHBOARD_REFRESH_INTERVAL_MS = 60_000
 
 function DashboardPage() {
   const [range, setRange] = useState<TimeRange>(() => readStoredTimeRange())
@@ -87,47 +87,48 @@ function DashboardPage() {
     writeStoredTimeRange(range)
   }, [range])
 
-  useEffect(() => {
-    const intervalID = window.setInterval(() => {
-      if (document.visibilityState === "hidden") return
-      void Promise.allSettled([
-        refetchCoreAnalytics(),
-        refetchRequestEvidence(),
-      ])
-    }, DASHBOARD_REFRESH_INTERVAL_MS)
-
-    return () => window.clearInterval(intervalID)
+  const refreshDashboard = useCallback(() => {
+    void Promise.allSettled([
+      refetchCoreAnalytics(),
+      refetchRequestEvidence(),
+    ])
   }, [refetchCoreAnalytics, refetchRequestEvidence])
+  useVisibilityRefresh(refreshDashboard)
 
-  const data = coreAnalyticsData
-  const hasCoreSurfaceData = Boolean(coreAnalyticsData)
-  const isCoreSurfaceLoading = !hasCoreSurfaceData && isCoreAnalyticsLoading
-  const coreSurfaceError = hasCoreSurfaceData ? null : coreAnalyticsError
-
-  const summary = data?.summary
-  const {
-    trend,
-    leaderboardRows,
-    providerOptions,
-    fixedHeatmap,
-    serviceHealth,
-    hasLeaderboardBreakdown,
-    leaderboardSortLabel,
-    kpiData,
-  } = useMemo(
+  const summary = coreAnalyticsData?.summary
+  const viewModel = useMemo(
     () => buildUsageDashboardViewModel({
-      analytics: data,
+      analytics: coreAnalyticsData,
       fixedHeatmap: heatmapData?.heatmap,
       requestHealth: requestHealthData,
       leaderboardScope,
     }),
-    [data, heatmapData, requestHealthData, leaderboardScope],
+    [coreAnalyticsData, heatmapData, requestHealthData, leaderboardScope],
   )
-  const isLeaderboardSurfaceLoading = !hasLeaderboardBreakdown && isCoreSurfaceLoading
-  const isHeatmapSurfaceLoading = !fixedHeatmap && isHeatmapLoading
-  const heatmapSurfaceError = fixedHeatmap ? null : heatmapError
-  const isRequestHealthSurfaceLoading = !serviceHealth && isRequestHealthLoading
-  const requestHealthSurfaceError = serviceHealth ? null : requestHealthError
+  const {
+    providerOptions,
+    leaderboardSortLabel,
+    cacheReadShareCaption,
+    kpiData,
+  } = viewModel
+  const surfaces = useMemo(
+    () => buildUsageDashboardSurfaces({
+      viewModel,
+      core: { data: coreAnalyticsData, isLoading: isCoreAnalyticsLoading, error: coreAnalyticsError },
+      heatmap: { isLoading: isHeatmapLoading, error: heatmapError },
+      requestHealth: { isLoading: isRequestHealthLoading, error: requestHealthError },
+    }),
+    [
+      viewModel,
+      coreAnalyticsData,
+      isCoreAnalyticsLoading,
+      coreAnalyticsError,
+      isHeatmapLoading,
+      heatmapError,
+      isRequestHealthLoading,
+      requestHealthError,
+    ],
+  )
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
@@ -250,7 +251,7 @@ function DashboardPage() {
           valueDecimals={4}
           caption={summary?.cost_status}
           sparkline={kpiData?.cost}
-          isLoading={isCoreSurfaceLoading}
+          isLoading={surfaces.kpis.status === "loading"}
           tone="terracotta"
         />
         <KpiCard
@@ -258,7 +259,7 @@ function DashboardPage() {
           rawValue={summary?.total_tokens}
           formatter={(n) => formatCompact(n, 2)}
           sparkline={kpiData?.tokens}
-          isLoading={isCoreSurfaceLoading}
+          isLoading={surfaces.kpis.status === "loading"}
           tone="blue"
         />
         <KpiCard
@@ -266,7 +267,7 @@ function DashboardPage() {
           rawValue={summary?.request_count}
           formatter={(n) => n.toLocaleString("en")}
           sparkline={kpiData?.requests}
-          isLoading={isCoreSurfaceLoading}
+          isLoading={surfaces.kpis.status === "loading"}
           tone="violet"
         />
         <KpiCard
@@ -276,7 +277,7 @@ function DashboardPage() {
           valueDecimals={1}
           caption={`${summary?.failure_count ?? 0} failed`}
           sparkline={kpiData?.successRate}
-          isLoading={isCoreSurfaceLoading}
+          isLoading={surfaces.kpis.status === "loading"}
           tone="green"
         />
         <KpiCard
@@ -284,8 +285,8 @@ function DashboardPage() {
           rawValue={summary?.cache_read_share}
           formatter={formatPercent}
           valueDecimals={1}
-          caption={summary?.cache_read_share_state === "available" ? "Cache Read Share" : summary?.cache_read_share_state?.replace(/_/g, " ")}
-          isLoading={isCoreSurfaceLoading}
+          caption={cacheReadShareCaption}
+          isLoading={surfaces.kpis.status === "loading"}
           tone="amber"
         />
       </div>
@@ -330,15 +331,15 @@ function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isCoreSurfaceLoading ? (
+            {surfaces.trend.status === "loading" ? (
               <Skeleton className="h-[260px] w-full" />
-            ) : coreSurfaceError ? (
+            ) : surfaces.trend.status === "error" ? (
               <div className="flex h-[260px] items-center justify-center text-sm text-red-500">
                 Failed to load trend data
               </div>
             ) : (
               <div className="h-[260px]">
-                <TrendChart data={trend} range={range} mode={trendView} />
+                <TrendChart data={surfaces.trend.data} range={range} mode={trendView} />
               </div>
             )}
           </CardContent>
@@ -382,14 +383,14 @@ function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {isLeaderboardSurfaceLoading ? (
+            {surfaces.leaderboard.status === "loading" ? (
               <div className="space-y-2">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : (
-              <KeyLeaderboard data={leaderboardRows} />
+              <KeyLeaderboard data={surfaces.leaderboard.data} />
             )}
           </CardContent>
         </Card>
@@ -420,14 +421,14 @@ function DashboardPage() {
           <Badge variant="terracotta">30d fixed</Badge>
         </CardHeader>
         <CardContent>
-          {isHeatmapSurfaceLoading ? (
+          {surfaces.heatmap.status === "loading" ? (
             <Skeleton className="h-[260px] w-full" />
-          ) : heatmapSurfaceError ? (
+          ) : surfaces.heatmap.status === "error" ? (
             <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
               Failed to load activity heatmap
             </div>
-          ) : fixedHeatmap ? (
-            <Heatmap data={fixedHeatmap} />
+          ) : surfaces.heatmap.status === "ready" ? (
+            <Heatmap data={surfaces.heatmap.data} />
           ) : (
             <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
               No heatmap data
@@ -450,14 +451,14 @@ function DashboardPage() {
             <Badge variant="green">24h fixed</Badge>
           </CardHeader>
           <CardContent className="min-h-0 min-w-0 flex-1">
-            {isRequestHealthSurfaceLoading ? (
+            {surfaces.requestHealth.status === "loading" ? (
               <Skeleton className="h-[180px] w-full" />
-            ) : requestHealthSurfaceError ? (
+            ) : surfaces.requestHealth.status === "error" ? (
               <div className="flex h-[180px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
                 Failed to load request health
               </div>
-            ) : serviceHealth ? (
-              <HealthGrid data={serviceHealth} />
+            ) : surfaces.requestHealth.status === "ready" ? (
+              <HealthGrid data={surfaces.requestHealth.data} />
             ) : (
               <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">
                 No health data

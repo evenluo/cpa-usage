@@ -7,6 +7,7 @@ import {
   buildUsageDashboardViewModel,
   DEFAULT_TIME_RANGE,
   deriveKpiSparklineData,
+  getCacheReadShareCaption,
   getDefaultGranularity,
   getEffectiveGranularity,
   getLeaderboardSortLabel,
@@ -187,6 +188,13 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.keyAliases[0].traceability).toBe("sk-a*******3456 · OpenAI")
     expect(viewModel.providerOptions[0].cost_status).toBe("partial")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
+  })
+
+  it("derives the Cache KPI caption from the cache read share state", () => {
+    expect(getCacheReadShareCaption(undefined)).toBeUndefined()
+    expect(getCacheReadShareCaption("available")).toBe("Cache Read Share")
+    expect(getCacheReadShareCaption("no_cache_data")).toBe("no cache data")
+    expect(getCacheReadShareCaption("no_prompt_input")).toBe("no prompt input")
   })
 
   it("keeps empty-data behavior explicit", () => {

@@ -1,5 +1,6 @@
 import type {
   AnalyticsCoreResponse,
+  CacheReadShareState,
   CostStatus,
   HeatmapData,
   KeyAliasBreakdown,
@@ -41,6 +42,7 @@ export interface UsageDashboardViewModel {
   serviceHealth?: ServiceHealth
   hasLeaderboardBreakdown: boolean
   leaderboardSortLabel: string
+  cacheReadShareCaption?: string
   kpiData: UsageKpiSparklineData | null
 }
 
@@ -91,6 +93,12 @@ export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
   return "Sort: Cost"
 }
 
+export function getCacheReadShareCaption(state?: CacheReadShareState): string | undefined {
+  if (state === undefined) return undefined
+  if (state === "available") return "Cache Read Share"
+  return state.replace(/_/g, " ")
+}
+
 export function buildUsageDashboardViewModel(input: {
   analytics?: AnalyticsCoreResponse
   fixedHeatmap?: HeatmapData
@@ -113,6 +121,7 @@ export function buildUsageDashboardViewModel(input: {
     serviceHealth: input.requestHealth?.service_health,
     hasLeaderboardBreakdown,
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
+    cacheReadShareCaption: getCacheReadShareCaption(input.analytics?.summary?.cache_read_share_state),
     kpiData: deriveKpiSparklineData(trend),
   }
 }
