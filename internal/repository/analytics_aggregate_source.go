@@ -50,7 +50,7 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		outputTokens:     "usage_events.output_tokens",
 		reasoningTokens:  "usage_events.reasoning_tokens",
 		cachedTokens:     "usage_events.cached_tokens",
-		totalTokens:      analyticsPositiveTokenSQLExpression("usage_events.total_tokens"),
+		totalTokens:      "usage_events.total_tokens",
 		promptTokensExpr: "(CASE WHEN " + inputTokens + " - " + cachedTokens + " > 0 THEN " + inputTokens + " - " + cachedTokens + " ELSE 0 END)",
 		providerExpr:     "TRIM(usage_events.provider)",
 		modelExpr:        "TRIM(usage_events.model)",
