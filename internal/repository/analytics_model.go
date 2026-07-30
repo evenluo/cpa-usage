@@ -17,14 +17,14 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokens) + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokens) + `), 0) AS output_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokens) + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokens) + `), 0) AS cached_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(source.cachedTokens) + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokensExpr) + `), 0) AS input_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokensExpr) + `), 0) AS output_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokensExpr) + `), 0) AS cached_tokens,
+			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(source.cachedTokensExpr) + `), 0) AS cache_savings,
+			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_eligible_rows,
+			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + source.latencySumExpr + `), 0) AS total_latency_ms,
 			COALESCE(SUM(` + source.latencyCountExpr + `), 0) AS latency_sample_count,
@@ -33,7 +33,7 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 		Where("TRIM(usage_events.model) <> ''").
 		Group("TRIM(usage_events.model)").
 		Order("total_cost DESC").
-		Order("COALESCE(SUM(" + source.totalTokens + "), 0) DESC").
+		Order(analyticsTotalTokensDescOrder(source)).
 		Order("model ASC").
 		Limit(20).
 		Scan(&rows).Error; err != nil {
@@ -54,14 +54,14 @@ func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.UsageQueryFilter) ([]
 		Select(`
 			TRIM(usage_events.provider) AS provider,
 			COUNT(*) AS request_count,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
 		Where("TRIM(usage_events.provider) <> ''").
 		Group("TRIM(usage_events.provider)").
 		Order("total_cost DESC").
-		Order("COALESCE(SUM(" + source.totalTokens + "), 0) DESC").
+		Order(analyticsTotalTokensDescOrder(source)).
 		Order("provider ASC").
 		Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics provider options: %w", err)

@@ -40,14 +40,14 @@ func buildAnalyticsKeyAliasBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) (
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
 			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS last_used_at`).
 		Group(authTypeExpr + ", " + identityExpr).
 		Order("total_cost DESC").
-		Order("COALESCE(SUM(" + source.totalTokens + "), 0) DESC").
+		Order(analyticsTotalTokensDescOrder(source)).
 		Order("last_used_at DESC").
 		Limit(analyticsKeyAliasBreakdownLimit).
 		Scan(&rows).Error; err != nil {
@@ -96,7 +96,7 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
 			` + bucketExpr + ` AS bucket,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
@@ -148,14 +148,14 @@ func buildAnalyticsAPIKeyBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
 			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS last_used_at`).
 		Group(identityExpr).
 		Order("total_cost DESC").
-		Order("COALESCE(SUM(" + source.totalTokens + "), 0) DESC").
+		Order(analyticsTotalTokensDescOrder(source)).
 		Order("last_used_at DESC").
 		Limit(analyticsKeyAliasBreakdownLimit).
 		Scan(&rows).Error; err != nil {
@@ -204,7 +204,7 @@ func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys [
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
 			` + bucketExpr + ` AS bucket,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).

@@ -68,11 +68,11 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokens) + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokens) + `), 0) AS output_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokens) + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokens) + `), 0) AS cached_tokens,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokensExpr) + `), 0) AS input_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokensExpr) + `), 0) AS output_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokensExpr) + `), 0) AS cached_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
@@ -81,7 +81,7 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 		Where(identityExpr + " <> ''").
 		Group(identityExpr).
 		Order("total_cost DESC").
-		Order("COALESCE(SUM(" + source.totalTokens + "), 0) DESC").
+		Order(analyticsTotalTokensDescOrder(source)).
 		Order("last_used_at DESC").
 		Limit(pageSize).
 		Offset(offset).

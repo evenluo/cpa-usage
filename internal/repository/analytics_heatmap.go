@@ -164,7 +164,7 @@ func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, s
 			heatmap_buckets.bucket_key AS bucket_key,
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events
@@ -206,7 +206,7 @@ func buildAnalyticsRollupHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFil
 			heatmap_buckets.bucket_key AS bucket_key,
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events
