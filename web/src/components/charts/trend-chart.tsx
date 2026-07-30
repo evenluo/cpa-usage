@@ -9,72 +9,39 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts"
+import { useMemo } from "react"
 import type { Formatter, NameType, ValueType } from "recharts/types/component/DefaultTooltipContent"
-import type { ModelDistribution, TrendPoint, TimeRange } from "@/types/api"
+import type { ModelDistribution, TrendPoint, TimeGranularity } from "@/types/api"
 import { formatCost, formatCompact } from "@/lib/format"
+import {
+  buildTrendSeriesConfig,
+  buildTrendTickFormatter,
+  mapTrendChartRows,
+  type TrendChartMode,
+} from "@/features/usage-intelligence/trend-model"
 
 interface TrendChartProps {
   data: TrendPoint[]
-  range?: TimeRange
-  mode?: "cost-token" | "requests-token" | "tokens"
+  granularity: TimeGranularity
+  mode?: TrendChartMode
 }
 
-function formatTickLabel(label: string, range?: TimeRange): string {
-  // Parse "2026-05-09 22:00 +0800" or similar
-  const dateMatch = label.match(/(\d{4})-(\d{2})-(\d{2})/)
-  if (!dateMatch) return label
+export function TrendChart({ data, granularity, mode = "cost-token" }: TrendChartProps) {
+  const {
+    primaryKey,
+    primaryName,
+    primaryColor,
+    gradientId,
+    overlayKey,
+    overlayName,
+    tokenSeries,
+  } = buildTrendSeriesConfig(mode)
 
-  const [, year, month, day] = dateMatch
-  const date = new Date(`${year}-${month}-${day}T00:00:00`)
-
-  // For day granularity (30d range): show "May 9" or "5/9"
-  if (range === "30d") {
-    return date.toLocaleDateString("en", { month: "short", day: "numeric" })
-  }
-
-  // For 7d range: show date only on day boundaries, otherwise omit
-  if (range === "7d") {
-    const timeMatch = label.match(/(\d{2}):(\d{2})/)
-    if (timeMatch && timeMatch[1] === "00") {
-      return `${month}/${day}`
-    }
-    return "" // Skip non-midnight ticks to reduce clutter
-  }
-
-  // For 24h/today/yesterday: show hour only
-  const timeMatch = label.match(/(\d{2}):(\d{2})/)
-  if (timeMatch) {
-    return `${timeMatch[1]}:00`
-  }
-
-  return label
-}
-
-export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps) {
-  const primaryKey = mode === "cost-token" ? "cost" : mode === "requests-token" ? "requests" : "tokens"
-  const primaryName = mode === "cost-token" ? "Cost" : mode === "requests-token" ? "Requests" : "Tokens"
-  const primaryColor = mode === "cost-token" ? "#d97757" : mode === "requests-token" ? "#7c3aed" : "#2563eb"
-  const gradientId = mode === "cost-token" ? "costGradient" : mode === "requests-token" ? "requestGradient" : "tokenGradient"
-  const overlayKey = mode === "tokens" ? "requests" : "tokens"
-  const overlayName = mode === "tokens" ? "Requests" : "Tokens"
-  const tokenSeries = [
-    { key: "inputTokens", name: "Input", color: "#059669" },
-    { key: "outputTokens", name: "Output", color: "#d97706" },
-    { key: "reasoningTokens", name: "Reasoning", color: "#7c3aed" },
-    { key: "cachedTokens", name: "Cached", color: "#0891b2" },
-  ]
-
-  const chartData = data.map((p) => ({
-    label: p.label,
-    cost: p.cost_status === "unavailable" ? null : p.total_cost,
-    requests: p.request_count,
-    tokens: p.total_tokens,
-    inputTokens: p.input_tokens,
-    outputTokens: p.output_tokens,
-    reasoningTokens: p.reasoning_tokens,
-    cachedTokens: p.cached_tokens,
-    costStatus: p.cost_status,
-  }))
+  const chartData = useMemo(() => mapTrendChartRows(data), [data])
+  const formatTick = useMemo(
+    () => buildTrendTickFormatter(data.map((p) => p.label), granularity),
+    [data, granularity]
+  )
   const tooltipFormatter: Formatter<ValueType, NameType> = (value, name, item) => {
     if (name === "Cost") {
       const costStatus = item.payload?.costStatus
@@ -103,7 +70,7 @@ export function TrendChart({ data, range, mode = "cost-token" }: TrendChartProps
           tickLine={false}
           axisLine={false}
           interval="preserveStartEnd"
-          tickFormatter={(label: string) => formatTickLabel(label, range)}
+          tickFormatter={(label: string) => formatTick(label)}
         />
         <YAxis
           yAxisId="primary"

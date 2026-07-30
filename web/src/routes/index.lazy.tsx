@@ -339,7 +339,7 @@ function DashboardPage() {
               </div>
             ) : (
               <div className="h-[260px]">
-                <TrendChart data={surfaces.trend.data} range={range} mode={trendView} />
+                <TrendChart data={surfaces.trend.data} granularity={coreAnalyticsData?.granularity ?? g} mode={trendView} />
               </div>
             )}
           </CardContent>
