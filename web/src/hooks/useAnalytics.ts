@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query"
-import { getDefaultGranularity } from "@/features/usage-intelligence/view-model"
 import { apiFetch } from "@/lib/api"
 import type { AnalyticsCoreResponse, AnalyticsHeatmapResponse, TimeRange, TimeGranularity } from "@/types/api"
 
@@ -45,16 +44,14 @@ function buildAnalyticsPath(
 
 export function useAnalyticsCore(
   range: TimeRange,
-  granularity: TimeGranularity | null,
+  granularity: TimeGranularity,
   provider: string,
   refetchInterval: number | false = 60_000,
 ) {
-  const g = granularity ?? getDefaultGranularity(range)
-
   return useQuery({
-    queryKey: ["analytics", "core", range, g, provider],
+    queryKey: ["analytics", "core", range, granularity, provider],
     queryFn: () =>
-      apiFetch<AnalyticsCoreResponse>(buildAnalyticsCorePath(range, g, provider)),
+      apiFetch<AnalyticsCoreResponse>(buildAnalyticsCorePath(range, granularity, provider)),
     staleTime: 30_000,
     refetchInterval: () => {
       if (refetchInterval === false) return false
@@ -68,15 +65,13 @@ export function useAnalyticsCore(
 
 export function useAnalyticsHeatmap(
   range: TimeRange,
-  granularity: TimeGranularity | null,
+  granularity: TimeGranularity,
   provider: string,
 ) {
-  const g = granularity ?? getDefaultGranularity(range)
-
   return useQuery({
-    queryKey: ["analytics", "heatmap", range, g, provider],
+    queryKey: ["analytics", "heatmap", range, granularity, provider],
     queryFn: () =>
-      apiFetch<AnalyticsHeatmapResponse>(buildAnalyticsHeatmapPath(range, g, provider)),
+      apiFetch<AnalyticsHeatmapResponse>(buildAnalyticsHeatmapPath(range, granularity, provider)),
     staleTime: 30_000,
     refetchInterval: () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {

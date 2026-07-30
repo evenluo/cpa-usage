@@ -72,7 +72,7 @@ function DashboardPage() {
     error: requestEvidenceError,
   } = useEvents(
     fixedWindow.requestEvidence.range,
-    1,
+    fixedWindow.requestEvidence.pageSize,
     fixedWindow.requestEvidence.provider,
     1,
     false,
