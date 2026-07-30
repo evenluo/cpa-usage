@@ -2,6 +2,7 @@ package quota
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -10,10 +11,17 @@ import (
 func NormalizeQuotaRows(output ProviderOutput) []QuotaRow {
 	// 不在 provider 层强行统一原始结构，归一化由各 Result 自身实现；出口只做接口断言。
 	result, ok := output.Result.(QuotaRowsProvider)
-	if !ok {
+	if !ok || isNilQuotaRowsProvider(result) {
 		return nil
 	}
 	return result.QuotaRows()
+}
+
+// isNilQuotaRowsProvider 防御 typed-nil 指针 Result：值接收者方法集让 *XxxResult 也能通过断言，
+// 但 nil 指针调用值接收者方法会解引用 panic。
+func isNilQuotaRowsProvider(provider QuotaRowsProvider) bool {
+	value := reflect.ValueOf(provider)
+	return value.Kind() == reflect.Pointer && value.IsNil()
 }
 
 // QuotaRows 把 Claude usage/profile 原始结构转换为前端展示的 quota rows。
