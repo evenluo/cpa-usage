@@ -22,10 +22,6 @@ type usageEventsStub struct {
 	filterOptionCalls  int
 }
 
-func (s *usageEventsStub) GetUsageWithFilter(context.Context, dto.UsageQueryFilter) (*dto.StatisticsSnapshot, error) {
-	return nil, nil
-}
-
 func (s *usageEventsStub) GetUsageOverview(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
 	return nil, nil
 }

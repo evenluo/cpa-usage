@@ -11,20 +11,12 @@ import (
 )
 
 type usageFilterStub struct {
-	usage              *dto.StatisticsSnapshot
 	overview           *dto.UsageOverviewRecord
 	requestHealth      *dto.UsageOverviewHealthRecord
 	err                error
 	lastFilter         dto.UsageQueryFilter
-	filterCalls        int
 	overviewCalls      int
 	requestHealthCalls int
-}
-
-func (s *usageFilterStub) GetUsageWithFilter(_ context.Context, filter dto.UsageQueryFilter) (*dto.StatisticsSnapshot, error) {
-	s.lastFilter = filter
-	s.filterCalls++
-	return s.usage, s.err
 }
 
 func (s *usageFilterStub) GetUsageOverview(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
@@ -184,9 +176,6 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 	if contains(body, `"details":`) {
 		t.Fatalf("expected overview response to omit request details: %s", body)
 	}
-	if provider.filterCalls != 0 {
-		t.Fatalf("expected GetUsageWithFilter not to be called, got %d", provider.filterCalls)
-	}
 	if provider.overviewCalls != 1 {
 		t.Fatalf("expected GetUsageOverview to be called once, got %d", provider.overviewCalls)
 	}
@@ -237,8 +226,8 @@ func TestUsageRequestHealthReturnsDedicatedHealthGrid(t *testing.T) {
 	if provider.requestHealthCalls != 1 {
 		t.Fatalf("expected GetRequestHealth to be called once, got %d", provider.requestHealthCalls)
 	}
-	if provider.overviewCalls != 0 || provider.filterCalls != 0 {
-		t.Fatalf("expected request health route not to call full overview or snapshot, overview=%d snapshot=%d", provider.overviewCalls, provider.filterCalls)
+	if provider.overviewCalls != 0 {
+		t.Fatalf("expected request health route not to call full overview, got %d", provider.overviewCalls)
 	}
 	if provider.lastFilter.Range != "24h" || provider.lastFilter.Provider != "OpenAI" {
 		t.Fatalf("expected range and provider to be passed through, got %+v", provider.lastFilter)

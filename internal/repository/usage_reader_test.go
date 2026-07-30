@@ -30,27 +30,6 @@ func openUsageReaderTestDatabase(t *testing.T, name string) *gorm.DB {
 	return db
 }
 
-func TestUsageReaderGetUsageWithFilterKeepsInRangeEvents(t *testing.T) {
-	db := openUsageReaderTestDatabase(t, "usage-reader-filter.db")
-	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{
-		{EventKey: "event-1", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), TotalTokens: 10},
-		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), TotalTokens: 20},
-	}); err != nil {
-		t.Fatalf("InsertUsageEvents returned error: %v", err)
-	}
-
-	start := time.Date(2026, 4, 16, 9, 30, 0, 0, time.UTC)
-	end := time.Date(2026, 4, 16, 10, 30, 0, 0, time.UTC)
-	reader := repository.NewUsageReader(db)
-	snapshot, err := reader.GetUsageWithFilter(context.Background(), dto.UsageQueryFilter{StartTime: &start, EndTime: &end})
-	if err != nil {
-		t.Fatalf("GetUsageWithFilter returned error: %v", err)
-	}
-	if snapshot.TotalRequests != 1 || snapshot.TotalTokens != 20 {
-		t.Fatalf("expected reader filter to keep only in-range event, got %+v", snapshot)
-	}
-}
-
 func TestUsageReaderListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 	db := openUsageReaderTestDatabase(t, "usage-reader-events.db")
 	ttftMS := int64(1052)

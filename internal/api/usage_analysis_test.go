@@ -19,10 +19,6 @@ type usageAnalysisStub struct {
 	analysisCalls int
 }
 
-func (s *usageAnalysisStub) GetUsageWithFilter(context.Context, dto.UsageQueryFilter) (*dto.StatisticsSnapshot, error) {
-	return nil, nil
-}
-
 func (s *usageAnalysisStub) GetUsageOverview(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
 	return nil, nil
 }

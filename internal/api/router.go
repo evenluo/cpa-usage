@@ -59,7 +59,6 @@ type QuotaProvider interface {
 // UsageProvider 是 Usage Overview、Request Evidence 与 Analysis 读模型的 HTTP 层入口 seam；
 // 实现由 repository 的 UsageReader 提供，衍生指标（如 Output TPS）在读模型内计算。
 type UsageProvider interface {
-	GetUsageWithFilter(context.Context, repodto.UsageQueryFilter) (*repodto.StatisticsSnapshot, error)
 	GetUsageOverview(context.Context, repodto.UsageQueryFilter) (*repodto.UsageOverviewRecord, error)
 	GetRequestHealth(context.Context, repodto.UsageQueryFilter) (*repodto.UsageOverviewHealthRecord, error)
 	ListUsageEvents(context.Context, repodto.UsageQueryFilter) (*repodto.UsageEventsPageRecord, error)

@@ -17,10 +17,6 @@ func NewUsageReader(db *gorm.DB) UsageReader {
 	return UsageReader{db: db}
 }
 
-func (r UsageReader) GetUsageWithFilter(_ context.Context, filter dto.UsageQueryFilter) (*dto.StatisticsSnapshot, error) {
-	return BuildUsageSnapshotWithFilter(r.db, filter)
-}
-
 func (r UsageReader) GetUsageOverview(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
 	return BuildUsageOverviewWithFilter(r.db, filter)
 }
