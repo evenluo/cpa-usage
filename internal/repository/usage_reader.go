@@ -17,22 +17,22 @@ func NewUsageReader(db *gorm.DB) UsageReader {
 	return UsageReader{db: db}
 }
 
-func (r UsageReader) GetUsageOverview(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
-	return BuildUsageOverviewWithFilter(r.db, filter)
+func (r UsageReader) GetUsageOverview(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
+	return BuildUsageOverviewWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) GetRequestHealth(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
-	return BuildUsageRequestHealthWithFilter(r.db, filter)
+func (r UsageReader) GetRequestHealth(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+	return BuildUsageRequestHealthWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) ListUsageEvents(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
-	return ListUsageEventsWithFilter(r.db, filter)
+func (r UsageReader) ListUsageEvents(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
+	return ListUsageEventsWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) ListUsageEventFilterOptions(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
-	return ListUsageEventFilterOptionsWithFilter(r.db, filter)
+func (r UsageReader) ListUsageEventFilterOptions(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
+	return ListUsageEventFilterOptionsWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) GetUsageAnalysis(_ context.Context, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
-	return ListUsageAnalysisWithFilter(r.db, filter)
+func (r UsageReader) GetUsageAnalysis(ctx context.Context, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+	return ListUsageAnalysisWithFilter(ctx, r.db, filter)
 }

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,10 +17,11 @@ func BuildUsageSnapshot(db *gorm.DB) (*dto.StatisticsSnapshot, error) {
 }
 
 // Request Event Log Tab：先按列表条件统计总数，再加载当前页和筛选项。
-func ListUsageEventsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
+func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 
 	// 第一步：应用列表筛选，统计分页总数。
 	baseQuery := queryUsageEvents(db)
@@ -115,10 +117,11 @@ func usageEventAPIKeyIdentity(event entities.UsageEvent) string {
 }
 
 // Request Event Log Filter Options：只按时间窗口收集 model 候选值。
-func ListUsageEventFilterOptionsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
+func ListUsageEventFilterOptionsWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 	models, err := listUsageEventModelFilterOptions(db, filter)
 	if err != nil {
 		return nil, err
@@ -201,10 +204,11 @@ func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm
 }
 
 // Analysis 第一步：按时间窗口做 API / model / API+model 聚合。
-func ListUsageAnalysisWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
 	if db == nil {
 		return nil, nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 
 	baseQuery := applyUsageAnalysisTabQuery(db.Model(&entities.UsageEvent{}), filter)
 
@@ -344,10 +348,11 @@ func BuildUsageSnapshotWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dt
 }
 
 // Overview 先读事件，再组合窗口、系列和价格信息。
-func BuildUsageOverviewWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
+func BuildUsageOverviewWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 
 	events, err := loadUsageOverviewEventsWithFilter(db, filter)
 	if err != nil {
@@ -362,10 +367,11 @@ func BuildUsageOverviewWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dt
 }
 
 // BuildUsageRequestHealthWithFilter builds the fixed Request Health grid with bounded SQL aggregates.
-func BuildUsageRequestHealthWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+func BuildUsageRequestHealthWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 
 	health := buildUsageOverviewHealth(filter)
 	type usageRequestHealthTotalRow struct {

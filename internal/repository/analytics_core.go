@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -17,10 +18,11 @@ type analyticsCoreWindowPlan struct {
 	rollupFilter *dto.UsageQueryFilter
 }
 
-func BuildAnalyticsCoreWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func BuildAnalyticsCoreWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 
 	plan := analyticsCoreRollupWindowPlan(filter)
 	if plan.rollupFilter == nil {

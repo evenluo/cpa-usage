@@ -1,13 +1,14 @@
 package repository
 
 import (
-	"cpa-usage/internal/repository/dto"
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/repository/dto"
 )
 
 func TestListUsageEventsWithFilterAppliesTimeBoundsAndPagination(t *testing.T) {
@@ -28,7 +29,7 @@ func TestListUsageEventsWithFilterAppliesTimeBoundsAndPagination(t *testing.T) {
 
 	start := time.Date(2026, 4, 16, 9, 30, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC)
-	page, err := ListUsageEventsWithFilter(db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end, Page: 1, PageSize: 1})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end, Page: 1, PageSize: 1})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -59,11 +60,11 @@ func TestListUsageEventsWithFilterPagesByTimestampAndID(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	firstPage, err := ListUsageEventsWithFilter(db, dto.UsageQueryFilter{Page: 1, PageSize: 1})
+	firstPage, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Page: 1, PageSize: 1})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
-	secondPage, err := ListUsageEventsWithFilter(db, dto.UsageQueryFilter{Page: 2, PageSize: 1})
+	secondPage, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Page: 2, PageSize: 1})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -94,7 +95,7 @@ func TestListUsageEventsWithFilterAppliesModelSourceAndResultFilters(t *testing.
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	page, err := ListUsageEventsWithFilter(db, dto.UsageQueryFilter{Page: 1, PageSize: 20, Model: "claude-sonnet", Source: "source-a", Result: "success"})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Page: 1, PageSize: 20, Model: "claude-sonnet", Source: "source-a", Result: "success"})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestListUsageEventsWithFilterAppliesAuthIndexFilter(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	page, err := ListUsageEventsWithFilter(db, dto.UsageQueryFilter{Source: "auth-1", AuthIndex: "auth-1", Page: 1, PageSize: 20})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Source: "auth-1", AuthIndex: "auth-1", Page: 1, PageSize: 20})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -151,7 +152,7 @@ func TestListUsageEventFilterOptionsWithFilterReturnsStableModels(t *testing.T) 
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	options, err := ListUsageEventFilterOptionsWithFilter(db, dto.UsageQueryFilter{Result: "success"})
+	options, err := ListUsageEventFilterOptionsWithFilter(context.Background(), db, dto.UsageQueryFilter{Result: "success"})
 	if err != nil {
 		t.Fatalf("ListUsageEventFilterOptionsWithFilter returned error: %v", err)
 	}
@@ -190,7 +191,7 @@ func TestListUsageAnalysisWithFilterAggregatesApisAndModels(t *testing.T) {
 
 	start := time.Date(2026, 4, 16, 9, 30, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 11, 30, 0, 0, time.UTC)
-	apiRows, modelRows, err := ListUsageAnalysisWithFilter(db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end})
+	apiRows, modelRows, err := ListUsageAnalysisWithFilter(context.Background(), db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("ListUsageAnalysisWithFilter returned error: %v", err)
 	}
@@ -233,7 +234,7 @@ func TestListUsageAnalysisWithFilterKeepsModelsForBlankAPIGroup(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	apiRows, _, err := ListUsageAnalysisWithFilter(db, dto.UsageQueryFilter{})
+	apiRows, _, err := ListUsageAnalysisWithFilter(context.Background(), db, dto.UsageQueryFilter{})
 	if err != nil {
 		t.Fatalf("ListUsageAnalysisWithFilter returned error: %v", err)
 	}
