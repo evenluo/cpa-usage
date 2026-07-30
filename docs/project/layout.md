@@ -11,9 +11,9 @@ The backend keeps a responsibility-based Go package layout. Choose an existing p
 
 - `cmd/server`: executable entrypoint.
 - `internal/app`: application wiring for config, database, CPA clients, services, HTTP routing, and background runners.
-- `internal/api`: HTTP contracts, handlers, request parsing, response payloads, and route-level API behavior.
-- `internal/service`: business use cases, orchestration, and service DTO assembly that should not live in handlers or persistence code.
-- `internal/repository`: SQLite/GORM persistence, migrations, analytics read models, and SQL aggregation.
+- `internal/api`: HTTP contracts, handlers, request parsing, response payloads, route-level API behavior, and the analytics/usage read-path provider seams consumed by handlers.
+- `internal/service`: write-path use cases and orchestration (usage intake, sync, reference data, rollup backfill) that should not live in handlers or persistence code. Analytics and usage read paths do not pass through this package; handlers call repository-backed readers through the seams defined in `internal/api`.
+- `internal/repository`: SQLite/GORM persistence, migrations, analytics and usage read models, and SQL aggregation. Its Reader seams produce the read DTOs that the HTTP layer consumes directly.
 - `internal/cpa`: CPA external API client boundaries and CPA DTOs.
 - `internal/quota`: quota provider capability and quota-specific test helpers.
 - `internal/poller`: background queue consumption and polling execution.
@@ -23,7 +23,7 @@ Supporting backend packages keep focused ownership:
 - `internal/auth`: session management and authentication primitives.
 - `internal/backup`: SQLite backup and retention behavior.
 - `internal/config`: environment loading and runtime configuration parsing.
-- `internal/entities`: GORM persistence models.
+- `internal/entities`: GORM persistence models and their small derived display helpers (for example `UsageIdentity.DisplayName`).
 - `internal/logging`: process logging configuration.
 - `internal/redact`: display-safe masking and stable redaction helpers.
 - `internal/updatecheck`: release update checks.

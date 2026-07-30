@@ -8,48 +8,39 @@ import (
 	"time"
 
 	"cpa-usage/internal/repository/dto"
-	servicedto "cpa-usage/internal/service/dto"
 )
 
 type usageFilterStub struct {
-	usage              *dto.StatisticsSnapshot
-	overview           *servicedto.UsageOverviewSnapshot
-	requestHealth      *servicedto.UsageOverviewHealth
+	overview           *dto.UsageOverviewRecord
+	requestHealth      *dto.UsageOverviewHealthRecord
 	err                error
-	lastFilter         servicedto.UsageFilter
-	filterCalls        int
+	lastFilter         dto.UsageQueryFilter
 	overviewCalls      int
 	requestHealthCalls int
 }
 
-func (s *usageFilterStub) GetUsageWithFilter(_ context.Context, filter servicedto.UsageFilter) (*dto.StatisticsSnapshot, error) {
-	s.lastFilter = filter
-	s.filterCalls++
-	return s.usage, s.err
-}
-
-func (s *usageFilterStub) GetUsageOverview(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageOverviewSnapshot, error) {
+func (s *usageFilterStub) GetUsageOverview(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
 	s.lastFilter = filter
 	s.overviewCalls++
 	return s.overview, s.err
 }
 
-func (s *usageFilterStub) GetRequestHealth(_ context.Context, filter servicedto.UsageFilter) (*servicedto.UsageOverviewHealth, error) {
+func (s *usageFilterStub) GetRequestHealth(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
 	s.lastFilter = filter
 	s.requestHealthCalls++
 	return s.requestHealth, s.err
 }
 
-func (s *usageFilterStub) ListUsageEvents(context.Context, servicedto.UsageFilter) (*servicedto.UsageEventsPage, error) {
+func (s *usageFilterStub) ListUsageEvents(context.Context, dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
 	return nil, s.err
 }
 
-func (s *usageFilterStub) ListUsageEventFilterOptions(context.Context, servicedto.UsageFilter) (*servicedto.UsageEventFilterOptions, error) {
+func (s *usageFilterStub) ListUsageEventFilterOptions(context.Context, dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
 	return nil, s.err
 }
 
-func (s *usageFilterStub) GetUsageAnalysis(context.Context, servicedto.UsageFilter) (*servicedto.UsageAnalysisSnapshot, error) {
-	return nil, s.err
+func (s *usageFilterStub) GetUsageAnalysis(context.Context, dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+	return nil, nil, s.err
 }
 
 func mustParseTime(t *testing.T, value string) time.Time {
@@ -70,7 +61,7 @@ func TestUsageOverviewResponseIncludesResolvedRangeAndTimezone(t *testing.T) {
 	t.Cleanup(func() { time.Local = previousLocal })
 	time.Local = location
 
-	provider := &usageFilterStub{overview: &servicedto.UsageOverviewSnapshot{}}
+	provider := &usageFilterStub{overview: &dto.UsageOverviewRecord{}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/overview?range=custom&start=2026-04-20&end=2026-04-21", nil)
 	resp := httptest.NewRecorder()
@@ -89,7 +80,7 @@ func TestUsageOverviewResponseIncludesResolvedRangeAndTimezone(t *testing.T) {
 }
 
 func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
-	provider := &usageFilterStub{overview: &servicedto.UsageOverviewSnapshot{
+	provider := &usageFilterStub{overview: &dto.UsageOverviewRecord{
 		Usage: &dto.StatisticsSnapshot{
 			TotalRequests: 1,
 			SuccessCount:  1,
@@ -115,7 +106,7 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 				},
 			},
 		},
-		Summary: servicedto.UsageOverviewSummary{
+		Summary: dto.UsageOverviewSummaryRecord{
 			RequestCount:    1,
 			TokenCount:      20,
 			WindowMinutes:   1440,
@@ -126,7 +117,7 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 			CachedTokens:    2,
 			ReasoningTokens: 3,
 		},
-		Series: servicedto.UsageOverviewSeries{
+		Series: dto.UsageOverviewSeriesRecord{
 			Requests:        map[string]int64{"2026-04-22T11:00:00Z": 1},
 			Tokens:          map[string]int64{"2026-04-22T11:00:00Z": 20},
 			RPM:             map[string]float64{"2026-04-22T11:00:00Z": 1.0 / 60.0},
@@ -137,11 +128,11 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 			CachedTokens:    map[string]int64{"2026-04-22T11:00:00Z": 2},
 			ReasoningTokens: map[string]int64{"2026-04-22T11:00:00Z": 3},
 		},
-		Health: servicedto.UsageOverviewHealth{
+		Health: dto.UsageOverviewHealthRecord{
 			TotalSuccess: 1,
 			TotalFailure: 0,
 			SuccessRate:  100,
-			BlockDetails: []servicedto.UsageOverviewHealthBlock{{
+			BlockDetails: []dto.UsageOverviewHealthBlockRecord{{
 				StartTime: mustParseTime(t, "2026-04-22T11:00:00Z"),
 				EndTime:   mustParseTime(t, "2026-04-22T11:15:00Z"),
 				Success:   1,
@@ -185,9 +176,6 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 	if contains(body, `"details":`) {
 		t.Fatalf("expected overview response to omit request details: %s", body)
 	}
-	if provider.filterCalls != 0 {
-		t.Fatalf("expected GetUsageWithFilter not to be called, got %d", provider.filterCalls)
-	}
 	if provider.overviewCalls != 1 {
 		t.Fatalf("expected GetUsageOverview to be called once, got %d", provider.overviewCalls)
 	}
@@ -200,7 +188,7 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 }
 
 func TestUsageRequestHealthReturnsDedicatedHealthGrid(t *testing.T) {
-	provider := &usageFilterStub{requestHealth: &servicedto.UsageOverviewHealth{
+	provider := &usageFilterStub{requestHealth: &dto.UsageOverviewHealthRecord{
 		TotalSuccess:  2,
 		TotalFailure:  1,
 		SuccessRate:   100.0 * 2.0 / 3.0,
@@ -209,7 +197,7 @@ func TestUsageRequestHealthReturnsDedicatedHealthGrid(t *testing.T) {
 		BucketSeconds: 180,
 		WindowStart:   mustParseTime(t, "2026-04-21T12:00:00Z"),
 		WindowEnd:     mustParseTime(t, "2026-04-22T12:00:00Z"),
-		BlockDetails: []servicedto.UsageOverviewHealthBlock{{
+		BlockDetails: []dto.UsageOverviewHealthBlockRecord{{
 			StartTime: mustParseTime(t, "2026-04-22T11:57:00Z"),
 			EndTime:   mustParseTime(t, "2026-04-22T12:00:00Z"),
 			Success:   2,
@@ -238,8 +226,8 @@ func TestUsageRequestHealthReturnsDedicatedHealthGrid(t *testing.T) {
 	if provider.requestHealthCalls != 1 {
 		t.Fatalf("expected GetRequestHealth to be called once, got %d", provider.requestHealthCalls)
 	}
-	if provider.overviewCalls != 0 || provider.filterCalls != 0 {
-		t.Fatalf("expected request health route not to call full overview or snapshot, overview=%d snapshot=%d", provider.overviewCalls, provider.filterCalls)
+	if provider.overviewCalls != 0 {
+		t.Fatalf("expected request health route not to call full overview, got %d", provider.overviewCalls)
 	}
 	if provider.lastFilter.Range != "24h" || provider.lastFilter.Provider != "OpenAI" {
 		t.Fatalf("expected range and provider to be passed through, got %+v", provider.lastFilter)

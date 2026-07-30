@@ -1,4 +1,4 @@
-package service
+package repository_test
 
 import (
 	"context"
@@ -11,40 +11,27 @@ import (
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository"
 	"cpa-usage/internal/repository/dto"
-	servicedto "cpa-usage/internal/service/dto"
+	"gorm.io/gorm"
 )
 
-func TestUsageServiceGetUsageWithFilterDelegatesToFilteredSnapshot(t *testing.T) {
-	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-filter.db")})
+func openUsageReaderTestDatabase(t *testing.T, name string) *gorm.DB {
+	t.Helper()
+	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), name)})
 	if err != nil {
 		t.Fatalf("OpenDatabase returned error: %v", err)
 	}
-	closeTestDatabase(t, db)
-	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{
-		{EventKey: "event-1", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), TotalTokens: 10},
-		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), TotalTokens: 20},
-	}); err != nil {
-		t.Fatalf("InsertUsageEvents returned error: %v", err)
-	}
-
-	start := time.Date(2026, 4, 16, 9, 30, 0, 0, time.UTC)
-	end := time.Date(2026, 4, 16, 10, 30, 0, 0, time.UTC)
-	provider := NewUsageService(db)
-	snapshot, err := provider.GetUsageWithFilter(context.Background(), servicedto.UsageFilter{StartTime: &start, EndTime: &end})
-	if err != nil {
-		t.Fatalf("GetUsageWithFilter returned error: %v", err)
-	}
-	if snapshot.TotalRequests != 1 || snapshot.TotalTokens != 20 {
-		t.Fatalf("expected service filter to keep only in-range event, got %+v", snapshot)
-	}
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err != nil {
+			return
+		}
+		_ = sqlDB.Close()
+	})
+	return db
 }
 
-func TestUsageServiceListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
-	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-events.db")})
-	if err != nil {
-		t.Fatalf("OpenDatabase returned error: %v", err)
-	}
-	closeTestDatabase(t, db)
+func TestUsageReaderListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
+	db := openUsageReaderTestDatabase(t, "usage-reader-events.db")
 	ttftMS := int64(1052)
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
 		EventKey:     "event-tps",
@@ -58,8 +45,8 @@ func TestUsageServiceListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	provider := NewUsageService(db)
-	page, err := provider.ListUsageEvents(context.Background(), servicedto.UsageFilter{Page: 1, PageSize: 10})
+	reader := repository.NewUsageReader(db)
+	page, err := reader.ListUsageEvents(context.Background(), dto.UsageQueryFilter{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("ListUsageEvents returned error: %v", err)
 	}
@@ -75,12 +62,8 @@ func TestUsageServiceListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 	}
 }
 
-func TestUsageServiceListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing.T) {
-	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-invalid-tps.db")})
-	if err != nil {
-		t.Fatalf("OpenDatabase returned error: %v", err)
-	}
-	closeTestDatabase(t, db)
+func TestUsageReaderListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing.T) {
+	db := openUsageReaderTestDatabase(t, "usage-reader-invalid-tps.db")
 	zeroTTFT := int64(0)
 	equalTTFT := int64(21245)
 	validTTFT := int64(1052)
@@ -95,12 +78,12 @@ func TestUsageServiceListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	provider := NewUsageService(db)
-	page, err := provider.ListUsageEvents(context.Background(), servicedto.UsageFilter{Page: 1, PageSize: 10})
+	reader := repository.NewUsageReader(db)
+	page, err := reader.ListUsageEvents(context.Background(), dto.UsageQueryFilter{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("ListUsageEvents returned error: %v", err)
 	}
-	byModel := make(map[string]servicedto.UsageEventRecord, len(page.Events))
+	byModel := make(map[string]dto.UsageEventRecord, len(page.Events))
 	for _, event := range page.Events {
 		byModel[event.Model] = event
 	}
@@ -115,12 +98,8 @@ func TestUsageServiceListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing
 	}
 }
 
-func TestUsageServiceGetUsageOverviewDelegatesToFilteredOverview(t *testing.T) {
-	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-overview.db")})
-	if err != nil {
-		t.Fatalf("OpenDatabase returned error: %v", err)
-	}
-	closeTestDatabase(t, db)
+func TestUsageReaderGetUsageOverviewBuildsFilteredOverview(t *testing.T) {
+	db := openUsageReaderTestDatabase(t, "usage-reader-overview.db")
 	if _, err := repository.UpsertModelPriceSetting(db, dto.ModelPriceSettingInput{
 		Model:                "claude-sonnet",
 		PromptPricePer1M:     3,
@@ -138,8 +117,8 @@ func TestUsageServiceGetUsageOverviewDelegatesToFilteredOverview(t *testing.T) {
 
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 23, 59, 59, 0, time.UTC)
-	provider := NewUsageService(db)
-	overview, err := provider.GetUsageOverview(context.Background(), servicedto.UsageFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	reader := repository.NewUsageReader(db)
+	overview, err := reader.GetUsageOverview(context.Background(), dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("GetUsageOverview returned error: %v", err)
 	}
@@ -157,12 +136,8 @@ func TestUsageServiceGetUsageOverviewDelegatesToFilteredOverview(t *testing.T) {
 	}
 }
 
-func TestUsageServiceGetRequestHealthDelegatesToFilteredProjection(t *testing.T) {
-	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-service-request-health.db")})
-	if err != nil {
-		t.Fatalf("OpenDatabase returned error: %v", err)
-	}
-	closeTestDatabase(t, db)
+func TestUsageReaderGetRequestHealthBuildsFilteredProjection(t *testing.T) {
+	db := openUsageReaderTestDatabase(t, "usage-reader-request-health.db")
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{
 		{EventKey: "event-codex-success", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), Failed: false, TotalTokens: 10},
 		{EventKey: "event-codex-failed", Provider: "codex", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), Failed: true, TotalTokens: 20},
@@ -173,8 +148,8 @@ func TestUsageServiceGetRequestHealthDelegatesToFilteredProjection(t *testing.T)
 
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
-	provider := NewUsageService(db)
-	health, err := provider.GetRequestHealth(context.Background(), servicedto.UsageFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"})
+	reader := repository.NewUsageReader(db)
+	health, err := reader.GetRequestHealth(context.Background(), dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"})
 	if err != nil {
 		t.Fatalf("GetRequestHealth returned error: %v", err)
 	}

@@ -2,55 +2,30 @@ package quota
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
 )
 
 func NormalizeQuotaRows(output ProviderOutput) []QuotaRow {
-	// 不在 provider 层强行统一原始结构，只在出口处转换为前端展示需要的 quota rows。
-	switch result := output.Result.(type) {
-	case AntigravityResult:
-		return normalizeAntigravityQuotaRows(result)
-	case *AntigravityResult:
-		if result == nil {
-			return nil
-		}
-		return normalizeAntigravityQuotaRows(*result)
-	case CodexResult:
-		return normalizeCodexQuotaRows(result)
-	case *CodexResult:
-		if result == nil {
-			return nil
-		}
-		return normalizeCodexQuotaRows(*result)
-	case GeminiCLIResult:
-		return normalizeGeminiCLIQuotaRows(result)
-	case *GeminiCLIResult:
-		if result == nil {
-			return nil
-		}
-		return normalizeGeminiCLIQuotaRows(*result)
-	case ClaudeResult:
-		return normalizeClaudeQuotaRows(result)
-	case *ClaudeResult:
-		if result == nil {
-			return nil
-		}
-		return normalizeClaudeQuotaRows(*result)
-	case KimiResult:
-		return normalizeKimiQuotaRows(result)
-	case *KimiResult:
-		if result == nil {
-			return nil
-		}
-		return normalizeKimiQuotaRows(*result)
-	default:
+	// 不在 provider 层强行统一原始结构，归一化由各 Result 自身实现；出口只做接口断言。
+	result, ok := output.Result.(QuotaRowsProvider)
+	if !ok || isNilQuotaRowsProvider(result) {
 		return nil
 	}
+	return result.QuotaRows()
 }
 
-func normalizeClaudeQuotaRows(result ClaudeResult) []QuotaRow {
+// isNilQuotaRowsProvider 防御 typed-nil 指针 Result：值接收者方法集让 *XxxResult 也能通过断言，
+// 但 nil 指针调用值接收者方法会解引用 panic。
+func isNilQuotaRowsProvider(provider QuotaRowsProvider) bool {
+	value := reflect.ValueOf(provider)
+	return value.Kind() == reflect.Pointer && value.IsNil()
+}
+
+// QuotaRows 把 Claude usage/profile 原始结构转换为前端展示的 quota rows。
+func (result ClaudeResult) QuotaRows() []QuotaRow {
 	if result.Usage == nil {
 		return nil
 	}
@@ -89,8 +64,8 @@ func appendClaudeWindowQuotaRow(rows []QuotaRow, key string, label string, scope
 	})
 }
 
-func normalizeCodexQuotaRows(result CodexResult) []QuotaRow {
-	// Codex 根据 limit_window_seconds 明确区分 5h/Weekly；未知窗口只标记 Window，不猜测。
+// QuotaRows 把 Codex rate limit 窗口展开为 quota rows；根据 limit_window_seconds 明确区分 5h/Weekly，未知窗口只标记 Window，不猜测。
+func (result CodexResult) QuotaRows() []QuotaRow {
 	if result.Usage == nil {
 		return nil
 	}
@@ -178,8 +153,8 @@ func appendCodexWindowQuotaRow(rows []QuotaRow, key string, label string, scope 
 	return append(rows, row)
 }
 
-func normalizeGeminiCLIQuotaRows(result GeminiCLIResult) []QuotaRow {
-	// Gemini CLI 同时可能返回模型桶和 Code Assist credits，两类都平铺给前端。
+// QuotaRows 同时展开 Gemini CLI 的模型桶和 Code Assist credits，两类都平铺给前端。
+func (result GeminiCLIResult) QuotaRows() []QuotaRow {
 	rows := make([]QuotaRow, 0)
 	if result.Quota != nil {
 		for _, bucket := range result.Quota.Buckets {
@@ -217,7 +192,8 @@ func appendGeminiCLICredits(rows []QuotaRow, keyPrefix string, tier *GeminiCliUs
 	return rows
 }
 
-func normalizeAntigravityQuotaRows(result AntigravityResult) []QuotaRow {
+// QuotaRows 把 Antigravity 按模型的 quota 信息展开为 quota rows。
+func (result AntigravityResult) QuotaRows() []QuotaRow {
 	if result.Quota == nil {
 		return nil
 	}
@@ -244,8 +220,8 @@ func normalizeAntigravityQuotaRows(result AntigravityResult) []QuotaRow {
 	return rows
 }
 
-func normalizeKimiQuotaRows(result KimiResult) []QuotaRow {
-	// Kimi 的 summary 和 limits 结构不同，先保留 summary，再逐条展开 limits。
+// QuotaRows 先保留 Kimi 的 summary，再逐条展开 limits；两类结构不同但都转为统一的 quota rows。
+func (result KimiResult) QuotaRows() []QuotaRow {
 	if result.Usage == nil {
 		return nil
 	}

@@ -156,17 +156,18 @@ func analyticsFixedHeatmapFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFil
 }
 
 func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
+	source := analyticsEventsAggregateSource()
 	var rows []analyticsHeatmapAggregateRow
 	query := `
 		WITH heatmap_buckets(bucket_key, bucket_start_epoch, bucket_end_epoch) AS (VALUES ` + analyticsHeatmapBucketValues(startDay, endDay) + `)
 		SELECT
 			heatmap_buckets.bucket_key AS bucket_key,
 			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events
+			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events
 		FROM usage_events
 		JOIN heatmap_buckets
 			ON unixepoch(usage_events.timestamp) >= heatmap_buckets.bucket_start_epoch
@@ -197,17 +198,18 @@ func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, s
 }
 
 func buildAnalyticsRollupHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
+	source := analyticsRollupsAggregateSource()
 	var rows []analyticsHeatmapAggregateRow
 	query := `
 		WITH heatmap_buckets(bucket_key, bucket_start_epoch, bucket_end_epoch) AS (VALUES ` + analyticsHeatmapBucketValues(startDay, endDay) + `)
 		SELECT
 			heatmap_buckets.bucket_key AS bucket_key,
-			COALESCE(SUM(usage_rollups_hourly.request_count), 0) AS request_count,
-			COALESCE(SUM(usage_rollups_hourly.failure_count), 0) AS failure_count,
-			COALESCE(SUM(usage_rollups_hourly.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsRollupCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsRollupMissingPricingSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsRollupPricedBillableSQLExpression("usage_rollups_hourly.request_count") + `), 0) AS priced_billable_events
+			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
+			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events
 		FROM usage_rollups_hourly
 		JOIN heatmap_buckets
 			ON unixepoch(usage_rollups_hourly.bucket_start) >= heatmap_buckets.bucket_start_epoch

@@ -5,8 +5,7 @@ import (
 	"time"
 
 	"cpa-usage/internal/redact"
-	"cpa-usage/internal/service"
-	servicedto "cpa-usage/internal/service/dto"
+	repodto "cpa-usage/internal/repository/dto"
 	"github.com/gin-gonic/gin"
 )
 
@@ -43,7 +42,7 @@ type usageAnalysisModelPayload struct {
 	LatencySampleCount int64  `json:"latency_sample_count"`
 }
 
-func registerUsageAnalysisRoute(router gin.IRoutes, usageProvider service.UsageProvider) {
+func registerUsageAnalysisRoute(router gin.IRoutes, usageProvider UsageProvider) {
 	router.GET("/usage/analysis", func(c *gin.Context) {
 		if usageProvider == nil {
 			c.JSON(http.StatusOK, usageAnalysisResponse{APIs: []usageAnalysisAPIPayload{}, Models: []usageAnalysisModelPayload{}})
@@ -56,44 +55,26 @@ func registerUsageAnalysisRoute(router gin.IRoutes, usageProvider service.UsageP
 			return
 		}
 
-		analysis, err := usageProvider.GetUsageAnalysis(c.Request.Context(), filter)
+		apiRows, modelRows, err := usageProvider.GetUsageAnalysis(c.Request.Context(), filter.SelectedWindowQueryFilter())
 		if err != nil {
 			writeInternalError(c, "get usage analysis failed", err)
 			return
 		}
 
-		c.JSON(http.StatusOK, buildUsageAnalysisPayload(analysis))
+		c.JSON(http.StatusOK, buildUsageAnalysisPayload(apiRows, modelRows))
 	})
 }
 
-func buildUsageAnalysisPayload(snapshot *servicedto.UsageAnalysisSnapshot) usageAnalysisResponse {
-	if snapshot == nil {
-		return usageAnalysisResponse{APIs: []usageAnalysisAPIPayload{}, Models: []usageAnalysisModelPayload{}}
-	}
-
-	apis := make([]usageAnalysisAPIPayload, 0, len(snapshot.APIs))
-	for _, api := range snapshot.APIs {
+func buildUsageAnalysisPayload(apiRows []repodto.UsageAnalysisAPIStatRecord, modelRows []repodto.UsageAnalysisModelStatRecord) usageAnalysisResponse {
+	apis := make([]usageAnalysisAPIPayload, 0, len(apiRows))
+	for _, api := range apiRows {
 		models := make([]usageAnalysisModelPayload, 0, len(api.Models))
 		for _, model := range api.Models {
-			models = append(models, usageAnalysisModelPayload{
-				Model:              model.Model,
-				TotalRequests:      model.TotalRequests,
-				SuccessCount:       model.SuccessCount,
-				FailureCount:       model.FailureCount,
-				InputTokens:        model.InputTokens,
-				OutputTokens:       model.OutputTokens,
-				ReasoningTokens:    model.ReasoningTokens,
-				CachedTokens:       model.CachedTokens,
-				TotalTokens:        model.TotalTokens,
-				TotalLatencyMS:     model.TotalLatencyMS,
-				LatencySampleCount: model.LatencySampleCount,
-			})
+			models = append(models, mapUsageAnalysisModelPayload(model))
 		}
-		apiKey := redact.APIAlias(api.APIKey)
-		displayName := redact.APIKeyDisplayName(api.APIKey)
 		apis = append(apis, usageAnalysisAPIPayload{
-			APIKey:          apiKey,
-			DisplayName:     displayName,
+			APIKey:          redact.APIAlias(api.APIGroupKey),
+			DisplayName:     redact.APIKeyDisplayName(api.APIGroupKey),
 			TotalRequests:   api.TotalRequests,
 			SuccessCount:    api.SuccessCount,
 			FailureCount:    api.FailureCount,
@@ -106,22 +87,26 @@ func buildUsageAnalysisPayload(snapshot *servicedto.UsageAnalysisSnapshot) usage
 		})
 	}
 
-	models := make([]usageAnalysisModelPayload, 0, len(snapshot.Models))
-	for _, model := range snapshot.Models {
-		models = append(models, usageAnalysisModelPayload{
-			Model:              model.Model,
-			TotalRequests:      model.TotalRequests,
-			SuccessCount:       model.SuccessCount,
-			FailureCount:       model.FailureCount,
-			InputTokens:        model.InputTokens,
-			OutputTokens:       model.OutputTokens,
-			ReasoningTokens:    model.ReasoningTokens,
-			CachedTokens:       model.CachedTokens,
-			TotalTokens:        model.TotalTokens,
-			TotalLatencyMS:     model.TotalLatencyMS,
-			LatencySampleCount: model.LatencySampleCount,
-		})
+	models := make([]usageAnalysisModelPayload, 0, len(modelRows))
+	for _, model := range modelRows {
+		models = append(models, mapUsageAnalysisModelPayload(model))
 	}
 
 	return usageAnalysisResponse{APIs: apis, Models: models}
+}
+
+func mapUsageAnalysisModelPayload(model repodto.UsageAnalysisModelStatRecord) usageAnalysisModelPayload {
+	return usageAnalysisModelPayload{
+		Model:              model.Model,
+		TotalRequests:      model.TotalRequests,
+		SuccessCount:       model.SuccessCount,
+		FailureCount:       model.FailureCount,
+		InputTokens:        model.InputTokens,
+		OutputTokens:       model.OutputTokens,
+		ReasoningTokens:    model.ReasoningTokens,
+		CachedTokens:       model.CachedTokens,
+		TotalTokens:        model.TotalTokens,
+		TotalLatencyMS:     model.TotalLatencyMS,
+		LatencySampleCount: model.LatencySampleCount,
+	}
 }

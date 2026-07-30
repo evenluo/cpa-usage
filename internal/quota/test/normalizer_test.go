@@ -7,6 +7,13 @@ import (
 	"cpa-usage/internal/quota"
 )
 
+func TestNormalizeQuotaRowsIgnoresNilPointerResult(t *testing.T) {
+	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "claude", Result: (*quota.ClaudeResult)(nil)})
+	if rows != nil {
+		t.Fatalf("expected nil rows for typed-nil pointer result, got %#v", rows)
+	}
+}
+
 func TestNormalizeClaudeQuotaRows(t *testing.T) {
 	utilization := 25.0
 	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "claude", Result: quota.ClaudeResult{

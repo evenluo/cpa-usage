@@ -224,3 +224,9 @@ type KimiResult struct {
 type ProviderHandler interface {
 	Check(context.Context, ProviderInput) (ProviderOutput, error)
 }
+
+// QuotaRowsProvider 由各 provider 的 Result 类型实现，把原始结构到前端 quota rows 的归一化收进 adapter 自身，
+// 避免在出口处用 type-switch 重新发现具体类型。
+type QuotaRowsProvider interface {
+	QuotaRows() []QuotaRow
+}

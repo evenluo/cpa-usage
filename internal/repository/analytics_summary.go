@@ -2,43 +2,17 @@ package repository
 
 import (
 	"cpa-usage/internal/repository/dto"
-	"fmt"
 	"gorm.io/gorm"
 	"time"
 )
 
 func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsSummary, error) {
-	var row analyticsAggregateRow
-	row, err := buildAnalyticsSummaryAggregateRow(db, filter)
+	row, err := buildAnalyticsAggregateRow(db, filter, analyticsEventsAggregateSource())
 	if err != nil {
 		return dto.AnalyticsSummary{}, err
 	}
 
 	return mapAnalyticsSummary(row), nil
-}
-
-func buildAnalyticsSummaryAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter) (analyticsAggregateRow, error) {
-	var row analyticsAggregateRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
-		Select(`
-			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.output_tokens") + `), 0) AS output_tokens,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpression() + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpression() + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpression() + `), 0) AS cache_savings_ineligible_rows,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events`).
-		Scan(&row).Error; err != nil {
-		return analyticsAggregateRow{}, fmt.Errorf("build analytics summary: %w", err)
-	}
-	return row, nil
 }
 
 func analyticsPreviousPeriodFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
