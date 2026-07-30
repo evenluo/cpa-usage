@@ -60,27 +60,28 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 	offset := (page - 1) * pageSize
 
 	var rows []apiKeyAliasTargetScanRow
+	source := analyticsEventsAggregateSource()
 	if err := analyticsEventsWithPricingQuery(db.WithContext(ctx), dto.UsageQueryFilter{}).
 		Select(`
 			` + identityExpr + ` AS identity,
 			COALESCE(MIN(NULLIF(TRIM(usage_events.provider), '')), '') AS provider,
 			COUNT(*) AS request_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 0 ELSE 1 END), 0) AS success_count,
-			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.input_tokens") + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.output_tokens") + `), 0) AS output_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.reasoning_tokens") + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression("usage_events.cached_tokens") + `), 0) AS cached_tokens,
-			COALESCE(SUM(usage_events.total_tokens), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCostSQLExpression() + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsMissingPricingSQLExpression() + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsPricedBillableSQLExpression() + `), 0) AS priced_billable_events,
+			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
+			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokens) + `), 0) AS input_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokens) + `), 0) AS output_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokens) + `), 0) AS reasoning_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokens) + `), 0) AS cached_tokens,
+			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
+			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
+			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
+			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
 			MIN(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS first_used_at,
 			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS last_used_at`).
 		Where(identityExpr + " <> ''").
 		Group(identityExpr).
 		Order("total_cost DESC").
-		Order("COALESCE(SUM(usage_events.total_tokens), 0) DESC").
+		Order("COALESCE(SUM(" + source.totalTokens + "), 0) DESC").
 		Order("last_used_at DESC").
 		Limit(pageSize).
 		Offset(offset).
