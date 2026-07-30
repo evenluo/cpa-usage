@@ -50,7 +50,7 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		outputTokens:     "usage_events.output_tokens",
 		reasoningTokens:  "usage_events.reasoning_tokens",
 		cachedTokens:     "usage_events.cached_tokens",
-		totalTokens:      "usage_events.total_tokens",
+		totalTokens:      analyticsPositiveTokenSQLExpression("usage_events.total_tokens"),
 		promptTokensExpr: "(CASE WHEN " + inputTokens + " - " + cachedTokens + " > 0 THEN " + inputTokens + " - " + cachedTokens + " ELSE 0 END)",
 		providerExpr:     "TRIM(usage_events.provider)",
 		modelExpr:        "TRIM(usage_events.model)",
@@ -107,8 +107,9 @@ func analyticsSourcePricedBillableSQLExpression(source analyticsAggregateSource)
 	return analyticsPricedBillableSQLExpressionFor(source.inputTokens, source.outputTokens, source.cachedTokens, source.requestCountExpr)
 }
 
-// analyticsAggregateSelect 渲染 summary/trend 共用的聚合列，是 raw 与 rollup 唯一的聚合定义处。
-func analyticsAggregateSelect(source analyticsAggregateSource) string {
+// analyticsAggregateTrendSelect 渲染 summary/trend 共用的基础聚合列，是 raw 与 rollup 唯一的聚合定义处。
+// trend 不消费 cache savings，逐桶渲染时跳过那三个 CASE 列。
+func analyticsAggregateTrendSelect(source analyticsAggregateSource) string {
 	return `
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
@@ -118,12 +119,17 @@ func analyticsAggregateSelect(source analyticsAggregateSource) string {
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokens) + `), 0) AS reasoning_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokens) + `), 0) AS cached_tokens,
 			COALESCE(SUM(` + source.totalTokens + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(source.cachedTokens) + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`
+}
+
+// analyticsAggregateSelect 在 trend 列基础上补 summary 需要的 cache savings 列。
+func analyticsAggregateSelect(source analyticsAggregateSource) string {
+	return analyticsAggregateTrendSelect(source) + `,
+			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(source.cachedTokens) + `), 0) AS cache_savings,
+			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_eligible_rows,
+			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokens, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows`
 }
 
 func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) (analyticsAggregateRow, error) {
@@ -140,7 +146,7 @@ func buildAnalyticsAggregateRowsByBucket(db *gorm.DB, filter dto.UsageQueryFilte
 	bucketExpr := source.bucketExpr(analyticsTrendBucketsByDay(filter))
 	var rows []analyticsAggregateRow
 	if err := source.query(db, filter).
-		Select(bucketExpr + " AS bucket,\n" + analyticsAggregateSelect(source)).
+		Select(bucketExpr + " AS bucket,\n" + analyticsAggregateTrendSelect(source)).
 		Group("bucket").
 		Order("bucket ASC").
 		Scan(&rows).Error; err != nil {
