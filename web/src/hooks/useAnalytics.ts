@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { getDefaultGranularity } from "@/features/usage-intelligence/view-model"
 import { apiFetch } from "@/lib/api"
-import type { AnalyticsCoreResponse, AnalyticsHeatmapResponse, AnalyticsResponse, TimeRange, TimeGranularity } from "@/types/api"
+import type { AnalyticsCoreResponse, AnalyticsHeatmapResponse, TimeRange, TimeGranularity } from "@/types/api"
 
 function rangeParam(range: TimeRange): string {
   switch (range) {
@@ -19,14 +19,6 @@ export function buildAnalyticsCorePath(
   provider: string,
 ): string {
   return buildAnalyticsPath("/analytics/core", range, granularity, provider)
-}
-
-export function buildAnalyticsSummaryPath(
-  range: TimeRange,
-  granularity: TimeGranularity,
-  provider: string,
-): string {
-  return buildAnalyticsPath("/analytics/summary", range, granularity, provider)
 }
 
 export function buildAnalyticsHeatmapPath(
@@ -49,27 +41,6 @@ function buildAnalyticsPath(
   })
   if (provider) params.set("provider", provider)
   return `${path}?${params.toString()}`
-}
-
-export function useAnalytics(
-  range: TimeRange,
-  granularity: TimeGranularity | null,
-  provider: string,
-) {
-  const g = granularity ?? getDefaultGranularity(range)
-
-  return useQuery({
-    queryKey: ["analytics", "summary", range, g, provider],
-    queryFn: () =>
-      apiFetch<AnalyticsResponse>(buildAnalyticsSummaryPath(range, g, provider)),
-    staleTime: 30_000,
-    refetchInterval: () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return false
-      }
-      return 60_000
-    },
-  })
 }
 
 export function useAnalyticsCore(
@@ -114,21 +85,4 @@ export function useAnalyticsHeatmap(
       return 60_000
     },
   })
-}
-
-export function mergeAnalyticsCore(
-  full: AnalyticsResponse | undefined,
-  core: AnalyticsCoreResponse | undefined,
-): AnalyticsResponse | undefined {
-  if (!full && !core) return undefined
-  if (!full) return core
-  if (!core) return full
-  return {
-    ...full,
-    ...core,
-    granularity: core.granularity ?? full.granularity,
-    summary: core.summary,
-    trend: core.trend,
-    time_breakdown: core.trend,
-  }
 }

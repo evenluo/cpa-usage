@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import analyticsSummaryFixture from "@/test/contracts/analytics_summary.json"
-import type { AnalyticsResponse, KeyAliasBreakdown, TrendPoint } from "@/types/api"
+import type { AnalyticsCoreResponse, HeatmapData, KeyAliasBreakdown, TrendPoint } from "@/types/api"
 import {
   buildUsageDashboardViewModel,
   DEFAULT_TIME_RANGE,
@@ -90,7 +90,7 @@ describe("Usage Intelligence view model", () => {
   it("selects Selected Analysis Window outputs and Fixed Operational Window outputs", () => {
     const apiKey = keyRow("API Key")
     const account = keyRow("Account")
-    const analytics: AnalyticsResponse = {
+    const analytics: AnalyticsCoreResponse = {
       summary: {
         total_cost: 10,
         total_tokens: 20,
@@ -174,7 +174,7 @@ describe("Usage Intelligence view model", () => {
   })
 
   it("accepts the shared analytics summary HTTP contract fixture", () => {
-    const analytics = analyticsSummaryFixture as AnalyticsResponse
+    const analytics = analyticsSummaryFixture as AnalyticsCoreResponse & { heatmap?: HeatmapData }
 
     const viewModel = buildUsageDashboardViewModel({
       analytics,
