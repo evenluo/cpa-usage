@@ -128,7 +128,6 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 		response, err := provider.Refresh(c.Request.Context(), quota.RefreshRequest{
 			AuthIndexes: request.AuthIndexes,
 			Limit:       request.Limit,
-			Source:      quota.RefreshSourceManual,
 		})
 		if err != nil {
 			switch {

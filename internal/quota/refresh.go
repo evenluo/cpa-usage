@@ -5,21 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
-
-	"cpa-usage/internal/entities"
-	"cpa-usage/internal/repository"
-
-	"gorm.io/gorm"
-)
-
-type RefreshSource string
-
-const (
-	RefreshSourceManual        RefreshSource = "manual"
-	RefreshSourceScheduled     RefreshSource = "scheduled"
-	RefreshSourceCacheBackfill RefreshSource = "cache_backfill"
 )
 
 type RefreshTaskStatus string
@@ -41,9 +27,8 @@ type CacheResponse struct {
 }
 
 type RefreshRequest struct {
-	AuthIndexes []string      `json:"auth_indexes"`
-	Limit       int           `json:"limit"`
-	Source      RefreshSource `json:"source"`
+	AuthIndexes []string `json:"auth_indexes"`
+	Limit       int      `json:"limit"`
 }
 
 type RefreshResponse struct {
@@ -80,12 +65,28 @@ type RefreshTaskRecord struct {
 	Status     RefreshTaskStatus
 	Quota      *CheckResponse
 	Error      string
-	Source     RefreshSource
 	CreatedAt  time.Time
 	StartedAt  time.Time
 	FinishedAt time.Time
 	CachedAt   time.Time
 	ExpiresAt  time.Time
+}
+
+// AttachRefreshWorkerLifecycle 把 refresh worker 的父 context 绑定到应用生命周期：
+// 应用关停时取消 ctx，进行中的 provider 调用与排队中的 worker 都会随之退出。
+func (s *Service) AttachRefreshWorkerLifecycle(ctx context.Context) {
+	s.refreshWorkerMu.Lock()
+	defer s.refreshWorkerMu.Unlock()
+	s.refreshWorkerCtx = ctx
+}
+
+// StopRefreshWorkers 拒绝新的 refresh worker 并等待进行中的 worker 退出。
+// 调用方应先取消 AttachRefreshWorkerLifecycle 绑定的 ctx，否则进行中的任务要等自身超时。
+func (s *Service) StopRefreshWorkers() {
+	s.refreshWorkerMu.Lock()
+	s.refreshWorkersClose = true
+	s.refreshWorkerMu.Unlock()
+	s.refreshWorkerWG.Wait()
 }
 
 func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (CacheResponse, error) {
@@ -96,9 +97,7 @@ func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (Cac
 		return CacheResponse{}, fmt.Errorf("%w: limit is required", ErrValidation)
 	}
 	response := CacheResponse{Items: make([]CheckResponse, 0, min(limit, len(request.AuthIndexes)))}
-	s.cleanupExpiredRefreshTasks(time.Now())
-	s.refreshMu.Lock()
-	defer s.refreshMu.Unlock()
+	s.refreshTasks.cleanupExpired(time.Now())
 	// 按请求顺序去重并读取每个 auth_index 最近一次完成的任务缓存。
 	seen := make(map[string]struct{}, len(request.AuthIndexes))
 	for _, rawAuthIndex := range request.AuthIndexes {
@@ -113,16 +112,11 @@ func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (Cac
 			continue
 		}
 		seen[authIndex] = struct{}{}
-		taskID, ok := s.latestCompletedRefreshTaskIDsByAuth[authIndex]
+		task, ok := s.refreshTasks.latestCompleted(authIndex)
 		if !ok {
 			continue
 		}
-		task, ok := s.refreshTasks[taskID]
-		if !ok || task.Status != RefreshTaskStatusCompleted || task.Quota == nil {
-			continue
-		}
-		quota := *task.Quota
-		response.Items = append(response.Items, quota)
+		response.Items = append(response.Items, *task.Quota)
 	}
 	return response, nil
 }
@@ -135,7 +129,7 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 	}
 	response := RefreshResponse{Limit: limit}
 	seen := make(map[string]struct{}, len(request.AuthIndexes))
-	s.cleanupExpiredRefreshTasks(time.Now())
+	s.refreshTasks.cleanupExpired(time.Now())
 
 	for _, rawAuthIndex := range request.AuthIndexes {
 		// 每个 auth_index 独立生成任务，便于前端逐行轮询和展示错误。
@@ -160,14 +154,14 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 			continue
 		}
 
-		task, created := s.ensureRefreshTask(authIndex, request.Source)
+		task, created := s.refreshTasks.enqueue(authIndex)
 		if !created {
 			response.Rejected = append(response.Rejected, RefreshRejectedAuthIndex{AuthIndex: authIndex, Error: "duplicate"})
 			continue
 		}
 		response.Tasks = append(response.Tasks, RefreshTaskID{AuthIndex: authIndex, TaskID: task.TaskID})
 		response.Accepted++
-		go s.runRefreshTask(task.TaskID)
+		s.spawnRefreshWorker(task.TaskID)
 	}
 	response.Skipped = len(response.Rejected)
 	return response, nil
@@ -179,10 +173,8 @@ func (s *Service) GetRefreshTask(ctx context.Context, taskID string) (RefreshTas
 	if taskID == "" {
 		return RefreshTaskResponse{}, fmt.Errorf("%w: task_id is required", ErrValidation)
 	}
-	s.cleanupExpiredRefreshTasks(time.Now())
-	s.refreshMu.Lock()
-	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
+	s.refreshTasks.cleanupExpired(time.Now())
+	task, ok := s.refreshTasks.snapshot(taskID)
 	if !ok {
 		return RefreshTaskResponse{}, ErrTaskNotFound
 	}
@@ -191,67 +183,69 @@ func (s *Service) GetRefreshTask(ctx context.Context, taskID string) (RefreshTas
 
 func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string) (string, error) {
 	// 先按 auth-file 身份查找；查不到时再区分“非 auth file”和“不存在”。
-	identity, err := repository.GetActiveAuthFileUsageIdentityByAuthIndex(ctx, s.db, authIndex)
-	if err == nil {
+	identity, found, err := s.identityLookup.FindActiveAuthFileIdentity(ctx, authIndex)
+	if err != nil {
+		return "", err
+	}
+	if found {
 		if _, _, ok := s.resolveQuotaHandler(identity.Provider, identity.Type); !ok {
 			return "unsupported", nil
 		}
 		return "", nil
 	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", err
-	}
 
-	var active entities.UsageIdentity
-	if err := s.db.WithContext(ctx).Where("identity = ? AND is_deleted = ?", authIndex, false).First(&active).Error; err == nil {
-		return "not_auth_file", nil
-	} else if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "not_found", nil
-	} else {
+	active, err := s.identityLookup.HasActiveIdentity(ctx, authIndex)
+	if err != nil {
 		return "", err
 	}
+	if active {
+		return "not_auth_file", nil
+	}
+	return "not_found", nil
 }
 
-func (s *Service) ensureRefreshTask(authIndex string, source RefreshSource) (*RefreshTaskRecord, bool) {
-	// refreshTaskIDsByAuth 只记录当前刷新任务，用于 queued/running 去重；最新 completed cache 由独立索引维护。
-	now := time.Now().UTC()
-	s.refreshMu.Lock()
-	defer s.refreshMu.Unlock()
-	if taskID, ok := s.refreshTaskIDsByAuth[authIndex]; ok {
-		if task, ok := s.refreshTasks[taskID]; ok && task.isActive() {
-			return task, false
-		}
+// spawnRefreshWorker 启动一个后台 worker 执行刷新任务。
+// worker 计数与关闭标志在同一把锁下维护，保证 StopRefreshWorkers 等待期间不会再有新 worker 加入。
+func (s *Service) spawnRefreshWorker(taskID string) {
+	s.refreshWorkerMu.Lock()
+	if s.refreshWorkersClose {
+		s.refreshWorkerMu.Unlock()
+		return
 	}
-	task := &RefreshTaskRecord{
-		TaskID:    fmt.Sprintf("quota-refresh-%d", atomic.AddUint64(&s.refreshTaskSeq, 1)),
-		AuthIndex: authIndex,
-		Status:    RefreshTaskStatusQueued,
-		Source:    source,
-		CreatedAt: now,
-	}
-	s.refreshTasks[task.TaskID] = task
-	s.refreshTaskIDsByAuth[authIndex] = task.TaskID
-	return task, true
+	s.refreshWorkerWG.Add(1)
+	s.refreshWorkerMu.Unlock()
+	go func() {
+		defer s.refreshWorkerWG.Done()
+		s.runRefreshTask(taskID)
+	}()
 }
 
 func (s *Service) runRefreshTask(taskID string) {
-	// worker token 控制全局并发，防止一次批量刷新同时压垮 CPA/上游接口。
-	s.refreshWorkerTokens <- struct{}{}
-	defer func() { <-s.refreshWorkerTokens }()
+	s.refreshWorkerMu.Lock()
+	workerCtx := s.refreshWorkerCtx
+	s.refreshWorkerMu.Unlock()
 
-	authIndex, ok := s.markRefreshTaskRunning(taskID)
+	// worker token 控制全局并发，防止一次批量刷新同时压垮 CPA/上游接口。
+	select {
+	case s.refreshWorkerTokens <- struct{}{}:
+		defer func() { <-s.refreshWorkerTokens }()
+	case <-workerCtx.Done():
+		return
+	}
+
+	authIndex, ok := s.refreshTasks.markRunning(taskID)
 	if !ok {
 		return
 	}
 	// 每个任务独立设置超时；超时或 provider 错误都会沉淀到任务状态里给前端展示。
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRefreshTaskTimeout)
+	ctx, cancel := context.WithTimeout(workerCtx, defaultRefreshTaskTimeout)
 	defer cancel()
 	response, err := s.Check(ctx, CheckRequest{AuthIndex: authIndex})
 	if err != nil {
-		s.markRefreshTaskFailed(taskID, refreshTaskErrorMessage(err))
+		s.refreshTasks.markFailed(taskID, refreshTaskErrorMessage(err))
 		return
 	}
-	s.markRefreshTaskCompleted(taskID, response)
+	s.refreshTasks.markCompleted(taskID, response)
 }
 
 func refreshTaskErrorMessage(err error) string {
@@ -265,71 +259,6 @@ func refreshTaskErrorMessage(err error) string {
 		return err.Error()
 	}
 	return "Quota refresh failed. Please try again later."
-}
-
-func (s *Service) markRefreshTaskRunning(taskID string) (string, bool) {
-	now := time.Now().UTC()
-	s.refreshMu.Lock()
-	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
-	if !ok || task.Status != RefreshTaskStatusQueued {
-		return "", false
-	}
-	task.Status = RefreshTaskStatusRunning
-	task.StartedAt = now
-	return task.AuthIndex, true
-}
-
-func (s *Service) markRefreshTaskCompleted(taskID string, response CheckResponse) {
-	now := time.Now().UTC()
-	s.refreshMu.Lock()
-	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
-	if !ok {
-		return
-	}
-	task.Status = RefreshTaskStatusCompleted
-	task.FinishedAt = now
-	task.CachedAt = now
-	task.ExpiresAt = now.Add(s.refreshTaskTTL)
-	task.Quota = &response
-	s.latestCompletedRefreshTaskIDsByAuth[task.AuthIndex] = taskID
-}
-
-func (s *Service) markRefreshTaskFailed(taskID string, message string) {
-	now := time.Now().UTC()
-	s.refreshMu.Lock()
-	defer s.refreshMu.Unlock()
-	task, ok := s.refreshTasks[taskID]
-	if !ok {
-		return
-	}
-	task.Status = RefreshTaskStatusFailed
-	task.FinishedAt = now
-	task.ExpiresAt = now.Add(s.refreshTaskTTL)
-	task.Error = message
-}
-
-func (s *Service) cleanupExpiredRefreshTasks(now time.Time) {
-	s.refreshMu.Lock()
-	defer s.refreshMu.Unlock()
-	s.cleanupExpiredRefreshTasksLocked(now)
-}
-
-func (s *Service) cleanupExpiredRefreshTasksLocked(now time.Time) {
-	// 任务过期时同步删除 task_id、当前任务索引和最新完成缓存索引，避免映射残留。
-	for taskID, task := range s.refreshTasks {
-		if task.ExpiresAt.IsZero() || now.Before(task.ExpiresAt) {
-			continue
-		}
-		delete(s.refreshTasks, taskID)
-		if s.refreshTaskIDsByAuth[task.AuthIndex] == taskID {
-			delete(s.refreshTaskIDsByAuth, task.AuthIndex)
-		}
-		if s.latestCompletedRefreshTaskIDsByAuth[task.AuthIndex] == taskID {
-			delete(s.latestCompletedRefreshTaskIDsByAuth, task.AuthIndex)
-		}
-	}
 }
 
 func (t *RefreshTaskRecord) isActive() bool {

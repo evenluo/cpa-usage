@@ -41,6 +41,7 @@ type App struct {
 	MetadataSync      *MetadataSyncRunner
 	BackupMaintenance *DatabaseBackupRunner
 	RollupBackfill    *service.UsageRollupBackfillRunner
+	Quota             *quota.Service
 	LogCloser         io.Closer
 
 	backgroundCancel context.CancelFunc
@@ -104,7 +105,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		logrus.WithField("cpa_base_url", cfg.CPABaseURL).Warn("TLS certificate verification is disabled for CPA and Redis queue connections")
 	}
 	pricingService := service.NewPricingService(db, cpaClient)
-	quotaService := quota.NewService(db, cpaClient)
+	quotaService := quota.NewService(quota.NewRepositoryAuthFileIdentityLookup(db), cpaClient)
 	sessionManager := auth.NewSessionManager(cfg.AuthSessionTTL)
 	if cfg.AuthSessionSecret != "" {
 		sessionManager = auth.NewSignedSessionManager(cfg.AuthSessionTTL, cfg.AuthSessionSecret)
@@ -129,6 +130,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		MetadataSync:      NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
 		BackupMaintenance: backupMaintenance,
 		RollupBackfill:    rollupBackfillRunner,
+		Quota:             quotaService,
 		LogCloser:         logCloser,
 		Router: api.NewRouter(
 			webui.Static,
@@ -190,6 +192,9 @@ func (a *App) Run() error {
 
 	ctx := a.startBackgroundContext()
 	defer a.stopBackgroundTasks()
+	if a.Quota != nil {
+		a.Quota.AttachRefreshWorkerLifecycle(ctx)
+	}
 	if a.Poller != nil {
 		a.startBackgroundTask(func() {
 			if err := a.Poller.Run(ctx); err != nil {
@@ -247,6 +252,10 @@ func (a *App) stopBackgroundTasks() {
 	if a.backgroundCancel != nil {
 		a.backgroundCancel()
 		a.backgroundCancel = nil
+	}
+	// 先取消后台 ctx 再等待 refresh worker：进行中的 provider 调用被 ctx 打断后退出。
+	if a.Quota != nil {
+		a.Quota.StopRefreshWorkers()
 	}
 	a.backgroundWG.Wait()
 }
