@@ -15,6 +15,7 @@ const (
 	RefreshTaskStatusRunning   RefreshTaskStatus = "running"
 	RefreshTaskStatusCompleted RefreshTaskStatus = "completed"
 	RefreshTaskStatusFailed    RefreshTaskStatus = "failed"
+	refreshUnavailableCode                       = "refresh_unavailable"
 )
 
 type CacheRequest struct {
@@ -154,14 +155,13 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 			continue
 		}
 
-		task, created := s.refreshTasks.enqueue(authIndex)
-		if !created {
-			response.Rejected = append(response.Rejected, RefreshRejectedAuthIndex{AuthIndex: authIndex, Error: "duplicate"})
+		task, rejection := s.startRefreshTask(authIndex)
+		if rejection != "" {
+			response.Rejected = append(response.Rejected, RefreshRejectedAuthIndex{AuthIndex: authIndex, Error: rejection})
 			continue
 		}
 		response.Tasks = append(response.Tasks, RefreshTaskID{AuthIndex: authIndex, TaskID: task.TaskID})
 		response.Accepted++
-		s.spawnRefreshWorker(task.TaskID)
 	}
 	response.Skipped = len(response.Rejected)
 	return response, nil
@@ -204,20 +204,26 @@ func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string
 	return "not_found", nil
 }
 
-// spawnRefreshWorker 启动一个后台 worker 执行刷新任务。
-// worker 计数与关闭标志在同一把锁下维护，保证 StopRefreshWorkers 等待期间不会再有新 worker 加入。
-func (s *Service) spawnRefreshWorker(taskID string) {
+// startRefreshTask 原子地接收任务并启动后台 worker。
+// 任务创建、worker 计数与关闭标志由同一把生命周期锁协调，保证返回 Accepted 的任务一定有 worker 接管。
+func (s *Service) startRefreshTask(authIndex string) (*RefreshTaskRecord, string) {
 	s.refreshWorkerMu.Lock()
-	if s.refreshWorkersClose {
+	if s.refreshWorkersClose || s.refreshWorkerCtx.Err() != nil {
 		s.refreshWorkerMu.Unlock()
-		return
+		return nil, refreshUnavailableCode
+	}
+	task, created := s.refreshTasks.enqueue(authIndex)
+	if !created {
+		s.refreshWorkerMu.Unlock()
+		return task, "duplicate"
 	}
 	s.refreshWorkerWG.Add(1)
 	s.refreshWorkerMu.Unlock()
 	go func() {
 		defer s.refreshWorkerWG.Done()
-		s.runRefreshTask(taskID)
+		s.runRefreshTask(task.TaskID)
 	}()
+	return task, ""
 }
 
 func (s *Service) runRefreshTask(taskID string) {
@@ -230,6 +236,7 @@ func (s *Service) runRefreshTask(taskID string) {
 	case s.refreshWorkerTokens <- struct{}{}:
 		defer func() { <-s.refreshWorkerTokens }()
 	case <-workerCtx.Done():
+		s.refreshTasks.markFailed(taskID, refreshTaskErrorMessage(workerCtx.Err()))
 		return
 	}
 

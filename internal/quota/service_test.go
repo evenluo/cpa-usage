@@ -3,6 +3,7 @@ package quota
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -227,7 +228,10 @@ func TestStopRefreshWorkersCancelsQueuedAndRunningWorkers(t *testing.T) {
 	block := make(chan struct{})
 	defer close(block)
 	handler := &refreshHandlerStub{block: block, output: claudeUsageOutput(25)}
-	service := newRefreshTestService(map[string]entities.UsageIdentity{"auth-1": claudeAuthFileIdentity("auth-1")}, handler)
+	service := newRefreshTestService(map[string]entities.UsageIdentity{
+		"auth-1": claudeAuthFileIdentity("auth-1"),
+		"auth-2": claudeAuthFileIdentity("auth-2"),
+	}, handler)
 
 	workerCtx, cancel := context.WithCancel(context.Background())
 	service.AttachRefreshWorkerLifecycle(workerCtx)
@@ -236,6 +240,14 @@ func TestStopRefreshWorkersCancelsQueuedAndRunningWorkers(t *testing.T) {
 	waitForRefreshTask(t, service, taskID, RefreshTaskStatusRunning)
 
 	cancel()
+	duringShutdown, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-2"}, Limit: 20})
+	if err != nil {
+		t.Fatalf("Refresh after lifecycle cancellation returned error: %v", err)
+	}
+	if duringShutdown.Accepted != 0 || duringShutdown.Skipped != 1 || len(duringShutdown.Tasks) != 0 || !hasRefreshRejection(duringShutdown.Rejected, "auth-2", "refresh_unavailable") {
+		t.Fatalf("expected cancelled refresh lifecycle to reject new tasks, got %+v", duringShutdown)
+	}
+
 	stopped := make(chan struct{})
 	go func() {
 		service.StopRefreshWorkers()
@@ -247,9 +259,50 @@ func TestStopRefreshWorkersCancelsQueuedAndRunningWorkers(t *testing.T) {
 		t.Fatal("StopRefreshWorkers did not return after worker context cancellation")
 	}
 
-	// 关闭后 Refresh 仍可入队任务，但不再启动新 worker。
-	if _, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-1"}, Limit: 20}); err != nil {
+	response, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-1"}, Limit: 20})
+	if err != nil {
 		t.Fatalf("Refresh after StopRefreshWorkers returned error: %v", err)
+	}
+	if response.Accepted != 0 || response.Skipped != 1 || len(response.Tasks) != 0 || !hasRefreshRejection(response.Rejected, "auth-1", "refresh_unavailable") {
+		t.Fatalf("expected stopped refresh workers to reject new tasks, got %+v", response)
+	}
+}
+
+func TestStopRefreshWorkersMarksQueuedTasksFailed(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	handler := &refreshHandlerStub{block: block, output: claudeUsageOutput(25)}
+	identities := make(map[string]entities.UsageIdentity, defaultRefreshWorkerLimit+1)
+	authIndexes := make([]string, 0, defaultRefreshWorkerLimit+1)
+	for index := 0; index <= defaultRefreshWorkerLimit; index++ {
+		authIndex := fmt.Sprintf("auth-%d", index)
+		identities[authIndex] = claudeAuthFileIdentity(authIndex)
+		authIndexes = append(authIndexes, authIndex)
+	}
+	service := newRefreshTestService(identities, handler)
+
+	workerCtx, cancel := context.WithCancel(context.Background())
+	service.AttachRefreshWorkerLifecycle(workerCtx)
+	response, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: authIndexes, Limit: len(authIndexes)})
+	if err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if response.Accepted != len(authIndexes) {
+		t.Fatalf("expected all refresh tasks to be accepted, got %+v", response)
+	}
+
+	waitForRefreshTaskCounts(t, service, response.Tasks, defaultRefreshWorkerLimit, 1)
+	cancel()
+	service.StopRefreshWorkers()
+
+	for _, accepted := range response.Tasks {
+		task, err := service.GetRefreshTask(context.Background(), accepted.TaskID)
+		if err != nil {
+			t.Fatalf("GetRefreshTask(%s) returned error: %v", accepted.TaskID, err)
+		}
+		if task.Status != RefreshTaskStatusFailed || task.ExpiresAt == nil {
+			t.Fatalf("expected stopped task %s to be failed with an expiry, got %+v", accepted.TaskID, task)
+		}
 	}
 }
 
@@ -311,6 +364,32 @@ func waitForRefreshTask(t *testing.T, service *Service, taskID string, status Re
 	}
 	t.Fatalf("task %s did not reach status %s, last task=%+v err=%v", taskID, status, task, err)
 	return RefreshTaskResponse{}
+}
+
+func waitForRefreshTaskCounts(t *testing.T, service *Service, tasks []RefreshTaskID, running int, queued int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		runningCount := 0
+		queuedCount := 0
+		for _, accepted := range tasks {
+			task, err := service.GetRefreshTask(context.Background(), accepted.TaskID)
+			if err != nil {
+				continue
+			}
+			switch task.Status {
+			case RefreshTaskStatusRunning:
+				runningCount++
+			case RefreshTaskStatusQueued:
+				queuedCount++
+			}
+		}
+		if runningCount == running && queuedCount == queued {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("refresh tasks did not reach running=%d queued=%d", running, queued)
 }
 
 func hasRefreshRejection(rejections []RefreshRejectedAuthIndex, authIndex string, code string) bool {

@@ -299,6 +299,8 @@ function planType(rows: QuotaRow[], identityPlanType?: string | null): string {
 
 function rejectionLabel(code: string): string {
   switch (code) {
+    case "refresh_unavailable":
+      return "Refresh unavailable"
     case "unsupported":
       return "Unsupported"
     case "not_auth_file":
