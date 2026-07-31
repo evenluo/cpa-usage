@@ -24,10 +24,6 @@ type usageIdentitiesStub struct {
 	err              error
 }
 
-func (s usageIdentitiesStub) ListUsageIdentities(context.Context) ([]entities.UsageIdentity, error) {
-	return s.items, s.err
-}
-
 func (s usageIdentitiesStub) ListActiveUsageIdentities(context.Context) ([]entities.UsageIdentity, error) {
 	if s.activeItems != nil {
 		return s.activeItems, s.err

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -38,10 +39,11 @@ type UsageEventCanonicalLookupRow struct {
 	TotalTokens     int64
 }
 
-func FindEquivalentUsageEvents(db *gorm.DB, inputs []UsageEventCanonicalLookupInput) ([]UsageEventCanonicalLookupRow, error) {
+func FindEquivalentUsageEvents(ctx context.Context, db *gorm.DB, inputs []UsageEventCanonicalLookupInput) ([]UsageEventCanonicalLookupRow, error) {
 	if len(inputs) == 0 {
 		return nil, nil
 	}
+	db = db.WithContext(ctx)
 	const columnsPerLookupClause = 11
 	maxClauses := sqliteVariableLimit / columnsPerLookupClause
 	rows := make([]UsageEventCanonicalLookupRow, 0, len(inputs))

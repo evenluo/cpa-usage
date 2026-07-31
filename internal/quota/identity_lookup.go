@@ -39,13 +39,5 @@ func (l repositoryAuthFileIdentityLookup) FindActiveAuthFileIdentity(ctx context
 }
 
 func (l repositoryAuthFileIdentityLookup) HasActiveIdentity(ctx context.Context, authIndex string) (bool, error) {
-	var identity entities.UsageIdentity
-	err := l.db.WithContext(ctx).Where("identity = ? AND is_deleted = ?", authIndex, false).First(&identity).Error
-	if err == nil {
-		return true, nil
-	}
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
-	return false, err
+	return repository.HasActiveUsageIdentityByAuthIndex(ctx, l.db, authIndex)
 }

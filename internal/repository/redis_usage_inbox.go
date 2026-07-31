@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"strings"
@@ -152,10 +153,11 @@ func MarkRedisUsageInboxProcessFailedBatch(db *gorm.DB, ids []uint, processErr e
 	})
 }
 
-func ListProcessedRedisUsageInboxEventKeys(db *gorm.DB, eventKeys []string) ([]string, error) {
+func ListProcessedRedisUsageInboxEventKeys(ctx context.Context, db *gorm.DB, eventKeys []string) ([]string, error) {
 	if len(eventKeys) == 0 {
 		return nil, nil
 	}
+	db = db.WithContext(ctx)
 	result := make([]string, 0, len(eventKeys))
 	maxKeysPerBatch := sqliteVariableLimit - 1
 	for start := 0; start < len(eventKeys); start += maxKeysPerBatch {

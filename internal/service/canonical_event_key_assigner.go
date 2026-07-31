@@ -27,12 +27,12 @@ func NewRepositoryCanonicalEventLookup(db *gorm.DB) CanonicalEventLookup {
 	return repositoryCanonicalEventLookup{db: db}
 }
 
-func (l repositoryCanonicalEventLookup) FindEquivalentUsageEvents(_ context.Context, inputs []repository.UsageEventCanonicalLookupInput) ([]repository.UsageEventCanonicalLookupRow, error) {
-	return repository.FindEquivalentUsageEvents(l.db, inputs)
+func (l repositoryCanonicalEventLookup) FindEquivalentUsageEvents(ctx context.Context, inputs []repository.UsageEventCanonicalLookupInput) ([]repository.UsageEventCanonicalLookupRow, error) {
+	return repository.FindEquivalentUsageEvents(ctx, l.db, inputs)
 }
 
-func (l repositoryCanonicalEventLookup) ListProcessedEventKeyReferences(_ context.Context, eventKeys []string) ([]string, error) {
-	return repository.ListProcessedRedisUsageInboxEventKeys(l.db, eventKeys)
+func (l repositoryCanonicalEventLookup) ListProcessedEventKeyReferences(ctx context.Context, eventKeys []string) ([]string, error) {
+	return repository.ListProcessedRedisUsageInboxEventKeys(ctx, l.db, eventKeys)
 }
 
 // CanonicalEventKeyAssigner 负责为 incoming usage event 分配 canonical event key（Request Evidence 去重）：
@@ -114,19 +114,7 @@ func (a CanonicalEventKeyAssigner) loadExistingCanonicalKeys(ctx context.Context
 			continue
 		}
 		seen[canonicalKey] = struct{}{}
-		inputs = append(inputs, repository.UsageEventCanonicalLookupInput{
-			APIGroupKey:     event.APIGroupKey,
-			Model:           event.Model,
-			Timestamp:       event.Timestamp,
-			Source:          event.Source,
-			AuthIndex:       event.AuthIndex,
-			Failed:          event.Failed,
-			InputTokens:     event.InputTokens,
-			OutputTokens:    event.OutputTokens,
-			ReasoningTokens: event.ReasoningTokens,
-			CachedTokens:    event.CachedTokens,
-			TotalTokens:     event.TotalTokens,
-		})
+		inputs = append(inputs, usageEventCanonicalLookupInput(event))
 	}
 	existing := make(map[string]existingCanonicalKey, len(inputs))
 	if len(inputs) == 0 {
@@ -178,37 +166,55 @@ func (a CanonicalEventKeyAssigner) markReferencedEventKeys(ctx context.Context, 
 }
 
 func canonicalUsageEventKey(event entities.UsageEvent) string {
-	return BuildEventKey(
-		event.APIGroupKey,
-		event.Model,
-		event.Timestamp,
-		event.Source,
-		event.AuthIndex,
-		event.Failed,
-		repodto.TokenStats{
-			InputTokens:     event.InputTokens,
-			OutputTokens:    event.OutputTokens,
-			ReasoningTokens: event.ReasoningTokens,
-			CachedTokens:    event.CachedTokens,
-			TotalTokens:     event.TotalTokens,
-		},
-	)
+	return canonicalLookupInputEventKey(usageEventCanonicalLookupInput(event))
+}
+
+func usageEventCanonicalLookupInput(event entities.UsageEvent) repository.UsageEventCanonicalLookupInput {
+	return repository.UsageEventCanonicalLookupInput{
+		APIGroupKey:     event.APIGroupKey,
+		Model:           event.Model,
+		Timestamp:       event.Timestamp,
+		Source:          event.Source,
+		AuthIndex:       event.AuthIndex,
+		Failed:          event.Failed,
+		InputTokens:     event.InputTokens,
+		OutputTokens:    event.OutputTokens,
+		ReasoningTokens: event.ReasoningTokens,
+		CachedTokens:    event.CachedTokens,
+		TotalTokens:     event.TotalTokens,
+	}
 }
 
 func canonicalLookupRowEventKey(row repository.UsageEventCanonicalLookupRow) string {
+	return canonicalLookupInputEventKey(repository.UsageEventCanonicalLookupInput{
+		APIGroupKey:     row.APIGroupKey,
+		Model:           row.Model,
+		Timestamp:       row.Timestamp,
+		Source:          row.Source,
+		AuthIndex:       row.AuthIndex,
+		Failed:          row.Failed,
+		InputTokens:     row.InputTokens,
+		OutputTokens:    row.OutputTokens,
+		ReasoningTokens: row.ReasoningTokens,
+		CachedTokens:    row.CachedTokens,
+		TotalTokens:     row.TotalTokens,
+	})
+}
+
+func canonicalLookupInputEventKey(input repository.UsageEventCanonicalLookupInput) string {
 	return BuildEventKey(
-		row.APIGroupKey,
-		row.Model,
-		row.Timestamp,
-		row.Source,
-		row.AuthIndex,
-		row.Failed,
+		input.APIGroupKey,
+		input.Model,
+		input.Timestamp,
+		input.Source,
+		input.AuthIndex,
+		input.Failed,
 		repodto.TokenStats{
-			InputTokens:     row.InputTokens,
-			OutputTokens:    row.OutputTokens,
-			ReasoningTokens: row.ReasoningTokens,
-			CachedTokens:    row.CachedTokens,
-			TotalTokens:     row.TotalTokens,
+			InputTokens:     input.InputTokens,
+			OutputTokens:    input.OutputTokens,
+			ReasoningTokens: input.ReasoningTokens,
+			CachedTokens:    input.CachedTokens,
+			TotalTokens:     input.TotalTokens,
 		},
 	)
 }
