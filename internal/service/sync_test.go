@@ -19,6 +19,7 @@ import (
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository"
 	"cpa-usage/internal/repository/dto"
+	servicedto "cpa-usage/internal/service/dto"
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -270,7 +271,7 @@ func TestProcessRedisUsageInboxDoesNotFetchMetadata(t *testing.T) {
 	}
 }
 
-func TestSyncRedisBatchSkipsEmptyBatchWithoutSnapshotOrMetadata(t *testing.T) {
+func TestProcessRedisUsageInboxReturnsEmptyResultWithoutMetadata(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	metadata := &trackingMetadataFetcher{}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
@@ -279,9 +280,9 @@ func TestSyncRedisBatchSkipsEmptyBatchWithoutSnapshotOrMetadata(t *testing.T) {
 		MetadataFetcher: metadata,
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := service.ProcessRedisUsageInbox(context.Background())
 	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+		t.Fatalf("ProcessRedisUsageInbox returned error: %v", err)
 	}
 	if result == nil || !result.Empty || result.Status != "empty" {
 		t.Fatalf("expected empty redis batch result, got %+v", result)
@@ -292,7 +293,7 @@ func TestSyncRedisBatchSkipsEmptyBatchWithoutSnapshotOrMetadata(t *testing.T) {
 
 }
 
-func TestSyncRedisBatchPersistsNonEmptyBatchWithoutMetadata(t *testing.T) {
+func TestRedisInboxPullThenProcessPersistsEventsWithoutMetadata(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	metadata := &trackingMetadataFetcher{}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
@@ -301,9 +302,9 @@ func TestSyncRedisBatchPersistsNonEmptyBatchWithoutMetadata(t *testing.T) {
 		MetadataFetcher: metadata,
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := pullThenProcessRedisInbox(t, service)
 	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+		t.Fatalf("pull then process returned error: %v", err)
 	}
 	if result == nil || result.Empty || result.Status != "completed" || result.InsertedEvents != 1 || result.DedupedEvents != 0 {
 		t.Fatalf("unexpected redis batch result: %+v", result)
@@ -328,7 +329,7 @@ func TestSyncRedisBatchPersistsNonEmptyBatchWithoutMetadata(t *testing.T) {
 	}
 }
 
-func TestSyncRedisBatchPersistsValidRowsWhenBatchContainsMalformedMessage(t *testing.T) {
+func TestRedisInboxPullThenProcessPersistsValidRowsWhenBatchContainsMalformedMessage(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
@@ -338,7 +339,7 @@ func TestSyncRedisBatchPersistsValidRowsWhenBatchContainsMalformedMessage(t *tes
 		}},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := pullThenProcessRedisInbox(t, service)
 	if err == nil || !strings.Contains(err.Error(), "decode redis usage message") {
 		t.Fatalf("expected decode warning, got %v", err)
 	}
@@ -369,14 +370,14 @@ func TestSyncRedisBatchPersistsValidRowsWhenBatchContainsMalformedMessage(t *tes
 	}
 }
 
-func TestSyncRedisBatchMarksMalformedOnlyBatchWithoutSnapshot(t *testing.T) {
+func TestRedisInboxPullThenProcessMarksMalformedOnlyBatchWithoutSnapshot(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL:    "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{`{bad-json}`}},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := pullThenProcessRedisInbox(t, service)
 	if err == nil || !strings.Contains(err.Error(), "decode redis usage message") {
 		t.Fatalf("expected decode warning, got %v", err)
 	}
@@ -393,7 +394,7 @@ func TestSyncRedisBatchMarksMalformedOnlyBatchWithoutSnapshot(t *testing.T) {
 	}
 }
 
-func TestSyncRedisBatchProcessesPendingInboxBeforePoppingRedis(t *testing.T) {
+func TestProcessRedisUsageInboxProcessesPendingRowsWithoutPoppingRedis(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
@@ -409,9 +410,9 @@ func TestSyncRedisBatchProcessesPendingInboxBeforePoppingRedis(t *testing.T) {
 		RedisQueue: staticRedisQueue{err: errors.New("redis should not be popped while inbox is pending")},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := service.ProcessRedisUsageInbox(context.Background())
 	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+		t.Fatalf("ProcessRedisUsageInbox returned error: %v", err)
 	}
 	if result == nil || result.Status != "completed" || result.InsertedEvents != 1 {
 		t.Fatalf("expected pending inbox row to be processed, got %+v", result)
@@ -433,7 +434,7 @@ func TestSyncRedisBatchProcessesPendingInboxBeforePoppingRedis(t *testing.T) {
 	}
 }
 
-func TestSyncRedisBatchDoesNotWatermarkFilterRedisInboxEvents(t *testing.T) {
+func TestRedisInboxPullThenProcessDoesNotWatermarkFilterRedisInboxEvents(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
 		EventKey:    "future-watermark",
@@ -450,9 +451,9 @@ func TestSyncRedisBatchDoesNotWatermarkFilterRedisInboxEvents(t *testing.T) {
 		}},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := pullThenProcessRedisInbox(t, service)
 	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+		t.Fatalf("pull then process returned error: %v", err)
 	}
 	if result == nil || result.InsertedEvents != 1 {
 		t.Fatalf("expected old unique Redis event to insert despite watermark, got %+v", result)
@@ -464,7 +465,7 @@ func TestSyncRedisBatchDoesNotWatermarkFilterRedisInboxEvents(t *testing.T) {
 	}
 }
 
-func TestSyncRedisBatchRetriesProcessFailedInboxBeforePoppingRedis(t *testing.T) {
+func TestProcessRedisUsageInboxRetriesProcessFailedRowsWithoutPoppingRedis(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
@@ -483,9 +484,9 @@ func TestSyncRedisBatchRetriesProcessFailedInboxBeforePoppingRedis(t *testing.T)
 		RedisQueue: staticRedisQueue{err: errors.New("redis should not be popped while process_failed inbox is retryable")},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := service.ProcessRedisUsageInbox(context.Background())
 	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+		t.Fatalf("ProcessRedisUsageInbox returned error: %v", err)
 	}
 	if result == nil || result.InsertedEvents != 1 {
 		t.Fatalf("expected process_failed row retry to insert, got %+v", result)
@@ -499,37 +500,7 @@ func TestSyncRedisBatchRetriesProcessFailedInboxBeforePoppingRedis(t *testing.T)
 	}
 }
 
-func TestSyncNowInRedisModeUsesDurableInbox(t *testing.T) {
-	db := openSyncTestDatabase(t)
-	metadata := &trackingMetadataFetcher{}
-	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
-		BaseURL: "https://cpa.example.com",
-		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"sync-now-redis","tokens":{"input_tokens":1,"output_tokens":2}}`,
-		}},
-		MetadataFetcher: metadata,
-	})
-
-	result, err := service.SyncNow(context.Background())
-	if err != nil {
-		t.Fatalf("SyncNow returned error: %v", err)
-	}
-	if result == nil || result.InsertedEvents != 1 {
-		t.Fatalf("unexpected SyncNow result: %+v", result)
-	}
-	if metadata.authCalls != 0 || metadata.providerCalls() != 0 {
-		t.Fatalf("expected SyncNow not to fetch metadata, got auth=%d provider=%d", metadata.authCalls, metadata.providerCalls())
-	}
-	var inbox entities.RedisUsageInbox
-	if err := db.First(&inbox).Error; err != nil {
-		t.Fatalf("load inbox row: %v", err)
-	}
-	if inbox.Status != repository.RedisUsageInboxStatusProcessed || inbox.UsageEventKey != "sync-now-redis" {
-		t.Fatalf("expected SyncNow redis path to use inbox, got %+v", inbox)
-	}
-}
-
-func TestSyncRedisBatchKeepsRedisRequestIDWhenEquivalentCanonicalEventExists(t *testing.T) {
+func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEventExists(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	timestamp := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	tokens := dto.TokenStats{InputTokens: 10, OutputTokens: 20, ReasoningTokens: 5, CachedTokens: 4, TotalTokens: 39}
@@ -558,9 +529,9 @@ func TestSyncRedisBatchKeepsRedisRequestIDWhenEquivalentCanonicalEventExists(t *
 		}},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := pullThenProcessRedisInbox(t, service)
 	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+		t.Fatalf("pull then process returned error: %v", err)
 	}
 	if result.InsertedEvents != 1 || result.DedupedEvents != 0 {
 		t.Fatalf("expected Redis request_id event to insert separately from canonical event, got %+v", result)
@@ -575,7 +546,7 @@ func TestSyncRedisBatchKeepsRedisRequestIDWhenEquivalentCanonicalEventExists(t *
 	}
 }
 
-func TestSyncRedisBatchKeepsDistinctRedisRequestIDsWithSameCanonicalFields(t *testing.T) {
+func TestRedisInboxPullThenProcessKeepsDistinctRedisRequestIDsWithSameCanonicalFields(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	timestamp := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	tokens := dto.TokenStats{InputTokens: 10, OutputTokens: 20, ReasoningTokens: 5, CachedTokens: 4, TotalTokens: 39}
@@ -587,9 +558,9 @@ func TestSyncRedisBatchKeepsDistinctRedisRequestIDsWithSameCanonicalFields(t *te
 		}},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := pullThenProcessRedisInbox(t, service)
 	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+		t.Fatalf("pull then process returned error: %v", err)
 	}
 	if result.InsertedEvents != 2 || result.DedupedEvents != 0 {
 		t.Fatalf("expected distinct Redis request IDs to insert separately, got %+v", result)
@@ -597,7 +568,7 @@ func TestSyncRedisBatchKeepsDistinctRedisRequestIDsWithSameCanonicalFields(t *te
 	assertUsageEventCount(t, db, 2)
 }
 
-func TestSyncRedisBatchWritesDebugLogsWithoutRawPayload(t *testing.T) {
+func TestRedisInboxPullThenProcessWritesDebugLogsWithoutRawPayload(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	logs := captureSyncDebugLogs(t)
 
@@ -608,9 +579,8 @@ func TestSyncRedisBatchWritesDebugLogsWithoutRawPayload(t *testing.T) {
 		}},
 	})
 
-	_, err := service.SyncRedisBatch(context.Background())
-	if err != nil {
-		t.Fatalf("SyncRedisBatch returned error: %v", err)
+	if _, err := pullThenProcessRedisInbox(t, service); err != nil {
+		t.Fatalf("pull then process returned error: %v", err)
 	}
 	output := logs.String()
 	for _, expected := range []string{
@@ -1420,16 +1390,16 @@ func TestSyncMetadataKeepsProviderUsageIdentitiesWhenEndpointReturnsNilResult(t 
 	}
 }
 
-func TestSyncRedisBatchErrorDoesNotCreateSnapshot(t *testing.T) {
+func TestPullRedisUsageInboxErrorReturnsFailedResult(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL:    "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{err: errors.New("dial failed")},
 	})
 
-	result, err := service.SyncRedisBatch(context.Background())
+	result, err := service.PullRedisUsageInbox(context.Background())
 	if err == nil || result == nil || result.Status != "failed" {
-		t.Fatalf("expected failed redis batch result, got result=%+v err=%v", result, err)
+		t.Fatalf("expected failed redis pull result, got result=%+v err=%v", result, err)
 	}
 }
 
@@ -1446,6 +1416,14 @@ func TestNewSyncServiceBuildsClientFromConfig(t *testing.T) {
 	if service.baseURL != "https://cpa.example.com" {
 		t.Fatalf("expected trimmed base url, got %q", service.baseURL)
 	}
+}
+
+func pullThenProcessRedisInbox(t *testing.T, service *SyncService) (*servicedto.RedisBatchSyncResult, error) {
+	t.Helper()
+	if _, err := service.PullRedisUsageInbox(context.Background()); err != nil {
+		t.Fatalf("PullRedisUsageInbox returned error: %v", err)
+	}
+	return service.ProcessRedisUsageInbox(context.Background())
 }
 
 func equivalentRedisMessage(apiGroupKey, model string, timestamp time.Time, source, authIndex string, failed bool, latencyMS int64, tokens dto.TokenStats, requestID string) string {

@@ -1,7 +1,7 @@
 package repository
 
 import (
-	"cpa-usage/internal/repository/dto"
+	"context"
 	"math"
 	"path/filepath"
 	"reflect"
@@ -10,6 +10,7 @@ import (
 
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/repository/dto"
 )
 
 func withRepositoryTestLocation(t *testing.T, name string) {
@@ -103,7 +104,7 @@ func TestBuildUsageOverviewWithFilterComputesSummaryAndSeries(t *testing.T) {
 
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 17, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -293,7 +294,7 @@ func TestBuildUsageOverviewWithFilterBuilds24hHealthGridFor24hRange(t *testing.T
 
 	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 17, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -348,11 +349,11 @@ func TestBuildUsageRequestHealthWithFilterMatchesOverviewHealthProjection(t *tes
 	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 18, 0, 0, 0, 0, time.UTC)
 	filter := dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"}
-	overview, err := BuildUsageOverviewWithFilter(db, filter)
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, filter)
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
-	health, err := BuildUsageRequestHealthWithFilter(db, filter)
+	health, err := BuildUsageRequestHealthWithFilter(context.Background(), db, filter)
 	if err != nil {
 		t.Fatalf("BuildUsageRequestHealthWithFilter returned error: %v", err)
 	}
@@ -385,7 +386,7 @@ func TestBuildUsageOverviewWithFilterAppliesProviderScope(t *testing.T) {
 
 	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 17, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -415,7 +416,7 @@ func TestListUsageEventsWithFilterAppliesProviderScope(t *testing.T) {
 
 	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 17, 23, 59, 59, 999000000, time.UTC)
-	page, err := ListUsageEventsWithFilter(db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end, Provider: "codex", Page: 1, PageSize: 20})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end, Provider: "codex", Page: 1, PageSize: 20})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -486,7 +487,7 @@ func TestBuildUsageOverviewWithFilterReturnsUnavailableCostForPartialPricing(t *
 
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -532,7 +533,7 @@ func TestBuildUsageOverviewWithFilterReturnsAvailableCostWhenUnpricedEventsHaveN
 
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -563,7 +564,7 @@ func TestBuildUsageOverviewWithFilterReturnsUnavailableCostWithoutPricing(t *tes
 
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -625,7 +626,7 @@ func TestBuildUsageOverviewWithFilterUsesExactPresetWindowMinutes(t *testing.T) 
 				t.Fatalf("InsertUsageEvents returned error: %v", err)
 			}
 
-			overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: tc.rangeName, StartTime: &tc.start, EndTime: &tc.end})
+			overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: tc.rangeName, StartTime: &tc.start, EndTime: &tc.end})
 			if err != nil {
 				t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 			}
@@ -671,7 +672,7 @@ func TestBuildUsageOverviewWithFilterBuildsLatestHourlySeriesForLongRanges(t *te
 
 	start := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 23, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "7d", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}
@@ -714,7 +715,7 @@ func TestBuildUsageOverviewWithFilterUsesDailyBucketsForLongCustomRanges(t *test
 
 	start := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 26, 23, 59, 59, 999000000, time.UTC)
-	overview, err := BuildUsageOverviewWithFilter(db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end})
+	overview, err := BuildUsageOverviewWithFilter(context.Background(), db, dto.UsageQueryFilter{Range: "custom", StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("BuildUsageOverviewWithFilter returned error: %v", err)
 	}

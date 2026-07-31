@@ -73,7 +73,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 		CachedTokens:    1,
 		TotalTokens:     105091,
 	}}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h", nil)
 	resp := httptest.NewRecorder()
 
@@ -125,7 +125,7 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 		OutputTokens: 976,
 		TotalTokens:  105091,
 	}}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events", nil)
 	resp := httptest.NewRecorder()
 
@@ -357,7 +357,7 @@ func TestUsageEventsKeepsFallbackSourceWhenAuthIndexIsMissing(t *testing.T) {
 		Provider:  "OpenAI Mirror",
 		Source:    "sk-provider-key",
 	}}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events", nil)
 	resp := httptest.NewRecorder()
 
@@ -374,7 +374,7 @@ func TestUsageEventsKeepsFallbackSourceWhenAuthIndexIsMissing(t *testing.T) {
 
 func TestUsageEventsPassesPaginationAndAuthIndexSourceFilter(t *testing.T) {
 	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 3, PageSize: 100, TotalPages: 0}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?page=3&page_size=100&model=claude-sonnet&source=authidx-openai-main&result=failed", nil)
 	resp := httptest.NewRecorder()
 
@@ -397,7 +397,7 @@ func TestUsageEventsPassesPaginationAndAuthIndexSourceFilter(t *testing.T) {
 
 func TestUsageEventsAcceptsCompactEvidencePageSize(t *testing.T) {
 	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 10, TotalPages: 0}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h&page_size=10", nil)
 	resp := httptest.NewRecorder()
 
@@ -413,7 +413,7 @@ func TestUsageEventsAcceptsCompactEvidencePageSize(t *testing.T) {
 
 func TestUsageEventsAcceptsLatestEvidencePageSize(t *testing.T) {
 	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 1, TotalPages: 0}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h&page_size=1", nil)
 	resp := httptest.NewRecorder()
 
@@ -429,7 +429,7 @@ func TestUsageEventsAcceptsLatestEvidencePageSize(t *testing.T) {
 
 func TestUsageEventsPassesAuthFileIdentitySourceFilterAsAuthIndex(t *testing.T) {
 	provider := &usageEventsStub{eventsPage: &dto.UsageEventsPageRecord{Events: []dto.UsageEventRecord{}, TotalCount: 0, Page: 1, PageSize: 100, TotalPages: 0}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?source=auth-file-index", nil)
 	resp := httptest.NewRecorder()
 
@@ -450,7 +450,7 @@ func TestUsageEventsDoesNotReturnFilterOptions(t *testing.T) {
 		}},
 		TotalCount: 2, Page: 1, PageSize: 20, TotalPages: 1,
 	}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events", nil)
 	resp := httptest.NewRecorder()
 
@@ -469,7 +469,7 @@ func TestUsageEventModelFilterOptionsReturnsStableModels(t *testing.T) {
 	provider := &usageEventsStub{eventFilterOptions: &dto.UsageEventFilterOptionsRecord{
 		Models: []string{"claude-sonnet", "gpt-5"},
 	}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/filters/models?range=24h&model=ignored&source=ignored&result=failed&page=3&page_size=20", nil)
 	resp := httptest.NewRecorder()
 

@@ -62,7 +62,7 @@ type usageEventTokenPayload struct {
 func registerUsageEventsRoute(
 	router gin.IRoutes,
 	usageProvider UsageProvider,
-	usageIdentityProvider service.UsageIdentityProvider,
+	usageIdentityProvider UsageIdentityProvider,
 	keyAliasProvider service.KeyAliasProvider,
 ) {
 	router.GET("/usage/events/filters/models", func(c *gin.Context) {
@@ -234,7 +234,7 @@ func loadUsageEventModelFilterOptions(c *gin.Context, usageProvider UsageProvide
 	return options.Models, nil
 }
 
-func loadUsageEventSourceFilterOptions(c *gin.Context, usageIdentityProvider service.UsageIdentityProvider) ([]usageSourceFilterOption, error) {
+func loadUsageEventSourceFilterOptions(c *gin.Context, usageIdentityProvider UsageIdentityProvider) ([]usageSourceFilterOption, error) {
 	identities, err := loadUsageResolutionData(c, usageIdentityProvider)
 	if err != nil {
 		return nil, err

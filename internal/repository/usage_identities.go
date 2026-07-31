@@ -166,6 +166,21 @@ func GetActiveAuthFileUsageIdentityByAuthIndex(ctx context.Context, db *gorm.DB,
 	return identity, nil
 }
 
+// HasActiveUsageIdentityByAuthIndex 报告 auth_index 是否存在任意 auth_type 的活跃身份，
+// 用于区分“身份存在但非 auth file”和“身份不存在”。
+func HasActiveUsageIdentityByAuthIndex(ctx context.Context, db *gorm.DB, authIndex string) (bool, error) {
+	if db == nil {
+		return false, fmt.Errorf("database is nil")
+	}
+	var count int64
+	if err := db.WithContext(ctx).Model(&entities.UsageIdentity{}).
+		Where("identity = ? AND is_deleted = ?", authIndex, false).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("check active usage identity by auth index: %w", err)
+	}
+	return count > 0, nil
+}
+
 func AggregateUsageIdentityStats(ctx context.Context, db *gorm.DB, now time.Time) error {
 	if db == nil {
 		return fmt.Errorf("database is nil")

@@ -11,7 +11,7 @@ import (
 )
 
 func TestAuthSessionReportsAuthenticatedWhenDisabled(t *testing.T) {
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{Enabled: false}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{Enabled: false}, nil, "", OptionalProviders{})
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
 
@@ -25,7 +25,7 @@ func TestAuthSessionReportsAuthenticatedWhenDisabled(t *testing.T) {
 func TestAuthProtectedRouteRequiresSessionWhenEnabled(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "", OptionalProviders{})
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/overview", nil)
 
@@ -40,7 +40,7 @@ func TestAuthLoginSetsCookieAndUnlocksProtectedRoute(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}
 	handler := NewAuthHandler(config, sessions)
-	router := NewRouter(nil, nil, nil, nil, config, handler, "")
+	router := NewRouter(nil, nil, nil, nil, config, handler, "", OptionalProviders{})
 
 	loginResp := httptest.NewRecorder()
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"secret"}`))
@@ -74,7 +74,7 @@ func TestAuthLoginSetsCookieAndUnlocksProtectedRoute(t *testing.T) {
 func TestAuthLoginRejectsWrongPassword(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "", OptionalProviders{})
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"wrong"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -89,7 +89,7 @@ func TestAuthLoginRejectsWrongPassword(t *testing.T) {
 func TestAuthLoginRateLimitsRepeatedFailures(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "", OptionalProviders{})
 
 	for i := 0; i < 5; i++ {
 		resp := httptest.NewRecorder()
@@ -116,7 +116,7 @@ func TestAuthLoginRateLimitsRepeatedFailures(t *testing.T) {
 func TestAuthLoginRateLimitUsesTrustedForwardedClientIP(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour, TrustedProxies: []string{"198.51.100.10"}}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "", OptionalProviders{})
 
 	for i := 0; i < 5; i++ {
 		resp := httptest.NewRecorder()
@@ -148,7 +148,7 @@ func TestAuthLoginFailedAttemptsExpire(t *testing.T) {
 	handler := NewAuthHandler(config, sessions)
 	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
 	handler.now = func() time.Time { return now }
-	router := NewRouter(nil, nil, nil, nil, config, handler, "")
+	router := NewRouter(nil, nil, nil, nil, config, handler, "", OptionalProviders{})
 
 	for i := 0; i < 5; i++ {
 		resp := httptest.NewRecorder()
@@ -176,7 +176,7 @@ func TestAuthLoginFailedAttemptsExpire(t *testing.T) {
 func TestAuthLoginAllowsCorrectPasswordAfterRateLimitThreshold(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "", OptionalProviders{})
 
 	for i := 0; i < 5; i++ {
 		resp := httptest.NewRecorder()
@@ -204,7 +204,7 @@ func TestAuthLogoutDeletesSessionCookie(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour}
 	handler := NewAuthHandler(config, sessions)
-	router := NewRouter(nil, nil, nil, nil, config, handler, "")
+	router := NewRouter(nil, nil, nil, nil, config, handler, "", OptionalProviders{})
 
 	loginResp := httptest.NewRecorder()
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"secret"}`))
@@ -243,7 +243,7 @@ func TestSubpathAuthUsesPrefixedRoutesAndCookiePath(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SessionTTL: time.Hour, BasePath: "/cpa"}
 	handler := NewAuthHandler(config, sessions)
-	router := NewRouter(nil, nil, nil, nil, config, handler, "/cpa")
+	router := NewRouter(nil, nil, nil, nil, config, handler, "/cpa", OptionalProviders{})
 
 	sessionResp := httptest.NewRecorder()
 	sessionReq := httptest.NewRequest(http.MethodGet, "/cpa/api/v1/auth/session", nil)
@@ -295,7 +295,7 @@ func TestAuthLoginUsesConfiguredSharedCookieScope(t *testing.T) {
 		SessionCookieDomain: "cpa.example.com",
 		SessionCookiePath:   "/",
 	}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "/usage")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "/usage", OptionalProviders{})
 
 	loginResp := httptest.NewRecorder()
 	loginReq := httptest.NewRequest(http.MethodPost, "/usage/api/v1/auth/login", strings.NewReader(`{"password":"secret"}`))
@@ -316,7 +316,7 @@ func TestAuthLoginUsesConfiguredSharedCookieScope(t *testing.T) {
 	}
 
 	otherSessions := auth.NewSignedSessionManager(time.Hour, "0123456789abcdef0123456789abcdef")
-	otherRouter := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, otherSessions), "/usage")
+	otherRouter := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, otherSessions), "/usage", OptionalProviders{})
 	sessionResp := httptest.NewRecorder()
 	sessionReq := httptest.NewRequest(http.MethodGet, "/usage/api/v1/auth/session", nil)
 	sessionReq.AddCookie(cookie)
@@ -329,7 +329,7 @@ func TestAuthLoginUsesConfiguredSharedCookieScope(t *testing.T) {
 func TestAuthProtectedRouteAcceptsSharedBearerToken(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SharedBearerToken: "management-secret", SessionTTL: time.Hour}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "", OptionalProviders{})
 
 	sessionResp := httptest.NewRecorder()
 	sessionReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil)
@@ -351,7 +351,7 @@ func TestAuthProtectedRouteAcceptsSharedBearerToken(t *testing.T) {
 func TestAuthLoginAcceptsSharedBearerTokenAsPassword(t *testing.T) {
 	sessions := auth.NewSessionManager(time.Hour)
 	config := AuthConfig{Enabled: true, LoginPassword: "secret", SharedBearerToken: "management-secret", SessionTTL: time.Hour}
-	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "")
+	router := NewRouter(nil, nil, nil, nil, config, NewAuthHandler(config, sessions), "", OptionalProviders{})
 
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"password":"management-secret"}`))

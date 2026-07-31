@@ -58,7 +58,7 @@ func (i redisUsageIntake) pull(ctx context.Context) (*servicedto.RedisInboxPullR
 
 // process 只读取 pending/process_failed inbox 行并写入 usage_events。
 func (i redisUsageIntake) process(ctx context.Context) (*servicedto.RedisBatchSyncResult, error) {
-	return newRedisUsageProcessor(i.db).process(i.now().UTC())
+	return newRedisUsageProcessor(i.db).process(ctx, i.now().UTC())
 }
 
 func insertRedisInboxMessages(db *gorm.DB, queueKey string, messages []string, poppedAt time.Time) ([]entities.RedisUsageInbox, error) {

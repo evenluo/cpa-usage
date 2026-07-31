@@ -1,27 +1,29 @@
 package repository
 
 import (
-	"cpa-usage/internal/repository/dto"
+	"context"
 	"fmt"
 	"time"
 
+	"cpa-usage/internal/repository/dto"
 	"gorm.io/gorm"
 )
 
-func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func BuildAnalyticsSummaryWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 
-	core, err := BuildAnalyticsCoreWithFilter(db, filter)
+	core, err := BuildAnalyticsCoreWithFilter(ctx, db, filter)
 	if err != nil {
 		return nil, err
 	}
-	previousRangeStart, previousRangeEnd, comparison, err := buildAnalyticsSummaryComparison(db, filter, core.Summary)
+	previousRangeStart, previousRangeEnd, comparison, err := buildAnalyticsSummaryComparison(ctx, db, filter, core.Summary)
 	if err != nil {
 		return nil, err
 	}
-	heatmap, err := BuildAnalyticsHeatmapWithFilter(db, filter)
+	heatmap, err := BuildAnalyticsHeatmapWithFilter(ctx, db, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -42,12 +44,12 @@ func BuildAnalyticsSummaryWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 	}, nil
 }
 
-func buildAnalyticsSummaryComparison(db *gorm.DB, filter dto.UsageQueryFilter, current dto.AnalyticsSummary) (*time.Time, *time.Time, dto.AnalyticsComparison, error) {
+func buildAnalyticsSummaryComparison(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter, current dto.AnalyticsSummary) (*time.Time, *time.Time, dto.AnalyticsComparison, error) {
 	previousFilter, ok := analyticsPreviousPeriodFilter(filter)
 	if !ok {
 		return nil, nil, dto.AnalyticsComparison{}, nil
 	}
-	previous, err := BuildAnalyticsCoreWithFilter(db, previousFilter)
+	previous, err := BuildAnalyticsCoreWithFilter(ctx, db, previousFilter)
 	if err != nil {
 		return nil, nil, dto.AnalyticsComparison{}, err
 	}

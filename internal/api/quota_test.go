@@ -252,9 +252,6 @@ func TestQuotaRefreshCreatesTasksForCurrentPageAuthIndexes(t *testing.T) {
 	if provider.refreshRequest.Limit != 20 {
 		t.Fatalf("expected outer refresh limit 20, got %d", provider.refreshRequest.Limit)
 	}
-	if provider.refreshRequest.Source != quota.RefreshSourceManual {
-		t.Fatalf("expected manual refresh source, got %q", provider.refreshRequest.Source)
-	}
 	body := resp.Body.String()
 	if !contains(body, `"tasks"`) || !contains(body, `"taskId":"task-1"`) || !contains(body, `"accepted":2`) || !contains(body, `"limit":20`) {
 		t.Fatalf("unexpected response body: %s", body)

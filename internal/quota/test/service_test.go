@@ -4,17 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 
-	"cpa-usage/internal/config"
 	"cpa-usage/internal/cpa/dto/apicall"
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/quota"
-	"cpa-usage/internal/repository"
-
-	"gorm.io/gorm"
 )
 
 type recordingProviderHandler struct {
@@ -31,8 +26,34 @@ func (h *recordingProviderHandler) Check(ctx context.Context, input quota.Provid
 	return h.output, nil
 }
 
+// fakeAuthFileIdentityLookup 以内存身份表实现 quota.AuthFileIdentityLookup，dispatch 测试不再需要真实数据库。
+type fakeAuthFileIdentityLookup struct {
+	identities map[string]entities.UsageIdentity
+}
+
+func newFakeAuthFileIdentityLookup(identities ...entities.UsageIdentity) fakeAuthFileIdentityLookup {
+	lookup := fakeAuthFileIdentityLookup{identities: make(map[string]entities.UsageIdentity, len(identities))}
+	for _, identity := range identities {
+		lookup.identities[identity.Identity] = identity
+	}
+	return lookup
+}
+
+func (f fakeAuthFileIdentityLookup) FindActiveAuthFileIdentity(_ context.Context, authIndex string) (entities.UsageIdentity, bool, error) {
+	identity, ok := f.identities[strings.TrimSpace(authIndex)]
+	if !ok || identity.AuthType != entities.UsageIdentityAuthTypeAuthFile {
+		return entities.UsageIdentity{}, false, nil
+	}
+	return identity, true, nil
+}
+
+func (f fakeAuthFileIdentityLookup) HasActiveIdentity(_ context.Context, authIndex string) (bool, error) {
+	_, ok := f.identities[authIndex]
+	return ok, nil
+}
+
 func TestServiceRejectsEmptyAuthIndex(t *testing.T) {
-	service := quota.NewServiceWithRegistry(openQuotaTestDB(t), quota.NewProviderRegistry(nil))
+	service := quota.NewServiceWithRegistry(newFakeAuthFileIdentityLookup(), quota.NewProviderRegistry(nil))
 
 	_, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "   "})
 	if !errors.Is(err, quota.ErrValidation) {
@@ -41,10 +62,9 @@ func TestServiceRejectsEmptyAuthIndex(t *testing.T) {
 }
 
 func TestServiceIgnoresProviderOnlyIdentity(t *testing.T) {
-	db := openQuotaTestDB(t)
-	seedUsageIdentity(t, db, entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAIProvider, Identity: "shared-auth", Type: "codex", Name: "provider"})
+	lookup := newFakeAuthFileIdentityLookup(entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAIProvider, Identity: "shared-auth", Type: "codex", Name: "provider"})
 	handler := &recordingProviderHandler{}
-	service := quota.NewServiceWithRegistry(db, quota.NewProviderRegistry(map[string]quota.ProviderHandler{"codex": handler}))
+	service := quota.NewServiceWithRegistry(lookup, quota.NewProviderRegistry(map[string]quota.ProviderHandler{"codex": handler}))
 
 	_, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "shared-auth"})
 	if !errors.Is(err, quota.ErrNotFound) {
@@ -56,10 +76,9 @@ func TestServiceIgnoresProviderOnlyIdentity(t *testing.T) {
 }
 
 func TestServiceDispatchesAuthFileIdentityByProviderBeforeType(t *testing.T) {
-	db := openQuotaTestDB(t)
-	seedUsageIdentity(t, db, entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "codex-auth", Provider: "codex", Type: "unknown", Name: "auth file"})
+	lookup := newFakeAuthFileIdentityLookup(entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "codex-auth", Provider: "codex", Type: "unknown", Name: "auth file"})
 	handler := &recordingProviderHandler{output: quota.ProviderOutput{Provider: "codex", Result: quota.CodexResult{Usage: &quota.CodexUsagePayload{RateLimit: &quota.CodexRateLimitInfo{PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 25}}}}}}
-	service := quota.NewServiceWithRegistry(db, quota.NewProviderRegistry(map[string]quota.ProviderHandler{"codex": handler}))
+	service := quota.NewServiceWithRegistry(lookup, quota.NewProviderRegistry(map[string]quota.ProviderHandler{"codex": handler}))
 
 	response, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "codex-auth"})
 	if err != nil {
@@ -74,10 +93,9 @@ func TestServiceDispatchesAuthFileIdentityByProviderBeforeType(t *testing.T) {
 }
 
 func TestServiceFallsBackToTypeWhenProviderMissing(t *testing.T) {
-	db := openQuotaTestDB(t)
-	seedUsageIdentity(t, db, entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "gemini-auth", Provider: "Gemini", Type: "gemini-cli", Name: "auth file"})
+	lookup := newFakeAuthFileIdentityLookup(entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "gemini-auth", Provider: "Gemini", Type: "gemini-cli", Name: "auth file"})
 	handler := &recordingProviderHandler{output: quota.ProviderOutput{Provider: "gemini-cli", Result: quota.GeminiCLIResult{Quota: &quota.GeminiCliQuotaPayload{Buckets: []quota.GeminiCliQuotaBucket{{ModelID: "gemini-2.5-pro_vertex", TokenType: "PROMPT", RemainingAmount: 42}}}}}}
-	service := quota.NewServiceWithRegistry(db, quota.NewProviderRegistry(map[string]quota.ProviderHandler{"gemini-cli": handler}))
+	service := quota.NewServiceWithRegistry(lookup, quota.NewProviderRegistry(map[string]quota.ProviderHandler{"gemini-cli": handler}))
 
 	response, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "gemini-auth"})
 	if err != nil {
@@ -92,9 +110,8 @@ func TestServiceFallsBackToTypeWhenProviderMissing(t *testing.T) {
 }
 
 func TestServiceReturnsUnsupportedType(t *testing.T) {
-	db := openQuotaTestDB(t)
-	seedUsageIdentity(t, db, entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "unknown-auth", Type: "unknown", Name: "auth file"})
-	service := quota.NewServiceWithRegistry(db, quota.NewProviderRegistry(nil))
+	lookup := newFakeAuthFileIdentityLookup(entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "unknown-auth", Type: "unknown", Name: "auth file"})
+	service := quota.NewServiceWithRegistry(lookup, quota.NewProviderRegistry(nil))
 
 	_, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "unknown-auth"})
 	if !errors.Is(err, quota.ErrUnsupportedType) {
@@ -103,14 +120,13 @@ func TestServiceReturnsUnsupportedType(t *testing.T) {
 }
 
 func TestServiceAllowsCodexQuotaWithoutAccountID(t *testing.T) {
-	db := openQuotaTestDB(t)
-	seedUsageIdentity(t, db, entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "codex-auth", Type: "codex", Name: "auth file"})
+	lookup := newFakeAuthFileIdentityLookup(entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "codex-auth", Type: "codex", Name: "auth file"})
 	caller := &recordingManagementCaller{responses: []*apicall.Response{{
 		StatusCode: 200,
 		BodyText:   `{"plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false}}`,
 		Body:       json.RawMessage(`{"plan_type":"plus","rate_limit":{"allowed":true,"limit_reached":false}}`),
 	}}}
-	service := quota.NewServiceWithRegistry(db, quota.NewDefaultProviderRegistry(caller, quota.DefaultProviderConfigs()))
+	service := quota.NewServiceWithRegistry(lookup, quota.NewDefaultProviderRegistry(caller, quota.DefaultProviderConfigs()))
 
 	response, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "codex-auth"})
 	if err != nil {
@@ -118,32 +134,5 @@ func TestServiceAllowsCodexQuotaWithoutAccountID(t *testing.T) {
 	}
 	if response.ID != "codex-auth" || len(caller.requests) != 1 {
 		t.Fatalf("expected codex quota request without account_id, got response=%+v requests=%d", response, len(caller.requests))
-	}
-}
-
-func openQuotaTestDB(t *testing.T) *gorm.DB {
-	t.Helper()
-	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "quota.db")})
-	if err != nil {
-		t.Fatalf("OpenDatabase returned error: %v", err)
-	}
-	sqlDB, err := db.DB()
-	if err != nil {
-		t.Fatalf("load sql db: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := sqlDB.Close(); err != nil {
-			t.Fatalf("close database: %v", err)
-		}
-	})
-	return db
-}
-
-func seedUsageIdentity(t *testing.T, db *gorm.DB, identity entities.UsageIdentity) {
-	t.Helper()
-	identity.CreatedAt = time.Date(2026, 5, 9, 0, 0, 0, 0, time.UTC)
-	identity.UpdatedAt = identity.CreatedAt
-	if err := db.Create(&identity).Error; err != nil {
-		t.Fatalf("seed usage identity: %v", err)
 	}
 }

@@ -1,11 +1,13 @@
 package repository
 
 import (
-	"cpa-usage/internal/repository/dto"
+	"context"
 	"fmt"
-	"gorm.io/gorm"
 	"strings"
 	"time"
+
+	"cpa-usage/internal/repository/dto"
+	"gorm.io/gorm"
 )
 
 const analyticsHeatmapWindow = 30 * 24 * time.Hour
@@ -28,10 +30,12 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	return buildAnalyticsHeatmapFromAggregates(aggregates, windowStart, windowEnd, startDay, endDay), nil
 }
 
-func BuildAnalyticsHeatmapWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
+func BuildAnalyticsHeatmapWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
 	if db == nil {
 		return dto.AnalyticsHeatmap{}, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
+
 	heatmapFilter, ok := analyticsFixedHeatmapFilter(filter)
 	if !ok {
 		return dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}, nil
@@ -40,7 +44,7 @@ func BuildAnalyticsHeatmapWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (
 	if plan.rollupFilter == nil {
 		return buildAnalyticsHeatmap(db, filter)
 	}
-	allowed, detail, err := analyticsRollupReadAllowed(db, *plan.rollupFilter)
+	allowed, detail, err := analyticsRollupReadAllowed(ctx, db, *plan.rollupFilter)
 	if err != nil {
 		return dto.AnalyticsHeatmap{}, err
 	}

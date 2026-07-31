@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -17,16 +18,17 @@ type analyticsCoreWindowPlan struct {
 	rollupFilter *dto.UsageQueryFilter
 }
 
-func BuildAnalyticsCoreWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func BuildAnalyticsCoreWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	db = db.WithContext(ctx)
 
 	plan := analyticsCoreRollupWindowPlan(filter)
 	if plan.rollupFilter == nil {
 		return buildRawAnalyticsCore(db, filter)
 	}
-	allowed, detail, err := analyticsRollupReadAllowed(db, *plan.rollupFilter)
+	allowed, detail, err := analyticsRollupReadAllowed(ctx, db, *plan.rollupFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +110,8 @@ func buildRawAnalyticsCore(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.Analy
 	}, nil
 }
 
-func analyticsRollupReadAllowed(db *gorm.DB, filter dto.UsageQueryFilter) (bool, string, error) {
-	status, err := GetUsageRollupBackfillStatus(db)
+func analyticsRollupReadAllowed(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (bool, string, error) {
+	status, err := GetUsageRollupBackfillStatus(ctx, db)
 	if err != nil {
 		return false, "", err
 	}

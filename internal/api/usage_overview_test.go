@@ -62,7 +62,7 @@ func TestUsageOverviewResponseIncludesResolvedRangeAndTimezone(t *testing.T) {
 	time.Local = location
 
 	provider := &usageFilterStub{overview: &dto.UsageOverviewRecord{}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/overview?range=custom&start=2026-04-20&end=2026-04-21", nil)
 	resp := httptest.NewRecorder()
 
@@ -141,7 +141,7 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 			}},
 		},
 	}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/overview?range=24h", nil)
 	resp := httptest.NewRecorder()
 
@@ -205,7 +205,7 @@ func TestUsageRequestHealthReturnsDedicatedHealthGrid(t *testing.T) {
 			Rate:      2.0 / 3.0,
 		}},
 	}}
-	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/request-health?range=24h&provider=OpenAI", nil)
 	resp := httptest.NewRecorder()
 

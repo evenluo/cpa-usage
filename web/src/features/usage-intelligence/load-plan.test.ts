@@ -25,7 +25,7 @@ describe("Usage Intelligence load plan", () => {
     })
     expect(plan.fixedWindow.requestEvidence).toEqual({
       range: "24h",
-      pageSize: 10,
+      pageSize: 1,
       provider: "OpenAI",
     })
     expect(plan.fixedWindow.liveCapacity).toEqual({

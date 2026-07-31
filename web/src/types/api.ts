@@ -102,14 +102,6 @@ export interface ProviderOption {
   cost_status: CostStatus
 }
 
-export interface Comparison {
-  has_previous_period: boolean
-  total_cost_change_pct?: number | null
-  total_tokens_change_pct?: number | null
-  request_count_change_pct?: number | null
-  success_rate_change_pp?: number | null
-}
-
 export interface HeatmapCell {
   hour: number
   in_range: boolean
@@ -136,20 +128,6 @@ export interface HeatmapData {
   max_requests: number
   max_failures: number
   rows: HeatmapRow[]
-}
-
-export interface AnalyticsResponse {
-  granularity?: TimeGranularity
-  summary: AnalyticsSummary
-  comparison?: Comparison
-  heatmap?: HeatmapData
-  trend: TrendPoint[]
-  key_alias_breakdown?: KeyAliasBreakdown[]
-  api_key_breakdown?: KeyAliasBreakdown[]
-  model_distribution?: ModelDistribution[]
-  time_breakdown?: TrendPoint[]
-  insights?: Insight[]
-  provider_options?: ProviderOption[]
 }
 
 export interface AnalyticsCoreResponse {

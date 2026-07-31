@@ -2,11 +2,12 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import analyticsSummaryFixture from "@/test/contracts/analytics_summary.json"
-import type { AnalyticsResponse, KeyAliasBreakdown, TrendPoint } from "@/types/api"
+import type { AnalyticsCoreResponse, HeatmapData, KeyAliasBreakdown, TrendPoint } from "@/types/api"
 import {
   buildUsageDashboardViewModel,
   DEFAULT_TIME_RANGE,
   deriveKpiSparklineData,
+  getCacheReadShareCaption,
   getDefaultGranularity,
   getEffectiveGranularity,
   getLeaderboardSortLabel,
@@ -90,7 +91,7 @@ describe("Usage Intelligence view model", () => {
   it("selects Selected Analysis Window outputs and Fixed Operational Window outputs", () => {
     const apiKey = keyRow("API Key")
     const account = keyRow("Account")
-    const analytics: AnalyticsResponse = {
+    const analytics: AnalyticsCoreResponse = {
       summary: {
         total_cost: 10,
         total_tokens: 20,
@@ -174,7 +175,7 @@ describe("Usage Intelligence view model", () => {
   })
 
   it("accepts the shared analytics summary HTTP contract fixture", () => {
-    const analytics = analyticsSummaryFixture as AnalyticsResponse
+    const analytics = analyticsSummaryFixture as AnalyticsCoreResponse & { heatmap?: HeatmapData }
 
     const viewModel = buildUsageDashboardViewModel({
       analytics,
@@ -187,6 +188,13 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.keyAliases[0].traceability).toBe("sk-a*******3456 · OpenAI")
     expect(viewModel.providerOptions[0].cost_status).toBe("partial")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
+  })
+
+  it("derives the Cache KPI caption from the cache read share state", () => {
+    expect(getCacheReadShareCaption(undefined)).toBeUndefined()
+    expect(getCacheReadShareCaption("available")).toBe("Cache Read Share")
+    expect(getCacheReadShareCaption("no_cache_data")).toBe("no cache data")
+    expect(getCacheReadShareCaption("no_prompt_input")).toBe("no prompt input")
   })
 
   it("keeps empty-data behavior explicit", () => {

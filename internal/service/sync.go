@@ -12,7 +12,6 @@ import (
 	"cpa-usage/internal/repository"
 
 	"cpa-usage/internal/cpa/dto/authfiles"
-	"cpa-usage/internal/cpa/dto/providerconfig"
 	"cpa-usage/internal/cpa/dto/response"
 	servicedto "cpa-usage/internal/service/dto"
 	"github.com/sirupsen/logrus"
@@ -38,13 +37,15 @@ const (
 )
 
 type SyncService struct {
-	db              *gorm.DB
-	client          CPAClientFetcher
-	redisQueue      RedisQueue
-	redisQueueKey   string
-	metadataFetcher MetadataFetcher
-	baseURL         string
-	now             func() time.Time
+	db               *gorm.DB
+	client           CPAClientFetcher
+	redisQueue       RedisQueue
+	redisQueueKey    string
+	metadataFetcher  MetadataFetcher
+	providerMetadata ProviderMetadataRegistry
+	intake           redisUsageIntake
+	baseURL          string
+	now              func() time.Time
 }
 
 func NewSyncService(db *gorm.DB, cfg config.Config) *SyncService {
@@ -66,12 +67,13 @@ func NewSyncService(db *gorm.DB, cfg config.Config) *SyncService {
 }
 
 type SyncServiceOptions struct {
-	BaseURL         string
-	Client          CPAClientFetcher
-	MetadataFetcher MetadataFetcher
-	RedisQueue      RedisQueue
-	RedisQueueKey   string
-	Now             func() time.Time
+	BaseURL          string
+	Client           CPAClientFetcher
+	MetadataFetcher  MetadataFetcher
+	ProviderMetadata ProviderMetadataRegistry
+	RedisQueue       RedisQueue
+	RedisQueueKey    string
+	Now              func() time.Time
 }
 
 func NewSyncServiceWithOptions(db *gorm.DB, opts SyncServiceOptions) *SyncService {
@@ -83,54 +85,22 @@ func NewSyncServiceWithOptions(db *gorm.DB, opts SyncServiceOptions) *SyncServic
 	if metadataFetcher == nil {
 		metadataFetcher = opts.Client
 	}
+	providerMetadata := opts.ProviderMetadata
+	if len(providerMetadata.adapters) == 0 {
+		providerMetadata = NewDefaultProviderMetadataRegistry()
+	}
+	redisQueueKey := redisQueueKey(opts.RedisQueueKey)
 	return &SyncService{
-		db:              db,
-		client:          opts.Client,
-		redisQueue:      opts.RedisQueue,
-		redisQueueKey:   redisQueueKey(opts.RedisQueueKey),
-		metadataFetcher: metadataFetcher,
-		baseURL:         strings.TrimSpace(opts.BaseURL),
-		now:             now,
+		db:               db,
+		client:           opts.Client,
+		redisQueue:       opts.RedisQueue,
+		redisQueueKey:    redisQueueKey,
+		metadataFetcher:  metadataFetcher,
+		providerMetadata: providerMetadata,
+		intake:           newRedisUsageIntake(db, opts.RedisQueue, redisQueueKey, now),
+		baseURL:          strings.TrimSpace(opts.BaseURL),
+		now:              now,
 	}
-}
-
-func NewSyncServiceWithClient(db *gorm.DB, baseURL string, client CPAClientFetcher) *SyncService {
-	return NewSyncServiceWithOptions(db, SyncServiceOptions{
-		BaseURL: baseURL,
-		Client:  client,
-	})
-}
-
-func (s *SyncService) SyncOnce(ctx context.Context) error {
-	_, err := s.SyncNow(ctx)
-	return err
-}
-
-func (s *SyncService) SyncNow(ctx context.Context) (*servicedto.SyncResult, error) {
-	if _, err := s.PullRedisUsageInbox(ctx); err != nil {
-		return nil, err
-	}
-	result, err := s.ProcessRedisUsageInbox(ctx)
-	return syncResultFromRedisBatch(result), err
-}
-
-func syncResultFromRedisBatch(result *servicedto.RedisBatchSyncResult) *servicedto.SyncResult {
-	if result == nil {
-		return nil
-	}
-	return &servicedto.SyncResult{
-		Status:         result.Status,
-		InsertedEvents: result.InsertedEvents,
-		DedupedEvents:  result.DedupedEvents,
-	}
-}
-
-func (s *SyncService) SyncStatus(ctx context.Context) (string, error) {
-	result, err := s.SyncNow(ctx)
-	if result == nil {
-		return "", err
-	}
-	return result.Status, err
 }
 
 func (s *SyncService) SyncMetadata(ctx context.Context) error {
@@ -140,9 +110,9 @@ func (s *SyncService) SyncMetadata(ctx context.Context) error {
 	logrus.Debug("metadata sync started")
 	fetchedAt := s.now().UTC()
 	authFilesResult, authFilesErr := s.metadataFetcher.FetchAuthFiles(ctx)
-	providerConfig, fetchedProviderTypes, providerMetadataErr := fetchProviderMetadata(ctx, s.metadataFetcher)
+	providerInputs, fetchedProviderTypes, providerMetadataErr := s.providerMetadata.fetch(ctx, s.metadataFetcher)
 	authSyncErr := syncAuthFiles(ctx, s.db, authFilesResult, authFilesErr, fetchedAt)
-	providerSyncErr, providerWarningErr := syncProviderMetadata(ctx, s.db, providerConfig, fetchedProviderTypes, providerMetadataErr, fetchedAt)
+	providerSyncErr, providerWarningErr := syncProviderMetadata(ctx, s.db, providerInputs, fetchedProviderTypes, providerMetadataErr, fetchedAt)
 	upsertErr := joinErrors(authSyncErr, providerSyncErr)
 	var aggregateErr error
 	if upsertErr == nil {
@@ -169,7 +139,7 @@ func (s *SyncService) PullRedisUsageInbox(ctx context.Context) (*servicedto.Redi
 	if err := s.validate(syncMetadataOptional); err != nil {
 		return nil, err
 	}
-	return s.redisUsageIntake().pull(ctx)
+	return s.intake.pull(ctx)
 }
 
 // ProcessRedisUsageInbox 是 Redis 同步的本地处理阶段：只读取 pending/process_failed inbox 行并写入 usage_events。
@@ -178,16 +148,7 @@ func (s *SyncService) ProcessRedisUsageInbox(ctx context.Context) (*servicedto.R
 	if err := s.validate(syncMetadataOptional); err != nil {
 		return nil, err
 	}
-	return s.redisUsageIntake().process(ctx)
-}
-
-// CleanupRedisUsageInbox 只清理 Redis inbox 表，供测试和单独维护入口使用；每日任务使用 CleanupStorage 统一执行。
-func (s *SyncService) CleanupRedisUsageInbox(ctx context.Context) error {
-	if err := s.validate(syncMetadataOptional); err != nil {
-		return err
-	}
-	_, err := repository.CleanupRedisUsageInbox(s.db, s.now())
-	return err
+	return s.intake.process(ctx)
 }
 
 // CleanupStorage 是每日 03:00 维护任务调用的统一入口：先清 Redis inbox，最后 VACUUM 收缩 SQLite。
@@ -199,22 +160,6 @@ func (s *SyncService) CleanupStorage(ctx context.Context) error {
 	return err
 }
 
-// SyncRedisBatch 保留为兼容入口：先处理本地存量 inbox，空了再拉一次 Redis 并立即处理。
-// 后台任务不要调用它，后台必须使用拆分后的 PullRedisUsageInbox、ProcessRedisUsageInbox 和 CleanupStorage。
-func (s *SyncService) SyncRedisBatch(ctx context.Context) (*servicedto.RedisBatchSyncResult, error) {
-	if result, err := s.ProcessRedisUsageInbox(ctx); err != nil || result == nil || !result.Empty {
-		return result, err
-	}
-	if _, err := s.PullRedisUsageInbox(ctx); err != nil {
-		return &servicedto.RedisBatchSyncResult{Status: "failed"}, err
-	}
-	return s.ProcessRedisUsageInbox(ctx)
-}
-
-func (s *SyncService) redisUsageIntake() redisUsageIntake {
-	return newRedisUsageIntake(s.db, s.redisQueue, s.redisQueueKey, s.now)
-}
-
 func (s *SyncService) validate(syncMetadata bool) error {
 	if s == nil {
 		return fmt.Errorf("sync service is nil")
@@ -222,13 +167,8 @@ func (s *SyncService) validate(syncMetadata bool) error {
 	if s.db == nil {
 		return fmt.Errorf("sync service database is nil")
 	}
-	if syncMetadata {
-		if s.metadataFetcher == nil && s.client != nil {
-			s.metadataFetcher = s.client
-		}
-		if s.metadataFetcher == nil {
-			return fmt.Errorf("sync service metadata fetcher is nil")
-		}
+	if syncMetadata && s.metadataFetcher == nil {
+		return fmt.Errorf("sync service metadata fetcher is nil")
 	}
 	return nil
 }
@@ -239,13 +179,6 @@ func redisQueueKey(value string) string {
 		return cpa.ManagementUsageQueueKey
 	}
 	return trimmed
-}
-
-func errorMessage(err error) string {
-	if err == nil {
-		return ""
-	}
-	return strings.TrimSpace(err.Error())
 }
 
 func syncAuthFiles(ctx context.Context, db *gorm.DB, result *response.AuthFilesResult, fetchErr error, now time.Time) error {
@@ -317,138 +250,6 @@ func extendCodexAuthFileUsageIdentity(file authfiles.AuthFile, identity *entitie
 	identity.ActiveStart = resolveCodexActiveStart(file)
 	identity.ActiveUntil = resolveCodexActiveUntil(file)
 	identity.PlanType = resolveCodexPlanType(file)
-}
-
-func fetchProviderMetadata(ctx context.Context, fetcher MetadataFetcher) (providerconfig.ProviderMetadataConfig, []string, error) {
-	var cfg providerconfig.ProviderMetadataConfig
-	var fetchedProviderTypes []string
-	var errs []error
-
-	if result, err := fetcher.FetchGeminiAPIKeys(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("fetch gemini api keys: %w", err))
-	} else if result == nil {
-		errs = append(errs, fmt.Errorf("gemini api keys response is nil"))
-	} else {
-		fetchedProviderTypes = append(fetchedProviderTypes, "gemini")
-		cfg.GeminiAPIKeys = result.Payload
-	}
-	if result, err := fetcher.FetchClaudeAPIKeys(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("fetch claude api keys: %w", err))
-	} else if result == nil {
-		errs = append(errs, fmt.Errorf("claude api keys response is nil"))
-	} else {
-		fetchedProviderTypes = append(fetchedProviderTypes, "claude")
-		cfg.ClaudeAPIKeys = result.Payload
-	}
-	if result, err := fetcher.FetchCodexAPIKeys(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("fetch codex api keys: %w", err))
-	} else if result == nil {
-		errs = append(errs, fmt.Errorf("codex api keys response is nil"))
-	} else {
-		fetchedProviderTypes = append(fetchedProviderTypes, "codex")
-		cfg.CodexAPIKeys = result.Payload
-	}
-	if result, err := fetcher.FetchVertexAPIKeys(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("fetch vertex api keys: %w", err))
-	} else if result == nil {
-		errs = append(errs, fmt.Errorf("vertex api keys response is nil"))
-	} else {
-		fetchedProviderTypes = append(fetchedProviderTypes, "vertex")
-		cfg.VertexAPIKeys = result.Payload
-	}
-	if result, err := fetcher.FetchOpenAICompatibility(ctx); err != nil {
-		errs = append(errs, fmt.Errorf("fetch openai compatibility: %w", err))
-	} else if result == nil {
-		errs = append(errs, fmt.Errorf("openai compatibility response is nil"))
-	} else {
-		fetchedProviderTypes = append(fetchedProviderTypes, "openai")
-		cfg.OpenAICompatibility = result.Payload
-	}
-
-	return cfg, fetchedProviderTypes, joinErrors(errs...)
-}
-
-func syncProviderMetadata(ctx context.Context, db *gorm.DB, cfg providerconfig.ProviderMetadataConfig, fetchedProviderTypes []string, fetchErr error, now time.Time) (error, error) {
-	if db == nil {
-		return fmt.Errorf("database is nil"), nil
-	}
-
-	inputs := flattenProviderMetadata(cfg)
-	identities := providerMetadataUsageIdentities(inputs)
-	if err := repository.ReplaceUsageIdentitiesForProviderTypes(ctx, db, identities, fetchedProviderTypes, now); err != nil {
-		return fmt.Errorf("sync provider usage identities: %w", err), nil
-	}
-	if fetchErr != nil {
-		return nil, fmt.Errorf("fetch provider metadata: %w", fetchErr)
-	}
-	return nil, nil
-}
-
-func providerMetadataUsageIdentities(inputs []servicedto.ProviderMetadataInput) []entities.UsageIdentity {
-	identities := make([]entities.UsageIdentity, 0, len(inputs))
-	for _, input := range inputs {
-		identities = append(identities, entities.UsageIdentity{
-			Name:         input.DisplayName,
-			AuthType:     entities.UsageIdentityAuthTypeAIProvider,
-			AuthTypeName: "apikey",
-			Identity:     input.AuthIndex,
-			Type:         input.ProviderType,
-			Provider:     input.DisplayName,
-			LookupKey:    input.LookupKey,
-			Prefix:       input.Prefix,
-			BaseURL:      input.BaseURL,
-		})
-	}
-	return identities
-}
-
-func flattenProviderMetadata(cfg providerconfig.ProviderMetadataConfig) []servicedto.ProviderMetadataInput {
-	items := make([]servicedto.ProviderMetadataInput, 0)
-	seen := make(map[string]struct{})
-	// Provider metadata 只生成 auth-index 身份；prefix 作为同一身份的附加字段保存，不再生成独立行。
-	appendItem := func(lookupKey, prefix, providerType, displayName, authIndex, baseURL string) {
-		lookupKey = strings.TrimSpace(lookupKey)
-		prefix = strings.TrimSpace(prefix)
-		providerType = strings.TrimSpace(providerType)
-		displayName = strings.TrimSpace(displayName)
-		authIndex = strings.TrimSpace(authIndex)
-		baseURL = strings.TrimSpace(baseURL)
-		if lookupKey == "" || providerType == "" || displayName == "" || authIndex == "" {
-			return
-		}
-		if _, ok := seen[authIndex]; ok {
-			return
-		}
-		seen[authIndex] = struct{}{}
-		items = append(items, servicedto.ProviderMetadataInput{
-			LookupKey:    lookupKey,
-			Prefix:       prefix,
-			ProviderType: providerType,
-			DisplayName:  displayName,
-			AuthIndex:    authIndex,
-			BaseURL:      baseURL,
-		})
-	}
-	appendProviderEntries := func(providerType string, configs []providerconfig.ProviderKeyConfig) {
-		for _, cfg := range configs {
-			displayName := firstNonEmpty(cfg.Name, providerType)
-			appendItem(cfg.APIKey, cfg.Prefix, providerType, displayName, cfg.AuthIndex, cfg.BaseURL)
-		}
-	}
-
-	appendProviderEntries("gemini", cfg.GeminiAPIKeys)
-	appendProviderEntries("claude", cfg.ClaudeAPIKeys)
-	appendProviderEntries("codex", cfg.CodexAPIKeys)
-	appendProviderEntries("vertex", cfg.VertexAPIKeys)
-
-	for _, provider := range cfg.OpenAICompatibility {
-		displayName := firstNonEmpty(provider.Name, "openai")
-		for _, entry := range provider.APIKeyEntries {
-			appendItem(entry.APIKey, provider.Prefix, "openai", displayName, firstNonEmpty(entry.AuthIndex, entry.APIKey), provider.BaseURL)
-		}
-	}
-
-	return items
 }
 
 func firstNonEmpty(values ...string) string {

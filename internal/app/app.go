@@ -41,6 +41,7 @@ type App struct {
 	MetadataSync      *MetadataSyncRunner
 	BackupMaintenance *DatabaseBackupRunner
 	RollupBackfill    *service.UsageRollupBackfillRunner
+	Quota             *quota.Service
 	LogCloser         io.Closer
 
 	backgroundCancel context.CancelFunc
@@ -90,9 +91,9 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	}
 
 	usageReader := repository.NewUsageReader(db)
-	usageIdentityService := service.NewUsageIdentityService(db)
+	usageIdentityReader := repository.NewUsageIdentityReader(db)
 	analyticsReader := repository.NewAnalyticsReader(db)
-	rollupBackfillService := service.NewRollupBackfillService(db)
+	rollupBackfillReader := repository.NewRollupBackfillReader(db)
 	rollupBackfillRunner := service.NewUsageRollupBackfillRunner(db, service.UsageRollupBackfillRunnerConfig{
 		BatchHours:   cfg.UsageRollupBackfillBatchHours,
 		IdleInterval: cfg.UsageRollupBackfillIdleInterval,
@@ -104,12 +105,12 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		logrus.WithField("cpa_base_url", cfg.CPABaseURL).Warn("TLS certificate verification is disabled for CPA and Redis queue connections")
 	}
 	pricingService := service.NewPricingService(db, cpaClient)
-	quotaService := quota.NewService(db, cpaClient)
+	quotaService := quota.NewService(quota.NewRepositoryAuthFileIdentityLookup(db), cpaClient)
 	sessionManager := auth.NewSessionManager(cfg.AuthSessionTTL)
 	if cfg.AuthSessionSecret != "" {
 		sessionManager = auth.NewSignedSessionManager(cfg.AuthSessionTTL, cfg.AuthSessionSecret)
 	}
-	authHandler := api.NewAuthHandler(api.AuthConfig{
+	authConfig := api.AuthConfig{
 		Enabled:             cfg.AuthEnabled,
 		LoginPassword:       cfg.LoginPassword,
 		SharedBearerToken:   cfg.CPAManagementKey,
@@ -119,7 +120,8 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		SessionCookieDomain: cfg.AuthSessionCookieDomain,
 		SessionCookiePath:   cfg.AuthSessionCookiePath,
 		TrustedProxies:      cfg.TrustedProxies,
-	}, sessionManager)
+	}
+	authHandler := api.NewAuthHandler(authConfig, sessionManager)
 
 	return &App{
 		Config:            &cfg,
@@ -129,26 +131,17 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		MetadataSync:      NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
 		BackupMaintenance: backupMaintenance,
 		RollupBackfill:    rollupBackfillRunner,
+		Quota:             quotaService,
 		LogCloser:         logCloser,
 		Router: api.NewRouter(
 			webui.Static,
 			newManualSyncRunner(backgroundPoller, syncService),
 			usageReader,
 			pricingService,
-			api.AuthConfig{
-				Enabled:             cfg.AuthEnabled,
-				LoginPassword:       cfg.LoginPassword,
-				SharedBearerToken:   cfg.CPAManagementKey,
-				SessionTTL:          cfg.AuthSessionTTL,
-				BasePath:            cfg.AppBasePath,
-				SessionCookieName:   cfg.AuthSessionCookieName,
-				SessionCookieDomain: cfg.AuthSessionCookieDomain,
-				SessionCookiePath:   cfg.AuthSessionCookiePath,
-				TrustedProxies:      cfg.TrustedProxies,
-			},
+			authConfig,
 			authHandler,
 			cfg.AppBasePath,
-			api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityService, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillService},
+			api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader},
 		),
 	}, nil
 }
@@ -190,6 +183,9 @@ func (a *App) Run() error {
 
 	ctx := a.startBackgroundContext()
 	defer a.stopBackgroundTasks()
+	if a.Quota != nil {
+		a.Quota.AttachRefreshWorkerLifecycle(ctx)
+	}
 	if a.Poller != nil {
 		a.startBackgroundTask(func() {
 			if err := a.Poller.Run(ctx); err != nil {
@@ -247,6 +243,10 @@ func (a *App) stopBackgroundTasks() {
 	if a.backgroundCancel != nil {
 		a.backgroundCancel()
 		a.backgroundCancel = nil
+	}
+	// 先取消后台 ctx 再等待 refresh worker：进行中的 provider 调用被 ctx 打断后退出。
+	if a.Quota != nil {
+		a.Quota.StopRefreshWorkers()
 	}
 	a.backgroundWG.Wait()
 }

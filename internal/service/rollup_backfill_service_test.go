@@ -45,7 +45,7 @@ func TestUsageRollupBackfillRunnerUsesConfiguredBatchAndIdle(t *testing.T) {
 		t.Fatalf("expected one configured idle sleep between two successful batches, got %v", sleepDurations)
 	}
 
-	status, err := repository.GetUsageRollupBackfillStatus(db)
+	status, err := repository.GetUsageRollupBackfillStatus(context.Background(), db)
 	if err != nil {
 		t.Fatalf("load backfill status: %v", err)
 	}

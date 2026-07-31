@@ -11,6 +11,7 @@ import (
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/redact"
+	"cpa-usage/internal/repository"
 	"cpa-usage/internal/service"
 )
 
@@ -19,12 +20,8 @@ type usageIdentitiesStub struct {
 	activeItems      []entities.UsageIdentity
 	pagedActiveItems []entities.UsageIdentity
 	pagedActiveTotal int64
-	pagedActiveReq   *service.ListUsageIdentitiesRequest
+	pagedActiveReq   *repository.ListUsageIdentitiesPageRequest
 	err              error
-}
-
-func (s usageIdentitiesStub) ListUsageIdentities(context.Context) ([]entities.UsageIdentity, error) {
-	return s.items, s.err
 }
 
 func (s usageIdentitiesStub) ListActiveUsageIdentities(context.Context) ([]entities.UsageIdentity, error) {
@@ -34,14 +31,14 @@ func (s usageIdentitiesStub) ListActiveUsageIdentities(context.Context) ([]entit
 	return s.items, s.err
 }
 
-func (s usageIdentitiesStub) ListActiveUsageIdentitiesPage(_ context.Context, request service.ListUsageIdentitiesRequest) (service.ListUsageIdentitiesResponse, error) {
+func (s usageIdentitiesStub) ListActiveUsageIdentitiesPage(_ context.Context, request repository.ListUsageIdentitiesPageRequest) ([]entities.UsageIdentity, int64, error) {
 	if s.pagedActiveReq != nil {
 		*s.pagedActiveReq = request
 	}
 	if s.pagedActiveItems != nil || s.pagedActiveTotal != 0 {
-		return service.ListUsageIdentitiesResponse{Items: s.pagedActiveItems, Total: s.pagedActiveTotal}, s.err
+		return s.pagedActiveItems, s.pagedActiveTotal, s.err
 	}
-	return service.ListUsageIdentitiesResponse{Items: s.items, Total: int64(len(s.items))}, s.err
+	return s.items, int64(len(s.items)), s.err
 }
 
 type keyAliasStub struct {
@@ -535,7 +532,7 @@ func TestUsageIdentitiesRouteDoesNotReturnUnpublishedMetadataFields(t *testing.T
 }
 
 func TestUsageIdentitiesPageRouteFiltersByAuthTypeAndPaginates(t *testing.T) {
-	captured := service.ListUsageIdentitiesRequest{}
+	captured := repository.ListUsageIdentitiesPageRequest{}
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{UsageIdentity: usageIdentitiesStub{
 		pagedActiveReq:   &captured,
 		pagedActiveTotal: 25,

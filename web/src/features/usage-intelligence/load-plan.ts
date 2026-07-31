@@ -3,7 +3,7 @@ import type { TimeGranularity, TimeRange } from "@/types/api"
 export const FIXED_OPERATIONAL_WINDOW = "24h" satisfies TimeRange
 export const FIXED_HEATMAP_WINDOW = "30d" satisfies TimeRange
 export const FIXED_HEATMAP_GRANULARITY = "day" satisfies TimeGranularity
-export const REQUEST_EVIDENCE_PAGE_SIZE = 10
+export const LATEST_EVIDENCE_PAGE_SIZE = 1
 
 export interface UsageIntelligenceLoadPlan {
   selectedWindow: {
@@ -59,7 +59,7 @@ export function buildUsageIntelligenceLoadPlan(input: {
       },
       requestEvidence: {
         range: FIXED_OPERATIONAL_WINDOW,
-        pageSize: REQUEST_EVIDENCE_PAGE_SIZE,
+        pageSize: LATEST_EVIDENCE_PAGE_SIZE,
         provider: input.provider,
       },
       liveCapacity: {

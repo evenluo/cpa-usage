@@ -66,12 +66,20 @@ type UsageProvider interface {
 	GetUsageAnalysis(context.Context, repodto.UsageQueryFilter) ([]repodto.UsageAnalysisAPIStatRecord, []repodto.UsageAnalysisModelStatRecord, error)
 }
 
+// RollupBackfillStatusProvider 是 status 读模型的 HTTP 层入口 seam；
+// 实现由 repository 的 RollupBackfillReader 提供。
+type RollupBackfillStatusProvider interface {
+	GetRollupBackfillStatus(context.Context) (repodto.RollupBackfillStatus, error)
+}
+
+// OptionalProviders 承载可选 provider：nil 字段表示该 provider 未接入，
+// 空 struct 等价于全部未接入，各路由注册函数按字段自行处理 nil。
 type OptionalProviders struct {
 	Analytics      AnalyticsProvider
-	UsageIdentity  service.UsageIdentityProvider
+	UsageIdentity  UsageIdentityProvider
 	KeyAlias       service.KeyAliasProvider
 	Quota          QuotaProvider
-	RollupBackfill service.RollupBackfillStatusProvider
+	RollupBackfill RollupBackfillStatusProvider
 }
 
 type syncUserMessageError interface {
@@ -86,7 +94,7 @@ func NewRouter(
 	authConfig AuthConfig,
 	authHandler *authHandler,
 	basePath string,
-	optionalProviders ...OptionalProviders,
+	optionalProviders OptionalProviders,
 ) *gin.Engine {
 	router := gin.New()
 	if err := router.SetTrustedProxies(authConfig.TrustedProxies); err != nil {
@@ -108,31 +116,18 @@ func NewRouter(
 	}
 	authHandler.registerRoutes(authGroup)
 
-	var usageIdentityProvider service.UsageIdentityProvider
-	var analyticsProvider AnalyticsProvider
-	var keyAliasProvider service.KeyAliasProvider
-	var quotaProvider QuotaProvider
-	var rollupBackfillProvider service.RollupBackfillStatusProvider
-	if len(optionalProviders) > 0 {
-		analyticsProvider = optionalProviders[0].Analytics
-		usageIdentityProvider = optionalProviders[0].UsageIdentity
-		keyAliasProvider = optionalProviders[0].KeyAlias
-		quotaProvider = optionalProviders[0].Quota
-		rollupBackfillProvider = optionalProviders[0].RollupBackfill
-	}
-
 	protected := apiV1.Group("")
 	protected.Use(authHandler.middleware())
-	registerStatusRoutes(protected, statusProvider, rollupBackfillProvider)
+	registerStatusRoutes(protected, statusProvider, optionalProviders.RollupBackfill)
 	registerUpdateRoutes(protected, nil)
 	registerSyncRoutes(protected, statusProvider, &syncLimiter{window: manualSyncRateLimitWindow})
 	registerUsageOverviewRoute(protected, usageProvider)
 	registerUsageAnalysisRoute(protected, usageProvider)
-	registerAnalyticsRoutes(protected, analyticsProvider)
-	registerUsageEventsRoute(protected, usageProvider, usageIdentityProvider, keyAliasProvider)
-	registerUsageIdentityRoutes(protected, usageIdentityProvider, keyAliasProvider)
+	registerAnalyticsRoutes(protected, optionalProviders.Analytics)
+	registerUsageEventsRoute(protected, usageProvider, optionalProviders.UsageIdentity, optionalProviders.KeyAlias)
+	registerUsageIdentityRoutes(protected, optionalProviders.UsageIdentity, optionalProviders.KeyAlias)
 	registerPricingRoutes(protected, pricingProvider)
-	registerQuotaRoutes(protected, quotaProvider)
+	registerQuotaRoutes(protected, optionalProviders.Quota)
 
 	if staticFS != nil {
 		if indexFile, err := staticFS.Open("index.html"); err == nil {
@@ -304,7 +299,7 @@ type rollupBackfillStatusResponse struct {
 	LastError          string     `json:"last_error,omitempty"`
 }
 
-func registerStatusRoutes(router gin.IRoutes, statusProvider StatusProvider, rollupBackfillProvider service.RollupBackfillStatusProvider) {
+func registerStatusRoutes(router gin.IRoutes, statusProvider StatusProvider, rollupBackfillProvider RollupBackfillStatusProvider) {
 	router.GET("/status", func(c *gin.Context) {
 		rollupBackfillStatus, err := loadRollupBackfillStatus(c.Request.Context(), rollupBackfillProvider)
 		if err != nil {
@@ -359,7 +354,7 @@ func registerSyncRoutes(router gin.IRoutes, statusProvider StatusProvider, limit
 	})
 }
 
-func loadRollupBackfillStatus(ctx context.Context, provider service.RollupBackfillStatusProvider) (repodto.RollupBackfillStatus, error) {
+func loadRollupBackfillStatus(ctx context.Context, provider RollupBackfillStatusProvider) (repodto.RollupBackfillStatus, error) {
 	if provider == nil {
 		return repodto.RollupBackfillStatus{Status: repodto.RollupBackfillStatusPending}, nil
 	}
