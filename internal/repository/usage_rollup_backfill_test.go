@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 func TestGetUsageRollupBackfillStatusDefaultsToPending(t *testing.T) {
 	db := openTestDatabase(t)
 
-	status, err := GetUsageRollupBackfillStatus(db)
+	status, err := GetUsageRollupBackfillStatus(context.Background(), db)
 	if err != nil {
 		t.Fatalf("GetUsageRollupBackfillStatus returned error: %v", err)
 	}
@@ -47,7 +48,7 @@ func TestSaveUsageRollupBackfillStatusPersistsProgress(t *testing.T) {
 		t.Fatalf("SaveUsageRollupBackfillStatus returned error: %v", err)
 	}
 
-	status, err := GetUsageRollupBackfillStatus(db)
+	status, err := GetUsageRollupBackfillStatus(context.Background(), db)
 	if err != nil {
 		t.Fatalf("GetUsageRollupBackfillStatus returned error: %v", err)
 	}
@@ -72,7 +73,7 @@ func TestSaveUsageRollupBackfillStatusPersistsProgress(t *testing.T) {
 		t.Fatalf("SaveUsageRollupBackfillStatus update returned error: %v", err)
 	}
 
-	status, err = GetUsageRollupBackfillStatus(db)
+	status, err = GetUsageRollupBackfillStatus(context.Background(), db)
 	if err != nil {
 		t.Fatalf("GetUsageRollupBackfillStatus after update returned error: %v", err)
 	}

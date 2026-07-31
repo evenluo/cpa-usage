@@ -91,9 +91,9 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	}
 
 	usageReader := repository.NewUsageReader(db)
-	usageIdentityService := service.NewUsageIdentityService(db)
+	usageIdentityReader := repository.NewUsageIdentityReader(db)
 	analyticsReader := repository.NewAnalyticsReader(db)
-	rollupBackfillService := service.NewRollupBackfillService(db)
+	rollupBackfillReader := repository.NewRollupBackfillReader(db)
 	rollupBackfillRunner := service.NewUsageRollupBackfillRunner(db, service.UsageRollupBackfillRunnerConfig{
 		BatchHours:   cfg.UsageRollupBackfillBatchHours,
 		IdleInterval: cfg.UsageRollupBackfillIdleInterval,
@@ -110,7 +110,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	if cfg.AuthSessionSecret != "" {
 		sessionManager = auth.NewSignedSessionManager(cfg.AuthSessionTTL, cfg.AuthSessionSecret)
 	}
-	authHandler := api.NewAuthHandler(api.AuthConfig{
+	authConfig := api.AuthConfig{
 		Enabled:             cfg.AuthEnabled,
 		LoginPassword:       cfg.LoginPassword,
 		SharedBearerToken:   cfg.CPAManagementKey,
@@ -120,7 +120,8 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		SessionCookieDomain: cfg.AuthSessionCookieDomain,
 		SessionCookiePath:   cfg.AuthSessionCookiePath,
 		TrustedProxies:      cfg.TrustedProxies,
-	}, sessionManager)
+	}
+	authHandler := api.NewAuthHandler(authConfig, sessionManager)
 
 	return &App{
 		Config:            &cfg,
@@ -137,20 +138,10 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 			newManualSyncRunner(backgroundPoller, syncService),
 			usageReader,
 			pricingService,
-			api.AuthConfig{
-				Enabled:             cfg.AuthEnabled,
-				LoginPassword:       cfg.LoginPassword,
-				SharedBearerToken:   cfg.CPAManagementKey,
-				SessionTTL:          cfg.AuthSessionTTL,
-				BasePath:            cfg.AppBasePath,
-				SessionCookieName:   cfg.AuthSessionCookieName,
-				SessionCookieDomain: cfg.AuthSessionCookieDomain,
-				SessionCookiePath:   cfg.AuthSessionCookiePath,
-				TrustedProxies:      cfg.TrustedProxies,
-			},
+			authConfig,
 			authHandler,
 			cfg.AppBasePath,
-			api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityService, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillService},
+			api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader},
 		),
 	}, nil
 }

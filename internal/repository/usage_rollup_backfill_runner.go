@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -28,7 +29,8 @@ func BackfillUsageRollupsBatch(db *gorm.DB, now time.Time, batchHours int) (Usag
 		batchHours = DefaultUsageRollupBackfillBatchHours
 	}
 
-	status, err := GetUsageRollupBackfillStatus(db)
+	// backfill batch 一旦开始就跑完，runner 的取消只发生在批次之间，因此这里的内部状态读不继承调用方 ctx。
+	status, err := GetUsageRollupBackfillStatus(context.Background(), db)
 	if err != nil {
 		return UsageRollupBackfillBatchResult{}, err
 	}

@@ -95,7 +95,14 @@ type usageIdentityAliasResponse struct {
 	Alias string `json:"alias"`
 }
 
-func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider service.UsageIdentityProvider, keyAliasProvider service.KeyAliasProvider) {
+// UsageIdentityProvider 是 Credentials 分区与 Request Events source 解析的
+// identities 读模型 HTTP 层入口 seam；实现由 repository 的 UsageIdentityReader 提供。
+type UsageIdentityProvider interface {
+	ListActiveUsageIdentities(context.Context) ([]entities.UsageIdentity, error)
+	ListActiveUsageIdentitiesPage(context.Context, repository.ListUsageIdentitiesPageRequest) ([]entities.UsageIdentity, int64, error)
+}
+
+func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider UsageIdentityProvider, keyAliasProvider service.KeyAliasProvider) {
 	router.GET("/usage/api-keys/page", func(c *gin.Context) {
 		page := positiveQueryInt(c, "page", 1)
 		pageSize := positiveQueryInt(c, "page_size", 100)
@@ -176,29 +183,29 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider servi
 		if !ok {
 			return
 		}
-		result, err := usageIdentityProvider.ListActiveUsageIdentitiesPage(c.Request.Context(), request)
+		items, total, err := usageIdentityProvider.ListActiveUsageIdentitiesPage(c.Request.Context(), request)
 		if err != nil {
 			writeInternalError(c, "list active usage identities page failed", err)
 			return
 		}
 
-		aliases, err := aliasesForUsageIdentities(c.Request.Context(), keyAliasProvider, result.Items)
+		aliases, err := aliasesForUsageIdentities(c.Request.Context(), keyAliasProvider, items)
 		if err != nil {
 			writeInternalError(c, "list key aliases failed", err)
 			return
 		}
 
 		// 复用统一响应映射，保证分页接口和旧列表接口的字段/脱敏规则一致。
-		response := make([]usageIdentityResponse, 0, len(result.Items))
-		for _, item := range result.Items {
+		response := make([]usageIdentityResponse, 0, len(items))
+		for _, item := range items {
 			response = append(response, mapUsageIdentityResponse(item, aliases))
 		}
 		c.JSON(http.StatusOK, usageIdentitiesPageResponse{
 			Identities: response,
-			TotalCount: result.Total,
+			TotalCount: total,
 			Page:       request.Page,
 			PageSize:   request.PageSize,
-			TotalPages: totalPages(result.Total, request.PageSize),
+			TotalPages: totalPages(total, request.PageSize),
 		})
 	})
 
@@ -287,16 +294,16 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider servi
 	})
 }
 
-func parseUsageIdentitiesPageRequest(c *gin.Context) (service.ListUsageIdentitiesRequest, bool) {
+func parseUsageIdentitiesPageRequest(c *gin.Context) (repository.ListUsageIdentitiesPageRequest, bool) {
 	// page/page_size 做宽松兜底，auth_type 做严格校验，避免前端分区拿到混合数据。
 	page := positiveQueryInt(c, "page", 1)
 	pageSize := positiveQueryInt(c, "page_size", 10)
-	request := service.ListUsageIdentitiesRequest{Page: page, PageSize: pageSize}
+	request := repository.ListUsageIdentitiesPageRequest{Page: page, PageSize: pageSize}
 	if rawAuthType := c.Query("auth_type"); rawAuthType != "" {
 		value, err := strconv.Atoi(rawAuthType)
 		if err != nil || (value != int(entities.UsageIdentityAuthTypeAuthFile) && value != int(entities.UsageIdentityAuthTypeAIProvider)) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_type must be 1 or 2"})
-			return service.ListUsageIdentitiesRequest{}, false
+			return repository.ListUsageIdentitiesPageRequest{}, false
 		}
 		authType := entities.UsageIdentityAuthType(value)
 		request.AuthType = &authType

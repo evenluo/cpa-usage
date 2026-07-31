@@ -5,18 +5,9 @@ import (
 	"time"
 
 	"cpa-usage/internal/repository"
-	repodto "cpa-usage/internal/repository/dto"
 	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
-
-type RollupBackfillStatusProvider interface {
-	GetRollupBackfillStatus(context.Context) (repodto.RollupBackfillStatus, error)
-}
-
-type rollupBackfillService struct {
-	db *gorm.DB
-}
 
 type UsageRollupBackfillRunnerConfig struct {
 	BatchHours   int
@@ -33,10 +24,6 @@ type UsageRollupBackfillRunner struct {
 	sleep        func(context.Context, time.Duration) bool
 }
 
-func NewRollupBackfillService(db *gorm.DB) RollupBackfillStatusProvider {
-	return &rollupBackfillService{db: db}
-}
-
 func NewUsageRollupBackfillRunner(db *gorm.DB, cfg UsageRollupBackfillRunnerConfig) *UsageRollupBackfillRunner {
 	batchHours := cfg.BatchHours
 	if batchHours <= 0 {
@@ -51,10 +38,6 @@ func NewUsageRollupBackfillRunner(db *gorm.DB, cfg UsageRollupBackfillRunnerConf
 		retryBackoff = 30 * time.Second
 	}
 	return &UsageRollupBackfillRunner{db: db, batchHours: batchHours, idleInterval: idleInterval, retryBackoff: retryBackoff, now: time.Now, sleep: sleepContext}
-}
-
-func (s *rollupBackfillService) GetRollupBackfillStatus(context.Context) (repodto.RollupBackfillStatus, error) {
-	return repository.GetUsageRollupBackfillStatus(s.db)
 }
 
 func (r *UsageRollupBackfillRunner) Run(ctx context.Context) error {

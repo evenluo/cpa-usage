@@ -2,14 +2,13 @@ package api
 
 import (
 	"cpa-usage/internal/entities"
-	"cpa-usage/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
 // loadUsageResolutionData 为 Request Events 和 Credentials 加载 source 解析所需的活跃 usage identities。
 func loadUsageResolutionData(
 	c *gin.Context,
-	usageIdentityProvider service.UsageIdentityProvider,
+	usageIdentityProvider UsageIdentityProvider,
 ) ([]entities.UsageIdentity, error) {
 	if usageIdentityProvider == nil {
 		return []entities.UsageIdentity{}, nil

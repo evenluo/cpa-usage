@@ -28,7 +28,7 @@ func BuildAnalyticsCoreWithFilter(ctx context.Context, db *gorm.DB, filter dto.U
 	if plan.rollupFilter == nil {
 		return buildRawAnalyticsCore(db, filter)
 	}
-	allowed, detail, err := analyticsRollupReadAllowed(db, *plan.rollupFilter)
+	allowed, detail, err := analyticsRollupReadAllowed(ctx, db, *plan.rollupFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +110,8 @@ func buildRawAnalyticsCore(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.Analy
 	}, nil
 }
 
-func analyticsRollupReadAllowed(db *gorm.DB, filter dto.UsageQueryFilter) (bool, string, error) {
-	status, err := GetUsageRollupBackfillStatus(db)
+func analyticsRollupReadAllowed(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (bool, string, error) {
+	status, err := GetUsageRollupBackfillStatus(ctx, db)
 	if err != nil {
 		return false, "", err
 	}

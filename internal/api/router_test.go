@@ -69,7 +69,7 @@ func (s rollupBackfillStatusStub) GetRollupBackfillStatus(context.Context) (repo
 }
 
 func TestHealthzReturnsOK(t *testing.T) {
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	resp := httptest.NewRecorder()
 
@@ -81,7 +81,7 @@ func TestHealthzReturnsOK(t *testing.T) {
 }
 
 func TestRouterDoesNotTrustForwardedClientIPByDefault(t *testing.T) {
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	router.GET("/client-ip", func(c *gin.Context) {
 		c.String(http.StatusOK, c.ClientIP())
 	})
@@ -98,7 +98,7 @@ func TestRouterDoesNotTrustForwardedClientIPByDefault(t *testing.T) {
 }
 
 func TestRouterTrustsForwardedClientIPFromConfiguredProxy(t *testing.T) {
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{TrustedProxies: []string{"198.51.100.10"}}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{TrustedProxies: []string{"198.51.100.10"}}, nil, "", OptionalProviders{})
 	router.GET("/client-ip", func(c *gin.Context) {
 		c.String(http.StatusOK, c.ClientIP())
 	})
@@ -123,7 +123,7 @@ func TestStatusReturnsPollerState(t *testing.T) {
 		LastError:   "boom",
 		LastWarning: "metadata unavailable",
 		LastStatus:  "completed_with_warnings",
-	}}, nil, nil, AuthConfig{}, nil, "")
+	}}, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
 	resp := httptest.NewRecorder()
@@ -173,7 +173,7 @@ func TestStatusReturnsProjectTimezone(t *testing.T) {
 	t.Cleanup(func() { time.Local = previousLocal })
 	time.Local = location
 
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -187,7 +187,7 @@ func TestStatusReturnsProjectTimezone(t *testing.T) {
 }
 
 func TestStatusReturnsEmptyStateWithoutProvider(t *testing.T) {
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -205,7 +205,7 @@ func TestStatusReturnsVersionWithoutUpdateCheckState(t *testing.T) {
 	t.Cleanup(func() { version.Version = previousVersion })
 	version.Version = "v1.2.3"
 
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -224,7 +224,7 @@ func TestStatusReturnsDevVersionWithoutUpdateCheckState(t *testing.T) {
 	t.Cleanup(func() { version.Version = previousVersion })
 	version.Version = "dev"
 
-	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -241,7 +241,7 @@ func TestStatusReturnsDevVersionWithoutUpdateCheckState(t *testing.T) {
 func TestManualSyncTriggersSyncRunner(t *testing.T) {
 	lastRunAt := time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC)
 	syncer := &syncStatusStub{status: poller.Status{Running: true, LastRunAt: lastRunAt, LastStatus: "completed"}}
-	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil)
 	resp := httptest.NewRecorder()
 
@@ -264,7 +264,7 @@ func TestManualSyncTriggersSyncRunner(t *testing.T) {
 
 func TestManualSyncReturnsConflictWhenAlreadyRunning(t *testing.T) {
 	syncer := &syncStatusStub{err: poller.ErrSyncAlreadyRunning}
-	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil)
 	resp := httptest.NewRecorder()
 
@@ -280,7 +280,7 @@ func TestManualSyncReturnsWarningsAsError(t *testing.T) {
 		status: poller.Status{LastStatus: "completed_with_warnings", LastWarning: "metadata unavailable"},
 		err:    poller.ErrSyncCompletedWithWarnings,
 	}
-	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil)
 	resp := httptest.NewRecorder()
 
@@ -296,7 +296,7 @@ func TestManualSyncReturnsWarningsAsError(t *testing.T) {
 
 func TestManualSyncReturnsUserFacingStageError(t *testing.T) {
 	syncer := &syncStatusStub{err: userFacingSyncError{message: "metadata sync failed"}}
-	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil)
 	resp := httptest.NewRecorder()
 
@@ -312,7 +312,7 @@ func TestManualSyncReturnsUserFacingStageError(t *testing.T) {
 
 func TestManualSyncRateLimitsRepeatedRequests(t *testing.T) {
 	syncer := &syncStatusStub{status: poller.Status{LastStatus: "completed"}}
-	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 
 	firstResp := httptest.NewRecorder()
 	firstReq := httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil)
@@ -337,7 +337,7 @@ func TestSubpathRoutesOnlyServePrefixedEndpoints(t *testing.T) {
 	router := NewRouter(nil, statusStub{status: poller.Status{
 		Running:   true,
 		LastRunAt: lastRunAt,
-	}}, nil, nil, AuthConfig{BasePath: "/cpa"}, nil, "/cpa")
+	}}, nil, nil, AuthConfig{BasePath: "/cpa"}, nil, "/cpa", OptionalProviders{})
 
 	for _, testCase := range []struct {
 		path       string
@@ -363,7 +363,7 @@ func TestSubpathStaticRoutesServeOnlyUnderPrefix(t *testing.T) {
 		"assets/app.js": "console.log('ok')",
 	})
 
-	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{BasePath: "/cpa"}, nil, "/cpa")
+	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{BasePath: "/cpa"}, nil, "/cpa", OptionalProviders{})
 
 	for _, testCase := range []struct {
 		path       string
@@ -399,7 +399,7 @@ func TestSubpathStaticRouteRedirectsBareBasePath(t *testing.T) {
 		"index.html": `<html><head><script>window.__APP_BASE_PATH__ = "__APP_BASE_PATH__";</script></head><body>app</body></html>`,
 	})
 
-	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{BasePath: "/cpa"}, nil, "/cpa")
+	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{BasePath: "/cpa"}, nil, "/cpa", OptionalProviders{})
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/cpa?range=7d", nil)
 	router.ServeHTTP(resp, req)
@@ -429,7 +429,7 @@ func TestRootStaticRouteInjectsEmptyBasePath(t *testing.T) {
 		"index.html": `<html><head><script>window.__APP_BASE_PATH__ = "__APP_BASE_PATH__";</script></head><body>app</body></html>`,
 	})
 
-	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{}, nil, "")
+	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	router.ServeHTTP(resp, req)
@@ -448,7 +448,7 @@ func TestStaticHTMLResponsesBypassCache(t *testing.T) {
 		"assets/app.js": "console.log('ok')",
 	})
 
-	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{}, nil, "/cpa")
+	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{}, nil, "/cpa", OptionalProviders{})
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/cpa/dashboard", nil)
 	router.ServeHTTP(resp, req)
@@ -464,7 +464,7 @@ func TestStaticAssetResponsesUseLongCache(t *testing.T) {
 		"assets/app.js": "console.log('ok')",
 	})
 
-	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{}, nil, "/cpa")
+	router := NewRouter(staticFS, nil, nil, nil, AuthConfig{}, nil, "/cpa", OptionalProviders{})
 	resp := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/cpa/assets/app.js", nil)
 	router.ServeHTTP(resp, req)

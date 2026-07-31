@@ -2,6 +2,7 @@ package repository
 
 import (
 	"bytes"
+	"context"
 	"cpa-usage/internal/repository/dto"
 	"fmt"
 	"path/filepath"
@@ -103,7 +104,7 @@ func TestOpenDatabasePreservesExistingUsageRollupBackfillProgress(t *testing.T) 
 	}
 	defer closeTestDatabase(t, reopened)
 
-	status, err := GetUsageRollupBackfillStatus(reopened)
+	status, err := GetUsageRollupBackfillStatus(context.Background(), reopened)
 	if err != nil {
 		t.Fatalf("GetUsageRollupBackfillStatus returned error: %v", err)
 	}

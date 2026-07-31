@@ -44,7 +44,7 @@ func BuildAnalyticsHeatmapWithFilter(ctx context.Context, db *gorm.DB, filter dt
 	if plan.rollupFilter == nil {
 		return buildAnalyticsHeatmap(db, filter)
 	}
-	allowed, detail, err := analyticsRollupReadAllowed(db, *plan.rollupFilter)
+	allowed, detail, err := analyticsRollupReadAllowed(ctx, db, *plan.rollupFilter)
 	if err != nil {
 		return dto.AnalyticsHeatmap{}, err
 	}

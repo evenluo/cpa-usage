@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -24,13 +25,13 @@ func EnsureUsageRollupBackfillState(db *gorm.DB) error {
 	return nil
 }
 
-func GetUsageRollupBackfillStatus(db *gorm.DB) (repodto.RollupBackfillStatus, error) {
+func GetUsageRollupBackfillStatus(ctx context.Context, db *gorm.DB) (repodto.RollupBackfillStatus, error) {
 	if db == nil {
 		return repodto.RollupBackfillStatus{}, fmt.Errorf("database is nil")
 	}
 
 	var state entities.UsageRollupBackfillState
-	err := db.Where("name = ?", entities.UsageRollupBackfillStateName).First(&state).Error
+	err := db.WithContext(ctx).Where("name = ?", entities.UsageRollupBackfillStateName).First(&state).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return repodto.PendingRollupBackfillStatus(), nil
