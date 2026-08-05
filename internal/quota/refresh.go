@@ -74,18 +74,22 @@ type RefreshTaskRecord struct {
 }
 
 // AttachRefreshWorkerLifecycle 把 refresh worker 的父 context 绑定到应用生命周期：
-// 应用关停时取消 ctx，进行中的 provider 调用与排队中的 worker 都会随之退出。
+// 应用关停时由 StopRefreshWorkers 取消内部派生的 worker context，进行中的 provider 调用与排队中的 worker 都会随之退出。
 func (s *Service) AttachRefreshWorkerLifecycle(ctx context.Context) {
 	s.refreshWorkerMu.Lock()
 	defer s.refreshWorkerMu.Unlock()
-	s.refreshWorkerCtx = ctx
+	s.refreshWorkerCtx, s.refreshWorkerCancel = context.WithCancel(ctx)
 }
 
 // StopRefreshWorkers 拒绝新的 refresh worker 并等待进行中的 worker 退出。
-// 调用方应先取消 AttachRefreshWorkerLifecycle 绑定的 ctx，否则进行中的任务要等自身超时。
+// 关闭标志与 worker context 取消在同一把锁下完成，与 startRefreshTask 的接收检查互斥：
+// 一旦开始关闭，后续接收必然被拒绝，不会返回 Accepted 但无法执行的任务。
 func (s *Service) StopRefreshWorkers() {
 	s.refreshWorkerMu.Lock()
 	s.refreshWorkersClose = true
+	if s.refreshWorkerCancel != nil {
+		s.refreshWorkerCancel()
+	}
 	s.refreshWorkerMu.Unlock()
 	s.refreshWorkerWG.Wait()
 }

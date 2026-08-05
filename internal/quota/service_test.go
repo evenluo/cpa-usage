@@ -268,6 +268,48 @@ func TestStopRefreshWorkersCancelsQueuedAndRunningWorkers(t *testing.T) {
 	}
 }
 
+func TestStopRefreshWorkersCancelsWorkersWithoutExternalCancel(t *testing.T) {
+	block := make(chan struct{})
+	defer close(block)
+	handler := &refreshHandlerStub{block: block, output: claudeUsageOutput(25)}
+	service := newRefreshTestService(map[string]entities.UsageIdentity{"auth-1": claudeAuthFileIdentity("auth-1")}, handler)
+
+	workerCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service.AttachRefreshWorkerLifecycle(workerCtx)
+
+	taskID := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, taskID, RefreshTaskStatusRunning)
+
+	// 关闭标志与 worker context 取消都在 StopRefreshWorkers 内部完成，调用方无需先取消 ctx。
+	stopped := make(chan struct{})
+	go func() {
+		service.StopRefreshWorkers()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("StopRefreshWorkers did not return after internal worker context cancellation")
+	}
+
+	task, err := service.GetRefreshTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("GetRefreshTask returned error: %v", err)
+	}
+	if task.Status != RefreshTaskStatusFailed {
+		t.Fatalf("expected running task to be failed after stop, got %+v", task)
+	}
+
+	response, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-1"}, Limit: 20})
+	if err != nil {
+		t.Fatalf("Refresh after StopRefreshWorkers returned error: %v", err)
+	}
+	if response.Accepted != 0 || response.Skipped != 1 || len(response.Tasks) != 0 || !hasRefreshRejection(response.Rejected, "auth-1", "refresh_unavailable") {
+		t.Fatalf("expected stopped refresh workers to reject new tasks, got %+v", response)
+	}
+}
+
 func TestStopRefreshWorkersMarksQueuedTasksFailed(t *testing.T) {
 	block := make(chan struct{})
 	defer close(block)
