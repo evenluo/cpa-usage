@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 )
 
 type redisDrainSyncStub struct {
@@ -84,25 +84,19 @@ func (s *redisDrainSyncStub) counts() (int, int) {
 	return s.pullCalls, s.processCalls
 }
 
-func captureRedisDrainLogrusOutput(t *testing.T) *bytes.Buffer {
+func captureRedisDrainSlogOutput(t *testing.T) *bytes.Buffer {
 	t.Helper()
-	previousOutput := logrus.StandardLogger().Out
-	previousFormatter := logrus.StandardLogger().Formatter
-	previousLevel := logrus.GetLevel()
 	var logs bytes.Buffer
-	logrus.SetOutput(&logs)
-	logrus.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	logrus.SetLevel(logrus.InfoLevel)
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	t.Cleanup(func() {
-		logrus.SetOutput(previousOutput)
-		logrus.SetFormatter(previousFormatter)
-		logrus.SetLevel(previousLevel)
+		slog.SetDefault(previous)
 	})
 	return &logs
 }
 
 func TestRedisDrainLoopsLogTaskStarts(t *testing.T) {
-	logs := captureRedisDrainLogrusOutput(t)
+	logs := captureRedisDrainSlogOutput(t)
 	syncer := &redisDrainSyncStub{pullResults: []*servicedto.RedisInboxPullResult{{Empty: true, Status: "empty"}}}
 	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
 
@@ -184,6 +178,53 @@ func TestRedisDrainSyncNowPullsThenProcesses(t *testing.T) {
 	pulls, processes := syncer.counts()
 	if pulls != 1 || processes != 1 {
 		t.Fatalf("expected SyncNow to pull and process once, got pulls=%d processes=%d", pulls, processes)
+	}
+}
+
+func TestRedisDrainTracksProcessedEventMetrics(t *testing.T) {
+	syncer := &redisDrainSyncStub{processResults: []*servicedto.RedisBatchSyncResult{
+		{Status: "completed", InsertedEvents: 3, DedupedEvents: 2},
+		{Status: "failed"},
+		{Status: "empty"},
+		{Status: "completed", InsertedEvents: 1, DedupedEvents: 0},
+	}}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+
+	for range 4 {
+		if err := drain.SyncNow(context.Background()); err != nil {
+			t.Fatalf("SyncNow returned error: %v", err)
+		}
+	}
+
+	metrics := drain.ProcessMetrics()
+	// 失败与空批次不计入：仅两次成功批次（3+2 与 1+0）累计 6 个事件。
+	if metrics.EventsTotal != 6 {
+		t.Fatalf("expected 6 processed events, got %d", metrics.EventsTotal)
+	}
+	if metrics.BatchesTotal != 2 {
+		t.Fatalf("expected 2 processed batches, got %d", metrics.BatchesTotal)
+	}
+	if metrics.LastProcessedAt.IsZero() {
+		t.Fatal("expected last processed time to be recorded")
+	}
+}
+
+func TestRedisDrainProcessMetricsStayZeroWithoutRealBatches(t *testing.T) {
+	syncer := &redisDrainSyncStub{processResults: []*servicedto.RedisBatchSyncResult{
+		{Status: "empty"},
+		{Status: "failed"},
+	}}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+
+	for range 2 {
+		if err := drain.SyncNow(context.Background()); err != nil {
+			t.Fatalf("SyncNow returned error: %v", err)
+		}
+	}
+
+	metrics := drain.ProcessMetrics()
+	if metrics.EventsTotal != 0 || metrics.BatchesTotal != 0 || !metrics.LastProcessedAt.IsZero() {
+		t.Fatalf("expected no throughput recorded for empty/failed batches, got %+v", metrics)
 	}
 }
 

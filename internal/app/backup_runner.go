@@ -114,7 +114,9 @@ func (r *DatabaseBackupRunner) Run(ctx context.Context) error {
 			r.retryAttempts++
 			r.pendingRetry = r.retryAttempts <= 3
 		} else {
+			r.mu.Lock()
 			r.lastBackupAt = backupAt
+			r.mu.Unlock()
 			r.retryAttempts = 0
 			r.pendingRetry = false
 		}
@@ -215,4 +217,14 @@ func (r *DatabaseBackupRunner) setRunning(running bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.running = running
+}
+
+// LastBackupAt 返回最近一次成功备份的时间；未执行过备份时为零值。
+func (r *DatabaseBackupRunner) LastBackupAt() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastBackupAt
 }

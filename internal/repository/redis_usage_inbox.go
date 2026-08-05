@@ -204,6 +204,17 @@ func ListPendingRedisUsageInbox(db *gorm.DB, limit int) ([]entities.RedisUsageIn
 	return rows, nil
 }
 
+// CountPendingRedisUsageInbox 返回待处理的 Redis inbox 原始消息数，供运行时快照观察消费积压。
+func CountPendingRedisUsageInbox(db *gorm.DB) (int64, error) {
+	var count int64
+	if err := db.Model(&entities.RedisUsageInbox{}).
+		Where("status = ? OR status = ?", RedisUsageInboxStatusPending, RedisUsageInboxStatusProcessFailed).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 // CleanupRedisUsageInbox 清理已完成和失败的 Redis inbox 原始消息，pending 数据永远不在这里删除。
 // processed 保留到下一个本地日开始后才清理；decode_failed/process_failed/discarded 保留 7 天便于排查。
 func CleanupRedisUsageInbox(db *gorm.DB, now time.Time) (dto.RedisUsageInboxCleanupResult, error) {

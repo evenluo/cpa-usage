@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"time"
 
 	"cpa-usage/internal/api"
 	"cpa-usage/internal/auth"
@@ -44,8 +45,14 @@ type App struct {
 	Quota             *quota.Service
 	LogCloser         io.Closer
 
-	backgroundCancel context.CancelFunc
-	backgroundWG     sync.WaitGroup
+	rollupBackfillReader repository.RollupBackfillReader
+	startedAt            time.Time
+	backgroundCancel     context.CancelFunc
+	backgroundWG         sync.WaitGroup
+
+	metricsMu              sync.Mutex
+	lastMetricsSampleAt    time.Time
+	lastMetricsEventsTotal int64
 }
 
 func New() (*App, error) {
@@ -123,27 +130,30 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	}
 	authHandler := api.NewAuthHandler(authConfig, sessionManager)
 
-	return &App{
-		Config:            &cfg,
-		DB:                db,
-		Poller:            backgroundPoller,
-		Maintenance:       NewStorageCleanupRunner(syncService),
-		MetadataSync:      NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
-		BackupMaintenance: backupMaintenance,
-		RollupBackfill:    rollupBackfillRunner,
-		Quota:             quotaService,
-		LogCloser:         logCloser,
-		Router: api.NewRouter(
-			webui.Static,
-			newManualSyncRunner(backgroundPoller, syncService),
-			usageReader,
-			pricingService,
-			authConfig,
-			authHandler,
-			cfg.AppBasePath,
-			api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader},
-		),
-	}, nil
+	appInstance := &App{
+		Config:               &cfg,
+		DB:                   db,
+		Poller:               backgroundPoller,
+		Maintenance:          NewStorageCleanupRunner(syncService),
+		MetadataSync:         NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
+		BackupMaintenance:    backupMaintenance,
+		RollupBackfill:       rollupBackfillRunner,
+		Quota:                quotaService,
+		LogCloser:            logCloser,
+		rollupBackfillReader: rollupBackfillReader,
+		startedAt:            time.Now(),
+	}
+	appInstance.Router = api.NewRouter(
+		webui.Static,
+		newManualSyncRunner(backgroundPoller, syncService),
+		usageReader,
+		pricingService,
+		authConfig,
+		authHandler,
+		cfg.AppBasePath,
+		api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader, Metrics: appInstance},
+	)
+	return appInstance, nil
 }
 
 func closeGormDB(db *gorm.DB) error {

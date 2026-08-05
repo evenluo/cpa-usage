@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	servicedto "cpa-usage/internal/service/dto"
@@ -38,6 +39,10 @@ type RedisDrain struct {
 	lastStatus     string
 	pullRunning    bool
 	processRunning bool
+
+	processedEventsTotal  atomic.Int64
+	processedBatchesTotal atomic.Int64
+	lastProcessedAt       atomic.Int64 // unix nano
 }
 
 func NewRedisDrain(syncer RedisBatchSyncer, cfg RedisDrainConfig) *RedisDrain {
@@ -203,8 +208,48 @@ func (d *RedisDrain) runRedisProcess(ctx context.Context) (*servicedto.RedisBatc
 	if err != nil && result != nil && result.Status != "" && result.Status != "failed" {
 		returnErr = fmt.Errorf("%w: %v", ErrSyncCompletedWithWarnings, err)
 	}
+	d.recordProcessMetrics(result)
 	d.recordResult(result, err)
 	return result, returnErr
+}
+
+// ProcessMetrics 是 Redis inbox 处理的累计吞吐快照，供运行时指标推导处理速率。
+type ProcessMetrics struct {
+	EventsTotal     int64
+	BatchesTotal    int64
+	LastProcessedAt time.Time
+}
+
+// ProcessMetricsProvider 由 RedisDrain 实现；App 通过类型断言读取，不扩展现有 Runner 接口。
+type ProcessMetricsProvider interface {
+	ProcessMetrics() ProcessMetrics
+}
+
+func (d *RedisDrain) ProcessMetrics() ProcessMetrics {
+	lastProcessedAt := time.Time{}
+	if unixNano := d.lastProcessedAt.Load(); unixNano != 0 {
+		lastProcessedAt = time.Unix(0, unixNano).UTC()
+	}
+	return ProcessMetrics{
+		EventsTotal:     d.processedEventsTotal.Load(),
+		BatchesTotal:    d.processedBatchesTotal.Load(),
+		LastProcessedAt: lastProcessedAt,
+	}
+}
+
+// recordProcessMetrics 累计已落库事件的批次数与事件数；
+// 失败批次与空批次（无待处理行）不计入，避免把重试或空闲轮询误算为吞吐。
+func (d *RedisDrain) recordProcessMetrics(result *servicedto.RedisBatchSyncResult) {
+	if result == nil || result.Status == "failed" {
+		return
+	}
+	events := int64(result.InsertedEvents + result.DedupedEvents)
+	if events == 0 {
+		return
+	}
+	d.processedBatchesTotal.Add(1)
+	d.processedEventsTotal.Add(events)
+	d.lastProcessedAt.Store(d.now().UnixNano())
 }
 
 func (d *RedisDrain) recordPullResult(result *servicedto.RedisInboxPullResult, err error) {
