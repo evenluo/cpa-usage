@@ -219,12 +219,14 @@ func (r *DatabaseBackupRunner) setRunning(running bool) {
 	r.running = running
 }
 
-// LastBackupAt 返回最近一次成功备份的时间；未执行过备份时为零值。
+// LastBackupAt 返回最近一次成功备份的时间（含重启前持久化的历史）；
+// 未执行过备份时为零值。
 func (r *DatabaseBackupRunner) LastBackupAt() time.Time {
 	if r == nil {
 		return time.Time{}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.lastBackupAt
+	lastBackupAt, _ := r.lastBackupAtFromHistory()
+	return lastBackupAt
 }
