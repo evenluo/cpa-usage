@@ -184,7 +184,7 @@ func TestDatabaseBackupRunnerCleansAfterBackupFailure(t *testing.T) {
 		t.Fatalf("expected cleanup after failed backup, got %d calls", cleaner.calls)
 	}
 	content := logs.String()
-	if !strings.Contains(content, "level=error") || !strings.Contains(content, "msg=\"database backup failed\"") {
+	if !strings.Contains(content, "level=ERROR") || !strings.Contains(content, "msg=\"database backup failed\"") {
 		t.Fatalf("expected database backup failure error log, got %q", content)
 	}
 }

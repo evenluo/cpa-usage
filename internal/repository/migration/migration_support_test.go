@@ -2,11 +2,11 @@ package migration
 
 import (
 	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 
 	"cpa-usage/internal/entities"
-	"github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -52,19 +52,13 @@ func openMigratedDatabase(t *testing.T, dbPath string) *gorm.DB {
 	return db
 }
 
-func captureMigrationLogs(t *testing.T, level logrus.Level) *bytes.Buffer {
+func captureMigrationLogs(t *testing.T, level slog.Level) *bytes.Buffer {
 	t.Helper()
 	var logs bytes.Buffer
-	previousOutput := logrus.StandardLogger().Out
-	previousFormatter := logrus.StandardLogger().Formatter
-	previousLevel := logrus.GetLevel()
-	logrus.SetOutput(&logs)
-	logrus.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	logrus.SetLevel(level)
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: level})))
 	t.Cleanup(func() {
-		logrus.SetOutput(previousOutput)
-		logrus.SetFormatter(previousFormatter)
-		logrus.SetLevel(previousLevel)
+		slog.SetDefault(previous)
 	})
 	return &logs
 }

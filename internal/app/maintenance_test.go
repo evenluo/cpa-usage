@@ -3,11 +3,10 @@ package app
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 type maintenanceSyncStub struct {
@@ -50,7 +49,7 @@ func TestStorageCleanupRunnerLogsTaskStart(t *testing.T) {
 	}
 
 	content := logs.String()
-	if !strings.Contains(content, "level=info") || !strings.Contains(content, "msg=\"storage cleanup task started\"") {
+	if !strings.Contains(content, "level=INFO") || !strings.Contains(content, "msg=\"storage cleanup task started\"") {
 		t.Fatalf("expected storage cleanup start info log, got %q", content)
 	}
 }
@@ -92,16 +91,10 @@ func TestStorageCleanupRunnerRunsAtScheduledTime(t *testing.T) {
 func captureMaintenanceInfoLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var logs bytes.Buffer
-	previousOutput := logrus.StandardLogger().Out
-	previousFormatter := logrus.StandardLogger().Formatter
-	previousLevel := logrus.GetLevel()
-	logrus.SetOutput(&logs)
-	logrus.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	logrus.SetLevel(logrus.InfoLevel)
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	t.Cleanup(func() {
-		logrus.SetOutput(previousOutput)
-		logrus.SetFormatter(previousFormatter)
-		logrus.SetLevel(previousLevel)
+		slog.SetDefault(previous)
 	})
 	return &logs
 }

@@ -3,8 +3,8 @@ package repository
 import (
 	"bytes"
 	"context"
-	"cpa-usage/internal/repository/dto"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,7 +12,7 @@ import (
 
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
-	"github.com/sirupsen/logrus"
+	"cpa-usage/internal/repository/dto"
 	"gorm.io/gorm"
 )
 
@@ -354,16 +354,10 @@ func closeTestDatabase(t *testing.T, db *gorm.DB) {
 func captureRepositoryLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var logs bytes.Buffer
-	previousOutput := logrus.StandardLogger().Out
-	previousFormatter := logrus.StandardLogger().Formatter
-	previousLevel := logrus.GetLevel()
-	logrus.SetOutput(&logs)
-	logrus.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	logrus.SetLevel(logrus.InfoLevel)
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	t.Cleanup(func() {
-		logrus.SetOutput(previousOutput)
-		logrus.SetFormatter(previousFormatter)
-		logrus.SetLevel(previousLevel)
+		slog.SetDefault(previous)
 	})
 	return &logs
 }

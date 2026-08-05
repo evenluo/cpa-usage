@@ -3,10 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 type MetadataSyncer interface {
@@ -35,7 +34,7 @@ func (r *MetadataSyncRunner) Run(ctx context.Context) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
-	logrus.Info("metadata sync task started")
+	slog.Info("metadata sync task started")
 	r.setRunning(true)
 	defer r.setRunning(false)
 
@@ -45,7 +44,7 @@ func (r *MetadataSyncRunner) Run(ctx context.Context) error {
 			return nil
 		}
 		if err := r.syncer.SyncMetadata(ctx); err != nil {
-			logrus.WithError(err).Error("metadata sync failed")
+			slog.Error("metadata sync failed", "error", err)
 		}
 		delay = r.interval
 	}

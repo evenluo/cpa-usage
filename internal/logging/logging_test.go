@@ -2,6 +2,7 @@ package logging
 
 import (
 	"bytes"
+	"context"
 	stdlog "log"
 	"log/slog"
 	"os"
@@ -13,8 +14,31 @@ import (
 
 	"cpa-usage/internal/config"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
+
+func TestParseSlogLevelMapsConfiguredLevels(t *testing.T) {
+	cases := []struct {
+		name  string
+		input string
+		want  slog.Level
+	}{
+		{name: "trace maps to debug", input: "trace", want: slog.LevelDebug},
+		{name: "debug", input: "debug", want: slog.LevelDebug},
+		{name: "warn", input: "warn", want: slog.LevelWarn},
+		{name: "warning alias", input: "WARNING", want: slog.LevelWarn},
+		{name: "error", input: "error", want: slog.LevelError},
+		{name: "fatal collapses to error", input: "fatal", want: slog.LevelError},
+		{name: "panic collapses to error", input: "panic", want: slog.LevelError},
+		{name: "unknown defaults to info", input: "verbose", want: slog.LevelInfo},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := parseSlogLevel(tc.input); got != tc.want {
+				t.Fatalf("parseSlogLevel(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
 
 func TestResolveLogDirUsesWorkDirFallback(t *testing.T) {
 	workDir := filepath.Join(t.TempDir(), "work")
@@ -26,7 +50,7 @@ func TestResolveLogDirUsesWorkDirFallback(t *testing.T) {
 	}
 }
 
-func TestConfigureWritesLogrusToDailyFile(t *testing.T) {
+func TestConfigureWritesSlogToDailyFile(t *testing.T) {
 	reset := captureGlobalLogState(t)
 	defer reset()
 
@@ -42,18 +66,18 @@ func TestConfigureWritesLogrusToDailyFile(t *testing.T) {
 	}
 	defer closer.Close()
 
-	logrus.Info("file logging works")
+	slog.Info("file logging works")
 
 	content := readTodayLogFile(t, logDir)
 	if !strings.Contains(content, "file logging works") {
-		t.Fatalf("expected log file to contain logrus message, got %q", content)
+		t.Fatalf("expected log file to contain slog message, got %q", content)
 	}
 	if !logLineHasTimestamp(content) {
 		t.Fatalf("expected log file to include timestamp, got %q", content)
 	}
 }
 
-func TestConfigureUsesFullTimestampFormatter(t *testing.T) {
+func TestConfigureUsesTextHandler(t *testing.T) {
 	reset := captureGlobalLogState(t)
 	defer reset()
 
@@ -67,16 +91,12 @@ func TestConfigureUsesFullTimestampFormatter(t *testing.T) {
 	}
 	defer closer.Close()
 
-	formatter, ok := logrus.StandardLogger().Formatter.(*logrus.TextFormatter)
-	if !ok {
-		t.Fatalf("expected text formatter, got %T", logrus.StandardLogger().Formatter)
-	}
-	if !formatter.FullTimestamp || formatter.TimestampFormat == "" {
-		t.Fatalf("expected full timestamp formatter, got FullTimestamp=%v TimestampFormat=%q", formatter.FullTimestamp, formatter.TimestampFormat)
+	if _, ok := slog.Default().Handler().(*slog.TextHandler); !ok {
+		t.Fatalf("expected text handler, got %T", slog.Default().Handler())
 	}
 }
 
-func TestConfigureWritesLogrusConsoleWithTimestamp(t *testing.T) {
+func TestConfigureWritesSlogConsoleWithTimestamp(t *testing.T) {
 	reset := captureGlobalLogState(t)
 	defer reset()
 
@@ -100,7 +120,7 @@ func TestConfigureWritesLogrusConsoleWithTimestamp(t *testing.T) {
 		t.Fatalf("Configure returned error: %v", err)
 	}
 
-	logrus.Info("console timestamp works")
+	slog.Info("console timestamp works")
 	if err := closer.Close(); err != nil {
 		t.Fatalf("Close returned error: %v", err)
 	}
@@ -114,7 +134,7 @@ func TestConfigureWritesLogrusConsoleWithTimestamp(t *testing.T) {
 	}
 	content := output.String()
 	if !strings.Contains(content, "console timestamp works") {
-		t.Fatalf("expected console output to contain logrus message, got %q", content)
+		t.Fatalf("expected console output to contain slog message, got %q", content)
 	}
 	if !logLineHasTimestamp(content) {
 		t.Fatalf("expected console output to include timestamp, got %q", content)
@@ -137,7 +157,7 @@ func TestConfigureDisablesFileLogging(t *testing.T) {
 	}
 	defer closer.Close()
 
-	logrus.Info("stderr only")
+	slog.Info("stderr only")
 
 	entries, err := os.ReadDir(logDir)
 	if err != nil {
@@ -173,7 +193,7 @@ func TestConfigureRoutesStdlibLogAndSlogToFile(t *testing.T) {
 	}
 }
 
-func TestConfigureRoutesGinDebugToTimestampedLogrusOutput(t *testing.T) {
+func TestConfigureRoutesGinDebugToTimestampedSlogOutput(t *testing.T) {
 	reset := captureGlobalLogState(t)
 	defer reset()
 
@@ -214,7 +234,7 @@ func TestConfigureRoutesGinDebugToTimestampedLogrusOutput(t *testing.T) {
 	}
 	content := output.String()
 	if !strings.Contains(content, "[GIN-debug] GET /api/v1/status") {
-		t.Fatalf("expected Gin debug output to be routed through logrus, got %q", content)
+		t.Fatalf("expected Gin debug output to be routed through slog, got %q", content)
 	}
 	if !logLineHasTimestamp(content) {
 		t.Fatalf("expected Gin debug output to include timestamp, got %q", content)
@@ -226,7 +246,6 @@ func TestConfigureCloseRestoresGlobalLoggers(t *testing.T) {
 	defer reset()
 
 	var restoredOutput bytes.Buffer
-	logrus.SetOutput(&restoredOutput)
 	stdlog.SetOutput(&restoredOutput)
 	slog.SetDefault(slog.New(slog.NewTextHandler(&restoredOutput, nil)))
 	gin.DefaultWriter = &restoredOutput
@@ -251,14 +270,13 @@ func TestConfigureCloseRestoresGlobalLoggers(t *testing.T) {
 		t.Fatalf("Close returned error: %v", err)
 	}
 
-	logrus.Info("after close logrus")
 	stdlog.Print("after close stdlib")
 	slog.Error("after close slog")
 	gin.DebugPrintFunc("ignored")
 	gin.DebugPrintRouteFunc("GET", "/", "handler", 1)
 
 	content := restoredOutput.String()
-	for _, want := range []string{"after close logrus", "after close stdlib", "after close slog", "after close gin debug", "after close gin route"} {
+	for _, want := range []string{"after close stdlib", "after close slog", "after close gin debug", "after close gin route"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("expected global loggers to be restored after close with %q, got %q", want, content)
 		}
@@ -269,7 +287,8 @@ func TestConfigureErrorLeavesGlobalLoggerStateUnchanged(t *testing.T) {
 	reset := captureGlobalLogState(t)
 	defer reset()
 
-	logrus.SetLevel(logrus.DebugLevel)
+	previousLevel := slog.LevelDebug
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: previousLevel})))
 	invalidLogDir := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(invalidLogDir, []byte("file"), 0644); err != nil {
 		t.Fatalf("write invalid log dir fixture: %v", err)
@@ -284,8 +303,8 @@ func TestConfigureErrorLeavesGlobalLoggerStateUnchanged(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected Configure to return an error")
 	}
-	if level := logrus.GetLevel(); level != logrus.DebugLevel {
-		t.Fatalf("expected logrus level to remain debug after configure error, got %s", level)
+	if !slog.Default().Enabled(context.Background(), slog.LevelDebug) {
+		t.Fatal("expected slog level to remain debug after configure error")
 	}
 }
 
@@ -334,9 +353,6 @@ func logLineHasTimestamp(content string) bool {
 
 func captureGlobalLogState(t *testing.T) func() {
 	t.Helper()
-	previousLogrusOutput := logrus.StandardLogger().Out
-	previousLogrusLevel := logrus.GetLevel()
-	previousLogrusFormatter := logrus.StandardLogger().Formatter
 	previousStdlogOutput := stdlog.Writer()
 	previousSlog := slog.Default()
 	previousGinDefaultWriter := gin.DefaultWriter
@@ -344,12 +360,8 @@ func captureGlobalLogState(t *testing.T) func() {
 	previousGinDebugPrint := gin.DebugPrintFunc
 	previousGinDebugPrintRoute := gin.DebugPrintRouteFunc
 	var stderr bytes.Buffer
-	logrus.SetOutput(&stderr)
 	stdlog.SetOutput(&stderr)
 	return func() {
-		logrus.SetOutput(previousLogrusOutput)
-		logrus.SetLevel(previousLogrusLevel)
-		logrus.SetFormatter(previousLogrusFormatter)
 		stdlog.SetOutput(previousStdlogOutput)
 		slog.SetDefault(previousSlog)
 		gin.DefaultWriter = previousGinDefaultWriter

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 
@@ -11,7 +12,6 @@ import (
 	"cpa-usage/internal/repository"
 	repodto "cpa-usage/internal/repository/dto"
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -88,11 +88,11 @@ func (s *pricingService) effectiveModels(ctx context.Context) ([]string, error) 
 
 	result, err := s.modelsFetcher.FetchModels(ctx)
 	if err != nil {
-		logrus.WithError(err).Error("pricing model listing falling back to local usage aggregation")
+		slog.Error("pricing model listing falling back to local usage aggregation", "error", err)
 		return repository.ListUsedModels(s.db)
 	}
 
-	logrus.Debug("pricing model listing using CPA models endpoint")
+	slog.Debug("pricing model listing using CPA models endpoint")
 	return normalizeCPAModels(result), nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 
 	"cpa-usage/internal/api"
@@ -18,7 +19,6 @@ import (
 	"cpa-usage/internal/service"
 	webui "cpa-usage/web"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -102,7 +102,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	keyAliasService := service.NewKeyAliasService(db)
 	cpaClient := cpa.NewClient(cfg.CPABaseURL, cfg.CPAManagementKey, cfg.RequestTimeout, cfg.TLSSkipVerify)
 	if cfg.TLSSkipVerify {
-		logrus.WithField("cpa_base_url", cfg.CPABaseURL).Warn("TLS certificate verification is disabled for CPA and Redis queue connections")
+		slog.Warn("TLS certificate verification is disabled for CPA and Redis queue connections", "cpa_base_url", cfg.CPABaseURL)
 	}
 	pricingService := service.NewPricingService(db, cpaClient)
 	quotaService := quota.NewService(quota.NewRepositoryAuthFileIdentityLookup(db), cpaClient)
@@ -189,35 +189,35 @@ func (a *App) Run() error {
 	if a.Poller != nil {
 		a.startBackgroundTask(func() {
 			if err := a.Poller.Run(ctx); err != nil {
-				logrus.Errorf("poller stopped: %v", err)
+				slog.Error("poller stopped", "error", err)
 			}
 		})
 	}
 	if a.Maintenance != nil {
 		a.startBackgroundTask(func() {
 			if err := a.Maintenance.Run(ctx); err != nil {
-				logrus.Errorf("maintenance cleanup stopped: %v", err)
+				slog.Error("maintenance cleanup stopped", "error", err)
 			}
 		})
 	}
 	if a.MetadataSync != nil {
 		a.startBackgroundTask(func() {
 			if err := a.MetadataSync.Run(ctx); err != nil {
-				logrus.Errorf("metadata sync stopped: %v", err)
+				slog.Error("metadata sync stopped", "error", err)
 			}
 		})
 	}
 	if a.BackupMaintenance != nil {
 		a.startBackgroundTask(func() {
 			if err := a.BackupMaintenance.Run(ctx); err != nil {
-				logrus.Errorf("database backup stopped: %v", err)
+				slog.Error("database backup stopped", "error", err)
 			}
 		})
 	}
 	if a.RollupBackfill != nil {
 		a.startBackgroundTask(func() {
 			if err := a.RollupBackfill.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				logrus.Errorf("usage rollup backfill stopped: %v", err)
+				slog.Error("usage rollup backfill stopped", "error", err)
 			}
 		})
 	}

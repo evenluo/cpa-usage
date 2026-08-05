@@ -2,12 +2,12 @@ package migration
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"cpa-usage/internal/entities"
-	"github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -133,7 +133,7 @@ func TestOpenDatabaseMigrationsAreIdempotent(t *testing.T) {
 }
 
 func TestOpenDatabaseLogsSchemaMigrations(t *testing.T) {
-	logs := captureMigrationLogs(t, logrus.InfoLevel)
+	logs := captureMigrationLogs(t, slog.LevelInfo)
 	dbPath := filepath.Join(t.TempDir(), "legacy.db")
 	seedLegacyRedisUsageTables(t, dbPath)
 
@@ -145,7 +145,7 @@ func TestOpenDatabaseLogsSchemaMigrations(t *testing.T) {
 
 	content := logs.String()
 	for _, want := range []string{
-		"level=info",
+		"level=INFO",
 		"msg=\"schema migration started\"",
 		"msg=\"schema migration applied\"",
 		"msg=\"schema migration skipped\"",
@@ -160,7 +160,7 @@ func TestOpenDatabaseLogsSchemaMigrations(t *testing.T) {
 }
 
 func TestRunSchemaMigrationLogsErrors(t *testing.T) {
-	logs := captureMigrationLogs(t, logrus.InfoLevel)
+	logs := captureMigrationLogs(t, slog.LevelInfo)
 	db, err := gorm.Open(sqlite.Open(testSQLiteDSN(filepath.Join(t.TempDir(), "app.db"))), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
@@ -182,10 +182,10 @@ func TestRunSchemaMigrationLogsErrors(t *testing.T) {
 
 	content := logs.String()
 	for _, want := range []string{
-		"level=info",
+		"level=INFO",
 		"msg=\"schema migration started\"",
 		"version=test_failure",
-		"level=error",
+		"level=ERROR",
 		"msg=\"schema migration failed\"",
 		"error=boom",
 	} {

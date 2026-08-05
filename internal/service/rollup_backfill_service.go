@@ -2,10 +2,10 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"cpa-usage/internal/repository"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -47,14 +47,14 @@ func (r *UsageRollupBackfillRunner) Run(ctx context.Context) error {
 	for {
 		result, err := repository.BackfillUsageRollupsBatch(r.db, r.now().UTC(), r.batchHours)
 		if err != nil {
-			logrus.WithError(err).Warn("usage rollup backfill batch failed")
+			slog.Warn("usage rollup backfill batch failed", "error", err)
 			if !r.sleep(ctx, r.retryBackoff) {
 				return ctx.Err()
 			}
 			continue
 		}
 		if result.Done {
-			logrus.WithField("status", result.Status.Status).Info("usage rollup backfill completed")
+			slog.Info("usage rollup backfill completed", "status", result.Status.Status)
 			return nil
 		}
 		if !r.sleep(ctx, r.idleInterval) {

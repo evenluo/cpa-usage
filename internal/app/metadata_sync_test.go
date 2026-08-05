@@ -68,7 +68,7 @@ func TestMetadataSyncRunnerLogsFailureAndContinues(t *testing.T) {
 		t.Fatalf("expected runner to continue after metadata error, got %d calls", syncer.calls)
 	}
 	content := logs.String()
-	if !strings.Contains(content, "level=error") || !strings.Contains(content, "msg=\"metadata sync failed\"") {
+	if !strings.Contains(content, "level=ERROR") || !strings.Contains(content, "msg=\"metadata sync failed\"") {
 		t.Fatalf("expected metadata sync failure error log, got %q", content)
 	}
 }
