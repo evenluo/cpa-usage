@@ -8,8 +8,8 @@ import (
 )
 
 // UsageIdentityReader 把数据库句柄绑定到 usage identities 读模型函数上，
-// 作为 HTTP 层 UsageIdentityProvider seam 的持久化 adapter；Credentials 分区与
-// Request Events 的 source 解析共用这一入口。
+// 作为 HTTP 层 UsageIdentityProvider seam 的持久化 adapter；Reference Data 的
+// CPA Key 读模型与 Request Evidence source 解析共用这一入口。
 type UsageIdentityReader struct {
 	db *gorm.DB
 }

@@ -95,8 +95,8 @@ type usageIdentityAliasResponse struct {
 	Alias string `json:"alias"`
 }
 
-// UsageIdentityProvider 是 Credentials 分区与 Request Events source 解析的
-// identities 读模型 HTTP 层入口 seam；实现由 repository 的 UsageIdentityReader 提供。
+// UsageIdentityProvider 是 Reference Data 的 CPA Key 读模型与 Request Evidence source 解析
+// 共用的 HTTP 层入口 seam；实现由 repository 的 UsageIdentityReader 提供。
 type UsageIdentityProvider interface {
 	ListActiveUsageIdentities(context.Context) ([]entities.UsageIdentity, error)
 	ListActiveUsageIdentitiesPage(context.Context, repository.ListUsageIdentitiesPageRequest) ([]entities.UsageIdentity, int64, error)
@@ -178,7 +178,7 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 			return
 		}
 
-		// 分页接口专供 Credentials 分区使用，按 auth_type 在服务端过滤后再分页。
+		// 分页接口专供 Reference Data 的 CPA Key 读模型使用，按 auth_type 在服务端过滤后再分页。
 		request, ok := parseUsageIdentitiesPageRequest(c)
 		if !ok {
 			return

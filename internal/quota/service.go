@@ -23,6 +23,7 @@ type Service struct {
 
 	refreshWorkerMu     sync.Mutex
 	refreshWorkerCtx    context.Context
+	refreshWorkerCancel context.CancelFunc
 	refreshWorkersClose bool
 	refreshWorkerWG     sync.WaitGroup
 	refreshWorkerTokens chan struct{}

@@ -188,6 +188,18 @@ describe("Live Capacity view model", () => {
     expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
   })
 
+  it("labels a stopped refresh lifecycle as unavailable", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      taskStates: {
+        "codex-auth": { status: "failed", error: "refresh_unavailable" },
+      },
+    })
+
+    expect(rows[0].status).toBe("failed")
+    expect(rows[0].statusLabel).toBe("Refresh unavailable")
+  })
+
   it("marks a row refreshing immediately while refresh request is starting", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],

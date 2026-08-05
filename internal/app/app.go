@@ -250,13 +250,15 @@ func (a *App) startBackgroundTask(run func()) {
 }
 
 func (a *App) stopBackgroundTasks() {
+	// 先停止 refresh worker：StopRefreshWorkers 在锁内标记 closing 并取消 worker 生命周期，
+	// 与任务接收检查互斥，保证关闭期不会返回 Accepted 但无法执行的任务。
+	if a.Quota != nil {
+		a.Quota.StopRefreshWorkers()
+	}
+	// 再取消后台 ctx：Poller 等后台任务以 ctx 取消退出。
 	if a.backgroundCancel != nil {
 		a.backgroundCancel()
 		a.backgroundCancel = nil
-	}
-	// 先取消后台 ctx 再等待 refresh worker：进行中的 provider 调用被 ctx 打断后退出。
-	if a.Quota != nil {
-		a.Quota.StopRefreshWorkers()
 	}
 	a.backgroundWG.Wait()
 }

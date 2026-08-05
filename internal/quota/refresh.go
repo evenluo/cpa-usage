@@ -15,6 +15,7 @@ const (
 	RefreshTaskStatusRunning   RefreshTaskStatus = "running"
 	RefreshTaskStatusCompleted RefreshTaskStatus = "completed"
 	RefreshTaskStatusFailed    RefreshTaskStatus = "failed"
+	refreshUnavailableCode                       = "refresh_unavailable"
 )
 
 type CacheRequest struct {
@@ -73,18 +74,22 @@ type RefreshTaskRecord struct {
 }
 
 // AttachRefreshWorkerLifecycle 把 refresh worker 的父 context 绑定到应用生命周期：
-// 应用关停时取消 ctx，进行中的 provider 调用与排队中的 worker 都会随之退出。
+// 应用关停时由 StopRefreshWorkers 取消内部派生的 worker context，进行中的 provider 调用与排队中的 worker 都会随之退出。
 func (s *Service) AttachRefreshWorkerLifecycle(ctx context.Context) {
 	s.refreshWorkerMu.Lock()
 	defer s.refreshWorkerMu.Unlock()
-	s.refreshWorkerCtx = ctx
+	s.refreshWorkerCtx, s.refreshWorkerCancel = context.WithCancel(ctx)
 }
 
 // StopRefreshWorkers 拒绝新的 refresh worker 并等待进行中的 worker 退出。
-// 调用方应先取消 AttachRefreshWorkerLifecycle 绑定的 ctx，否则进行中的任务要等自身超时。
+// 关闭标志与 worker context 取消在同一把锁下完成，与 startRefreshTask 的接收检查互斥：
+// 一旦开始关闭，后续接收必然被拒绝，不会返回 Accepted 但无法执行的任务。
 func (s *Service) StopRefreshWorkers() {
 	s.refreshWorkerMu.Lock()
 	s.refreshWorkersClose = true
+	if s.refreshWorkerCancel != nil {
+		s.refreshWorkerCancel()
+	}
 	s.refreshWorkerMu.Unlock()
 	s.refreshWorkerWG.Wait()
 }
@@ -154,14 +159,13 @@ func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshR
 			continue
 		}
 
-		task, created := s.refreshTasks.enqueue(authIndex)
-		if !created {
-			response.Rejected = append(response.Rejected, RefreshRejectedAuthIndex{AuthIndex: authIndex, Error: "duplicate"})
+		task, rejection := s.startRefreshTask(authIndex)
+		if rejection != "" {
+			response.Rejected = append(response.Rejected, RefreshRejectedAuthIndex{AuthIndex: authIndex, Error: rejection})
 			continue
 		}
 		response.Tasks = append(response.Tasks, RefreshTaskID{AuthIndex: authIndex, TaskID: task.TaskID})
 		response.Accepted++
-		s.spawnRefreshWorker(task.TaskID)
 	}
 	response.Skipped = len(response.Rejected)
 	return response, nil
@@ -204,20 +208,26 @@ func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string
 	return "not_found", nil
 }
 
-// spawnRefreshWorker 启动一个后台 worker 执行刷新任务。
-// worker 计数与关闭标志在同一把锁下维护，保证 StopRefreshWorkers 等待期间不会再有新 worker 加入。
-func (s *Service) spawnRefreshWorker(taskID string) {
+// startRefreshTask 原子地接收任务并启动后台 worker。
+// 任务创建、worker 计数与关闭标志由同一把生命周期锁协调，保证返回 Accepted 的任务一定有 worker 接管。
+func (s *Service) startRefreshTask(authIndex string) (*RefreshTaskRecord, string) {
 	s.refreshWorkerMu.Lock()
-	if s.refreshWorkersClose {
+	if s.refreshWorkersClose || s.refreshWorkerCtx.Err() != nil {
 		s.refreshWorkerMu.Unlock()
-		return
+		return nil, refreshUnavailableCode
+	}
+	task, created := s.refreshTasks.enqueue(authIndex)
+	if !created {
+		s.refreshWorkerMu.Unlock()
+		return task, "duplicate"
 	}
 	s.refreshWorkerWG.Add(1)
 	s.refreshWorkerMu.Unlock()
 	go func() {
 		defer s.refreshWorkerWG.Done()
-		s.runRefreshTask(taskID)
+		s.runRefreshTask(task.TaskID)
 	}()
+	return task, ""
 }
 
 func (s *Service) runRefreshTask(taskID string) {
@@ -230,6 +240,7 @@ func (s *Service) runRefreshTask(taskID string) {
 	case s.refreshWorkerTokens <- struct{}{}:
 		defer func() { <-s.refreshWorkerTokens }()
 	case <-workerCtx.Done():
+		s.refreshTasks.markFailed(taskID, refreshTaskErrorMessage(workerCtx.Err()))
 		return
 	}
 
