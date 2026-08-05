@@ -2,9 +2,9 @@ package migration
 
 import (
 	"fmt"
+	"log/slog"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -115,26 +115,25 @@ func orderedMigrations() []databaseMigration {
 
 func runSchemaMigration(db *gorm.DB, migration databaseMigration) error {
 	return db.Transaction(func(tx *gorm.DB) error {
-		logger := logrus.WithField("version", migration.version)
 		var count int64
 		if err := tx.Table("schema_migrations").Where("version = ?", migration.version).Count(&count).Error; err != nil {
-			logger.WithError(err).Error("schema migration failed")
+			slog.Error("schema migration failed", "version", migration.version, "error", err)
 			return fmt.Errorf("check schema migration %s: %w", migration.version, err)
 		}
 		if count > 0 {
-			logger.Info("schema migration skipped")
+			slog.Info("schema migration skipped", "version", migration.version)
 			return nil
 		}
-		logger.Info("schema migration started")
+		slog.Info("schema migration started", "version", migration.version)
 		if err := migration.run(tx); err != nil {
-			logger.WithError(err).Error("schema migration failed")
+			slog.Error("schema migration failed", "version", migration.version, "error", err)
 			return fmt.Errorf("run schema migration %s: %w", migration.version, err)
 		}
 		if err := tx.Create(&schemaMigration{Version: migration.version, AppliedAt: time.Now().UTC()}).Error; err != nil {
-			logger.WithError(err).Error("schema migration failed")
+			slog.Error("schema migration failed", "version", migration.version, "error", err)
 			return fmt.Errorf("record schema migration %s: %w", migration.version, err)
 		}
-		logger.Info("schema migration applied")
+		slog.Info("schema migration applied", "version", migration.version)
 		return nil
 	})
 }

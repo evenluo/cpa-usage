@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,7 +16,6 @@ import (
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository"
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -121,7 +121,7 @@ func TestPricingServiceFallsBackToLocalModelsWhenCPAFetchFails(t *testing.T) {
 	if len(modelsList) != 1 || modelsList[0] != "local-model" {
 		t.Fatalf("expected local fallback model, got %#v", modelsList)
 	}
-	if !strings.Contains(logs.String(), "level=error") {
+	if !strings.Contains(logs.String(), "level=ERROR") {
 		t.Fatalf("expected fallback error log, got %q", logs.String())
 	}
 	if !strings.Contains(logs.String(), "falling back to local usage aggregation") {
@@ -231,14 +231,11 @@ func (s stubModelsFetcher) FetchModels(context.Context) (*response.ModelsResult,
 
 func captureDebugLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
-	previousOutput := logrus.StandardLogger().Out
-	previousLevel := logrus.GetLevel()
 	var logs bytes.Buffer
-	logrus.SetOutput(&logs)
-	logrus.SetLevel(logrus.DebugLevel)
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() {
-		logrus.SetOutput(previousOutput)
-		logrus.SetLevel(previousLevel)
+		slog.SetDefault(previous)
 	})
 	return &logs
 }

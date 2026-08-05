@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -10,7 +11,6 @@ import (
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/poller"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 func TestAppCloseClosesDatabase(t *testing.T) {
@@ -232,16 +232,10 @@ func (s *appRunStub) SyncNow(context.Context) error {
 func captureAppInfoLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var logs bytes.Buffer
-	previousOutput := logrus.StandardLogger().Out
-	previousFormatter := logrus.StandardLogger().Formatter
-	previousLevel := logrus.GetLevel()
-	logrus.SetOutput(&logs)
-	logrus.SetFormatter(&logrus.TextFormatter{DisableTimestamp: true})
-	logrus.SetLevel(logrus.InfoLevel)
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	t.Cleanup(func() {
-		logrus.SetOutput(previousOutput)
-		logrus.SetFormatter(previousFormatter)
-		logrus.SetLevel(previousLevel)
+		slog.SetDefault(previous)
 	})
 	return &logs
 }

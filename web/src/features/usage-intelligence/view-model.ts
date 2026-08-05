@@ -25,6 +25,8 @@ export const SELECTED_TIME_RANGE_STORAGE_KEY = "cpa-usage:selected-time-range"
 
 export type LeaderboardScope = "account" | "api-key"
 
+export type TrendView = "cost-token" | "requests-token" | "tokens"
+
 export interface UsageKpiSparklineData {
   cost: Array<number | null>
   tokens: number[]

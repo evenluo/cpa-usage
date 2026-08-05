@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 )
 
 // Redis inbox 处理频率固定为 5 秒：拉取任务只负责把 Redis 原始消息落库，处理任务按这个间隔独立消费本地 inbox。
@@ -38,6 +39,10 @@ type RedisDrain struct {
 	lastStatus     string
 	pullRunning    bool
 	processRunning bool
+
+	processedEventsTotal  atomic.Int64
+	processedBatchesTotal atomic.Int64
+	lastProcessedAt       atomic.Int64 // unix nano
 }
 
 func NewRedisDrain(syncer RedisBatchSyncer, cfg RedisDrainConfig) *RedisDrain {
@@ -74,7 +79,7 @@ func (d *RedisDrain) Run(ctx context.Context) error {
 
 // runPullLoop 只从 CPA Redis 队列 LPOP 数据并写入 redis_usage_inboxes，不解码、不写 usage_events。
 func (d *RedisDrain) runPullLoop(ctx context.Context) {
-	logrus.WithField("idle_interval", d.config.IdleInterval.String()).Info("redis inbox pull task started")
+	slog.Info("redis inbox pull task started", "idle_interval", d.config.IdleInterval.String())
 	for {
 		select {
 		case <-ctx.Done():
@@ -84,7 +89,7 @@ func (d *RedisDrain) runPullLoop(ctx context.Context) {
 		result, err := d.runRedisPull(ctx)
 		if err != nil {
 			if shouldLogSyncError(err) {
-				logrus.WithError(err).Error("redis drain pull failed")
+				slog.Error("redis drain pull failed", "error", err)
 			}
 			if !d.sleep(ctx, d.config.ErrorBackoff) {
 				return
@@ -101,7 +106,7 @@ func (d *RedisDrain) runPullLoop(ctx context.Context) {
 
 // runProcessLoop 固定每 5 秒处理已落库的 inbox 行，失败行保留为可重试状态，坏消息单独标记不阻塞后续行。
 func (d *RedisDrain) runProcessLoop(ctx context.Context) {
-	logrus.WithField("interval", redisInboxProcessInterval.String()).Info("redis inbox process task started")
+	slog.Info("redis inbox process task started", "interval", redisInboxProcessInterval.String())
 	for {
 		if !d.sleep(ctx, redisInboxProcessInterval) {
 			return
@@ -117,19 +122,23 @@ func (d *RedisDrain) runProcessLoop(ctx context.Context) {
 }
 
 func (d *RedisDrain) logBatchFailure(result *servicedto.RedisBatchSyncResult, err error) {
-	fields := logrus.Fields{
-		"status":          "",
-		"empty":           false,
-		"inserted_events": 0,
-		"deduped_events":  0,
-	}
+	status := ""
+	empty := false
+	insertedEvents := 0
+	dedupedEvents := 0
 	if result != nil {
-		fields["status"] = result.Status
-		fields["empty"] = result.Empty
-		fields["inserted_events"] = result.InsertedEvents
-		fields["deduped_events"] = result.DedupedEvents
+		status = result.Status
+		empty = result.Empty
+		insertedEvents = result.InsertedEvents
+		dedupedEvents = result.DedupedEvents
 	}
-	logrus.WithError(err).WithFields(fields).Error("redis drain batch failed")
+	slog.Error("redis drain batch failed",
+		"error", err,
+		"status", status,
+		"empty", empty,
+		"inserted_events", insertedEvents,
+		"deduped_events", dedupedEvents,
+	)
 }
 
 func (d *RedisDrain) Status() Status {
@@ -199,8 +208,48 @@ func (d *RedisDrain) runRedisProcess(ctx context.Context) (*servicedto.RedisBatc
 	if err != nil && result != nil && result.Status != "" && result.Status != "failed" {
 		returnErr = fmt.Errorf("%w: %v", ErrSyncCompletedWithWarnings, err)
 	}
+	d.recordProcessMetrics(result)
 	d.recordResult(result, err)
 	return result, returnErr
+}
+
+// ProcessMetrics 是 Redis inbox 处理的累计吞吐快照，供运行时指标推导处理速率。
+type ProcessMetrics struct {
+	EventsTotal     int64
+	BatchesTotal    int64
+	LastProcessedAt time.Time
+}
+
+// ProcessMetricsProvider 由 RedisDrain 实现；App 通过类型断言读取，不扩展现有 Runner 接口。
+type ProcessMetricsProvider interface {
+	ProcessMetrics() ProcessMetrics
+}
+
+func (d *RedisDrain) ProcessMetrics() ProcessMetrics {
+	lastProcessedAt := time.Time{}
+	if unixNano := d.lastProcessedAt.Load(); unixNano != 0 {
+		lastProcessedAt = time.Unix(0, unixNano).UTC()
+	}
+	return ProcessMetrics{
+		EventsTotal:     d.processedEventsTotal.Load(),
+		BatchesTotal:    d.processedBatchesTotal.Load(),
+		LastProcessedAt: lastProcessedAt,
+	}
+}
+
+// recordProcessMetrics 累计已落库事件的批次数与事件数；
+// 失败批次与空批次（无待处理行）不计入，避免把重试或空闲轮询误算为吞吐。
+func (d *RedisDrain) recordProcessMetrics(result *servicedto.RedisBatchSyncResult) {
+	if result == nil || result.Status == "failed" {
+		return
+	}
+	events := int64(result.InsertedEvents + result.DedupedEvents)
+	if events == 0 {
+		return
+	}
+	d.processedBatchesTotal.Add(1)
+	d.processedEventsTotal.Add(events)
+	d.lastProcessedAt.Store(d.now().UnixNano())
 }
 
 func (d *RedisDrain) recordPullResult(result *servicedto.RedisInboxPullResult, err error) {

@@ -7,14 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 var ErrRedisQueueAuth = errors.New("redis queue auth failed")
@@ -105,10 +104,10 @@ func (c *RedisQueueClient) PopUsage(ctx context.Context) ([]string, error) {
 	messages, err := c.popUsageOverRedis(ctx)
 	if err == nil {
 		c.syncMode = redisQueueSyncModeRedis
-		logrus.WithField("message_count", len(messages)).Info("usage queue sync used redis protocol")
+		slog.Info("usage queue sync used redis protocol", "message_count", len(messages))
 		return messages, nil
 	}
-	logrus.WithField("redis_error", err.Error()).Error("usage queue sync failed to used redis protocol")
+	slog.Error("usage queue sync failed to use redis protocol", "redis_error", err.Error())
 	if !c.canFallbackToHTTP() {
 		return nil, fmt.Errorf("usage queue sync failed: %w; http usage queue fallback not possible", err)
 	}
@@ -118,7 +117,7 @@ func (c *RedisQueueClient) PopUsage(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("usage queue sync failed: %w; http usage queue fallback failed: %w", err, fallbackErr)
 	}
 	c.syncMode = redisQueueSyncModeHTTP
-	logrus.WithField("message_count", len(messages)).Info("usage queue sync used http protocol")
+	slog.Info("usage queue sync used http protocol", "message_count", len(messages))
 	return messages, nil
 }
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -14,7 +15,6 @@ import (
 	"cpa-usage/internal/cpa/dto/authfiles"
 	"cpa-usage/internal/cpa/dto/response"
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -107,7 +107,7 @@ func (s *SyncService) SyncMetadata(ctx context.Context) error {
 	if err := s.validate(syncMetadataRequired); err != nil {
 		return err
 	}
-	logrus.Debug("metadata sync started")
+	slog.Debug("metadata sync started")
 	fetchedAt := s.now().UTC()
 	authFilesResult, authFilesErr := s.metadataFetcher.FetchAuthFiles(ctx)
 	providerInputs, fetchedProviderTypes, providerMetadataErr := s.providerMetadata.fetch(ctx, s.metadataFetcher)
@@ -122,15 +122,14 @@ func (s *SyncService) SyncMetadata(ctx context.Context) error {
 		}
 	}
 	err := joinErrors(upsertErr, aggregateErr, providerWarningErr)
-	fields := logrus.Fields{
-		"status": "completed",
-	}
+	status := "completed"
 	if err != nil {
-		fields["status"] = "completed_with_warnings"
-		fields["error"] = err.Error()
+		status = "completed_with_warnings"
+		slog.Debug("metadata sync finished", "status", status, "error", err.Error())
+		return err
 	}
-	logrus.WithFields(fields).Debug("metadata sync finished")
-	return err
+	slog.Debug("metadata sync finished", "status", status)
+	return nil
 }
 
 // PullRedisUsageInbox 是 Redis 同步的拉取阶段：只 LPOP 队列消息并原样写入 redis_usage_inboxes。

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,7 +21,6 @@ import (
 	"cpa-usage/internal/repository"
 	"cpa-usage/internal/repository/dto"
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
@@ -1497,13 +1497,10 @@ func captureSyncDebugLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 
 	logs := &bytes.Buffer{}
-	previousOutput := logrus.StandardLogger().Out
-	previousLevel := logrus.GetLevel()
-	logrus.SetOutput(logs)
-	logrus.SetLevel(logrus.DebugLevel)
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() {
-		logrus.SetOutput(previousOutput)
-		logrus.SetLevel(previousLevel)
+		slog.SetDefault(previous)
 	})
 	return logs
 }

@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"fmt"
 	"io"
 	stdlog "log"
@@ -13,7 +14,6 @@ import (
 
 	"cpa-usage/internal/config"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 )
 
 const logFilePrefix = "cpa-usage-"
@@ -24,9 +24,6 @@ func (noopCloser) Close() error { return nil }
 
 type restoreCloser struct {
 	closer                     io.Closer
-	previousLogrusOutput       io.Writer
-	previousLogrusLevel        logrus.Level
-	previousLogrusFormatter    logrus.Formatter
 	previousStdlogOutput       io.Writer
 	previousSlog               *slog.Logger
 	previousGinDefaultWriter   io.Writer
@@ -36,9 +33,6 @@ type restoreCloser struct {
 }
 
 func (c *restoreCloser) Close() error {
-	logrus.SetOutput(c.previousLogrusOutput)
-	logrus.SetLevel(c.previousLogrusLevel)
-	logrus.SetFormatter(c.previousLogrusFormatter)
 	stdlog.SetOutput(c.previousStdlogOutput)
 	slog.SetDefault(c.previousSlog)
 	gin.DefaultWriter = c.previousGinDefaultWriter
@@ -60,10 +54,24 @@ func resolveLogDir(cfg config.Config) string {
 	return filepath.Join(workDir, filepath.Base(config.DefaultLogDir))
 }
 
+// parseSlogLevel 把 LOG_LEVEL 配置映射为 slog 级别。slog 没有低于 debug 的级别，
+// 因此 logrus 的 trace 映射到 debug；fatal/panic 与 error 归一到 error。
+func parseSlogLevel(value string) slog.Level {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "trace":
+		return slog.LevelDebug
+	case "debug":
+		return slog.LevelDebug
+	case "warn", "warning":
+		return slog.LevelWarn
+	case "error", "fatal", "panic":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
 func Configure(cfg config.Config) (io.Closer, error) {
-	previousLogrusOutput := logrus.StandardLogger().Out
-	previousLogrusLevel := logrus.GetLevel()
-	previousLogrusFormatter := logrus.StandardLogger().Formatter
 	previousStdlogOutput := stdlog.Writer()
 	previousSlog := slog.Default()
 	previousGinDefaultWriter := gin.DefaultWriter
@@ -71,10 +79,7 @@ func Configure(cfg config.Config) (io.Closer, error) {
 	previousGinDebugPrint := gin.DebugPrintFunc
 	previousGinDebugPrintRoute := gin.DebugPrintRouteFunc
 
-	level, err := logrus.ParseLevel(cfg.LogLevel)
-	if err != nil {
-		level = logrus.InfoLevel
-	}
+	level := parseSlogLevel(cfg.LogLevel)
 
 	writer := io.Writer(os.Stderr)
 	var closer io.Closer = noopCloser{}
@@ -88,20 +93,11 @@ func Configure(cfg config.Config) (io.Closer, error) {
 		closer = dailyWriter
 	}
 
-	logrus.SetLevel(level)
-	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:   true,
-		TimestampFormat: time.RFC3339,
-	})
-	logrus.SetOutput(writer)
 	stdlog.SetOutput(writer)
-	slog.SetDefault(slog.New(slog.NewTextHandler(writer, nil)))
+	slog.SetDefault(slog.New(slog.NewTextHandler(writer, &slog.HandlerOptions{Level: level})))
 	configureGinLogging()
 	return &restoreCloser{
 		closer:                     closer,
-		previousLogrusOutput:       previousLogrusOutput,
-		previousLogrusLevel:        previousLogrusLevel,
-		previousLogrusFormatter:    previousLogrusFormatter,
 		previousStdlogOutput:       previousStdlogOutput,
 		previousSlog:               previousSlog,
 		previousGinDefaultWriter:   previousGinDefaultWriter,
@@ -111,26 +107,27 @@ func Configure(cfg config.Config) (io.Closer, error) {
 	}, nil
 }
 
-type logrusWriter struct {
-	level logrus.Level
+type slogWriter struct {
+	level slog.Level
 }
 
-func (w logrusWriter) Write(p []byte) (int, error) {
+func (w slogWriter) Write(p []byte) (int, error) {
 	message := strings.TrimRight(string(p), "\r\n")
 	if message != "" {
-		logrus.StandardLogger().Log(w.level, message)
+		slog.Log(context.Background(), w.level, message)
 	}
 	return len(p), nil
 }
 
 func configureGinLogging() {
-	gin.DefaultWriter = logrusWriter{level: logrus.InfoLevel}
-	gin.DefaultErrorWriter = logrusWriter{level: logrus.ErrorLevel}
+	gin.DefaultWriter = slogWriter{level: slog.LevelInfo}
+	gin.DefaultErrorWriter = slogWriter{level: slog.LevelError}
 	gin.DebugPrintFunc = func(format string, values ...interface{}) {
-		logrus.Infof("[GIN-debug] "+strings.TrimRight(format, "\r\n"), values...)
+		message := fmt.Sprintf("[GIN-debug] "+strings.TrimRight(format, "\r\n"), values...)
+		slog.Info(message)
 	}
 	gin.DebugPrintRouteFunc = func(httpMethod, absolutePath, handlerName string, nuHandlers int) {
-		logrus.Infof("[GIN-debug] %-6s %s --> %s (%d handlers)", httpMethod, absolutePath, handlerName, nuHandlers)
+		slog.Info(fmt.Sprintf("[GIN-debug] %-6s %s --> %s (%d handlers)", httpMethod, absolutePath, handlerName, nuHandlers))
 	}
 }
 

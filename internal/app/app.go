@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
+	"time"
 
 	"cpa-usage/internal/api"
 	"cpa-usage/internal/auth"
@@ -18,7 +20,6 @@ import (
 	"cpa-usage/internal/service"
 	webui "cpa-usage/web"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -44,8 +45,14 @@ type App struct {
 	Quota             *quota.Service
 	LogCloser         io.Closer
 
-	backgroundCancel context.CancelFunc
-	backgroundWG     sync.WaitGroup
+	rollupBackfillReader repository.RollupBackfillReader
+	startedAt            time.Time
+	backgroundCancel     context.CancelFunc
+	backgroundWG         sync.WaitGroup
+
+	metricsMu              sync.Mutex
+	lastMetricsSampleAt    time.Time
+	lastMetricsEventsTotal int64
 }
 
 func New() (*App, error) {
@@ -102,7 +109,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	keyAliasService := service.NewKeyAliasService(db)
 	cpaClient := cpa.NewClient(cfg.CPABaseURL, cfg.CPAManagementKey, cfg.RequestTimeout, cfg.TLSSkipVerify)
 	if cfg.TLSSkipVerify {
-		logrus.WithField("cpa_base_url", cfg.CPABaseURL).Warn("TLS certificate verification is disabled for CPA and Redis queue connections")
+		slog.Warn("TLS certificate verification is disabled for CPA and Redis queue connections", "cpa_base_url", cfg.CPABaseURL)
 	}
 	pricingService := service.NewPricingService(db, cpaClient)
 	quotaService := quota.NewService(quota.NewRepositoryAuthFileIdentityLookup(db), cpaClient)
@@ -123,27 +130,30 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	}
 	authHandler := api.NewAuthHandler(authConfig, sessionManager)
 
-	return &App{
-		Config:            &cfg,
-		DB:                db,
-		Poller:            backgroundPoller,
-		Maintenance:       NewStorageCleanupRunner(syncService),
-		MetadataSync:      NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
-		BackupMaintenance: backupMaintenance,
-		RollupBackfill:    rollupBackfillRunner,
-		Quota:             quotaService,
-		LogCloser:         logCloser,
-		Router: api.NewRouter(
-			webui.Static,
-			newManualSyncRunner(backgroundPoller, syncService),
-			usageReader,
-			pricingService,
-			authConfig,
-			authHandler,
-			cfg.AppBasePath,
-			api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader},
-		),
-	}, nil
+	appInstance := &App{
+		Config:               &cfg,
+		DB:                   db,
+		Poller:               backgroundPoller,
+		Maintenance:          NewStorageCleanupRunner(syncService),
+		MetadataSync:         NewMetadataSyncRunner(syncService, cfg.MetadataSyncInterval),
+		BackupMaintenance:    backupMaintenance,
+		RollupBackfill:       rollupBackfillRunner,
+		Quota:                quotaService,
+		LogCloser:            logCloser,
+		rollupBackfillReader: rollupBackfillReader,
+		startedAt:            time.Now(),
+	}
+	appInstance.Router = api.NewRouter(
+		webui.Static,
+		newManualSyncRunner(backgroundPoller, syncService),
+		usageReader,
+		pricingService,
+		authConfig,
+		authHandler,
+		cfg.AppBasePath,
+		api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader, Metrics: appInstance},
+	)
+	return appInstance, nil
 }
 
 func closeGormDB(db *gorm.DB) error {
@@ -189,35 +199,35 @@ func (a *App) Run() error {
 	if a.Poller != nil {
 		a.startBackgroundTask(func() {
 			if err := a.Poller.Run(ctx); err != nil {
-				logrus.Errorf("poller stopped: %v", err)
+				slog.Error("poller stopped", "error", err)
 			}
 		})
 	}
 	if a.Maintenance != nil {
 		a.startBackgroundTask(func() {
 			if err := a.Maintenance.Run(ctx); err != nil {
-				logrus.Errorf("maintenance cleanup stopped: %v", err)
+				slog.Error("maintenance cleanup stopped", "error", err)
 			}
 		})
 	}
 	if a.MetadataSync != nil {
 		a.startBackgroundTask(func() {
 			if err := a.MetadataSync.Run(ctx); err != nil {
-				logrus.Errorf("metadata sync stopped: %v", err)
+				slog.Error("metadata sync stopped", "error", err)
 			}
 		})
 	}
 	if a.BackupMaintenance != nil {
 		a.startBackgroundTask(func() {
 			if err := a.BackupMaintenance.Run(ctx); err != nil {
-				logrus.Errorf("database backup stopped: %v", err)
+				slog.Error("database backup stopped", "error", err)
 			}
 		})
 	}
 	if a.RollupBackfill != nil {
 		a.startBackgroundTask(func() {
 			if err := a.RollupBackfill.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				logrus.Errorf("usage rollup backfill stopped: %v", err)
+				slog.Error("usage rollup backfill stopped", "error", err)
 			}
 		})
 	}

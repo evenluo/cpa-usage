@@ -3,13 +3,13 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository"
 	repodto "cpa-usage/internal/repository/dto"
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -37,10 +37,7 @@ func (i redisUsageIntake) pull(ctx context.Context) (*servicedto.RedisInboxPullR
 	if err != nil {
 		return &servicedto.RedisInboxPullResult{Status: "failed"}, fmt.Errorf("fetch redis usage: %w", err)
 	}
-	logrus.WithFields(logrus.Fields{
-		"queue_key":     i.queueKey,
-		"message_count": len(messages),
-	}).Debug("redis usage batch popped")
+	slog.Debug("redis usage batch popped", "queue_key", i.queueKey, "message_count", len(messages))
 	if len(messages) == 0 {
 		return &servicedto.RedisInboxPullResult{Empty: true, Status: "empty"}, nil
 	}
@@ -49,10 +46,7 @@ func (i redisUsageIntake) pull(ctx context.Context) (*servicedto.RedisInboxPullR
 	if err != nil {
 		return &servicedto.RedisInboxPullResult{Status: "failed"}, fmt.Errorf("insert redis usage inbox: %w", err)
 	}
-	logrus.WithFields(logrus.Fields{
-		"queue_key": i.queueKey,
-		"row_count": len(inboxRows),
-	}).Debug("redis usage inbox rows inserted")
+	slog.Debug("redis usage inbox rows inserted", "queue_key", i.queueKey, "row_count", len(inboxRows))
 	return &servicedto.RedisInboxPullResult{Status: "completed", InsertedRows: len(inboxRows)}, nil
 }
 

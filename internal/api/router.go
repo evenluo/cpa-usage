@@ -80,6 +80,7 @@ type OptionalProviders struct {
 	KeyAlias       service.KeyAliasProvider
 	Quota          QuotaProvider
 	RollupBackfill RollupBackfillStatusProvider
+	Metrics        MetricsProvider
 }
 
 type syncUserMessageError interface {
@@ -104,6 +105,7 @@ func NewRouter(
 
 	appGroup := router.Group(basePath)
 	registerHealthRoutes(appGroup)
+	registerMetricsRoute(appGroup, optionalProviders.Metrics)
 
 	apiV1 := appGroup.Group("/api/v1")
 	apiV1.GET("/ping", func(c *gin.Context) {

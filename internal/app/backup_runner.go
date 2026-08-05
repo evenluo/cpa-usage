@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 
 	"cpa-usage/internal/backup"
-	"github.com/sirupsen/logrus"
 )
 
 type DatabaseBackupWriter interface {
@@ -95,7 +95,7 @@ func (r *DatabaseBackupRunner) Run(ctx context.Context) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
-	logrus.Info("database backup task started")
+	slog.Info("database backup task started")
 	r.setRunning(true)
 	defer r.setRunning(false)
 
@@ -110,11 +110,13 @@ func (r *DatabaseBackupRunner) Run(ctx context.Context) error {
 		}
 		backupAt := r.now()
 		if _, err := r.writer.WriteDatabase(ctx, backupAt); err != nil {
-			logrus.WithError(err).Error("database backup failed")
+			slog.Error("database backup failed", "error", err)
 			r.retryAttempts++
 			r.pendingRetry = r.retryAttempts <= 3
 		} else {
+			r.mu.Lock()
 			r.lastBackupAt = backupAt
+			r.mu.Unlock()
 			r.retryAttempts = 0
 			r.pendingRetry = false
 		}
@@ -141,7 +143,7 @@ func (r *DatabaseBackupRunner) cleanup(now time.Time) {
 		return
 	}
 	if _, err := r.cleaner.Cleanup(r.retentionDays, now); err != nil {
-		logrus.WithError(err).Error("database backup cleanup failed")
+		slog.Error("database backup cleanup failed", "error", err)
 	}
 }
 
@@ -172,7 +174,7 @@ func (r *DatabaseBackupRunner) lastBackupAtFromHistory() (time.Time, bool) {
 	if r.history != nil {
 		storedBackupAt, ok, err := r.history.LastBackupAt()
 		if err != nil {
-			logrus.WithError(err).Error("load last database backup time failed")
+			slog.Error("load last database backup time failed", "error", err)
 		} else if ok && storedBackupAt.After(lastBackupAt) {
 			lastBackupAt = storedBackupAt
 		}
@@ -215,4 +217,16 @@ func (r *DatabaseBackupRunner) setRunning(running bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.running = running
+}
+
+// LastBackupAt 返回最近一次成功备份的时间（含重启前持久化的历史）；
+// 未执行过备份时为零值。
+func (r *DatabaseBackupRunner) LastBackupAt() time.Time {
+	if r == nil {
+		return time.Time{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	lastBackupAt, _ := r.lastBackupAtFromHistory()
+	return lastBackupAt
 }

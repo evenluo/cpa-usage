@@ -184,7 +184,7 @@ func TestDatabaseBackupRunnerCleansAfterBackupFailure(t *testing.T) {
 		t.Fatalf("expected cleanup after failed backup, got %d calls", cleaner.calls)
 	}
 	content := logs.String()
-	if !strings.Contains(content, "level=error") || !strings.Contains(content, "msg=\"database backup failed\"") {
+	if !strings.Contains(content, "level=ERROR") || !strings.Contains(content, "msg=\"database backup failed\"") {
 		t.Fatalf("expected database backup failure error log, got %q", content)
 	}
 }
@@ -228,6 +228,30 @@ func TestDatabaseBackupRunnerRetriesDailyBackupAfterFailure(t *testing.T) {
 	}
 	if writer.calls != 4 {
 		t.Fatalf("expected initial attempt plus 3 retries, got %d attempts", writer.calls)
+	}
+}
+
+func TestDatabaseBackupRunnerLastBackupAtFallsBackToPersistedHistory(t *testing.T) {
+	writer := &databaseBackupWriterStub{}
+	runner := NewDatabaseBackupRunner(writer, nil, 10*time.Second, 0)
+	storedAt := time.Date(2026, 4, 16, 4, 0, 0, 0, time.Local)
+	writer.lastBackupAt = storedAt
+
+	// 模拟服务重启后进程内尚未备份，但备份目录中已有历史备份。
+	if got := runner.LastBackupAt(); !got.Equal(storedAt) {
+		t.Fatalf("expected last backup at %s from persisted history, got %s", storedAt, got)
+	}
+}
+
+func TestDatabaseBackupRunnerLastBackupAtPrefersInMemoryWhenNewer(t *testing.T) {
+	writer := &databaseBackupWriterStub{}
+	runner := NewDatabaseBackupRunner(writer, nil, 10*time.Second, 0)
+	writer.lastBackupAt = time.Date(2026, 4, 16, 4, 0, 0, 0, time.Local)
+	inMemoryAt := time.Date(2026, 4, 16, 5, 0, 0, 0, time.Local)
+	runner.lastBackupAt = inMemoryAt
+
+	if got := runner.LastBackupAt(); !got.Equal(inMemoryAt) {
+		t.Fatalf("expected last backup at %s from in-memory state, got %s", inMemoryAt, got)
 	}
 }
 

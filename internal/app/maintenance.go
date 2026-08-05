@@ -3,10 +3,9 @@ package app
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 type StorageCleanupSyncer interface {
@@ -35,7 +34,7 @@ func (r *StorageCleanupRunner) Run(ctx context.Context) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
-	logrus.Info("storage cleanup task started")
+	slog.Info("storage cleanup task started")
 	r.setRunning(true)
 	defer r.setRunning(false)
 
@@ -49,7 +48,7 @@ func (r *StorageCleanupRunner) Run(ctx context.Context) error {
 			return nil
 		}
 		if err := r.syncer.CleanupStorage(ctx); err != nil {
-			logrus.WithError(err).Error("storage cleanup failed")
+			slog.Error("storage cleanup failed", "error", err)
 		}
 	}
 }

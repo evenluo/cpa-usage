@@ -3,12 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository"
 	servicedto "cpa-usage/internal/service/dto"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -32,13 +32,13 @@ func (p redisUsageProcessor) process(ctx context.Context, now time.Time) (*servi
 	if len(processableRows) == 0 {
 		return &servicedto.RedisBatchSyncResult{Empty: true, Status: "empty"}, nil
 	}
-	logrus.WithField("row_count", len(processableRows)).Debug("redis usage inbox rows found for processing")
+	slog.Debug("redis usage inbox rows found for processing", "row_count", len(processableRows))
 	return p.processRows(ctx, processableRows, now.UTC())
 }
 
 // processRows 从已落库原始消息解码并写入事件；坏消息标记为 decode_failed，不阻塞同批其它数据。
 func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entities.RedisUsageInbox, fetchedAt time.Time) (*servicedto.RedisBatchSyncResult, error) {
-	logrus.WithField("row_count", len(inboxRows)).Debug("redis usage inbox processing started")
+	slog.Debug("redis usage inbox processing started", "row_count", len(inboxRows))
 	validRows := make([]entities.RedisUsageInbox, 0, len(inboxRows))
 	events := make([]entities.UsageEvent, 0, len(inboxRows))
 	decodeErrs := make([]error, 0)
@@ -55,11 +55,11 @@ func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entiti
 		events = append(events, event)
 	}
 	decodeErr := joinErrors(decodeErrs...)
-	logrus.WithFields(logrus.Fields{
-		"row_count":           len(inboxRows),
-		"valid_event_count":   len(events),
-		"decode_failed_count": len(decodeErrs),
-	}).Debug("redis usage inbox rows decoded")
+	slog.Debug("redis usage inbox rows decoded",
+		"row_count", len(inboxRows),
+		"valid_event_count", len(events),
+		"decode_failed_count", len(decodeErrs),
+	)
 	if len(events) == 0 {
 		if decodeErr != nil {
 			return &servicedto.RedisBatchSyncResult{Status: "completed_with_warnings"}, decodeErr
@@ -67,7 +67,7 @@ func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entiti
 		return &servicedto.RedisBatchSyncResult{Empty: true, Status: "empty"}, nil
 	}
 
-	logrus.WithField("event_count", len(events)).Debug("redis usage events persistence started")
+	slog.Debug("redis usage events persistence started", "event_count", len(events))
 	result, err := p.persistEvents(ctx, events)
 	if result == nil {
 		markRedisInboxRowsProcessFailed(p.db, validRows, err)
@@ -87,12 +87,12 @@ func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entiti
 	if markErr := repository.MarkRedisUsageInboxProcessedBatch(p.db, marks, fetchedAt); markErr != nil {
 		return &servicedto.RedisBatchSyncResult{Status: "failed"}, fmt.Errorf("mark redis usage inbox processed: %w", markErr)
 	}
-	logrus.WithFields(logrus.Fields{
-		"processed_rows":  len(validRows),
-		"inserted_events": result.InsertedEvents,
-		"deduped_events":  result.DedupedEvents,
-		"status":          result.Status,
-	}).Debug("redis usage inbox rows processed")
+	slog.Debug("redis usage inbox rows processed",
+		"processed_rows", len(validRows),
+		"inserted_events", result.InsertedEvents,
+		"deduped_events", result.DedupedEvents,
+		"status", result.Status,
+	)
 
 	status := result.Status
 	returnErr := err
@@ -115,15 +115,12 @@ func (p redisUsageProcessor) persistEvents(ctx context.Context, events []entitie
 	if err := p.eventKeyAssigner.Assign(ctx, events); err != nil {
 		return &servicedto.SyncResult{Status: "failed"}, fmt.Errorf("assign canonical event keys: %w", err)
 	}
-	logrus.WithField("event_count", len(events)).Debug("usage events insert started")
+	slog.Debug("usage events insert started", "event_count", len(events))
 	inserted, deduped, err := repository.InsertUsageEvents(p.db, events)
 	if err != nil {
 		return &servicedto.SyncResult{Status: "failed"}, fmt.Errorf("insert usage events: %w", err)
 	}
-	logrus.WithFields(logrus.Fields{
-		"inserted_events": inserted,
-		"deduped_events":  deduped,
-	}).Debug("usage events insert finished")
+	slog.Debug("usage events insert finished", "inserted_events", inserted, "deduped_events", deduped)
 	return &servicedto.SyncResult{Status: "completed", InsertedEvents: inserted, DedupedEvents: deduped}, nil
 }
 
@@ -136,24 +133,24 @@ func markRedisInboxRowsProcessFailed(db *gorm.DB, rows []entities.RedisUsageInbo
 		ids = append(ids, row.ID)
 	}
 	if markErr := repository.MarkRedisUsageInboxProcessFailedBatch(db, ids, err); markErr != nil {
-		logrus.WithError(markErr).Warn("failed to mark redis usage inbox process failures")
+		slog.Warn("failed to mark redis usage inbox process failures", "error", markErr)
 		return
 	}
 	for _, row := range rows {
 		var stored entities.RedisUsageInbox
 		if loadErr := db.First(&stored, row.ID).Error; loadErr != nil {
-			logrus.WithError(loadErr).WithField("inbox_id", row.ID).Warn("failed to load redis usage inbox after process failure")
+			slog.Warn("failed to load redis usage inbox after process failure", "error", loadErr, "inbox_id", row.ID)
 			continue
 		}
 		if stored.Status == repository.RedisUsageInboxStatusDiscarded {
-			logrus.WithFields(logrus.Fields{
-				"inbox_id":      stored.ID,
-				"queue_key":     stored.QueueKey,
-				"message_hash":  stored.MessageHash,
-				"attempt_count": stored.AttemptCount,
-				"last_error":    stored.LastError,
-				"popped_at":     stored.PoppedAt,
-			}).Warn("discarded redis usage inbox row after repeated process failures")
+			slog.Warn("discarded redis usage inbox row after repeated process failures",
+				"inbox_id", stored.ID,
+				"queue_key", stored.QueueKey,
+				"message_hash", stored.MessageHash,
+				"attempt_count", stored.AttemptCount,
+				"last_error", stored.LastError,
+				"popped_at", stored.PoppedAt,
+			)
 		}
 	}
 }

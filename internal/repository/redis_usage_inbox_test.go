@@ -158,6 +158,35 @@ func TestMarkRedisUsageInboxProcessedBatch(t *testing.T) {
 	}
 }
 
+func TestCountPendingRedisUsageInboxCountsPendingAndRetryableRows(t *testing.T) {
+	db := openTestDatabase(t)
+	poppedAt := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)
+
+	rows, err := InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{
+		{QueueKey: "queue", RawMessage: `{"request_id":"one"}`, PoppedAt: poppedAt},
+		{QueueKey: "queue", RawMessage: `{"request_id":"two"}`, PoppedAt: poppedAt},
+	})
+	if err != nil {
+		t.Fatalf("InsertRedisUsageInboxMessages returned error: %v", err)
+	}
+	if err := MarkRedisUsageInboxProcessedBatch(db, []RedisUsageInboxProcessedMark{
+		{ID: rows[0].ID, UsageEventKey: "event-1"},
+	}, poppedAt.Add(time.Minute)); err != nil {
+		t.Fatalf("MarkRedisUsageInboxProcessedBatch returned error: %v", err)
+	}
+	if err := MarkRedisUsageInboxProcessFailed(db, rows[1].ID, fmt.Errorf("boom")); err != nil {
+		t.Fatalf("MarkRedisUsageInboxProcessFailed returned error: %v", err)
+	}
+
+	count, err := CountPendingRedisUsageInbox(db)
+	if err != nil {
+		t.Fatalf("CountPendingRedisUsageInbox returned error: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 pending row (process_failed is retryable), got %d", count)
+	}
+}
+
 func TestMarkRedisUsageInboxProcessedBatchChunksFullProcessorBatch(t *testing.T) {
 	db := openTestDatabase(t)
 	poppedAt := time.Date(2026, 4, 27, 10, 0, 0, 0, time.UTC)

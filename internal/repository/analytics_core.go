@@ -3,13 +3,13 @@ package repository
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository/dto"
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -135,20 +135,20 @@ func logAnalyticsCoreRawFallback(filter dto.UsageQueryFilter, detail string) {
 }
 
 func logAnalyticsRawFallback(message string, filter dto.UsageQueryFilter, detail string) {
-	fields := logrus.Fields{
-		"reason":      "backfill_incomplete",
-		"detail":      detail,
-		"range":       filter.Range,
-		"granularity": filter.Granularity,
-		"provider":    filter.Provider,
+	attrs := []any{
+		"reason", "backfill_incomplete",
+		"detail", detail,
+		"range", filter.Range,
+		"granularity", filter.Granularity,
+		"provider", filter.Provider,
 	}
 	if filter.StartTime != nil {
-		fields["start_time"] = filter.StartTime.UTC()
+		attrs = append(attrs, "start_time", filter.StartTime.UTC())
 	}
 	if filter.EndTime != nil {
-		fields["end_time"] = filter.EndTime.UTC()
+		attrs = append(attrs, "end_time", filter.EndTime.UTC())
 	}
-	logrus.WithFields(fields).Warn(message)
+	slog.Warn(message, attrs...)
 }
 
 func analyticsCoreRollupWindowPlan(filter dto.UsageQueryFilter) analyticsCoreWindowPlan {
