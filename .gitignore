@@ -18,6 +18,8 @@ node_modules/
 web/node_modules/
 web/.vite/
 web/dist/*
+web/test-results/
+web/playwright-report/
 !web/dist/.gitkeep
 web-v2/
 
