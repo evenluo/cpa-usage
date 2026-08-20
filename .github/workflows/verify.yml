@@ -2,9 +2,13 @@ name: Verify
 
 on:
   pull_request:
-  push:
-    branches:
-      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -22,12 +26,15 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: Verify backend
         run: make verify-backend
+
+      - name: Install frontend dependencies
+        run: npm --prefix ./web ci
 
       - name: Verify frontend
         run: make verify-frontend
