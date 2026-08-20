@@ -36,3 +36,13 @@ The repository uses the default mattpocock/skills triage label vocabulary. See `
 ### Domain docs
 
 This is a single-context repo with root `CONTEXT.md`, architecture decisions in `docs/adr/`, and project-level SoT docs in `docs/project/`. See `docs/agents/domain.md`.
+
+## Cursor Cloud specific instructions
+
+Services and standard commands live in the `Makefile` and `README.md` (`make dev-backend`, `make dev-frontend`, `make verify-backend`, `make verify-frontend`, `make build-frontend`). The startup update script already runs `npm --prefix web ci` and `go mod download`, so dependencies are ready. Non-obvious caveats:
+
+- The backend refuses to boot without `CPA_BASE_URL` and `CPA_MANAGEMENT_KEY` set (config validation in `internal/config/config.go`), even though it does not connect to CPA at startup. Create a local `.env` (gitignored) from `.env.example` and set placeholder values; keep `AUTH_ENABLED=false` for local work so no login is required.
+- One Go process serves both the JSON API and the embedded built SPA from `web/dist` on `APP_PORT` (default `8080`). `web/dist` ships as only a `.gitkeep`, so run `make build-frontend` before the Go server can serve any UI. Rebuild after frontend changes; the Go server embeds `web/dist` at build time and does not hot-reload frontend assets.
+- `make dev-frontend` (Vite on `:5173`) has no API proxy, so its `/api/v1/*` calls do not reach the backend. Use the Go server on `:8080` for any end-to-end UI testing; use Vite only for isolated frontend/HMR iteration.
+- Without a reachable CPA service the background poller and metadata sync log continuous `connection refused` errors — this is expected and non-fatal; the server keeps serving. All dashboard data originates from CPA usage events, so a fresh local DB shows an empty dashboard.
+- Reference Data has data dependencies: a Cost Rate can only be saved for a model that already appears in usage data (otherwise the API returns `model "..." has not been used`), and Key Aliases attach to keys/identities derived from usage events. To exercise these locally without a live CPA, seed `usage_events` into the SQLite DB at `WORK_DIR/app.db` (e.g. decode sample queue messages via `service.DecodeRedisUsageMessage` and insert with `repository.InsertUsageEvents`).
