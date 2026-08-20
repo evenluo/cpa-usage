@@ -30,6 +30,7 @@ make test-frontend
 make lint-frontend
 make typecheck-frontend
 make build-frontend
+make test-frontend-mobile
 ```
 
 ## Verification before a pull request
@@ -42,7 +43,7 @@ make verify-frontend
 make verify
 ```
 
-`make verify-backend` runs Go tests and `go vet`. `make verify-frontend` runs `npm ci`, frontend lint, typecheck, Vitest tests through `make test-frontend`, and frontend build.
+`make verify-backend` runs Go tests and `go vet`. `make verify-frontend` runs frontend lint, typecheck, and Vitest tests through `make test-frontend`. Install frontend dependencies with `npm --prefix ./web ci` before that target. Playwright e2e is `make test-frontend-mobile` and is not part of the default verify gate.
 
 For docs, templates, repository metadata, CI, Docker, or deployment-only changes, use the risk-matched verification policy in `docs/project/contract.md`.
 

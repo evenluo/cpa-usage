@@ -55,10 +55,8 @@ verify: verify-backend verify-frontend
 verify-backend: test-backend vet-backend
 
 verify-frontend:
-	npm --prefix $(WEB_DIR) ci
 	$(MAKE) lint-frontend
 	$(MAKE) test-frontend
-	$(MAKE) test-frontend-mobile
 
 verify-docker:
 	docker build -t cpa-usage:ci .

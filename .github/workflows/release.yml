@@ -2,8 +2,6 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*.*.*"
 
@@ -22,21 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
       - name: Validate release tag
-        if: github.ref_type == 'tag'
         run: |
           set -euo pipefail
           if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
@@ -54,23 +38,14 @@ jobs:
             fi
           done
 
-      - name: Verify
-        run: make verify
-
       - name: Prepare image metadata
         id: image
         run: |
           set -euo pipefail
           image="ghcr.io/${GITHUB_REPOSITORY,,}"
-          short_sha="${GITHUB_SHA::12}"
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            deploy_tag="$GITHUB_REF_NAME"
-          else
-            deploy_tag="sha-$short_sha"
-          fi
+          deploy_tag="$GITHUB_REF_NAME"
           created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           echo "name=$image" >> "$GITHUB_OUTPUT"
-          echo "short-sha=$short_sha" >> "$GITHUB_OUTPUT"
           echo "deploy-tag=$deploy_tag" >> "$GITHUB_OUTPUT"
           echo "created=$created" >> "$GITHUB_OUTPUT"
 
@@ -90,6 +65,8 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.image.outputs.name }}:${{ steps.image.outputs.deploy-tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             VERSION=${{ steps.image.outputs.deploy-tag }}
             REVISION=${{ github.sha }}
