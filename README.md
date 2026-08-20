@@ -105,7 +105,7 @@ make verify-backend
 make verify-frontend
 ```
 
-`make verify` runs both checks. `make verify-backend` runs backend tests and `go vet`. `make verify-frontend` installs frontend dependencies with `npm ci`, then runs lint, typecheck, Vitest feature tests through `make test-frontend`, and mobile Playwright checks. `make verify-docker` builds the deployment image. GitHub Actions runs backend and frontend verification for pull requests and pushes to `main`.
+`make verify` runs both checks. `make verify-backend` runs backend tests and `go vet`. `make verify-frontend` runs lint, typecheck, and Vitest feature tests through `make test-frontend`. It does not install npm dependencies or run Playwright; install frontend deps with `npm --prefix ./web ci`, and run `make test-frontend-mobile` when changing `web/e2e` or Playwright configuration. `make verify-docker` builds the deployment image. GitHub Actions runs backend and frontend verification on pull requests. Production images and Dokploy deploys run only from SemVer tags via the Release workflow.
 
 Common focused targets:
 
@@ -118,6 +118,7 @@ make test-frontend
 make lint-frontend
 make typecheck-frontend
 make build-frontend
+make test-frontend-mobile
 ```
 
 The Makefile is the canonical repository-root entrypoint for common development and verification tasks. Targets intentionally stay as thin wrappers around Go and npm commands; use the underlying tools directly for focused package or file-level work.

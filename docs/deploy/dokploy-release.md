@@ -2,7 +2,7 @@
 
 ## Goal
 
-Dokploy is the source of truth for the production `cpa-usage` Compose app. Pushes to `main` and release tags build immutable GHCR images, render the repository Compose template, update only the `cpa-usage` Dokploy app through its API, and trigger a Dokploy deployment.
+Dokploy is the source of truth for the production `cpa-usage` Compose app. Release tags build immutable GHCR images, render the repository Compose template, update only the `cpa-usage` Dokploy app through its API, and trigger a Dokploy deployment. Merges to `main` do not publish an image or deploy.
 
 ## Production Compose
 
@@ -30,7 +30,7 @@ The production template contains only the `cpa-usage` service:
 ghcr.io/evenluo/cpa-usage:v0.1.0
 ```
 
-Do not deploy production from `latest`, a branch-name tag, or a date tag. `main` deploys `sha-<12 hex>` and release tags deploy their SemVer tag.
+Do not deploy production from `latest`, a branch-name tag, a date tag, or a `sha-<12 hex>` tag. Release tags deploy their SemVer tag after a maintainer tags a commit that already passed pull-request verification.
 
 ## Required GitHub Configuration
 
@@ -44,7 +44,7 @@ variable: DOKPLOY_CPA_USAGE_COMPOSE_ID=<new cpa-usage compose id>
 
 Do not keep using `DOKPLOY_COMPOSE_ID` for this repository after the split. That variable points at the old full-stack compose app and would put `postgres` / `cliproxyapi` back into the release blast radius.
 
-The workflow is `.github/workflows/release.yml` and runs on pushes to `main` plus tags matching `v*.*.*`. It accepts:
+The workflow is `.github/workflows/release.yml` and runs only on tags matching `v*.*.*`. It accepts:
 
 - stable: `v0.1.0`
 - release candidate: `v0.2.0-rc.1`

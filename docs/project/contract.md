@@ -63,7 +63,7 @@ Verification should match the risk and blast radius of the change.
 - Docs, templates, and repository metadata: inspect changed links and referenced paths, run `git diff --check`, and validate structured config formats that changed.
 - GitHub Actions workflows: validate workflow syntax or run `actionlint` if available.
 - Backend runtime code: run focused Go tests for the touched package when possible, then use `make verify-backend` for shared behavior, persistence, API, or integration changes.
-- Frontend code: run focused frontend tests when possible, then use `make verify-frontend` for shared UI, hooks, build, route, or type changes.
+- Frontend code: run focused frontend tests when possible, then use `make verify-frontend` for shared UI, hooks, route, or type changes. Default `make verify-frontend` is lint, Vitest, and typecheck; it does not run Playwright. When the change touches `web/e2e` or Playwright configuration, also run `make test-frontend-mobile`.
 - Docker or deployment behavior: run `make verify-docker` or a deployment-specific validation path when the image, compose, entrypoint, or release workflow changes.
 - Cross-stack behavior: run the relevant backend and frontend checks, and document any smoke evidence needed to prove the user-facing path.
 
