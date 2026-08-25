@@ -1,14 +1,12 @@
 import { createLazyFileRoute, useNavigate } from "@tanstack/react-router"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { AlertCircle, CheckCircle2, KeyRound, RefreshCw, Server } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/providers/toast-provider"
-import { useAuth } from "@/hooks/useAuth"
-import { useStatus } from "@/hooks/useStatus"
-import { apiFetch } from "@/lib/api"
+import { useAuth, useLogout } from "@/hooks/useAuth"
+import { useManualSync, useStatus } from "@/hooks/useStatus"
 import { formatDate } from "@/lib/format"
 
 export const Route = createLazyFileRoute("/operations")({
@@ -44,40 +42,9 @@ function OperationsPage() {
   const { data: status, isLoading } = useStatus()
   const { data: auth } = useAuth()
   const toast = useToast()
-  const qc = useQueryClient()
   const navigate = useNavigate()
-
-  const syncMutation = useMutation({
-    mutationFn: () => apiFetch("/sync", { method: "POST" }),
-    onSuccess: () => {
-      toast.success("Sync triggered")
-      qc.invalidateQueries({ queryKey: ["analytics"] })
-      qc.invalidateQueries({ queryKey: ["usage", "overview"] })
-      qc.invalidateQueries({ queryKey: ["usage", "request-health"] })
-      qc.invalidateQueries({ queryKey: ["events"] })
-      qc.invalidateQueries({ queryKey: ["keys", "identities"] })
-      qc.invalidateQueries({ queryKey: ["pricing"] })
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Sync failed")
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["status"] })
-    },
-  })
-
-  const logoutMutation = useMutation({
-    mutationFn: () => apiFetch("/auth/logout", { method: "POST" }),
-    onSuccess: () => {
-      toast.success("Logged out")
-      qc.setQueryData(["auth", "session"], { authenticated: false })
-      qc.invalidateQueries({ queryKey: ["auth", "session"] })
-      navigate({ to: "/login" })
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Logout failed")
-    },
-  })
+  const syncMutation = useManualSync()
+  const logoutMutation = useLogout()
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
@@ -138,7 +105,12 @@ function OperationsPage() {
                 <Button
                   variant="outline"
                   disabled={syncMutation.isPending || status?.sync_running}
-                  onClick={() => syncMutation.mutate()}
+                  onClick={() =>
+                    syncMutation.mutate(undefined, {
+                      onSuccess: () => toast.success("Sync triggered"),
+                      onError: (err: Error) => toast.error(err.message || "Sync failed"),
+                    })
+                  }
                 >
                   {syncMutation.isPending ? "Syncing..." : "Trigger Sync"}
                 </Button>
@@ -197,7 +169,15 @@ function OperationsPage() {
                 size="sm"
                 className="mt-4"
                 disabled={!auth?.authenticated || logoutMutation.isPending}
-                onClick={() => logoutMutation.mutate()}
+                onClick={() =>
+                  logoutMutation.mutate(undefined, {
+                    onSuccess: () => {
+                      toast.success("Logged out")
+                      navigate({ to: "/login" })
+                    },
+                    onError: (err: Error) => toast.error(err.message || "Logout failed"),
+                  })
+                }
               >
                 {logoutMutation.isPending ? "Logging out..." : "Log out"}
               </Button>
