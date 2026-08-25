@@ -1,141 +1,51 @@
 import { createLazyFileRoute } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
 import { Check, Pencil, Search, Trash2, X } from "lucide-react"
+import { RateInput } from "@/components/reference/rate-input"
+import { SummaryCard } from "@/components/reference/summary-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/components/providers/toast-provider"
-import { useAPIKeys, useDeleteAPIKeyAlias, useDeleteAlias, useKeys, useUpdateAPIKeyAlias, useUpdateAlias } from "@/hooks/useKeys"
-import { usePricing, useSavePricing } from "@/hooks/usePricing"
-import {
-  KEY_ALIAS_SCOPES,
-  beginKeyAliasDraft,
-  buildCostRateSaveCommand,
-  buildCostRateModels,
-  buildKeyAliasClearCommand,
-  buildKeyAliasSaveCommand,
-  buildPricingMap,
-  countAliasedRows,
-  countMissingCostRates,
-  filterKeyAliasRows,
-  getCostRateDraft,
-  keyAliasScopeDescription,
-  nextCostRateDrafts,
-  normalizeAccountKeyRows,
-  normalizeAPIKeyRows,
-  selectKeyAliasRows,
-} from "@/features/reference-data/model"
+import { KEY_ALIAS_SCOPES } from "@/features/reference-data/model"
+import { useReferenceDataWorkbench } from "@/features/reference-data/use-reference-data-workbench"
 import { formatCompact, formatCost, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import type { CostRateDrafts, KeyAliasScope, ReferenceKeyRow } from "@/features/reference-data/model"
 
 export const Route = createLazyFileRoute("/reference")({
   component: ReferencePage,
 })
 
 function ReferencePage() {
-  const { data: keys, isLoading: isKeysLoading } = useKeys()
-  const { data: apiKeys, isLoading: isAPIKeysLoading } = useAPIKeys()
-  const { data: pricingData, isLoading: isPricingLoading } = usePricing()
-  const updateAlias = useUpdateAlias()
-  const updateAPIKeyAlias = useUpdateAPIKeyAlias()
-  const deleteAlias = useDeleteAlias()
-  const deleteAPIKeyAlias = useDeleteAPIKeyAlias()
-  const savePricing = useSavePricing()
-  const toast = useToast()
-  const [query, setQuery] = useState("")
-  const [keyAliasScope, setKeyAliasScope] = useState<KeyAliasScope>("api-key")
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [draftAlias, setDraftAlias] = useState("")
-  const [drafts, setDrafts] = useState<CostRateDrafts>({})
-  const [savingModel, setSavingModel] = useState<string | null>(null)
-
-  const apiKeyRows: ReferenceKeyRow[] = useMemo(() => normalizeAPIKeyRows(apiKeys ?? []), [apiKeys])
-
-  const accountRows: ReferenceKeyRow[] = useMemo(() => normalizeAccountKeyRows(keys ?? []), [keys])
-
-  const visibleRows = selectKeyAliasRows(keyAliasScope, apiKeyRows, accountRows)
-  const isAliasLoading = keyAliasScope === "api-key" ? isAPIKeysLoading : isKeysLoading
-
-  const filteredKeys = useMemo(() => filterKeyAliasRows(visibleRows, query), [visibleRows, query])
-
-  const pricing = useMemo(() => pricingData?.pricing ?? [], [pricingData?.pricing])
-  const pricingMap = useMemo(() => buildPricingMap(pricing), [pricing])
-  const models = useMemo(() => buildCostRateModels(pricingData?.usedModels ?? [], pricing), [pricingData?.usedModels, pricing])
-  const missingRates = countMissingCostRates(models, pricingMap)
-  const aliasedAPIKeys = countAliasedRows(apiKeyRows)
-  const aliasedAccounts = countAliasedRows(accountRows)
-
-  function startEdit(key: ReferenceKeyRow) {
-    const draft = beginKeyAliasDraft(key)
-    setEditingId(draft.editingId)
-    setDraftAlias(draft.draftAlias)
-  }
-
-  async function saveEdit(key: ReferenceKeyRow) {
-    const command = buildKeyAliasSaveCommand(keyAliasScope, key, draftAlias)
-    if (!command.valid) {
-      toast.error("Use clear to remove an alias")
-      return
-    }
-    try {
-      if (command.scope === "api-key") {
-        await updateAPIKeyAlias.mutateAsync({ id: command.id, alias: command.alias })
-      } else {
-        await updateAlias.mutateAsync({ id: command.id, alias: command.alias })
-      }
-      setEditingId(null)
-      toast.success("Alias saved")
-    } catch {
-      toast.error("Failed to save alias")
-    }
-  }
-
-  async function clearEdit(key: ReferenceKeyRow) {
-    const command = buildKeyAliasClearCommand(keyAliasScope, key)
-    if (!command.valid) {
-      toast.error("Failed to clear alias")
-      return
-    }
-    try {
-      if (command.scope === "api-key") {
-        await deleteAPIKeyAlias.mutateAsync(command.id)
-      } else {
-        await deleteAlias.mutateAsync(command.id)
-      }
-      setEditingId(null)
-      toast.success("Alias cleared")
-    } catch {
-      toast.error("Failed to clear alias")
-    }
-  }
-
-  function getDraft(model: string) {
-    return getCostRateDraft(model, pricingMap, drafts)
-  }
-
-  function updateDraft(model: string, field: keyof CostRateDrafts[string], value: string) {
-    setDrafts((prev) => nextCostRateDrafts(model, pricingMap, prev, field, value))
-  }
-
-  async function saveRate(model: string) {
-    const command = buildCostRateSaveCommand(model, getDraft(model))
-    if (!command.valid) {
-      toast.error(command.reason === "missing" ? "Enter all rates before saving" : "Rates must be non-negative numbers")
-      return
-    }
-
-    setSavingModel(model)
-    try {
-      await savePricing.mutateAsync(command.payload)
-      toast.success(`${model} cost rate saved`)
-    } catch {
-      toast.error("Failed to save cost rate")
-    } finally {
-      setSavingModel(null)
-    }
-  }
+  const {
+    query,
+    setQuery,
+    keyAliasScope,
+    selectKeyAliasScope,
+    scopeDescription,
+    apiKeyCount,
+    accountCount,
+    aliasedAPIKeys,
+    aliasedAccounts,
+    missingRates,
+    isAPIKeysLoading,
+    isKeysLoading,
+    isPricingLoading,
+    isAliasLoading,
+    filteredKeys,
+    editingId,
+    draftAlias,
+    setDraftAlias,
+    startEdit,
+    cancelEdit,
+    saveEdit,
+    clearEdit,
+    models,
+    pricingMap,
+    getDraft,
+    updateDraft,
+    saveRate,
+    savingModel,
+  } = useReferenceDataWorkbench()
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
@@ -149,8 +59,8 @@ function ReferencePage() {
       </header>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <SummaryCard label="API Keys" value={apiKeys?.length ?? 0} caption={`${aliasedAPIKeys} aliased`} loading={isAPIKeysLoading} />
-        <SummaryCard label="Accounts" value={keys?.length ?? 0} caption={`${aliasedAccounts} aliased`} loading={isKeysLoading} />
+        <SummaryCard label="API Keys" value={apiKeyCount} caption={`${aliasedAPIKeys} aliased`} loading={isAPIKeysLoading} />
+        <SummaryCard label="Accounts" value={accountCount} caption={`${aliasedAccounts} aliased`} loading={isKeysLoading} />
         <SummaryCard label="Missing Cost Rates" value={missingRates} caption="Models without configured rates" loading={isPricingLoading} tone={missingRates > 0 ? "amber" : "green"} />
       </div>
 
@@ -158,7 +68,7 @@ function ReferencePage() {
         <CardHeader className="flex flex-col items-start justify-between gap-4 md:flex-row md:flex-wrap">
           <div>
             <CardTitle>Key Aliases</CardTitle>
-            <CardDescription>{keyAliasScopeDescription(keyAliasScope)}</CardDescription>
+            <CardDescription>{scopeDescription}</CardDescription>
           </div>
           <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:flex-wrap md:items-center md:justify-end">
             <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
@@ -166,8 +76,7 @@ function ReferencePage() {
                 <button
                   key={item.value}
                   onClick={() => {
-                    setKeyAliasScope(item.value as KeyAliasScope)
-                    setEditingId(null)
+                    selectKeyAliasScope(item.value)
                   }}
                   aria-label={`Key alias scope: ${item.label}`}
                   aria-pressed={keyAliasScope === item.value}
@@ -256,7 +165,7 @@ function ReferencePage() {
                             <span className="sr-only">Save alias for {label}</span>
                             <Check className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingId(null)}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => cancelEdit()}>
                             <span className="sr-only">Cancel alias edit for {label}</span>
                             <X className="h-4 w-4" />
                           </Button>
@@ -339,69 +248,5 @@ function ReferencePage() {
         </CardContent>
       </Card>
     </div>
-  )
-}
-
-function SummaryCard({
-  label,
-  value,
-  caption,
-  loading,
-  tone = "terracotta",
-}: {
-  label: string
-  value: number | string
-  caption: string
-  loading: boolean
-  tone?: "terracotta" | "green" | "amber"
-}) {
-  const toneClass = {
-    terracotta: "text-terracotta-700",
-    green: "text-emerald-700",
-    amber: "text-amber-700",
-  }[tone]
-
-  return (
-    <Card>
-      <CardContent className="p-5">
-        {loading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-8 w-20" />
-          </div>
-        ) : (
-          <>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-            <p className={`mt-2 font-serif text-2xl font-semibold tracking-tight ${toneClass}`}>{value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{caption}</p>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function RateInput({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <label className="space-y-1">
-      <span className="text-[10px] font-medium text-muted-foreground">{label}</span>
-      <input
-        type="number"
-        min="0"
-        step="0.000001"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="-"
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
-      />
-    </label>
   )
 }
