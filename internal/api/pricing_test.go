@@ -2,12 +2,16 @@ package api
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/service"
 	servicedto "cpa-usage/internal/service/dto"
 )
 
@@ -140,5 +144,67 @@ func TestDeletePricingRoute(t *testing.T) {
 	}
 	if provider.deleted != "openai/gpt-4.1" {
 		t.Fatalf("expected model to be deleted, got %q", provider.deleted)
+	}
+}
+
+func TestUpdatePricingRouteClassifiesSentinelErrorsAsBadRequest(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "unused model", err: service.ModelNotUsedError("ghost-model"), want: `model "ghost-model" has not been used`},
+		{name: "model required", err: service.ErrModelRequired, want: "model is required"},
+		{name: "negative prices", err: service.ErrPricesMustBeNonNegative, want: "prices must be non-negative"},
+		{name: "wrapped unused model", err: fmt.Errorf("update pricing: %w", service.ModelNotUsedError("ghost-model")), want: `update pricing: model "ghost-model" has not been used`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := NewRouter(nil, nil, nil, &pricingStub{err: tc.err}, AuthConfig{}, nil, "", OptionalProviders{})
+			req := httptest.NewRequest(http.MethodPut, "/api/v1/pricing/ghost-model", strings.NewReader(`{"prompt_price_per_1m":3,"completion_price_per_1m":15,"cache_price_per_1m":0.3}`))
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+			router.ServeHTTP(resp, req)
+
+			var body struct {
+				Error string `json:"error"`
+			}
+			if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode response: %v body=%s", err, resp.Body.String())
+			}
+			if resp.Code != http.StatusBadRequest || body.Error != tc.want {
+				t.Fatalf("unexpected sentinel 400 response: %d %s", resp.Code, resp.Body.String())
+			}
+		})
+	}
+}
+
+func TestDeletePricingRouteClassifiesModelRequiredAsBadRequest(t *testing.T) {
+	router := NewRouter(nil, nil, nil, &pricingStub{err: service.ErrModelRequired}, AuthConfig{}, nil, "", OptionalProviders{})
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/pricing?model=ghost-model", nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v body=%s", err, resp.Body.String())
+	}
+	if resp.Code != http.StatusBadRequest || body.Error != "model is required" {
+		t.Fatalf("unexpected delete 400 response: %d %s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestUpdatePricingRouteMapsUnexpectedErrorsAsInternal(t *testing.T) {
+	router := NewRouter(nil, nil, nil, &pricingStub{err: errors.New("database is nil")}, AuthConfig{}, nil, "", OptionalProviders{})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/pricing/ghost-model", strings.NewReader(`{"prompt_price_per_1m":3,"completion_price_per_1m":15,"cache_price_per_1m":0.3}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusInternalServerError || !contains(resp.Body.String(), "internal server error") {
+		t.Fatalf("unexpected update 500 response: %d %s", resp.Code, resp.Body.String())
 	}
 }

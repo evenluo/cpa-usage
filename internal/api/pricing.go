@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -90,7 +91,7 @@ func registerPricingRoutes(router gin.IRoutes, pricingProvider service.PricingPr
 			return
 		}
 		if err := pricingProvider.DeletePricing(c.Request.Context(), model); err != nil {
-			if strings.Contains(err.Error(), "required") {
+			if errors.Is(err, service.ErrModelRequired) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
@@ -129,7 +130,7 @@ func updatePricing(c *gin.Context, pricingProvider service.PricingProvider, path
 		CachePricePer1M:      request.CachePricePer1M,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "has not been used") || strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "non-negative") {
+		if errors.Is(err, service.ErrModelNotUsed) || errors.Is(err, service.ErrModelRequired) || errors.Is(err, service.ErrPricesMustBeNonNegative) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}

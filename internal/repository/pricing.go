@@ -2,6 +2,7 @@ package repository
 
 import (
 	"cpa-usage/internal/repository/dto"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -9,6 +10,8 @@ import (
 	"cpa-usage/internal/entities"
 	"gorm.io/gorm"
 )
+
+var ErrModelRequired = errors.New("model is required")
 
 func ListUsedModels(db *gorm.DB) ([]string, error) {
 	if db == nil {
@@ -60,7 +63,7 @@ func UpsertModelPriceSetting(db *gorm.DB, input dto.ModelPriceSettingInput) (*en
 
 	modelName := strings.TrimSpace(input.Model)
 	if modelName == "" {
-		return nil, fmt.Errorf("model is required")
+		return nil, ErrModelRequired
 	}
 
 	setting := &entities.ModelPriceSetting{}
@@ -90,7 +93,7 @@ func DeleteModelPriceSetting(db *gorm.DB, model string) error {
 	}
 	modelName := strings.TrimSpace(model)
 	if modelName == "" {
-		return fmt.Errorf("model is required")
+		return ErrModelRequired
 	}
 	if err := db.Where("model = ?", modelName).Delete(&entities.ModelPriceSetting{}).Error; err != nil {
 		return fmt.Errorf("delete pricing setting: %w", err)

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -14,6 +15,28 @@ import (
 	servicedto "cpa-usage/internal/service/dto"
 	"gorm.io/gorm"
 )
+
+var (
+	ErrModelRequired           = repository.ErrModelRequired
+	ErrPricesMustBeNonNegative = errors.New("prices must be non-negative")
+	ErrModelNotUsed            = errors.New("model has not been used")
+)
+
+type modelNotUsedError struct {
+	model string
+}
+
+func (e modelNotUsedError) Error() string {
+	return fmt.Sprintf("model %q has not been used", e.model)
+}
+
+func (e modelNotUsedError) Unwrap() error {
+	return ErrModelNotUsed
+}
+
+func ModelNotUsedError(model string) error {
+	return modelNotUsedError{model: model}
+}
 
 type PricingProvider interface {
 	ListUsedModels(context.Context) ([]string, error)
@@ -50,10 +73,10 @@ func (s *pricingService) ListPricing(context.Context) ([]entities.ModelPriceSett
 func (s *pricingService) UpdatePricing(ctx context.Context, input servicedto.UpdatePricingInput) (*entities.ModelPriceSetting, error) {
 	modelName := strings.TrimSpace(input.Model)
 	if modelName == "" {
-		return nil, fmt.Errorf("model is required")
+		return nil, ErrModelRequired
 	}
 	if input.PromptPricePer1M < 0 || input.CompletionPricePer1M < 0 || input.CachePricePer1M < 0 {
-		return nil, fmt.Errorf("prices must be non-negative")
+		return nil, ErrPricesMustBeNonNegative
 	}
 
 	usedModels, err := s.effectiveModels(ctx)
@@ -66,7 +89,7 @@ func (s *pricingService) UpdatePricing(ctx context.Context, input servicedto.Upd
 	}
 	if _, ok := index[modelName]; !ok {
 		sort.Strings(usedModels)
-		return nil, fmt.Errorf("model %q has not been used", modelName)
+		return nil, ModelNotUsedError(modelName)
 	}
 
 	return repository.UpsertModelPriceSetting(s.db, repodto.ModelPriceSettingInput{
