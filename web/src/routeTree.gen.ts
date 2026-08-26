@@ -12,37 +12,37 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { Route as rootRouteImport } from './routes/__root'
 
-const RequestsLazyRouteImport = createFileRoute('/requests')()
-const ReferenceLazyRouteImport = createFileRoute('/reference')()
-const OperationsLazyRouteImport = createFileRoute('/operations')()
-const LoginLazyRouteImport = createFileRoute('/login')()
 const IndexLazyRouteImport = createFileRoute('/')()
+const LoginLazyRouteImport = createFileRoute('/login')()
+const OperationsLazyRouteImport = createFileRoute('/operations')()
+const ReferenceLazyRouteImport = createFileRoute('/reference')()
+const RequestsLazyRouteImport = createFileRoute('/requests')()
 
-const RequestsLazyRoute = RequestsLazyRouteImport.update({
-  id: '/requests',
-  path: '/requests',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/requests.lazy').then((d) => d.Route))
-const ReferenceLazyRoute = ReferenceLazyRouteImport.update({
-  id: '/reference',
-  path: '/reference',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/reference.lazy').then((d) => d.Route))
-const OperationsLazyRoute = OperationsLazyRouteImport.update({
-  id: '/operations',
-  path: '/operations',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/operations.lazy').then((d) => d.Route))
-const LoginLazyRoute = LoginLazyRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any).lazy(() => import('./routes/login.lazy').then((d) => d.Route))
 const IndexLazyRoute = IndexLazyRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import('./routes/index.lazy').then((d) => d.Route))
+const LoginLazyRoute = LoginLazyRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/login.lazy').then((d) => d.Route))
+const OperationsLazyRoute = OperationsLazyRouteImport.update({
+  id: '/operations',
+  path: '/operations',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/operations.lazy').then((d) => d.Route))
+const ReferenceLazyRoute = ReferenceLazyRouteImport.update({
+  id: '/reference',
+  path: '/reference',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/reference.lazy').then((d) => d.Route))
+const RequestsLazyRoute = RequestsLazyRouteImport.update({
+  id: '/requests',
+  path: '/requests',
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() => import('./routes/requests.lazy').then((d) => d.Route))
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexLazyRoute
@@ -84,25 +84,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/requests': {
-      id: '/requests'
-      path: '/requests'
-      fullPath: '/requests'
-      preLoaderRoute: typeof RequestsLazyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/reference': {
-      id: '/reference'
-      path: '/reference'
-      fullPath: '/reference'
-      preLoaderRoute: typeof ReferenceLazyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/operations': {
-      id: '/operations'
-      path: '/operations'
-      fullPath: '/operations'
-      preLoaderRoute: typeof OperationsLazyRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -112,11 +98,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexLazyRouteImport
+    '/operations': {
+      id: '/operations'
+      path: '/operations'
+      fullPath: '/operations'
+      preLoaderRoute: typeof OperationsLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reference': {
+      id: '/reference'
+      path: '/reference'
+      fullPath: '/reference'
+      preLoaderRoute: typeof ReferenceLazyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/requests': {
+      id: '/requests'
+      path: '/requests'
+      fullPath: '/requests'
+      preLoaderRoute: typeof RequestsLazyRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
