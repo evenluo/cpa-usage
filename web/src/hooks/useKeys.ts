@@ -12,7 +12,7 @@ async function fetchAPIKeyPage(page: number): Promise<APIKeyAliasTargetPage> {
   return apiFetch(`/usage/api-keys/page?page=${page}&page_size=${PAGE_SIZE}`)
 }
 
-async function fetchAllKeys(): Promise<KeyIdentity[]> {
+export async function fetchAllKeys(): Promise<KeyIdentity[]> {
   const first = await fetchPage(1)
   const totalPages = Math.max(1, Math.trunc(first.total_pages ?? 1))
   if (totalPages <= 1) return first.identities ?? []
@@ -22,7 +22,7 @@ async function fetchAllKeys(): Promise<KeyIdentity[]> {
   return [first, ...rest].flatMap((p) => p.identities ?? [])
 }
 
-async function fetchAllAPIKeys(): Promise<APIKeyAliasTarget[]> {
+export async function fetchAllAPIKeys(): Promise<APIKeyAliasTarget[]> {
   const first = await fetchAPIKeyPage(1)
   const totalPages = Math.max(1, Math.trunc(first.total_pages ?? 1))
   if (totalPages <= 1) return first.api_keys ?? []
