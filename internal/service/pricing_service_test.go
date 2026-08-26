@@ -29,8 +29,23 @@ func TestPricingServiceRejectsUnusedModel(t *testing.T) {
 		CompletionPricePer1M: 15,
 		CachePricePer1M:      0.3,
 	})
-	if err == nil || !strings.Contains(err.Error(), "has not been used") {
+	if !errors.Is(err, ErrModelNotUsed) || err.Error() != `model "claude-sonnet" has not been used` {
 		t.Fatalf("expected unused model error, got %v", err)
+	}
+}
+
+func TestPricingServiceRejectsNegativePrices(t *testing.T) {
+	db := openPricingServiceTestDatabase(t)
+	service := NewPricingService(db)
+
+	_, err := service.UpdatePricing(context.Background(), servicedto.UpdatePricingInput{
+		Model:                "claude-sonnet",
+		PromptPricePer1M:     -1,
+		CompletionPricePer1M: 15,
+		CachePricePer1M:      0.3,
+	})
+	if !errors.Is(err, ErrPricesMustBeNonNegative) || err.Error() != "prices must be non-negative" {
+		t.Fatalf("expected non-negative price error, got %v", err)
 	}
 }
 
@@ -189,7 +204,7 @@ func TestPricingServiceRejectsLocalOnlyModelWhenCPAFetchSucceeds(t *testing.T) {
 		CompletionPricePer1M: 15,
 		CachePricePer1M:      0.3,
 	})
-	if err == nil || !strings.Contains(err.Error(), "has not been used") {
+	if !errors.Is(err, ErrModelNotUsed) || err.Error() != `model "local-model" has not been used` {
 		t.Fatalf("expected local-only model rejection, got %v", err)
 	}
 }
