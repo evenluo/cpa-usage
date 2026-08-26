@@ -55,7 +55,7 @@ describe("groupByDate", () => {
     expect(groups.get("2026-05-10")?.map((block) => block.hour)).toEqual([9])
   })
 
-  it("skips labels that are not an hourly timestamp", () => {
+  it("keeps date-only labels and skips non-date labels", () => {
     const groups = groupByDate([
       trendPoint({ label: "2026-05-09", request_count: 8 }),
       trendPoint({ label: "n/a", request_count: 3 }),
@@ -63,8 +63,51 @@ describe("groupByDate", () => {
     ])
 
     expect([...groups.keys()]).toEqual(["2026-05-09"])
-    expect(groups.get("2026-05-09")).toHaveLength(1)
-    expect(groups.get("2026-05-09")?.[0].hour).toBe(22)
+    expect(groups.get("2026-05-09")).toEqual([
+      expect.objectContaining({ date: "2026-05-09", hour: 0, success: 8, failure: 0 }),
+      expect.objectContaining({ date: "2026-05-09", hour: 22, success: 2, failure: 0 }),
+    ])
+  })
+
+  it("groups a day-bucket series by date into renderable blocks", () => {
+    const groups = groupByDate([
+      trendPoint({ label: "2026-05-11", request_count: 10, failure_count: 1 }),
+      trendPoint({ label: "2026-05-12", request_count: 4, failure_count: 0 }),
+      trendPoint({ label: "2026-05-11", request_count: 2, failure_count: 2 }),
+    ])
+
+    const shortLabel = (date: string) =>
+      new Date(date + "T00:00:00").toLocaleDateString("en", { month: "short", day: "numeric" })
+
+    expect([...groups.keys()]).toEqual(["2026-05-11", "2026-05-12"])
+    expect(groups.get("2026-05-11")).toEqual([
+      {
+        date: "2026-05-11",
+        label: shortLabel("2026-05-11"),
+        hour: 0,
+        success: 9,
+        failure: 1,
+        rate: 90,
+      },
+      {
+        date: "2026-05-11",
+        label: shortLabel("2026-05-11"),
+        hour: 0,
+        success: 0,
+        failure: 2,
+        rate: 0,
+      },
+    ])
+    expect(groups.get("2026-05-12")).toEqual([
+      {
+        date: "2026-05-12",
+        label: shortLabel("2026-05-12"),
+        hour: 0,
+        success: 4,
+        failure: 0,
+        rate: 100,
+      },
+    ])
   })
 
   it("clamps success at zero and reports a 0 rate when there are no requests", () => {
