@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestParseUsageFilterQueryPresetRange(t *testing.T) {
+func TestParseUsageEventListFilterQueryPresetRange(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
 		rangeVal string
@@ -19,9 +19,9 @@ func TestParseUsageFilterQueryPresetRange(t *testing.T) {
 			req := httptest.NewRequest("GET", "/api/v1/usage/overview?range="+tc.rangeVal, nil)
 			anchor := time.Date(2026, 4, 22, 12, 0, 0, 0, time.UTC)
 
-			filter, err := parseUsageFilterQuery(req, anchor)
+			filter, err := parseUsageEventListFilterQuery(req, anchor)
 			if err != nil {
-				t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+				t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 			}
 			if filter.Range != tc.rangeVal {
 				t.Fatalf("expected range to be preserved, got %+v", filter)
@@ -39,7 +39,7 @@ func TestParseUsageFilterQueryPresetRange(t *testing.T) {
 	}
 }
 
-func TestParseUsageFilterQueryTodayRangeUsesLocalDayBoundary(t *testing.T) {
+func TestParseUsageEventListFilterQueryTodayRangeUsesLocalDayBoundary(t *testing.T) {
 	previousLocal := time.Local
 	location, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -51,9 +51,9 @@ func TestParseUsageFilterQueryTodayRangeUsesLocalDayBoundary(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/overview?range=today", nil)
 	anchor := time.Date(2026, 4, 22, 12, 34, 56, 0, time.UTC)
 
-	filter, err := parseUsageFilterQuery(req, anchor)
+	filter, err := parseUsageEventListFilterQuery(req, anchor)
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.Range != "today" {
 		t.Fatalf("expected today range to be preserved, got %+v", filter)
@@ -71,7 +71,7 @@ func TestParseUsageFilterQueryTodayRangeUsesLocalDayBoundary(t *testing.T) {
 	}
 }
 
-func TestParseUsageFilterQueryYesterdayRangeUsesPreviousLocalDayBoundary(t *testing.T) {
+func TestParseUsageEventListFilterQueryYesterdayRangeUsesPreviousLocalDayBoundary(t *testing.T) {
 	previousLocal := time.Local
 	location, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -83,9 +83,9 @@ func TestParseUsageFilterQueryYesterdayRangeUsesPreviousLocalDayBoundary(t *test
 	req := httptest.NewRequest("GET", "/api/v1/usage/overview?range=yesterday", nil)
 	anchor := time.Date(2026, 4, 22, 12, 34, 56, 0, time.UTC)
 
-	filter, err := parseUsageFilterQuery(req, anchor)
+	filter, err := parseUsageEventListFilterQuery(req, anchor)
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.Range != "yesterday" {
 		t.Fatalf("expected yesterday range to be preserved, got %+v", filter)
@@ -103,7 +103,7 @@ func TestParseUsageFilterQueryYesterdayRangeUsesPreviousLocalDayBoundary(t *test
 	}
 }
 
-func TestParseUsageFilterQueryTodayRangeUsesLocalDSTBoundary(t *testing.T) {
+func TestParseUsageEventListFilterQueryTodayRangeUsesLocalDSTBoundary(t *testing.T) {
 	previousLocal := time.Local
 	location, err := time.LoadLocation("America/New_York")
 	if err != nil {
@@ -115,9 +115,9 @@ func TestParseUsageFilterQueryTodayRangeUsesLocalDSTBoundary(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/overview?range=today", nil)
 	anchor := time.Date(2026, 3, 8, 12, 0, 0, 0, location)
 
-	filter, err := parseUsageFilterQuery(req, anchor)
+	filter, err := parseUsageEventListFilterQuery(req, anchor)
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.StartTime == nil || filter.EndTime == nil {
 		t.Fatalf("expected today range to resolve concrete times, got %+v", filter)
@@ -132,12 +132,12 @@ func TestParseUsageFilterQueryTodayRangeUsesLocalDSTBoundary(t *testing.T) {
 	}
 }
 
-func TestParseUsageFilterQueryCustomRange(t *testing.T) {
+func TestParseUsageEventListFilterQueryCustomRange(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/overview?range=custom&start=2026-04-20T00:00:00Z&end=2026-04-21T23:59:59Z", nil)
 
-	filter, err := parseUsageFilterQuery(req, time.Time{})
+	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.StartTime == nil || filter.EndTime == nil {
 		t.Fatalf("expected custom range bounds, got %+v", filter)
@@ -150,7 +150,7 @@ func TestParseUsageFilterQueryCustomRange(t *testing.T) {
 	}
 }
 
-func TestParseUsageFilterQueryCustomDateRangeUsesLocalDayBoundary(t *testing.T) {
+func TestParseUsageEventListFilterQueryCustomDateRangeUsesLocalDayBoundary(t *testing.T) {
 	previousLocal := time.Local
 	location, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -161,9 +161,9 @@ func TestParseUsageFilterQueryCustomDateRangeUsesLocalDayBoundary(t *testing.T) 
 
 	req := httptest.NewRequest("GET", "/api/v1/usage/overview?range=custom&start=2026-04-20&end=2026-04-21", nil)
 
-	filter, err := parseUsageFilterQuery(req, time.Time{})
+	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.StartTime == nil || filter.EndTime == nil {
 		t.Fatalf("expected custom date range bounds, got %+v", filter)
@@ -178,10 +178,10 @@ func TestParseUsageFilterQueryCustomDateRangeUsesLocalDayBoundary(t *testing.T) 
 	}
 }
 
-func TestParseUsageFilterQueryRejectsInvalidCustomRange(t *testing.T) {
+func TestParseUsageEventListFilterQueryRejectsInvalidCustomRange(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/overview?range=custom&start=2026-04-21T00:00:00Z&end=2026-04-20T23:59:59Z", nil)
 
-	_, err := parseUsageFilterQuery(req, time.Time{})
+	_, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err == nil {
 		t.Fatal("expected invalid custom range error")
 	}
@@ -203,24 +203,24 @@ func TestParseUsageTimeFilterQueryIgnoresEventListFilters(t *testing.T) {
 	}
 }
 
-func TestParseUsageFilterQueryDefaultsEventsPagination(t *testing.T) {
+func TestParseUsageEventListFilterQueryDefaultsEventsPagination(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=all", nil)
 
-	filter, err := parseUsageFilterQuery(req, time.Time{})
+	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.Page != 1 || filter.PageSize != 100 || filter.Offset != 0 {
 		t.Fatalf("expected default pagination, got %+v", filter)
 	}
 }
 
-func TestParseUsageFilterQueryAcceptsEventsPaginationAndFilters(t *testing.T) {
+func TestParseUsageEventListFilterQueryAcceptsEventsPaginationAndFilters(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/events?page=3&page_size=100&model=%20claude-sonnet%20&provider=%20codex%20&source=%20source-a%20&auth_index=%202%20", nil)
 
-	filter, err := parseUsageFilterQuery(req, time.Time{})
+	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.Page != 3 || filter.PageSize != 100 || filter.Offset != 200 {
 		t.Fatalf("expected page 3/page size 100 offset 200, got %+v", filter)
@@ -230,50 +230,50 @@ func TestParseUsageFilterQueryAcceptsEventsPaginationAndFilters(t *testing.T) {
 	}
 }
 
-func TestParseUsageFilterQueryAcceptsCompactEvidencePageSize(t *testing.T) {
+func TestParseUsageEventListFilterQueryAcceptsCompactEvidencePageSize(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&page_size=10", nil)
 
-	filter, err := parseUsageFilterQuery(req, time.Time{})
+	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.Page != 1 || filter.PageSize != 10 || filter.Offset != 0 {
 		t.Fatalf("expected compact evidence pagination, got %+v", filter)
 	}
 }
 
-func TestParseUsageFilterQueryUsesLimitAsPageSizeAlias(t *testing.T) {
+func TestParseUsageEventListFilterQueryUsesLimitAsPageSizeAlias(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/events?limit=20", nil)
 
-	filter, err := parseUsageFilterQuery(req, time.Time{})
+	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.Page != 1 || filter.PageSize != 20 || filter.Offset != 0 {
 		t.Fatalf("expected limit alias to set page size, got %+v", filter)
 	}
 }
 
-func TestParseUsageFilterQueryPrefersPageSizeOverLimit(t *testing.T) {
+func TestParseUsageEventListFilterQueryPrefersPageSizeOverLimit(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/usage/events?page_size=50&limit=20", nil)
 
-	filter, err := parseUsageFilterQuery(req, time.Time{})
+	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
 	if err != nil {
-		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
 	}
 	if filter.PageSize != 50 {
 		t.Fatalf("expected page_size to win over limit, got %+v", filter)
 	}
 }
 
-func TestParseUsageFilterQueryRejectsInvalidEventsPagination(t *testing.T) {
+func TestParseUsageEventListFilterQueryRejectsInvalidEventsPagination(t *testing.T) {
 	tests := []string{
 		"/api/v1/usage/events?page=0",
 		"/api/v1/usage/events?page_size=25",
 	}
 	for _, path := range tests {
 		req := httptest.NewRequest("GET", path, nil)
-		if _, err := parseUsageFilterQuery(req, time.Time{}); err == nil {
+		if _, err := parseUsageEventListFilterQuery(req, time.Time{}); err == nil {
 			t.Fatalf("expected pagination error for %s", path)
 		}
 	}

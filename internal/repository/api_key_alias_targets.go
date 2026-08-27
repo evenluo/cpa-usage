@@ -61,7 +61,7 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 
 	var rows []apiKeyAliasTargetScanRow
 	source := analyticsEventsAggregateSource()
-	if err := analyticsEventsWithPricingQuery(db.WithContext(ctx), dto.AnalyticsFilter{}).
+	if err := usageEventsWithPricingQuery(db.WithContext(ctx), dto.UsageTimeScope{}).
 		Select(`
 			` + identityExpr + ` AS identity,
 			COALESCE(MIN(NULLIF(TRIM(usage_events.provider), '')), '') AS provider,

@@ -94,7 +94,7 @@ func registerUsageEventsRoute(
 			return
 		}
 
-		filter, err := parseUsageFilterQuery(c.Request, time.Now().UTC())
+		filter, err := parseUsageEventListFilterQuery(c.Request, time.Now().UTC())
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

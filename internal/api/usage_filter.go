@@ -116,10 +116,6 @@ func parseCustomUsageRangeBoundary(value string, endOfDay bool) (time.Time, erro
 	return time.Parse(time.RFC3339, value)
 }
 
-func parseUsageFilterQuery(req *http.Request, anchor time.Time) (usageEventListFilter, error) {
-	return parseUsageEventListFilterQuery(req, anchor)
-}
-
 func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageEventListFilter, error) {
 	window, err := parseUsageWindowQuery(req, anchor)
 	if err != nil {

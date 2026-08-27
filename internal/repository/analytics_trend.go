@@ -28,13 +28,21 @@ func buildAnalyticsTrend(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.Analyti
 }
 
 func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
-	return applyAnalyticsQueryFilter(db.Model(&entities.UsageEvent{}), filter).
+	return usageEventsWithPricingQuery(db, filter.UsageTimeScope)
+}
+
+func usageEventsWithPricingQuery(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
+	return applyAnalyticsScopeFilter(db.Model(&entities.UsageEvent{}), scope).
 		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_events.model)")
 }
 
 func applyAnalyticsQueryFilter(query *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
-	query = applyUsageQueryWindow(query, filter.UsageTimeScope)
-	if provider := strings.TrimSpace(filter.Provider); provider != "" {
+	return applyAnalyticsScopeFilter(query, filter.UsageTimeScope)
+}
+
+func applyAnalyticsScopeFilter(query *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
+	query = applyUsageQueryWindow(query, scope)
+	if provider := strings.TrimSpace(scope.Provider); provider != "" {
 		query = query.Where("TRIM(usage_events.provider) = ?", provider)
 	}
 	return query
