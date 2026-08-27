@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KeyLeaderboard } from "@/components/charts/key-leaderboard"
+import { InsightRail } from "@/components/charts/insight-rail"
+import { ModelDistributionChart } from "@/components/charts/model-distribution"
 import { TrendChart } from "@/components/charts/trend-chart"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
 import type { LeaderboardScope, TrendView } from "@/features/usage-intelligence/view-model"
@@ -19,6 +21,8 @@ interface DashboardChartsProps {
   leaderboardScope: LeaderboardScope
   onSelectLeaderboardScope: (scope: LeaderboardScope) => void
   leaderboardSortLabel: string
+  modelMixMeasure: "cost" | "tokens"
+  modelMixCostStateLabel: string
   onRetryCore: () => void
 }
 
@@ -31,10 +35,13 @@ export function DashboardCharts({
   leaderboardScope,
   onSelectLeaderboardScope,
   leaderboardSortLabel,
+  modelMixMeasure,
+  modelMixCostStateLabel,
   onRetryCore,
 }: DashboardChartsProps) {
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
       {/* Trend Chart */}
       <Card>
         <CardHeader className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:flex-wrap">
@@ -146,6 +153,57 @@ export function DashboardCharts({
           )}
         </CardContent>
       </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+        <Card>
+          <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <CardTitle>Model Mix</CardTitle>
+              <CardDescription>Usage distribution across models in the selected window</CardDescription>
+            </div>
+            <Badge variant="outline" data-testid="model-mix-cost-state">{modelMixCostStateLabel}</Badge>
+          </CardHeader>
+          <CardContent>
+            {surfaces.modelMix.status === "loading" ? (
+              <Skeleton className="h-[260px] w-full" />
+            ) : surfaces.modelMix.status === "error" ? (
+              <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-sm text-red-500">
+                <span>Failed to load model mix</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry model mix</Button>
+              </div>
+            ) : surfaces.modelMix.status === "empty" ? (
+              <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">No model usage in this window</div>
+            ) : (
+              <ModelDistributionChart data={surfaces.modelMix.data} measure={modelMixMeasure} />
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Insights</CardTitle>
+            <CardDescription>Deterministic signals from the selected window</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {surfaces.insights.status === "loading" ? (
+              <div className="space-y-3">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+              </div>
+            ) : surfaces.insights.status === "error" ? (
+              <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-sm text-red-500">
+                <span>Failed to load insights</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry insights</Button>
+              </div>
+            ) : surfaces.insights.status === "empty" ? (
+              <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">No deterministic insights</div>
+            ) : (
+              <InsightRail insights={surfaces.insights.data} />
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

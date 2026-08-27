@@ -8,6 +8,7 @@ import { RequestEvidenceEvent } from "@/components/intelligence/request-evidence
 import type { UsageEventsPage } from "@/types/api"
 
 interface RequestEvidenceProps {
+  provider: string
   data: UsageEventsPage | undefined
   isLoading: boolean
   isRefreshing: boolean
@@ -15,7 +16,7 @@ interface RequestEvidenceProps {
   onRetry: () => void
 }
 
-export function RequestEvidence({ data, isLoading, isRefreshing, error, onRetry }: RequestEvidenceProps) {
+export function RequestEvidence({ provider, data, isLoading, isRefreshing, error, onRetry }: RequestEvidenceProps) {
   const latestEvent = data?.events[0]
   const hasCompleteData = data !== undefined
 
@@ -54,6 +55,7 @@ export function RequestEvidence({ data, isLoading, isRefreshing, error, onRetry 
             />
             <Link
               to="/requests"
+              search={{ provider }}
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-terracotta-700 transition-colors hover:bg-terracotta-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
             >
               View all requests

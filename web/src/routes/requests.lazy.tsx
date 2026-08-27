@@ -18,13 +18,22 @@ import type { UsageEvent } from "@/types/api"
 const PAGE_SIZE = 10
 
 export const Route = createLazyFileRoute("/requests")({
-  component: RequestsPage,
+  component: RequestsRoute,
 })
 
-function RequestsPage() {
+function RequestsRoute() {
+  const { provider } = Route.useSearch()
+  return <RequestsPage provider={provider} />
+}
+
+export function RequestsPage({ provider }: { provider: string }) {
+  return <ScopedRequestsPage key={provider} provider={provider} />
+}
+
+function ScopedRequestsPage({ provider }: { provider: string }) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
-  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, "", page)
+  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page)
   const hasCompleteData = data !== undefined
   const events = data?.events ?? []
   const selectedEvent = events.find((event) => requestEventKey(event) === selectedEventKey) ?? events[0]
@@ -52,7 +61,12 @@ function RequestsPage() {
           <h1 className="mt-1 font-serif text-3xl font-semibold tracking-tight">Request Evidence</h1>
           <p className="mt-1 text-sm text-muted-foreground">Recent request-level evidence behind service health.</p>
         </div>
-        <Badge variant="outline" className="shrink-0">Last 24h</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">Last 24h</Badge>
+          <Badge variant="terracotta" data-testid="request-provider-scope">
+            Provider: {provider || "All providers"}
+          </Badge>
+        </div>
       </header>
 
       {hasCompleteData && error ? (

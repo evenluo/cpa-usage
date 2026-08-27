@@ -20,7 +20,7 @@ function buildBreakdown(prefix: string) {
     success_rate: 1,
     last_used_at: "2026-05-18T09:30:00Z",
     cost_available: true,
-    cost_status: "complete",
+    cost_status: "available",
     trend: [],
   }
 }
@@ -45,7 +45,7 @@ function analyticsCoreFor(url: URL): Record<string, unknown> {
       cached_tokens: 5_000,
       success_rate: 0.96,
       cost_available: true,
-      cost_status: "complete",
+      cost_status: "available",
       cache_read_share: 0.4,
       cache_read_share_state: "available",
     },
@@ -61,7 +61,7 @@ function analyticsCoreFor(url: URL): Record<string, unknown> {
       success_count: 1,
       failure_count: 0,
       cost_available: true,
-      cost_status: "complete",
+      cost_status: "available",
     })),
     provider_options: [
       { provider: "claude", request_count: 5, total_tokens: 60_000, total_cost: 0.3, cost_available: true },
@@ -69,8 +69,38 @@ function analyticsCoreFor(url: URL): Record<string, unknown> {
     ],
     key_alias_breakdown: [buildBreakdown("Research")],
     api_key_breakdown: [buildBreakdown("sk-live")],
-    model_distribution: [],
-    insights: [],
+    model_distribution: [{
+      model: `${provider || "all"}-model`,
+      provider: provider || "all",
+      total_cost: 0.5,
+      total_tokens: 100_000,
+      input_tokens: 50_000,
+      output_tokens: 40_000,
+      reasoning_tokens: 5_000,
+      cached_tokens: 5_000,
+      cache_read_share: 10,
+      cache_read_share_state: "available",
+      request_count: pointCount,
+      success_count: pointCount - 1,
+      failure_count: 1,
+      success_rate: 96,
+      total_latency_ms: 100,
+      latency_sample_count: 1,
+      average_latency_ms: 100,
+      cost_available: true,
+      cost_status: "available",
+    }],
+    insights: [{
+      type: "metric_completeness",
+      severity: "green",
+      title: `${provider || "All providers"} metrics complete`,
+      detail: "All model costs are available.",
+      subject: provider || "All providers",
+      metric_label: "Metric Completeness",
+      metric_value: 1,
+      count: 1,
+      cost_status: "available",
+    }],
     ...(provider ? { provider_options: [] } : {}),
   }
 }
@@ -107,6 +137,10 @@ test("dashboard renders KPIs, trend, leaderboard, and fixed overview surfaces", 
   await expect(page.getByText("Request Health")).toBeVisible()
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expect(page.getByText("Live Capacity")).toBeVisible()
+  await expect(page.getByText("Model Mix")).toBeVisible()
+  await expect(page.getByText("all-model")).toBeVisible()
+  await expect(page.getByText("Insights", { exact: true })).toBeVisible()
+  await expect(page.getByText("All providers metrics complete")).toBeVisible()
 })
 
 test("switching time range and granularity changes the analytics request and the visible KPIs", async ({ page }) => {
@@ -139,11 +173,13 @@ test("switching time range and granularity changes the analytics request and the
 
 test("provider filter scopes the analytics request and manual sync reports completion", async ({ page }) => {
   const analyticsRequests: URL[] = []
+  const evidenceRequests: URL[] = []
   let syncRequests = 0
   await installMockAPI(page, {
     analyticsCore: analyticsCoreFor,
     onRequest: (request) => {
       if (request.path === "/analytics/core") analyticsRequests.push(request.url)
+      if (request.path === "/usage/events") evidenceRequests.push(request.url)
       if (request.path === "/sync" && request.method === "POST") syncRequests += 1
     },
   })
@@ -153,6 +189,14 @@ test("provider filter scopes the analytics request and manual sync reports compl
 
   await page.getByRole("button", { name: /^claude/ }).click()
   await expect.poll(() => analyticsRequests.at(-1)?.searchParams.get("provider")).toBe("claude")
+  await expect(page.getByText("claude-model")).toBeVisible()
+  await expect(page.getByText("claude metrics complete")).toBeVisible()
+
+  await page.getByRole("link", { name: "View all requests" }).click()
+  await expect(page).toHaveURL(/\/requests\?provider=claude$/)
+  await expect(page.getByTestId("request-provider-scope")).toHaveText("Provider: claude")
+  await expect.poll(() => evidenceRequests.at(-1)?.searchParams.get("provider")).toBe("claude")
+  await expect(page.getByText("claude-evidence-model").first()).toBeVisible()
 
   await page.goto("/operations")
   await expect(page.getByText("Operational Status")).toBeVisible()

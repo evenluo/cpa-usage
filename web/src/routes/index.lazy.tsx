@@ -108,12 +108,15 @@ function DashboardPage() {
         leaderboardScope={dashboard.leaderboardScope}
         onSelectLeaderboardScope={dashboard.setLeaderboardScope}
         leaderboardSortLabel={leaderboardSortLabel}
+        modelMixMeasure={viewModel.modelMixMeasure}
+        modelMixCostStateLabel={viewModel.modelMixCostStateLabel}
         onRetryCore={dashboard.retryCore}
       />
 
       <DashboardFixedOverview
         surfaces={surfaces}
         liveCapacityProvider={loadPlan.fixedWindow.liveCapacity.provider}
+        requestEvidenceProvider={loadPlan.fixedWindow.requestEvidence.provider}
         requestEvidenceData={dashboard.requestEvidenceData}
         isRequestEvidenceLoading={dashboard.isRequestEvidenceLoading}
         isRequestEvidenceRefreshing={dashboard.isRequestEvidenceRefreshing}

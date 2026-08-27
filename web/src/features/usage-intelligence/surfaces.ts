@@ -1,7 +1,9 @@
 import type {
   AnalyticsCoreResponse,
   HeatmapData,
+  Insight,
   KeyAliasBreakdown,
+  ModelDistribution,
   ServiceHealth,
   TrendPoint,
 } from "@/types/api"
@@ -20,6 +22,8 @@ export interface UsageDashboardSurfaces {
   kpis: { status: UsageSurfaceStatus }
   trend: { status: UsageSurfaceStatus; data: TrendPoint[] }
   leaderboard: { status: UsageSurfaceStatus; data: KeyAliasBreakdown[] }
+  modelMix: { status: UsageSurfaceStatus; data: ModelDistribution[] }
+  insights: { status: UsageSurfaceStatus; data: Insight[] }
   heatmap: UsageSurface<HeatmapData>
   requestHealth: UsageSurface<ServiceHealth>
 }
@@ -68,11 +72,23 @@ export function buildUsageDashboardSurfaces(input: {
       : viewModel.hasLeaderboardBreakdown && viewModel.leaderboardRows.length > 0
         ? "ready"
         : "empty"
+  const modelMixStatus = buildCoreCollectionStatus(
+    coreSurface.status,
+    viewModel.hasModelDistribution,
+    viewModel.modelDistribution.length,
+  )
+  const insightsStatus = buildCoreCollectionStatus(
+    coreSurface.status,
+    viewModel.hasInsights,
+    viewModel.insights.length,
+  )
   return {
     core: coreSurface,
     kpis: { status: coreSurface.status },
     trend: { status: coreSurface.status, data: viewModel.trend },
     leaderboard: { status: leaderboardStatus, data: viewModel.leaderboardRows },
+    modelMix: { status: modelMixStatus, data: viewModel.modelDistribution },
+    insights: { status: insightsStatus, data: viewModel.insights },
     heatmap: buildSurface(
       {
         data: viewModel.fixedHeatmap,
@@ -90,4 +106,13 @@ export function buildUsageDashboardSurfaces(input: {
       (data) => data.total_success + data.total_failure === 0,
     ),
   }
+}
+
+function buildCoreCollectionStatus(
+  coreStatus: UsageSurfaceStatus,
+  fieldIsPresent: boolean,
+  itemCount: number,
+): UsageSurfaceStatus {
+  if (coreStatus !== "ready") return coreStatus
+  return fieldIsPresent && itemCount > 0 ? "ready" : "empty"
 }

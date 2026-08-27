@@ -65,7 +65,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold">
-                    {measure === "cost" && row.cost_available ? formatCost(row.total_cost) : `${formatCompact(row.total_tokens, 1)} tokens`}
+                    {measure === "cost" ? formatCost(row.total_cost) : `${formatCompact(row.total_tokens, 1)} tokens`}
                   </p>
                   <p className="text-xs text-muted-foreground">{pct.toFixed(1)}%</p>
                 </div>

@@ -13,6 +13,7 @@ import type { UsageEventsPage } from "@/types/api"
 interface DashboardFixedOverviewProps {
   surfaces: UsageDashboardSurfaces
   liveCapacityProvider: string
+  requestEvidenceProvider: string
   requestEvidenceData?: UsageEventsPage
   isRequestEvidenceLoading: boolean
   isRequestEvidenceRefreshing: boolean
@@ -25,6 +26,7 @@ interface DashboardFixedOverviewProps {
 export function DashboardFixedOverview({
   surfaces,
   liveCapacityProvider,
+  requestEvidenceProvider,
   requestEvidenceData,
   isRequestEvidenceLoading,
   isRequestEvidenceRefreshing,
@@ -119,6 +121,7 @@ export function DashboardFixedOverview({
         </Card>
 
         <RequestEvidence
+          provider={requestEvidenceProvider}
           data={requestEvidenceData}
           isLoading={isRequestEvidenceLoading}
           isRefreshing={isRequestEvidenceRefreshing}

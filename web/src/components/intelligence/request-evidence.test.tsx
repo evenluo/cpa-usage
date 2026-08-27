@@ -5,7 +5,9 @@ import type { UsageEventsPage } from "@/types/api"
 import { RequestEvidence } from "./request-evidence"
 
 vi.mock("@tanstack/react-router", () => ({
-  Link: ({ children }: { children: React.ReactNode }) => <a href="/requests">{children}</a>,
+  Link: ({ children, search }: { children: React.ReactNode; search?: { provider?: string } }) => (
+    <a href={search?.provider ? `/requests?provider=${encodeURIComponent(search.provider)}` : "/requests"}>{children}</a>
+  ),
 }))
 
 afterEach(cleanup)
@@ -32,7 +34,7 @@ describe("RequestEvidence", () => {
   it("shows a scoped retry for an initial failure", async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()
-    render(<RequestEvidence data={undefined} isLoading={false} isRefreshing={false} error={new Error("offline")} onRetry={onRetry} />)
+    render(<RequestEvidence provider="" data={undefined} isLoading={false} isRefreshing={false} error={new Error("offline")} onRetry={onRetry} />)
 
     expect(screen.getByText("Failed to load request evidence")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Retry request evidence" }))
@@ -42,16 +44,17 @@ describe("RequestEvidence", () => {
   it("keeps complete stale data visible when refresh fails", async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()
-    render(<RequestEvidence data={populatedPage} isLoading={false} isRefreshing={false} error={new Error("refresh failed")} onRetry={onRetry} />)
+    render(<RequestEvidence provider="claude" data={populatedPage} isLoading={false} isRefreshing={false} error={new Error("refresh failed")} onRetry={onRetry} />)
 
     expect(screen.getByRole("region", { name: "Latest request" })).toBeInTheDocument()
     expect(screen.queryByText("Failed to load request evidence")).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "View all requests" })).toHaveAttribute("href", "/requests?provider=claude")
     await user.click(screen.getByRole("button", { name: "Retry refresh" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
   it("distinguishes a successful empty response from loading and failure", () => {
-    render(<RequestEvidence data={{ ...populatedPage, events: [], total_count: 0 }} isLoading={false} isRefreshing={false} error={null} onRetry={vi.fn()} />)
+    render(<RequestEvidence provider="" data={{ ...populatedPage, events: [], total_count: 0 }} isLoading={false} isRefreshing={false} error={null} onRetry={vi.fn()} />)
     expect(screen.getByText("No recent request evidence")).toBeInTheDocument()
   })
 })

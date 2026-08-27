@@ -11,7 +11,7 @@ import {
 } from "recharts"
 import { useMemo } from "react"
 import type { Formatter, NameType, ValueType } from "recharts/types/component/DefaultTooltipContent"
-import type { ModelDistribution, TrendPoint, TimeGranularity } from "@/types/api"
+import type { TrendPoint, TimeGranularity } from "@/types/api"
 import { formatCost, formatCompact } from "@/lib/format"
 import {
   buildTrendSeriesConfig,
@@ -152,93 +152,5 @@ export function TrendChart({ data, granularity, mode = "cost-token" }: TrendChar
         )}
       </ComposedChart>
     </ResponsiveContainer>
-  )
-}
-
-interface TokenBreakdownPanelProps {
-  data: ModelDistribution[]
-}
-
-export function TokenBreakdownPanel({ data }: TokenBreakdownPanelProps) {
-  const totals = data.reduce(
-    (acc, row) => {
-      acc.total += row.total_tokens
-      acc.input += row.input_tokens
-      acc.output += row.output_tokens
-      acc.reasoning += row.reasoning_tokens
-      acc.cached += row.cached_tokens
-      return acc
-    },
-    { total: 0, input: 0, output: 0, reasoning: 0, cached: 0 }
-  )
-  const maxValue = Math.max(totals.total, totals.input, totals.output, totals.reasoning, totals.cached, 1)
-  const rows = [...data].sort((a, b) => b.total_tokens - a.total_tokens).slice(0, 5)
-
-  if (data.length === 0) {
-    return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-        No token breakdown in this range
-      </div>
-    )
-  }
-
-  const breakdown = [
-    { label: "Input", value: totals.input, color: "bg-blue-500" },
-    { label: "Output", value: totals.output, color: "bg-emerald-500" },
-    { label: "Reasoning", value: totals.reasoning, color: "bg-violet-500" },
-    { label: "Cached", value: totals.cached, color: "bg-amber-500" },
-  ]
-
-  return (
-    <div className="grid h-full gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-      <div className="space-y-4">
-        <div>
-          <p className="text-xs font-medium uppercase text-muted-foreground">Total Tokens</p>
-          <p className="mt-1 text-2xl font-semibold">{formatCompact(totals.total, 2)}</p>
-        </div>
-        <div className="space-y-3">
-          {breakdown.map((item) => (
-            <div key={item.label} className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">{item.label}</span>
-                <span className="font-medium">{formatCompact(item.value, 2)}</span>
-              </div>
-              <div className="h-2 rounded-full bg-muted">
-                <div
-                  className={`h-full rounded-full ${item.color}`}
-                  style={{ width: `${Math.max((item.value / maxValue) * 100, item.value > 0 ? 3 : 0)}%` }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        {rows.map((row) => {
-          const pct = totals.total > 0 ? (row.total_tokens / totals.total) * 100 : 0
-          return (
-            <div key={`${row.provider}-${row.model}`} className="rounded-lg border border-border p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{row.model}</p>
-                  <p className="text-xs text-muted-foreground">{row.provider || "Unknown"}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold">{formatCompact(row.total_tokens, 2)}</p>
-                  <p className="text-xs text-muted-foreground">{pct.toFixed(1)}%</p>
-                </div>
-              </div>
-              <div className="mt-2 h-1.5 rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-blue-500"
-                  style={{ width: `${Math.max(pct, pct > 0 ? 3 : 0)}%` }}
-                />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
   )
 }

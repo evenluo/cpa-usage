@@ -11,6 +11,7 @@ import {
   getDefaultGranularity,
   getEffectiveGranularity,
   getLeaderboardSortLabel,
+  getModelMixPresentation,
   resolveStoredTimeRange,
   TIME_RANGES,
 } from "./view-model"
@@ -139,6 +140,12 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.leaderboardRows).toEqual([apiKey])
     expect(viewModel.keyAliases).toEqual([account])
     expect(viewModel.providerOptions).toEqual(analytics.provider_options)
+    expect(viewModel.modelDistribution).toEqual([])
+    expect(viewModel.insights).toEqual([])
+    expect(viewModel.hasModelDistribution).toBe(false)
+    expect(viewModel.hasInsights).toBe(false)
+    expect(viewModel.modelMixMeasure).toBe("tokens")
+    expect(viewModel.modelMixCostStateLabel).toBe("Cost state: partial · Token share")
     expect(viewModel.fixedHeatmap).toBe(fixedHeatmap)
     expect(viewModel.serviceHealth).toBe(requestHealth.service_health)
     expect(viewModel.hasLeaderboardBreakdown).toBe(true)
@@ -187,6 +194,10 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.apiKeys[0].label).toBe("Raw API Key")
     expect(viewModel.keyAliases[0].traceability).toBe("sk-a*******3456 · OpenAI")
     expect(viewModel.providerOptions[0].cost_status).toBe("partial")
+    expect(viewModel.modelDistribution[0].model).toBe("priced-model")
+    expect(viewModel.insights[0].title).toBe("Pricing Missing")
+    expect(viewModel.modelMixMeasure).toBe("tokens")
+    expect(viewModel.modelMixCostStateLabel).toBe("Cost state: partial · Token share")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
   })
 
@@ -197,6 +208,21 @@ describe("Usage Intelligence view model", () => {
     expect(getCacheReadShareCaption("no_prompt_input")).toBe("no prompt input")
   })
 
+  it("uses Cost for Model Mix only when the summary Cost status is available", () => {
+    expect(getModelMixPresentation("available")).toEqual({
+      measure: "cost",
+      costStateLabel: "Cost state: available · Cost share",
+    })
+    expect(getModelMixPresentation("partial")).toEqual({
+      measure: "tokens",
+      costStateLabel: "Cost state: partial · Token share",
+    })
+    expect(getModelMixPresentation("unavailable")).toEqual({
+      measure: "tokens",
+      costStateLabel: "Cost state: unavailable · Token share",
+    })
+  })
+
   it("keeps empty-data behavior explicit", () => {
     expect(buildUsageDashboardViewModel({ leaderboardScope: "account" })).toMatchObject({
       trend: [],
@@ -204,6 +230,11 @@ describe("Usage Intelligence view model", () => {
       apiKeys: [],
       leaderboardRows: [],
       providerOptions: [],
+      modelDistribution: [],
+      insights: [],
+      hasModelDistribution: false,
+      hasInsights: false,
+      modelMixMeasure: "tokens",
       hasLeaderboardBreakdown: false,
       leaderboardSortLabel: "Sort: Cost",
       kpiData: null,

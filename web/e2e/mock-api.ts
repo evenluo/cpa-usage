@@ -225,17 +225,27 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
     if (path === "/usage/events") {
       const page = Number(url.searchParams.get("page") ?? "1")
       const pageSize = Number(url.searchParams.get("page_size") ?? "100")
+      const provider = url.searchParams.get("provider")?.trim() ?? ""
       if (![1, 10, 20, 50, 100, 500, 1000].includes(pageSize)) {
         await route.fulfill({ status: 400, json: { error: `invalid page_size ${pageSize}` } })
         return
       }
       const start = (page - 1) * pageSize
+      const scopedEvents = provider
+        ? usageEvents.map((event) => ({
+            ...event,
+            model: `${provider}-evidence-model`,
+            source: provider,
+            auth_index: provider,
+            api_key_alias: `${provider} Agent`,
+          }))
+        : usageEvents
       await route.fulfill({ json: {
-        events: usageEvents.slice(start, start + pageSize),
-        total_count: usageEvents.length,
+        events: scopedEvents.slice(start, start + pageSize),
+        total_count: scopedEvents.length,
         page,
         page_size: pageSize,
-        total_pages: Math.max(1, Math.ceil(usageEvents.length / pageSize)),
+        total_pages: Math.max(1, Math.ceil(scopedEvents.length / pageSize)),
       } })
       return
     }

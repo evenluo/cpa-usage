@@ -14,6 +14,12 @@ function viewModel(overrides: Partial<UsageDashboardViewModel> = {}): UsageDashb
     apiKeys: [],
     leaderboardRows: [],
     providerOptions: [],
+    modelDistribution: [],
+    insights: [],
+    hasModelDistribution: false,
+    hasInsights: false,
+    modelMixMeasure: "tokens",
+    modelMixCostStateLabel: "Cost state: unavailable · Token share",
     hasLeaderboardBreakdown: false,
     leaderboardSortLabel: "Sort: Cost",
     kpiData: null,
@@ -68,6 +74,8 @@ describe("buildUsageDashboardSurfaces", () => {
     expect(surfaces.kpis.status).toBe("loading")
     expect(surfaces.trend.status).toBe("loading")
     expect(surfaces.leaderboard.status).toBe("loading")
+    expect(surfaces.modelMix.status).toBe("loading")
+    expect(surfaces.insights.status).toBe("loading")
   })
 
   it("marks every core-owned surface error without cached data", () => {
@@ -82,7 +90,37 @@ describe("buildUsageDashboardSurfaces", () => {
     expect(surfaces.trend.status).toBe("error")
     expect(surfaces.core.status).toBe("error")
     expect(surfaces.leaderboard.status).toBe("error")
+    expect(surfaces.modelMix.status).toBe("error")
+    expect(surfaces.insights.status).toBe("error")
     expect(surfaces.leaderboard.data).toEqual([])
+  })
+
+  it("projects model distribution and insights through the core surface state", () => {
+    const model = { model: "gpt-5", total_tokens: 20 } as UsageDashboardViewModel["modelDistribution"][number]
+    const insight = { type: "metric_completeness", title: "Complete" } as UsageDashboardViewModel["insights"][number]
+    const ready = buildUsageDashboardSurfaces({
+      viewModel: viewModel({
+        modelDistribution: [model],
+        insights: [insight],
+        hasModelDistribution: true,
+        hasInsights: true,
+      }),
+      core: { data: analytics, isLoading: false, error: null },
+      heatmap: idle,
+      requestHealth: idle,
+    })
+
+    expect(ready.modelMix).toEqual({ status: "ready", data: [model] })
+    expect(ready.insights).toEqual({ status: "ready", data: [insight] })
+
+    const empty = buildUsageDashboardSurfaces({
+      viewModel: viewModel({ hasModelDistribution: true, hasInsights: true }),
+      core: { data: analytics, isLoading: false, error: null },
+      heatmap: idle,
+      requestHealth: idle,
+    })
+    expect(empty.modelMix.status).toBe("empty")
+    expect(empty.insights.status).toBe("empty")
   })
 
   it("keeps surfaces ready with cached data while a refresh is in flight or fails", () => {
