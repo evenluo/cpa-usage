@@ -14,4 +14,7 @@ CPA Usage consumes the CPA usage queue with `LPOP`, then persists each returned 
 
 - Retrying a persisted row after event insertion or processed-mark failure is deterministic across clock changes.
 - Operators receive an explicit failed pull and error log if SQLite cannot persist a popped batch, but must treat that batch as lost rather than recoverable.
-- This change preserves the current CPA queue protocol and SQLite schema. Payloads with provider timestamps or request IDs retain their existing event semantics.
+
+## Compatibility
+
+This is an intentional incompatible correction for queue payloads without a provider timestamp: their fallback event timestamp changes from each processing attempt's clock to the persisted `PoppedAt`, and a missing request ID makes the canonical event key follow that stable timestamp. The CPA queue protocol, SQLite schema, and payloads with provider timestamps or request IDs retain their existing semantics.
