@@ -47,40 +47,6 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dt
 	return breakdown, nil
 }
 
-func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsProviderOption, error) {
-	source := analyticsEventsAggregateSource()
-	var rows []analyticsProviderOptionRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
-		Select(`
-			TRIM(usage_events.provider) AS provider,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
-		Where("TRIM(usage_events.provider) <> ''").
-		Group("TRIM(usage_events.provider)").
-		Order("total_cost DESC").
-		Order(analyticsTotalTokensDescOrder(source)).
-		Order("provider ASC").
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics provider options: %w", err)
-	}
-
-	options := make([]dto.AnalyticsProviderOption, 0, len(rows))
-	for _, row := range rows {
-		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
-		options = append(options, dto.AnalyticsProviderOption{
-			Provider:      row.Provider,
-			RequestCount:  row.RequestCount,
-			TotalTokens:   row.TotalTokens,
-			TotalCost:     row.TotalCost,
-			CostAvailable: cost.Available,
-			CostStatus:    cost.Status,
-		})
-	}
-	return options, nil
-}
 func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsModelBreakdown {
 	record := dto.AnalyticsModelBreakdown{
 		Model:              row.Model,
