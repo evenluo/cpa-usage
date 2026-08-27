@@ -81,7 +81,7 @@ env GOCACHE=/tmp/cpa-usage-issue126-go-cache GOMAXPROCS=1 go test ./internal/rep
 env GOCACHE=/tmp/cpa-usage-issue126-go-cache GOMAXPROCS=1 go test ./internal/repository -run '^$' -bench='BenchmarkAnalyticsCoreCoveredRollupHighCardinality$' -benchmem -count=3 -benchtime=1x
 ```
 
-`1x` is intentional: one raw iteration takes more than eight seconds, so `-benchtime=2s` also selects one iteration. Three independent fixture/process repetitions establish direction without multiplying database setup ten times.
+`1x` is intentional: one raw iteration takes more than eight seconds, so `-benchtime=2s` also selects one iteration. Three fresh fixture/database repetitions establish direction without multiplying database setup ten times; `go test -count=3` runs those repetitions in one test binary process.
 
 Raw output summary:
 
