@@ -195,6 +195,19 @@ func TestRunStartsPollerAndMaintenanceIndependently(t *testing.T) {
 	}
 }
 
+func TestRunRejectsNilContext(t *testing.T) {
+	cfg := testAppConfig(t)
+	application := &App{Config: &cfg, Router: gin.New()}
+
+	err := application.Run(nil)
+	if err == nil || err.Error() != "application run context is required" {
+		t.Fatalf("expected explicit nil context error, got %v", err)
+	}
+	if application.runtimeStarted {
+		t.Fatal("expected nil context not to start the application runtime")
+	}
+}
+
 func TestRunCancelsBackgroundTasksWhenContextStops(t *testing.T) {
 	cfg := testAppConfig(t)
 	cfg.AppPort = "0"
@@ -266,37 +279,80 @@ func TestCloseDrainsBlockingHTTPHandlerBeforeClosingResources(t *testing.T) {
 	}
 }
 
-func TestCloseDeadlineKeepsResourcesLiveAndAllowsRetry(t *testing.T) {
+func TestCloseDeadlineCancelsHandlerBeforeClosingResources(t *testing.T) {
 	application, sqlDB, logCloser := newLifecycleTestApp(t)
 	handlerStarted := make(chan struct{})
-	releaseHandler := make(chan struct{})
-	application.Server, _ = startBlockingHTTPServer(t, handlerStarted, releaseHandler)
+	handlerReleased := make(chan error, 1)
+	router := gin.New()
+	router.GET("/blocking", func(c *gin.Context) {
+		close(handlerStarted)
+		<-c.Request.Context().Done()
+		if err := sqlDB.Ping(); err != nil {
+			handlerReleased <- fmt.Errorf("database closed before handler release: %w", err)
+			return
+		}
+		if logCloser.isClosed() {
+			handlerReleased <- errors.New("log resource closed before handler release")
+			return
+		}
+		handlerReleased <- nil
+	})
+	application.Router = router
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	application.Server = &http.Server{Handler: application.httpHandler()}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- application.Server.Serve(listener) }()
+	requestDone := make(chan error, 1)
+	go func() {
+		response, requestErr := http.Get("http://" + listener.Addr().String() + "/blocking")
+		if requestErr == nil {
+			_ = response.Body.Close()
+		}
+		requestDone <- requestErr
+	}()
+	select {
+	case <-handlerStarted:
+	case requestErr := <-requestDone:
+		t.Fatalf("request ended before handler started: %v", requestErr)
+	case <-time.After(time.Second):
+		t.Fatal("blocking handler did not start")
+	}
 	application.shutdownTimeout = 25 * time.Millisecond
 
-	err := application.Close()
+	err = application.Close()
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("expected explicit HTTP drain deadline, got %v", err)
 	}
-	if err := sqlDB.Ping(); err != nil {
-		t.Fatalf("database closed after incomplete drain: %v", err)
-	}
-	if logCloser.isClosed() {
-		t.Fatal("log resource closed after incomplete drain")
-	}
-	if err := application.manualSync.SyncNow(context.Background()); !errors.Is(err, poller.ErrSyncUnavailable) {
-		t.Fatalf("expected manual admission to stay closed after timeout, got %v", err)
-	}
-
-	close(releaseHandler)
-	application.shutdownTimeout = time.Second
-	if err := application.Close(); err != nil {
-		t.Fatalf("retry Close returned error: %v", err)
+	if handlerErr := <-handlerReleased; handlerErr != nil {
+		t.Fatal(handlerErr)
 	}
 	if err := sqlDB.Ping(); err == nil {
-		t.Fatal("expected retry to close database after handler exit")
+		t.Fatal("expected database to close after canceled handler released ownership")
 	}
 	if !logCloser.isClosed() {
-		t.Fatal("expected retry to close log resource")
+		t.Fatal("expected log resource to close after canceled handler released ownership")
+	}
+	if err := application.manualSync.SyncNow(context.Background()); !errors.Is(err, poller.ErrSyncUnavailable) {
+		t.Fatalf("expected manual admission to remain closed, got %v", err)
+	}
+	if repeatedErr := application.Close(); !errors.Is(repeatedErr, context.DeadlineExceeded) {
+		t.Fatalf("expected idempotent Close to retain drain error, got %v", repeatedErr)
+	}
+	select {
+	case serveErr := <-serveDone:
+		if !errors.Is(serveErr, http.ErrServerClosed) {
+			t.Fatalf("Serve returned error: %v", serveErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("HTTP server did not stop")
+	}
+	select {
+	case <-requestDone:
+	case <-time.After(time.Second):
+		t.Fatal("canceled HTTP request did not return")
 	}
 }
 
@@ -350,6 +406,44 @@ func TestCloseRejectsNewHTTPAdmission(t *testing.T) {
 	handler.ServeHTTP(after, httptest.NewRequest(http.MethodGet, "/accepted", nil))
 	if after.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected new HTTP admission rejection after close, got %d", after.Code)
+	}
+}
+
+func TestHTTPRequestAdmissionAndCloseSerializeWaitGroupAdd(t *testing.T) {
+	for index := range 100 {
+		application := &App{Router: gin.New()}
+		start := make(chan struct{})
+		admissionDone := make(chan struct{})
+		closeDone := make(chan error, 1)
+		go func() {
+			<-start
+			_, release, admitted := application.admitHTTPRequest(httptest.NewRequest(http.MethodGet, "/", nil))
+			if admitted {
+				release()
+			}
+			close(admissionDone)
+		}()
+		go func() {
+			<-start
+			closeDone <- application.Close()
+		}()
+		close(start)
+		select {
+		case <-admissionDone:
+		case <-time.After(time.Second):
+			t.Fatalf("iteration %d: HTTP admission did not finish", index)
+		}
+		select {
+		case err := <-closeDone:
+			if err != nil {
+				t.Fatalf("iteration %d: Close returned error: %v", index, err)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("iteration %d: Close did not finish", index)
+		}
+		if _, _, admitted := application.admitHTTPRequest(httptest.NewRequest(http.MethodGet, "/", nil)); admitted {
+			t.Fatalf("iteration %d: request admitted after Close", index)
+		}
 	}
 }
 
@@ -409,12 +503,13 @@ func TestAppCloseRejectsQuotaRefreshAdmission(t *testing.T) {
 
 func TestHTTPDrainDeadlineStartsBeforeAcceptedQuotaWorkersStop(t *testing.T) {
 	quotaStarted := make(chan struct{})
-	releaseQuota := make(chan struct{})
-	quotaHandler := &blockingLifecycleQuotaHandler{started: quotaStarted, release: releaseQuota}
+	quotaCanceled := make(chan struct{})
+	quotaHandler := &blockingLifecycleQuotaHandler{started: quotaStarted, canceled: quotaCanceled}
 	service := quota.NewServiceWithRegistry(
 		lifecycleIdentityLookup{},
 		quota.NewProviderRegistry(map[string]quota.ProviderHandler{"claude": quotaHandler}),
 	)
+	service.AttachRefreshWorkerLifecycle(context.Background())
 	refresh, err := service.Refresh(context.Background(), quota.RefreshRequest{AuthIndexes: []string{"auth-1"}, Limit: 1})
 	if err != nil || refresh.Accepted != 1 {
 		t.Fatalf("expected initial quota refresh admission, response=%+v err=%v", refresh, err)
@@ -422,9 +517,36 @@ func TestHTTPDrainDeadlineStartsBeforeAcceptedQuotaWorkersStop(t *testing.T) {
 	<-quotaStarted
 
 	httpStarted := make(chan struct{})
-	releaseHTTP := make(chan struct{})
-	server, _ := startBlockingHTTPServer(t, httpStarted, releaseHTTP)
-	application := &App{Quota: service, Server: server, shutdownTimeout: 25 * time.Millisecond}
+	httpCanceled := make(chan struct{})
+	router := gin.New()
+	router.GET("/blocking", func(c *gin.Context) {
+		close(httpStarted)
+		<-c.Request.Context().Done()
+		close(httpCanceled)
+	})
+	application := &App{Quota: service, Router: router, shutdownTimeout: 25 * time.Millisecond}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	application.Server = &http.Server{Handler: application.httpHandler()}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- application.Server.Serve(listener) }()
+	requestDone := make(chan error, 1)
+	go func() {
+		response, requestErr := http.Get("http://" + listener.Addr().String() + "/blocking")
+		if requestErr == nil {
+			_ = response.Body.Close()
+		}
+		requestDone <- requestErr
+	}()
+	select {
+	case <-httpStarted:
+	case requestErr := <-requestDone:
+		t.Fatalf("request ended before handler started: %v", requestErr)
+	case <-time.After(time.Second):
+		t.Fatal("blocking HTTP handler did not start")
+	}
 	startedAt := time.Now()
 	err = application.Close()
 	if !errors.Is(err, context.DeadlineExceeded) {
@@ -433,22 +555,27 @@ func TestHTTPDrainDeadlineStartsBeforeAcceptedQuotaWorkersStop(t *testing.T) {
 	if elapsed := time.Since(startedAt); elapsed > 500*time.Millisecond {
 		t.Fatalf("HTTP deadline started too late behind quota worker wait: %s", elapsed)
 	}
-	quotaTask, err := service.GetRefreshTask(context.Background(), refresh.Tasks[0].TaskID)
-	if err != nil || quotaTask.Status != quota.RefreshTaskStatusRunning {
-		t.Fatalf("expected quota worker to remain running after incomplete HTTP drain, task=%+v err=%v", quotaTask, err)
-	}
-
-	close(releaseHTTP)
-	retryDone := make(chan error, 1)
-	go func() { retryDone <- application.Close() }()
 	select {
-	case err := <-retryDone:
-		t.Fatalf("retry returned before accepted quota worker stopped: %v", err)
-	case <-time.After(30 * time.Millisecond):
+	case <-httpCanceled:
+	default:
+		t.Fatal("expected HTTP handler context cancellation at drain deadline")
 	}
-	close(releaseQuota)
-	if err := <-retryDone; err != nil {
-		t.Fatalf("retry Close returned error: %v", err)
+	select {
+	case <-quotaCanceled:
+	default:
+		t.Fatal("expected accepted quota worker cancellation after HTTP owner release")
+	}
+	quotaTask, err := service.GetRefreshTask(context.Background(), refresh.Tasks[0].TaskID)
+	if err != nil || quotaTask.Status != quota.RefreshTaskStatusFailed {
+		t.Fatalf("expected canceled quota worker to be failed, task=%+v err=%v", quotaTask, err)
+	}
+	select {
+	case serveErr := <-serveDone:
+		if !errors.Is(serveErr, http.ErrServerClosed) {
+			t.Fatalf("Serve returned error: %v", serveErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("HTTP server did not stop")
 	}
 }
 
@@ -624,15 +751,23 @@ func (lifecycleQuotaHandler) Check(context.Context, quota.ProviderInput) (quota.
 }
 
 type blockingLifecycleQuotaHandler struct {
-	started chan struct{}
-	release <-chan struct{}
-	once    sync.Once
+	started  chan struct{}
+	canceled chan struct{}
+	release  <-chan struct{}
+	once     sync.Once
 }
 
-func (h *blockingLifecycleQuotaHandler) Check(context.Context, quota.ProviderInput) (quota.ProviderOutput, error) {
+func (h *blockingLifecycleQuotaHandler) Check(ctx context.Context, _ quota.ProviderInput) (quota.ProviderOutput, error) {
 	h.once.Do(func() { close(h.started) })
-	<-h.release
-	return quota.ProviderOutput{}, nil
+	select {
+	case <-ctx.Done():
+		if h.canceled != nil {
+			close(h.canceled)
+		}
+		return quota.ProviderOutput{}, ctx.Err()
+	case <-h.release:
+		return quota.ProviderOutput{}, nil
+	}
 }
 
 type appRunStub struct {

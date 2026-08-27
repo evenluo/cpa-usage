@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"cpa-usage/internal/api"
@@ -32,9 +31,9 @@ type Runner interface {
 	SyncNow(ctx context.Context) (poller.ManualSyncOutcome, error)
 }
 
-// defaultShutdownTimeout bounds accepted HTTP request drain during process
-// shutdown. A timeout is explicit and retryable; it never authorizes closing
-// resources still owned by a live handler or background runner.
+// defaultShutdownTimeout bounds graceful HTTP request drain during process
+// shutdown. At the deadline App cancels accepted handler contexts and still
+// waits for their ownership to release before closing shared resources.
 const defaultShutdownTimeout = 10 * time.Second
 
 type Options struct {
@@ -66,7 +65,10 @@ type App struct {
 	closed         bool
 	closeErr       error
 	closeAttempt   *appCloseAttempt
-	httpClosed     atomic.Bool
+	httpClosing    bool
+	httpContext    context.Context
+	httpCancel     context.CancelFunc
+	httpWG         sync.WaitGroup
 
 	metricsMu              sync.Mutex
 	lastMetricsSampleAt    time.Time
@@ -217,11 +219,11 @@ func (a *App) Close() error {
 }
 
 func (a *App) Run(ctx context.Context) error {
+	if ctx == nil {
+		return fmt.Errorf("application run context is required")
+	}
 	if a == nil || a.Router == nil || a.Config == nil {
 		return fmt.Errorf("application is not initialized")
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 
 	serverDone, err := a.startRuntime()
@@ -336,6 +338,9 @@ func (a *App) beginCloseAttempt() (*appCloseAttempt, bool, error) {
 	}
 	attempt := &appCloseAttempt{done: make(chan struct{})}
 	a.closeAttempt = attempt
+	// HTTP admission and handler WaitGroup.Add share this lock. After closing is
+	// visible no new handler can increment the owner count before Close waits.
+	a.httpClosing = true
 	return attempt, true, nil
 }
 
@@ -353,14 +358,14 @@ func (a *App) finishCloseAttempt(attempt *appCloseAttempt, err error, complete b
 
 func (a *App) closeRuntime() (error, bool) {
 	// Admission closes before HTTP drain. Accepted handlers retain their owners
-	// until Shutdown confirms that every active handler has returned.
-	a.httpClosed.Store(true)
+	// until graceful drain or deadline cancellation makes every handler return.
 	if a.manualSync != nil {
 		a.manualSync.CloseAdmission()
 	}
 	if a.Quota != nil {
 		a.Quota.CloseRefreshAdmission()
 	}
+	var drainErr error
 	if a.Server != nil {
 		timeout := a.shutdownTimeout
 		if timeout <= 0 {
@@ -370,11 +375,14 @@ func (a *App) closeRuntime() (error, bool) {
 		err := a.Server.Shutdown(shutdownCtx)
 		cancel()
 		if err != nil {
-			// A drain timeout is retryable. Background owners and their DB/log
-			// resources remain live until a later Close proves the drain complete.
-			return fmt.Errorf("drain HTTP server: %w", err), false
+			drainErr = fmt.Errorf("drain HTTP server: %w", err)
 		}
 	}
+	// Shutdown success means server-owned handlers drained; cancellation also
+	// closes any App-admitted request that raced before server ownership became
+	// visible. On timeout it is the explicit forced-drain signal.
+	a.cancelHTTPHandlers()
+	a.httpWG.Wait()
 	if a.Quota != nil {
 		a.Quota.StopRefreshWorkers()
 	}
@@ -385,7 +393,7 @@ func (a *App) closeRuntime() (error, bool) {
 	}
 	a.backgroundWG.Wait()
 
-	var closeErr error
+	closeErr := drainErr
 	if a.DB != nil {
 		closeErr = errors.Join(closeErr, closeGormDB(a.DB))
 		a.DB = nil
@@ -399,10 +407,44 @@ func (a *App) closeRuntime() (error, bool) {
 
 func (a *App) httpHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
-		if a.httpClosed.Load() {
+		ownedRequest, release, admitted := a.admitHTTPRequest(request)
+		if !admitted {
 			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		a.Router.ServeHTTP(w, request)
+		defer release()
+		a.Router.ServeHTTP(w, ownedRequest)
 	})
+}
+
+func (a *App) admitHTTPRequest(request *http.Request) (*http.Request, func(), bool) {
+	a.lifecycleMu.Lock()
+	if a.httpClosing {
+		a.lifecycleMu.Unlock()
+		return nil, nil, false
+	}
+	if a.httpContext == nil {
+		a.httpContext, a.httpCancel = context.WithCancel(context.Background())
+	}
+	ownerContext := a.httpContext
+	a.httpWG.Add(1)
+	a.lifecycleMu.Unlock()
+
+	requestContext, cancelRequest := context.WithCancel(request.Context())
+	stopOwnerCancellation := context.AfterFunc(ownerContext, cancelRequest)
+	release := func() {
+		stopOwnerCancellation()
+		cancelRequest()
+		a.httpWG.Done()
+	}
+	return request.WithContext(requestContext), release, true
+}
+
+func (a *App) cancelHTTPHandlers() {
+	a.lifecycleMu.Lock()
+	cancel := a.httpCancel
+	a.lifecycleMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
