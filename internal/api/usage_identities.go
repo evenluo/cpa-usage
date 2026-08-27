@@ -107,7 +107,8 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		page := positiveQueryInt(c, "page", 1)
 		pageSize := positiveQueryInt(c, "page_size", 100)
 		if keyAliasProvider == nil {
-			c.JSON(http.StatusOK, usageAPIKeysPageResponse{APIKeys: []usageAPIKeyResponse{}, Page: 1, PageSize: pageSize, TotalPages: 1})
+			responsePage, totalPages := paginationMetadata(0, page, pageSize)
+			c.JSON(http.StatusOK, usageAPIKeysPageResponse{APIKeys: []usageAPIKeyResponse{}, Page: responsePage, PageSize: pageSize, TotalPages: totalPages})
 			return
 		}
 		result, err := keyAliasProvider.ListAPIKeyAliasTargetsPage(c.Request.Context(), service.ListAPIKeyAliasTargetsRequest{Page: page, PageSize: pageSize})
@@ -119,16 +120,13 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		for _, item := range result.Items {
 			response = append(response, mapUsageAPIKeyResponse(item))
 		}
-		responsePage := page
-		if result.Total == 0 {
-			responsePage = 1
-		}
+		responsePage, totalPages := paginationMetadata(result.Total, page, pageSize)
 		c.JSON(http.StatusOK, usageAPIKeysPageResponse{
 			APIKeys:    response,
 			TotalCount: result.Total,
 			Page:       responsePage,
 			PageSize:   pageSize,
-			TotalPages: totalPages(result.Total, pageSize),
+			TotalPages: totalPages,
 		})
 	})
 
@@ -178,7 +176,8 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 
 	router.GET("/usage/identities/page", func(c *gin.Context) {
 		if usageIdentityProvider == nil {
-			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: 1, PageSize: 10, TotalPages: 1})
+			page, totalPages := paginationMetadata(0, 1, 10)
+			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: page, PageSize: 10, TotalPages: totalPages})
 			return
 		}
 
@@ -204,16 +203,13 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		for _, item := range items {
 			response = append(response, mapUsageIdentityResponse(item, aliases))
 		}
-		responsePage := request.Page
-		if total == 0 {
-			responsePage = 1
-		}
+		responsePage, totalPages := paginationMetadata(total, request.Page, request.PageSize)
 		c.JSON(http.StatusOK, usageIdentitiesPageResponse{
 			Identities: response,
 			TotalCount: total,
 			Page:       responsePage,
 			PageSize:   request.PageSize,
-			TotalPages: totalPages(total, request.PageSize),
+			TotalPages: totalPages,
 		})
 	})
 
@@ -327,11 +323,11 @@ func positiveQueryInt(c *gin.Context, key string, fallback int) int {
 	return value
 }
 
-func totalPages(total int64, pageSize int) int {
-	if total <= 0 || pageSize <= 0 {
-		return 1
+func paginationMetadata(total int64, page, pageSize int) (int, int) {
+	if total <= 0 {
+		return 1, 1
 	}
-	return int((total + int64(pageSize) - 1) / int64(pageSize))
+	return page, int((total + int64(pageSize) - 1) / int64(pageSize))
 }
 
 func aliasesForUsageIdentities(ctx context.Context, keyAliasProvider service.KeyAliasProvider, items []entities.UsageIdentity) (map[service.UsageIdentityAliasKey]string, error) {
