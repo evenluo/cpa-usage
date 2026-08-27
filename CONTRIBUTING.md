@@ -18,9 +18,12 @@ Edit `.env` with a reachable `CPA_BASE_URL` and `CPA_MANAGEMENT_KEY` before runn
 ## Development entrypoints
 
 ```bash
-make dev-backend
-make dev-frontend
+make dev-app
 ```
+
+`make dev-app` is the integrated development Interface: it builds `web/dist`, then starts the Go application that serves the UI and `/api/v1` from one origin. It reads `.env` by default; override the path with `ENV_FILE=/path/to/file`.
+
+`make dev-frontend` is isolated Vite HMR only. It has no API proxy and does not prove integrated or end-to-end behavior. `make dev-backend` serves the last built frontend and API without rebuilding the frontend.
 
 Use focused commands while iterating:
 
@@ -42,7 +45,9 @@ make verify-frontend
 make verify
 ```
 
-`make verify-backend` runs Go tests and `go vet`. `make verify-frontend` runs `npm ci`, frontend lint, typecheck, Vitest tests through `make test-frontend`, and frontend build.
+`make verify-backend` runs Go tests and `go vet`. `make verify-frontend` runs `npm ci`, frontend lint, typecheck, Vitest tests through `make test-frontend`, and mobile Playwright checks after the frontend build.
+
+For deployment contracts, `make verify-dokploy-compose` is the canonical fail-closed Compose gate. `make verify-dokploy-compose-static` is only a narrower static check and cannot replace the canonical release gate; `make verify-dokploy-release` adds the local terminal-deployment and health decision fixtures.
 
 For docs, templates, repository metadata, CI, Docker, or deployment-only changes, use the risk-matched verification policy in `docs/project/contract.md`.
 
