@@ -23,7 +23,7 @@ type AnalyticsFilter struct {
 	Granularity    string
 }
 
-// UsageEventListFilter 是 Request Event Log 列表的查询条件。
+// UsageEventListFilter 是 Request Evidence 列表的查询条件。
 type UsageEventListFilter struct {
 	UsageTimeScope
 	Page      int
