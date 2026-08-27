@@ -3,6 +3,7 @@ import { KpiCard } from "@/components/intelligence/kpi-card"
 import { DashboardCharts } from "@/components/intelligence/dashboard-charts"
 import { DashboardControls } from "@/components/intelligence/dashboard-controls"
 import { DashboardFixedOverview } from "@/components/intelligence/dashboard-fixed-overview"
+import { DashboardCoreEmptyState } from "@/components/intelligence/dashboard-core-empty-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatCost, formatCompact, formatPercent } from "@/lib/format"
@@ -38,11 +39,7 @@ function DashboardPage() {
           </CardContent>
         </Card>
       ) : surfaces.core.status === "empty" ? (
-        <Card>
-          <CardContent className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
-            No usage in the selected window
-          </CardContent>
-        </Card>
+        <DashboardCoreEmptyState refreshError={surfaces.core.refreshError} onRetry={dashboard.retryCore} />
       ) : (
         <>
           {surfaces.core.status === "ready" && surfaces.core.refreshError ? (

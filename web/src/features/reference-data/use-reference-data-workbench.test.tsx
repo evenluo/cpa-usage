@@ -148,6 +148,60 @@ describe("useReferenceDataWorkbench", () => {
     expect(retryPricing).not.toHaveBeenCalled()
   })
 
+  it("keeps an initial Accounts failure independent and retries only Accounts", () => {
+    const retryAPIKeys = vi.fn()
+    const retryAccounts = vi.fn()
+    const retryPricing = vi.fn()
+    vi.mocked(useAPIKeys).mockReturnValue({ data: [apiKey], isLoading: false, error: null, refetch: retryAPIKeys } as never)
+    vi.mocked(useKeys).mockReturnValue({ data: undefined, isLoading: false, error: new Error("accounts failed"), refetch: retryAccounts } as never)
+    vi.mocked(usePricing).mockReturnValue({ data: { pricing: [configuredPricing], usedModels: ["configured-model"] }, isLoading: false, error: null, refetch: retryPricing } as never)
+
+    const { result } = renderHook(() => useReferenceDataWorkbench())
+
+    expect(result.current.accountsRead.status).toBe("error")
+    expect(result.current.accountCount).toBeUndefined()
+    expect(result.current.apiKeysRead.status).toBe("ready")
+    expect(result.current.apiKeyCount).toBe(1)
+    expect(result.current.pricingRead.status).toBe("ready")
+    act(() => result.current.accountsRead.retry())
+    expect(retryAccounts).toHaveBeenCalledTimes(1)
+    expect(retryAPIKeys).not.toHaveBeenCalled()
+    expect(retryPricing).not.toHaveBeenCalled()
+  })
+
+  it("keeps an initial Cost Rates failure independent and retries only Cost Rates", () => {
+    const retryAPIKeys = vi.fn()
+    const retryAccounts = vi.fn()
+    const retryPricing = vi.fn()
+    vi.mocked(useAPIKeys).mockReturnValue({ data: [apiKey], isLoading: false, error: null, refetch: retryAPIKeys } as never)
+    vi.mocked(useKeys).mockReturnValue({ data: [accountKey], isLoading: false, error: null, refetch: retryAccounts } as never)
+    vi.mocked(usePricing).mockReturnValue({ data: undefined, isLoading: false, error: new Error("pricing failed"), refetch: retryPricing } as never)
+
+    const { result } = renderHook(() => useReferenceDataWorkbench())
+
+    expect(result.current.pricingRead.status).toBe("error")
+    expect(result.current.missingRates).toBeUndefined()
+    expect(result.current.apiKeysRead.status).toBe("ready")
+    expect(result.current.accountsRead.status).toBe("ready")
+    act(() => result.current.pricingRead.retry())
+    expect(retryPricing).toHaveBeenCalledTimes(1)
+    expect(retryAPIKeys).not.toHaveBeenCalled()
+    expect(retryAccounts).not.toHaveBeenCalled()
+  })
+
+  it("reports a successful empty Accounts result while preserving API Keys and Cost Rates", () => {
+    vi.mocked(useAPIKeys).mockReturnValue({ data: [apiKey], isLoading: false, error: null, refetch: vi.fn() } as never)
+    vi.mocked(useKeys).mockReturnValue({ data: [], isLoading: false, error: null, refetch: vi.fn() } as never)
+    vi.mocked(usePricing).mockReturnValue({ data: { pricing: [configuredPricing], usedModels: ["configured-model"] }, isLoading: false, error: null, refetch: vi.fn() } as never)
+
+    const { result } = renderHook(() => useReferenceDataWorkbench())
+
+    expect(result.current.accountsRead.status).toBe("empty")
+    expect(result.current.accountCount).toBe(0)
+    expect(result.current.apiKeysRead.status).toBe("ready")
+    expect(result.current.pricingRead.status).toBe("ready")
+  })
+
   it("distinguishes successful empty data and preserves cached data on refresh failure", () => {
     const staleError = new Error("refresh failed")
     vi.mocked(useAPIKeys).mockReturnValue({ data: [], isLoading: false, error: null, refetch: vi.fn() } as never)
