@@ -1,10 +1,15 @@
 # Analytics raw/rollup convergence evidence
 
-Status: accepted scoped implementation disposition for GitHub issue #126  
-Parent authority: #117/r1, outcome 20  
-Issue frozen repository base: `4aaf2ce7d8b76764cfa71c51affb0429a0939057`  
-Implementation base: `0d0fdd9c7f91fd073fcb66cec3b9fa5c0707da66`  
-Consumed owners: #124 (`7b55fd2`, `530ce1d`) and #125 (`3fc59c9`, `0d0fdd9`)  
+Status: accepted scoped implementation disposition for GitHub issue #126
+
+Parent authority: #117/r1, outcome 20
+
+Issue frozen repository base: `4aaf2ce7d8b76764cfa71c51affb0429a0939057`
+
+Implementation base: `0d0fdd9c7f91fd073fcb66cec3b9fa5c0707da66`
+
+Consumed owners: #124 (`7b55fd2`, `530ce1d`) and #125 (`3fc59c9`, `0d0fdd9`)
+
 Compatibility: public Analytics DTOs, HTTP behavior, SQLite facts, Cost/Metric Completeness, identity enrichment, ordering, and fallback reason remain unchanged.
 
 ## Disposition
