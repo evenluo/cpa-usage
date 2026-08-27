@@ -9,6 +9,7 @@ CPA Usage consumes the CPA usage queue with `LPOP`, then persists each returned 
 - A zero `PoppedAt` is a persisted-invariant failure. The row is isolated as a decode failure instead of falling back to the current processing time.
 - Request-ID identity, canonical-key assignment, deduplication, and bad-row isolation otherwise remain unchanged.
 - There is no automatic recovery for either the ambiguous interval where an `LPOP` response is lost or the interval between a successful response and the SQLite commit. An authoritative CPA claim/ack capability, requeue policy, schema change, or replay service requires a later contract decision.
+- Redis reads are bounded by the request context and positive `REQUEST_TIMEOUT`. HTTP fallback is allowed only when failure is proven to precede a destructive `LPOP`; write, response-read, cancellation, or timeout failure after the command may have started ends the pull without switching transports.
 
 ## Consequences
 

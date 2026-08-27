@@ -85,7 +85,7 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - **Usage Intelligence** is the aggregate dashboard surface; request events are supporting drill-down evidence, not the primary dashboard structure.
 - Token volume and **Cost** are peer measurement categories in the dashboard.
 - The primary trend is controlled by **Time Granularity** and must not be limited to a fixed by-day aggregation.
-- The default **Time Granularity** for the primary trend is hourly; daily is an explicit roll-up mode.
+- The frontend defaults the 30-day **Selected Analysis Window** to daily granularity and all other selectable windows to hourly granularity; an explicit user selection overrides that default.
 - **Usage Intelligence** uses the **Selected Analysis Window** for KPIs, primary trends, and ranked contributors.
 - **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, request health, recent request evidence, and **Live Capacity**.
 - **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility; it is powered by CPA generic `api-call` quota probes and cached refresh tasks, not by a CPA native quota datasource.
@@ -93,19 +93,19 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - **Live Capacity** is cache-first. Loading **Usage Intelligence** reads cached quota probe results only; manual refresh is the user action that may trigger provider calls.
 - A manual **Live Capacity** refresh is rejected as unavailable once its worker lifecycle starts shutting down; it must not return a task that cannot run.
 - **Live Capacity** follows provider filtering, but the **Selected Analysis Window** and **Time Granularity** do not change its query key or probe window.
-- **Activity Heatmap** uses a fixed 30-day hourly **Fixed Operational Window** to show recent usage rhythm, independent of the **Selected Analysis Window**.
+- **Activity Heatmap** uses a fixed 30-day **Fixed Operational Window** with date-by-hour cells to show recent usage rhythm. Its dedicated frontend load uses day granularity and remains independent of the **Selected Analysis Window**.
 - Request health and **Request Evidence** use fixed 24-hour **Fixed Operational Windows** to show recent stability and supporting samples, independent of the **Selected Analysis Window**.
 - Provider filtering scopes both **Selected Analysis Window** modules and **Fixed Operational Window** modules.
+- **Request Evidence** drill-down preserves the current provider scope and begins that scope on its first result page.
 - Provider filter options are derived from the **Selected Analysis Window**, not from fixed windows or a global provider catalog.
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
 - The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.
 - KPI comparison uses the immediately previous period for the same selected range; missing previous-period data is shown explicitly instead of inferred.
-- The primary trend includes bucket-derived summary stats for average and peak **Cost** and token volume, plus total **Cost** and tokens.
-- The first **Usage Intelligence** refinement keeps the selected range fixed to Last 7 days while adding **Time Granularity** support.
 - **Cache Read Share** is an efficiency metric for prompt input tokens, not a replacement for **Cost**, token volume, requests, or success rate.
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
 - Leaderboards default to **Cost** ordering when cost metrics are complete; partial **Cost** may still order by the priced cost portion when labeled as partial; token volume becomes the ordering measure when cost is unavailable.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
+- **Model Mix** and deterministic **Insights** are current visible **Selected Analysis Window** readings, not dormant response fields.
 - Request health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent samples; it is not the complete request event inspection surface.
 - **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.

@@ -69,6 +69,13 @@ Verification should match the risk and blast radius of the change.
 
 Do not run full runtime verification for docs-only changes unless the change also touches Makefile targets, CI workflows, runtime code, frontend code, Docker behavior, or deployment behavior.
 
+## Current Operational Contracts
+
+- The repository-root `Makefile` is the public development and verification Interface. `make dev-app` is the integrated UI/API path; `make dev-frontend` is isolated HMR without an API proxy.
+- `cmd/server` and `internal/app` own the bounded process lifecycle from SIGINT/SIGTERM through HTTP drain, background-runner cancellation and wait, then database and log closure.
+- [ADR 0008](../adr/0008-redis-inbox-replay-and-loss-window.md) owns the destructive Redis pop, deterministic inbox replay, and explicit pop-to-SQLite loss-window contract.
+- [Dokploy release chain](../deploy/dokploy-release.md) owns canonical pre-mutation Compose verification, exact converted-image readback, correlated terminal deployment proof, and deployed `/usage/healthz` proof. Static-only Compose validation is supporting evidence, not the release gate.
+
 ## Shared Contribution Invariants
 
 Human contributors and AI agents share these invariants:
@@ -84,4 +91,3 @@ Human contributors and AI agents share these invariants:
 ## Follow-Ups
 
 - Code of Conduct adoption requires a real maintainer contact before this repository can add enforcement instructions.
-

@@ -1,5 +1,9 @@
 # Frontend v2 Redesign — Usage Intelligence Dashboard
 
+Status: historical planning artifact; not the current implementation contract
+
+Current SoT: [`CONTEXT.md`](../../CONTEXT.md), [`docs/project/contract.md`](../project/contract.md), [`docs/project/layout.md`](../project/layout.md), and [Web Capability Coverage](../design/web-capability-coverage.md)
+
 ## Problem Statement
 
 The original CPA Usage frontend was a single 1,800-line `App.tsx` file that lacked visual sophistication and polished interaction design. It has been replaced in the active source tree; `web/` is the only frontend implementation. Users frequently interact with the dashboard to monitor AI API consumption, and the interface should feel intentional rather than merely utilitarian. Key pain points addressed by v2 include:
