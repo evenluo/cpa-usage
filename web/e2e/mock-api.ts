@@ -235,16 +235,19 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
         total_count: usageEvents.length,
         page,
         page_size: pageSize,
-        total_pages: Math.ceil(usageEvents.length / pageSize),
+        total_pages: Math.max(1, Math.ceil(usageEvents.length / pageSize)),
       } })
       return
     }
     if (path === "/usage/identities/page") {
-      await route.fulfill({ json: url.searchParams.get("auth_type") === "1" ? authFileIdentitiesPayload : usageIdentities })
+      const payload = url.searchParams.get("auth_type") === "1" ? authFileIdentitiesPayload : usageIdentities
+      const pageSize = Number(url.searchParams.get("page_size") ?? "10")
+      await route.fulfill({ json: { ...payload, page_size: pageSize, total_pages: Math.max(1, Math.ceil(payload.total_count / pageSize)) } })
       return
     }
     if (path === "/usage/api-keys/page") {
-      await route.fulfill({ json: apiKeyAliasTargets })
+      const pageSize = Number(url.searchParams.get("page_size") ?? "100")
+      await route.fulfill({ json: { ...apiKeyAliasTargets, page_size: pageSize, total_pages: Math.max(1, Math.ceil(apiKeyAliasTargets.total_count / pageSize)) } })
       return
     }
     if (path === "/pricing" && method === "GET") {

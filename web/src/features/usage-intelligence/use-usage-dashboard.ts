@@ -36,6 +36,10 @@ export interface UseUsageDashboardResult {
   isRequestEvidenceLoading: boolean
   isRequestEvidenceRefreshing: boolean
   requestEvidenceError: unknown
+  retryCore: () => void
+  retryHeatmap: () => void
+  retryRequestHealth: () => void
+  retryRequestEvidence: () => void
   refreshDashboard: () => void
 }
 
@@ -90,6 +94,7 @@ export function useUsageDashboard(): UseUsageDashboardResult {
   const {
     data: heatmapData,
     isLoading: isHeatmapLoading,
+    refetch: refetchHeatmap,
     error: heatmapError,
   } = useAnalyticsHeatmap(fixedWindow.heatmap.range, fixedWindow.heatmap.granularity, fixedWindow.heatmap.provider)
   const {
@@ -114,6 +119,7 @@ export function useUsageDashboard(): UseUsageDashboardResult {
   const {
     data: requestHealthData,
     isLoading: isRequestHealthLoading,
+    refetch: refetchRequestHealth,
     error: requestHealthError,
   } = useRequestHealth(fixedWindow.requestHealth.range, fixedWindow.requestHealth.provider)
 
@@ -172,6 +178,18 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     isRequestEvidenceLoading,
     isRequestEvidenceRefreshing: isRequestEvidenceFetching && Boolean(requestEvidenceData),
     requestEvidenceError,
+    retryCore: () => {
+      void refetchCoreAnalytics()
+    },
+    retryHeatmap: () => {
+      void refetchHeatmap()
+    },
+    retryRequestHealth: () => {
+      void refetchRequestHealth()
+    },
+    retryRequestEvidence: () => {
+      void refetchRequestEvidence()
+    },
     refreshDashboard,
   }
 }

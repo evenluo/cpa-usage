@@ -3,6 +3,8 @@ import { KpiCard } from "@/components/intelligence/kpi-card"
 import { DashboardCharts } from "@/components/intelligence/dashboard-charts"
 import { DashboardControls } from "@/components/intelligence/dashboard-controls"
 import { DashboardFixedOverview } from "@/components/intelligence/dashboard-fixed-overview"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { formatCost, formatCompact, formatPercent } from "@/lib/format"
 import { useUsageDashboard } from "@/features/usage-intelligence/use-usage-dashboard"
 
@@ -28,8 +30,29 @@ function DashboardPage() {
         providerOptions={providerOptions}
       />
 
-      {/* KPI Cards — 5 compact cards */}
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {surfaces.core.status === "error" ? (
+        <Card>
+          <CardContent className="flex min-h-32 flex-col items-center justify-center gap-3 text-center">
+            <p className="text-sm text-red-600">Failed to load selected-window usage</p>
+            <Button type="button" size="sm" variant="outline" onClick={dashboard.retryCore}>Retry usage summary</Button>
+          </CardContent>
+        </Card>
+      ) : surfaces.core.status === "empty" ? (
+        <Card>
+          <CardContent className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+            No usage in the selected window
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {surfaces.core.status === "ready" && surfaces.core.refreshError ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <span>Usage refresh failed; showing the last complete result.</span>
+              <Button type="button" size="sm" variant="outline" onClick={dashboard.retryCore}>Retry</Button>
+            </div>
+          ) : null}
+          {/* KPI Cards — 5 compact cards */}
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <KpiCard
           label="Cost"
           rawValue={summary?.total_cost}
@@ -75,7 +98,9 @@ function DashboardPage() {
           isLoading={surfaces.kpis.status === "loading"}
           tone="amber"
         />
-      </div>
+          </div>
+        </>
+      )}
 
       <DashboardCharts
         surfaces={surfaces}
@@ -86,6 +111,7 @@ function DashboardPage() {
         leaderboardScope={dashboard.leaderboardScope}
         onSelectLeaderboardScope={dashboard.setLeaderboardScope}
         leaderboardSortLabel={leaderboardSortLabel}
+        onRetryCore={dashboard.retryCore}
       />
 
       <DashboardFixedOverview
@@ -95,6 +121,9 @@ function DashboardPage() {
         isRequestEvidenceLoading={dashboard.isRequestEvidenceLoading}
         isRequestEvidenceRefreshing={dashboard.isRequestEvidenceRefreshing}
         requestEvidenceError={dashboard.requestEvidenceError}
+        onRetryHeatmap={dashboard.retryHeatmap}
+        onRetryRequestHealth={dashboard.retryRequestHealth}
+        onRetryRequestEvidence={dashboard.retryRequestEvidence}
       />
     </div>
   )

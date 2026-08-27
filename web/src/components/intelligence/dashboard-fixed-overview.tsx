@@ -1,6 +1,7 @@
 import { Pin } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
@@ -16,6 +17,9 @@ interface DashboardFixedOverviewProps {
   isRequestEvidenceLoading: boolean
   isRequestEvidenceRefreshing: boolean
   requestEvidenceError: unknown
+  onRetryHeatmap: () => void
+  onRetryRequestHealth: () => void
+  onRetryRequestEvidence: () => void
 }
 
 export function DashboardFixedOverview({
@@ -25,6 +29,9 @@ export function DashboardFixedOverview({
   isRequestEvidenceLoading,
   isRequestEvidenceRefreshing,
   requestEvidenceError,
+  onRetryHeatmap,
+  onRetryRequestHealth,
+  onRetryRequestEvidence,
 }: DashboardFixedOverviewProps) {
   return (
     <>
@@ -50,14 +57,20 @@ export function DashboardFixedOverview({
             </CardTitle>
             <CardDescription>Hourly usage density across days</CardDescription>
           </div>
-          <Badge variant="terracotta">30d fixed</Badge>
+          <div className="flex items-center gap-2">
+            {surfaces.heatmap.status !== "error" && surfaces.heatmap.refreshError ? (
+              <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry refresh</Button>
+            ) : null}
+            <Badge variant="terracotta">30d fixed</Badge>
+          </div>
         </CardHeader>
         <CardContent>
           {surfaces.heatmap.status === "loading" ? (
             <Skeleton className="h-[260px] w-full" />
           ) : surfaces.heatmap.status === "error" ? (
-            <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
-              Failed to load activity heatmap
+            <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
+              <span>Failed to load activity heatmap</span>
+              <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry heatmap</Button>
             </div>
           ) : surfaces.heatmap.status === "ready" ? (
             <Heatmap data={surfaces.heatmap.data} />
@@ -80,14 +93,20 @@ export function DashboardFixedOverview({
               </CardTitle>
               <CardDescription>Success rate per 3-minute bucket</CardDescription>
             </div>
-            <Badge variant="green">24h fixed</Badge>
+            <div className="flex items-center gap-2">
+              {surfaces.requestHealth.status !== "error" && surfaces.requestHealth.refreshError ? (
+                <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry refresh</Button>
+              ) : null}
+              <Badge variant="green">24h fixed</Badge>
+            </div>
           </CardHeader>
           <CardContent className="min-h-0 min-w-0 flex-1">
             {surfaces.requestHealth.status === "loading" ? (
               <Skeleton className="h-[180px] w-full" />
             ) : surfaces.requestHealth.status === "error" ? (
-              <div className="flex h-[180px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
-                Failed to load request health
+              <div className="flex h-[180px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
+                <span>Failed to load request health</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry request health</Button>
               </div>
             ) : surfaces.requestHealth.status === "ready" ? (
               <HealthGrid data={surfaces.requestHealth.data} />
@@ -104,6 +123,7 @@ export function DashboardFixedOverview({
           isLoading={isRequestEvidenceLoading}
           isRefreshing={isRequestEvidenceRefreshing}
           error={requestEvidenceError}
+          onRetry={onRetryRequestEvidence}
         />
       </div>
     </>

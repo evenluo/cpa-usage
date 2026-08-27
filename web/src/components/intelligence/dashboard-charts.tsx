@@ -1,6 +1,7 @@
 import { Clock } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { KeyLeaderboard } from "@/components/charts/key-leaderboard"
 import { TrendChart } from "@/components/charts/trend-chart"
@@ -18,6 +19,7 @@ interface DashboardChartsProps {
   leaderboardScope: LeaderboardScope
   onSelectLeaderboardScope: (scope: LeaderboardScope) => void
   leaderboardSortLabel: string
+  onRetryCore: () => void
 }
 
 export function DashboardCharts({
@@ -29,6 +31,7 @@ export function DashboardCharts({
   leaderboardScope,
   onSelectLeaderboardScope,
   leaderboardSortLabel,
+  onRetryCore,
 }: DashboardChartsProps) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
@@ -73,9 +76,12 @@ export function DashboardCharts({
           {surfaces.trend.status === "loading" ? (
             <Skeleton className="h-[260px] w-full" />
           ) : surfaces.trend.status === "error" ? (
-            <div className="flex h-[260px] items-center justify-center text-sm text-red-500">
-              Failed to load trend data
+            <div className="flex h-[260px] flex-col items-center justify-center gap-3 text-sm text-red-500">
+              <span>Failed to load trend data</span>
+              <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry trend data</Button>
             </div>
+          ) : surfaces.trend.status === "empty" ? (
+            <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">No trend data</div>
           ) : (
             <div className="h-[260px]">
               <TrendChart data={surfaces.trend.data} granularity={coreAnalyticsData?.granularity ?? effectiveGranularity} mode={trendView} />
@@ -128,6 +134,13 @@ export function DashboardCharts({
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
+          ) : surfaces.leaderboard.status === "error" ? (
+            <div className="flex min-h-32 flex-col items-center justify-center gap-3 text-sm text-red-500">
+              <span>Failed to load key leaderboard</span>
+              <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry leaderboard</Button>
+            </div>
+          ) : surfaces.leaderboard.status === "empty" ? (
+            <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">No keys in this window</div>
           ) : (
             <KeyLeaderboard data={surfaces.leaderboard.data} />
           )}
