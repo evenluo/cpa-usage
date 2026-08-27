@@ -44,9 +44,14 @@ type queuedUsageDetail struct {
 func normalizeRedisAuthType(value string) string {
 	trimmed := strings.ToLower(strings.TrimSpace(value))
 	if trimmed == "api_key" {
-		return "apikey"
+		trimmed = entities.UsageIdentityAuthTypeNameAPIKey
 	}
-	return trimmed
+	authType, ok := entities.ParseUsageIdentityAuthType(trimmed)
+	if !ok {
+		return ""
+	}
+	canonical, _ := authType.CanonicalName()
+	return canonical
 }
 
 func trimRedisOptionalString(value *string) *string {

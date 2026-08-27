@@ -296,7 +296,7 @@ func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenRollup
 	}
 
 	assertAnalyticsSummaryCompatibilityMatchesCoreAndHeatmap(t, summary, core, heatmap)
-	if summary.Summary.RequestCount != 3 || summary.Summary.CostStatus != dto.AnalyticsCostStatusPartial {
+	if summary.Summary.RequestCount != 3 || summary.Summary.CostStatus != dto.CostStatusPartial {
 		t.Fatalf("expected provider-scoped partial summary, got %+v", summary.Summary)
 	}
 	if len(summary.Trend) != 2 || summary.Trend[0].Label != "2026-05-11 09:00 +0000" || summary.Trend[1].Label != "2026-05-11 10:00 +0000" {
@@ -390,7 +390,7 @@ func TestBuildAnalyticsSummaryWithFilterUsesRollupAwareReadModelsWhenCovered(t *
 	}
 
 	assertAnalyticsSummaryCompatibilityMatchesCoreAndHeatmap(t, summary, core, heatmap)
-	if summary.Summary.RequestCount != 3 || summary.Summary.TotalTokens != 1_850_100 || summary.Summary.CostStatus != dto.AnalyticsCostStatusPartial {
+	if summary.Summary.RequestCount != 3 || summary.Summary.TotalTokens != 1_850_100 || summary.Summary.CostStatus != dto.CostStatusPartial {
 		t.Fatalf("expected summary to read selected-window rollups, got %+v", summary.Summary)
 	}
 	if !summary.Comparison.HasPreviousPeriod || summary.Comparison.TotalTokensChangePct == nil || *summary.Comparison.TotalTokensChangePct <= 80 {
@@ -1300,7 +1300,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	if insights["top_cost_key"].Subject != "Alpha Ops" || insights["top_cost_key"].MetricValue <= 0 {
 		t.Fatalf("expected top cost key to use alias and configured cost, got %+v", insights["top_cost_key"])
 	}
-	if insights["metric_completeness"].Title != "Metric Completeness" || insights["metric_completeness"].CostStatus != dto.AnalyticsCostStatusPartial {
+	if insights["metric_completeness"].Title != "Metric Completeness" || insights["metric_completeness"].CostStatus != dto.CostStatusPartial {
 		t.Fatalf("expected completeness insight to expose partial interpretation, got %+v", snapshot.Insights)
 	}
 	if insights["cache_efficiency"].Title != "Cache Read Share" || insights["cache_efficiency"].Count != 200_000 {
@@ -1576,7 +1576,7 @@ func TestBuildAnalyticsSummaryWithFilterOmitsCostComparisonWhenPricingIsIncomple
 	if !snapshot.Comparison.HasPreviousPeriod {
 		t.Fatalf("expected previous period comparison to be available, got %+v", snapshot.Comparison)
 	}
-	if snapshot.Summary.CostStatus != dto.AnalyticsCostStatusPartial {
+	if snapshot.Summary.CostStatus != dto.CostStatusPartial {
 		t.Fatalf("expected current cost to be partial, got %+v", snapshot.Summary)
 	}
 	if snapshot.Comparison.TotalCostChangePct != nil {
@@ -1642,12 +1642,12 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	if !firstRow.Cells[9].InRange {
 		t.Fatalf("expected populated fixed-window cell to be in range, got %+v", firstRow.Cells[9])
 	}
-	if !firstRow.Cells[8].CostAvailable || firstRow.Cells[8].CostStatus != dto.AnalyticsCostStatusAvailable || firstRow.Cells[8].TotalTokens != 0 {
+	if !firstRow.Cells[8].CostAvailable || firstRow.Cells[8].CostStatus != dto.CostStatusAvailable || firstRow.Cells[8].TotalTokens != 0 {
 		t.Fatalf("expected empty bucket to be explicit available zero cell, got %+v", firstRow.Cells[8])
 	}
 	secondRow := analyticsHeatmapRowByDate(t, heatmap, "2026-05-12")
 	unpriced := secondRow.Cells[10]
-	if unpriced.TotalTokens != 80 || unpriced.RequestCount != 1 || unpriced.FailureCount != 1 || unpriced.CostStatus != dto.AnalyticsCostStatusUnavailable {
+	if unpriced.TotalTokens != 80 || unpriced.RequestCount != 1 || unpriced.FailureCount != 1 || unpriced.CostStatus != dto.CostStatusUnavailable {
 		t.Fatalf("expected unpriced failed event to preserve cost completeness, got %+v", unpriced)
 	}
 	if !firstRow.Cells[9].BucketStart.Equal(start.Add(9*time.Hour)) || !firstRow.Cells[9].BucketEnd.Equal(start.Add(10*time.Hour)) {

@@ -101,14 +101,15 @@ func buildAnalyticsHeatmapFromAggregates(aggregates map[string]analyticsHeatmapA
 				BucketStart:   bucketStart.UTC(),
 				BucketEnd:     bucketEnd.UTC(),
 				CostAvailable: true,
-				CostStatus:    dto.AnalyticsCostStatusAvailable,
+				CostStatus:    dto.CostStatusAvailable,
 			}
 			if aggregate, ok := aggregates[analyticsHeatmapCellKey(row.Date, hour)]; ok {
 				cell.TotalTokens = aggregate.TotalTokens
 				cell.TotalCost = aggregate.TotalCost
 				cell.RequestCount = aggregate.RequestCount
 				cell.FailureCount = aggregate.FailureCount
-				cell.CostAvailable, cell.CostStatus = analyticsCostAvailability(aggregate.MissingPricingEvents, aggregate.PricedBillableEvents)
+				cost := assessCostCompleteness(aggregate.MissingPricingEvents, aggregate.PricedBillableEvents)
+				cell.CostAvailable, cell.CostStatus = cost.Available, cost.Status
 			}
 			row.Cells = append(row.Cells, cell)
 		}

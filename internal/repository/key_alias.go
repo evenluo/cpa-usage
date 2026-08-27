@@ -144,7 +144,7 @@ func NormalizeKeyAlias(alias string) (string, error) {
 }
 
 func normalizeKeyAliasKey(authType entities.UsageIdentityAuthType, identity string) (KeyAliasKey, error) {
-	if authType != entities.UsageIdentityAuthTypeAuthFile && authType != entities.UsageIdentityAuthTypeAIProvider {
+	if !authType.Valid() {
 		return KeyAliasKey{}, ErrInvalidKeyAlias
 	}
 	trimmedIdentity := strings.TrimSpace(identity)

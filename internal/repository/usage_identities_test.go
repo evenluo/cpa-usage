@@ -754,6 +754,57 @@ func TestUsageIdentityListActivePageIncludesCalculatedCost(t *testing.T) {
 	}
 }
 
+func TestUsageIdentityCalculatedCostPreservesEventGrainTokenSemantics(t *testing.T) {
+	db := openTestDatabase(t)
+	now := time.Date(2026, 5, 13, 9, 0, 0, 0, time.UTC)
+	identities := []entities.UsageIdentity{
+		{Identity: "negative-pair", Name: "Negative Pair", AuthType: entities.UsageIdentityAuthTypeAIProvider, TotalRequests: 2},
+		{Identity: "cache-pair", Name: "Cache Pair", AuthType: entities.UsageIdentityAuthTypeAIProvider, TotalRequests: 2},
+		{Identity: "negative-unpriced", Name: "Negative Unpriced", AuthType: entities.UsageIdentityAuthTypeAIProvider, TotalRequests: 1},
+		{Identity: "zero-rate", Name: "Zero Rate", AuthType: entities.UsageIdentityAuthTypeAIProvider, TotalRequests: 1},
+	}
+	if err := db.Create(&identities).Error; err != nil {
+		t.Fatalf("seed usage identities: %v", err)
+	}
+	for _, setting := range []dto.ModelPriceSettingInput{
+		{Model: "priced", PromptPricePer1M: 1, CompletionPricePer1M: 2, CachePricePer1M: 0.5},
+		{Model: "zero-rate"},
+	} {
+		if _, err := UpsertModelPriceSetting(db, setting); err != nil {
+			t.Fatalf("upsert pricing %q: %v", setting.Model, err)
+		}
+	}
+	events := []entities.UsageEvent{
+		{EventKey: "positive-input", AuthType: "apikey", AuthIndex: "negative-pair", Model: "priced", Timestamp: now, InputTokens: 1_000_000},
+		{EventKey: "negative-input", AuthType: "apikey", AuthIndex: "negative-pair", Model: "priced", Timestamp: now.Add(time.Minute), InputTokens: -1_000_000},
+		{EventKey: "cache-over-input", AuthType: "apikey", AuthIndex: "cache-pair", Model: "priced", Timestamp: now, InputTokens: 100, CachedTokens: 200},
+		{EventKey: "prompt-only", AuthType: "apikey", AuthIndex: "cache-pair", Model: "priced", Timestamp: now.Add(time.Minute), InputTokens: 200},
+		{EventKey: "negative-unpriced", AuthType: "apikey", AuthIndex: "negative-unpriced", Model: "missing", Timestamp: now, InputTokens: -1},
+		{EventKey: "zero-rate", AuthType: "apikey", AuthIndex: "zero-rate", Model: "zero-rate", Timestamp: now, InputTokens: 1},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert events: %v", err)
+	}
+
+	items, _, err := ListActiveUsageIdentitiesPage(context.Background(), db, ListUsageIdentitiesPageRequest{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list page: %v", err)
+	}
+	byIdentity := usageIdentitiesByIdentity(items)
+	if got := byIdentity["negative-pair"]; math.Abs(got.TotalCost-1) > 0.000000001 || !got.CostAvailable {
+		t.Fatalf("negative event must not cancel positive event cost, got %+v", got)
+	}
+	if got := byIdentity["cache-pair"]; math.Abs(got.TotalCost-0.0003) > 0.000000001 || !got.CostAvailable {
+		t.Fatalf("cached tokens above input must clamp prompt per event, got %+v", got)
+	}
+	if got := byIdentity["negative-unpriced"]; got.TotalCost != 0 || !got.CostAvailable {
+		t.Fatalf("negative-only unpriced event has no billable tokens, got %+v", got)
+	}
+	if got := byIdentity["zero-rate"]; got.TotalCost != 0 || !got.CostAvailable {
+		t.Fatalf("configured zero rate is complete pricing, got %+v", got)
+	}
+}
+
 func TestUsageIdentityListOrdersByAuthTypeNameIDAndIncludesDeletedRows(t *testing.T) {
 	db := openTestDatabase(t)
 	ctx := context.Background()

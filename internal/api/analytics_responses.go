@@ -274,7 +274,7 @@ func buildAnalyticsSummaryResponse(filter analyticsFilter, snapshot *dto.Analyti
 func emptyAnalyticsSummaryPayload() analyticsSummaryPayload {
 	return analyticsSummaryPayload{
 		CostAvailable:       true,
-		CostStatus:          dto.AnalyticsCostStatusAvailable,
+		CostStatus:          dto.CostStatusAvailable,
 		CacheReadShareState: dto.AnalyticsCacheReadShareStateNoPromptInput,
 	}
 }

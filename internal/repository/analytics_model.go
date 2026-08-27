@@ -69,14 +69,14 @@ func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.AnalyticsFilter) ([]d
 
 	options := make([]dto.AnalyticsProviderOption, 0, len(rows))
 	for _, row := range rows {
-		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		options = append(options, dto.AnalyticsProviderOption{
 			Provider:      row.Provider,
 			RequestCount:  row.RequestCount,
 			TotalTokens:   row.TotalTokens,
 			TotalCost:     row.TotalCost,
-			CostAvailable: costAvailable,
-			CostStatus:    costStatus,
+			CostAvailable: cost.Available,
+			CostStatus:    cost.Status,
 		})
 	}
 	return options, nil
@@ -106,14 +106,15 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 	if row.LatencySampleCount > 0 {
 		record.AverageLatencyMS = float64(row.TotalLatencyMS) / float64(row.LatencySampleCount)
 	}
-	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+	record.CostAvailable, record.CostStatus = cost.Available, cost.Status
 	record.CacheReadShare, record.CacheReadShareState, record.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
 		row.CachedTokens,
 		row.CacheSavings,
 		row.CacheSavingsEligibleRows,
 		row.CacheSavingsIneligibleRows,
-		record.CostStatus == dto.AnalyticsCostStatusAvailable,
+		record.CostStatus == dto.CostStatusAvailable,
 	)
 	return record
 }

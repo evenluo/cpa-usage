@@ -27,6 +27,8 @@ type analyticsAggregateSource struct {
 	latencySumExpr   string
 	latencyCountExpr string
 	lastUsedAtExpr   string
+	// firstUsedAtExpr 仅 raw events 有精确事实；rollup 不伪造 first-used。
+	firstUsedAtExpr string
 	// identityAuthTypeExpr/identityExpr 是 Key Alias 维度的身份列；apiKeyIdentityExpr 是 API Key 维度的身份列。
 	identityAuthTypeExpr string
 	identityExpr         string
@@ -57,6 +59,7 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		latencySumExpr:       "CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END",
 		latencyCountExpr:     "CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END",
 		lastUsedAtExpr:       "usage_events.timestamp",
+		firstUsedAtExpr:      "usage_events.timestamp",
 		identityAuthTypeExpr: analyticsUsageIdentityAuthTypeSQLExpression(),
 		identityExpr:         analyticsUsageIdentitySQLExpression(),
 		apiKeyIdentityExpr:   analyticsAPIKeyIdentitySQLExpression(),
@@ -84,6 +87,7 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 		latencySumExpr:       "usage_rollups_hourly.total_latency_ms",
 		latencyCountExpr:     "usage_rollups_hourly.latency_sample_count",
 		lastUsedAtExpr:       "usage_rollups_hourly.last_event_at",
+		firstUsedAtExpr:      "",
 		identityAuthTypeExpr: analyticsRollupUsageIdentityAuthTypeSQLExpression(),
 		identityExpr:         analyticsRollupUsageIdentitySQLExpression(),
 		apiKeyIdentityExpr:   analyticsRollupAPIKeyIdentitySQLExpression(),

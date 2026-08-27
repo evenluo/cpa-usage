@@ -101,7 +101,8 @@ func usageEventAPIKeyIdentity(event entities.UsageEvent) string {
 	if apiGroupKey := strings.TrimSpace(event.APIGroupKey); strings.HasPrefix(apiGroupKey, "sk-") {
 		return apiGroupKey
 	}
-	if strings.TrimSpace(event.AuthType) == "apikey" {
+	apiKeyName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
+	if strings.TrimSpace(event.AuthType) == apiKeyName {
 		if source := strings.TrimSpace(event.Source); strings.HasPrefix(source, "sk-") {
 			return source
 		}

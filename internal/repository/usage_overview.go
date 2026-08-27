@@ -74,10 +74,21 @@ func buildUsageOverviewFromEvents(events []entities.UsageEvent, filter dto.Usage
 		return overview
 	}
 
+	var missingPricingEvents int64
+	var pricedBillableEvents int64
 	for _, event := range events {
+		_, hasPricing := pricingByModel[strings.TrimSpace(event.Model)]
+		if usageEventRequiresPricing(event) {
+			if hasPricing {
+				pricedBillableEvents++
+			} else {
+				missingPricingEvents++
+			}
+		}
 		applyUsageEventToSnapshot(overview.Usage, event, false)
 		applyUsageEventToOverview(overview, event, bucketByDay, latestHourlyStart, pricingByModel)
 	}
+	overview.Summary.CostAvailable = assessCostCompleteness(missingPricingEvents, pricedBillableEvents).Available
 	finalizeUsageOverview(overview, false)
 	return overview
 }
@@ -236,10 +247,7 @@ func applyUsageEventToOverview(overview *dto.UsageOverviewRecord, event entities
 	} else {
 		overview.Health.TotalSuccess++
 	}
-	pricing, ok := pricingByModel[strings.TrimSpace(event.Model)]
-	if !ok && usageEventRequiresPricing(event) {
-		overview.Summary.CostAvailable = false
-	}
+	pricing := pricingByModel[strings.TrimSpace(event.Model)]
 	cost := calculateUsageEventCost(event, pricing)
 	overview.Summary.TotalCost += cost
 

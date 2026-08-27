@@ -499,7 +499,7 @@ func TestAnalyticsCoreRouteReturnsSummaryAndTrendWithoutHeatmap(t *testing.T) {
 			SuccessCount:        1,
 			FailureCount:        1,
 			CostAvailable:       true,
-			CostStatus:          repodto.AnalyticsCostStatusAvailable,
+			CostStatus:          repodto.CostStatusAvailable,
 			CacheReadShareState: repodto.AnalyticsCacheReadShareStateNoPromptInput,
 		},
 		Trend: []repodto.AnalyticsTrendPoint{{
@@ -511,14 +511,14 @@ func TestAnalyticsCoreRouteReturnsSummaryAndTrendWithoutHeatmap(t *testing.T) {
 			SuccessCount:  1,
 			FailureCount:  1,
 			CostAvailable: true,
-			CostStatus:    repodto.AnalyticsCostStatusAvailable,
+			CostStatus:    repodto.CostStatusAvailable,
 		}},
 		ProviderOptions: []repodto.AnalyticsProviderOption{{
 			Provider:      "OpenAI",
 			RequestCount:  2,
 			TotalTokens:   100,
 			CostAvailable: true,
-			CostStatus:    repodto.AnalyticsCostStatusAvailable,
+			CostStatus:    repodto.CostStatusAvailable,
 		}},
 	}}
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Analytics: provider})
@@ -559,7 +559,7 @@ func TestAnalyticsHeatmapRouteReturnsDedicatedHeatmap(t *testing.T) {
 				TotalTokens:   100,
 				RequestCount:  1,
 				CostAvailable: true,
-				CostStatus:    repodto.AnalyticsCostStatusAvailable,
+				CostStatus:    repodto.CostStatusAvailable,
 			}},
 		}},
 	}}

@@ -47,7 +47,7 @@ func mapAnalyticsComparison(current dto.AnalyticsSummary, previous dto.Analytics
 }
 
 func analyticsCostPercentChange(current dto.AnalyticsSummary, previous dto.AnalyticsSummary) *float64 {
-	if current.CostStatus != dto.AnalyticsCostStatusAvailable || previous.CostStatus != dto.AnalyticsCostStatusAvailable {
+	if current.CostStatus != dto.CostStatusAvailable || previous.CostStatus != dto.CostStatusAvailable {
 		return nil
 	}
 	return analyticsPercentChange(current.TotalCost, previous.TotalCost)
@@ -80,14 +80,15 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 	if row.RequestCount > 0 {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
-	summary.CostAvailable, summary.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+	summary.CostAvailable, summary.CostStatus = cost.Available, cost.Status
 	summary.CacheReadShare, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
 		row.CachedTokens,
 		row.CacheSavings,
 		row.CacheSavingsEligibleRows,
 		row.CacheSavingsIneligibleRows,
-		summary.CostStatus == dto.AnalyticsCostStatusAvailable,
+		summary.CostStatus == dto.CostStatusAvailable,
 	)
 	return summary
 }

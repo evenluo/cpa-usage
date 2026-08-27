@@ -41,14 +41,14 @@ func buildAnalyticsCoreProviderOptions(db *gorm.DB, plan analyticsCoreWindowPlan
 
 	options := make([]dto.AnalyticsProviderOption, 0, len(rows))
 	for _, row := range rows {
-		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		options = append(options, dto.AnalyticsProviderOption{
 			Provider:      row.Provider,
 			RequestCount:  row.RequestCount,
 			TotalTokens:   row.TotalTokens,
 			TotalCost:     row.TotalCost,
-			CostAvailable: costAvailable,
-			CostStatus:    costStatus,
+			CostAvailable: cost.Available,
+			CostStatus:    cost.Status,
 		})
 	}
 	return options, nil

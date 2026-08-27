@@ -13,6 +13,41 @@ const (
 	UsageIdentityAuthTypeAIProvider UsageIdentityAuthType = 2
 )
 
+const (
+	UsageIdentityAuthTypeNameOAuth  = "oauth"
+	UsageIdentityAuthTypeNameAPIKey = "apikey"
+)
+
+// Valid reports whether the value is one of the persisted usage identity kinds.
+func (authType UsageIdentityAuthType) Valid() bool {
+	return authType == UsageIdentityAuthTypeAuthFile || authType == UsageIdentityAuthTypeAIProvider
+}
+
+// CanonicalName returns the canonical usage-event transport name for the identity kind.
+func (authType UsageIdentityAuthType) CanonicalName() (string, bool) {
+	switch authType {
+	case UsageIdentityAuthTypeAuthFile:
+		return UsageIdentityAuthTypeNameOAuth, true
+	case UsageIdentityAuthTypeAIProvider:
+		return UsageIdentityAuthTypeNameAPIKey, true
+	default:
+		return "", false
+	}
+}
+
+// ParseUsageIdentityAuthType maps canonical usage-event transport names to identity kinds.
+// Redis's historical "api_key" spelling is normalized at that transport boundary before parsing.
+func ParseUsageIdentityAuthType(name string) (UsageIdentityAuthType, bool) {
+	switch strings.TrimSpace(name) {
+	case UsageIdentityAuthTypeNameOAuth:
+		return UsageIdentityAuthTypeAuthFile, true
+	case UsageIdentityAuthTypeNameAPIKey:
+		return UsageIdentityAuthTypeAIProvider, true
+	default:
+		return 0, false
+	}
+}
+
 // UsageIdentity 是从 CPA auth_files 和 provider config 同步出的 usage source 身份实体。
 type UsageIdentity struct {
 	ID           uint                  `gorm:"primaryKey;index:idx_usage_identities_auth_type_name_id,priority:3"`

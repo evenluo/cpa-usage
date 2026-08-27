@@ -22,10 +22,14 @@ func newUsageIdentityResolver(identities []entities.UsageIdentity) usageIdentity
 		if key == "" {
 			continue
 		}
-		switch identity.AuthType {
-		case entities.UsageIdentityAuthTypeAuthFile:
+		authTypeName, ok := identity.AuthType.CanonicalName()
+		if !ok {
+			continue
+		}
+		switch authTypeName {
+		case entities.UsageIdentityAuthTypeNameOAuth:
 			authFilesByIdentity[key] = identity
-		case entities.UsageIdentityAuthTypeAIProvider:
+		case entities.UsageIdentityAuthTypeNameAPIKey:
 			providersByIdentity[key] = identity
 		}
 	}

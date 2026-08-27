@@ -305,11 +305,11 @@ func parseUsageIdentitiesPageRequest(c *gin.Context) (repository.ListUsageIdenti
 	request := repository.ListUsageIdentitiesPageRequest{Page: page, PageSize: pageSize}
 	if rawAuthType := c.Query("auth_type"); rawAuthType != "" {
 		value, err := strconv.Atoi(rawAuthType)
-		if err != nil || (value != int(entities.UsageIdentityAuthTypeAuthFile) && value != int(entities.UsageIdentityAuthTypeAIProvider)) {
+		authType := entities.UsageIdentityAuthType(value)
+		if err != nil || !authType.Valid() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_type must be 1 or 2"})
 			return repository.ListUsageIdentitiesPageRequest{}, false
 		}
-		authType := entities.UsageIdentityAuthType(value)
 		request.AuthType = &authType
 	}
 	return request, true
@@ -364,6 +364,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		identity = redact.APIKeyDisplayName(item.Identity)
 	}
 	alias := aliases[service.UsageIdentityAliasKey{AuthType: item.AuthType, Identity: item.Identity}]
+	authTypeName, _ := item.AuthType.CanonicalName()
 
 	return usageIdentityResponse{
 		ID:                         item.ID,
@@ -371,7 +372,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		DisplayName:                item.DisplayName(),
 		Alias:                      alias,
 		AuthType:                   item.AuthType,
-		AuthTypeName:               item.AuthTypeName,
+		AuthTypeName:               authTypeName,
 		Identity:                   identity,
 		Type:                       item.Type,
 		Provider:                   item.Provider,
@@ -404,6 +405,7 @@ func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse 
 	if strings.TrimSpace(item.Alias) != "" {
 		displayName = item.Alias
 	}
+	authTypeName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
 	return usageAPIKeyResponse{
 		ID:              item.ID,
 		Identity:        item.Identity,
@@ -411,7 +413,7 @@ func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse 
 		Alias:           item.Alias,
 		Provider:        item.Provider,
 		AuthType:        int(entities.UsageIdentityAuthTypeAIProvider),
-		AuthTypeName:    "apikey",
+		AuthTypeName:    authTypeName,
 		TotalRequests:   item.TotalRequests,
 		SuccessCount:    item.SuccessCount,
 		FailureCount:    item.FailureCount,

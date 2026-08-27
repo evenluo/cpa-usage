@@ -109,13 +109,13 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys 
 	trends := make(map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint)
 	for _, row := range rows {
 		key := analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}
-		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPoint{
 			Label:         row.Bucket,
 			TotalCost:     row.TotalCost,
 			TotalTokens:   row.TotalTokens,
-			CostAvailable: costAvailable,
-			CostStatus:    costStatus,
+			CostAvailable: cost.Available,
+			CostStatus:    cost.Status,
 		})
 	}
 	return trends, nil
@@ -130,36 +130,18 @@ func analyticsAPIKeyEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilt
 
 func buildAnalyticsAPIKeyBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	source := analyticsEventsAggregateSource()
-	authTypeExpr := analyticsAPIKeyAuthTypeSQLExpression()
-	identityExpr := analyticsAPIKeyIdentitySQLExpression()
-	var rows []analyticsIdentityAggregateRow
-	if err := analyticsAPIKeyEventsWithPricingQuery(db, filter).
-		Select(`
-			` + authTypeExpr + ` AS auth_type,
-			` + identityExpr + ` AS identity,
-			COALESCE(MAX(key_aliases.alias), '') AS alias,
-			'' AS name,
-			'apikey' AS auth_type_name,
-			'' AS type,
-			COALESCE(MIN(NULLIF(TRIM(usage_events.provider), '')), '') AS provider,
-			'' AS prefix,
-			'' AS base_url,
-			0 AS is_deleted,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
-			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
-			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS last_used_at`).
-		Group(identityExpr).
+	var factRows []apiKeyAggregateFactRow
+	if err := apiKeyAggregateFactsQuery(db, filter, source).
 		Order("total_cost DESC").
 		Order(analyticsTotalTokensDescOrder(source)).
 		Order("last_used_at DESC").
 		Limit(analyticsKeyAliasBreakdownLimit).
-		Scan(&rows).Error; err != nil {
+		Scan(&factRows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics api key breakdown: %w", err)
+	}
+	rows := make([]analyticsIdentityAggregateRow, 0, len(factRows))
+	for _, row := range factRows {
+		rows = append(rows, analyticsIdentityAggregateRowFromAPIKeyFact(row))
 	}
 
 	breakdown := make([]dto.AnalyticsKeyAliasBreakdown, 0, len(rows))
@@ -217,13 +199,13 @@ func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys []
 	trends := make(map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint)
 	for _, row := range rows {
 		key := analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}
-		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPoint{
 			Label:         row.Bucket,
 			TotalCost:     row.TotalCost,
 			TotalTokens:   row.TotalTokens,
-			CostAvailable: costAvailable,
-			CostStatus:    costStatus,
+			CostAvailable: cost.Available,
+			CostStatus:    cost.Status,
 		})
 	}
 	return trends, nil
@@ -266,7 +248,8 @@ func mapAnalyticsKeyAliasBreakdown(row analyticsIdentityAggregateRow) dto.Analyt
 	if row.RequestCount > 0 {
 		record.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
-	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+	record.CostAvailable, record.CostStatus = cost.Available, cost.Status
 	return record
 }
 

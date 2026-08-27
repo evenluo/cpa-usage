@@ -61,7 +61,7 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 	if err != nil {
 		return dto.AnalyticsTrendPoint{}, fmt.Errorf("parse analytics trend bucket %q: %w", row.Bucket, err)
 	}
-	costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 	label := row.Bucket
 	if !bucketByDay {
 		label = bucketStart.In(time.Local).Format("2006-01-02 15:04 -0700")
@@ -79,7 +79,7 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 		RequestCount:    row.RequestCount,
 		SuccessCount:    row.SuccessCount,
 		FailureCount:    row.FailureCount,
-		CostAvailable:   costAvailable,
-		CostStatus:      costStatus,
+		CostAvailable:   cost.Available,
+		CostStatus:      cost.Status,
 	}, nil
 }

@@ -1,8 +1,11 @@
 package repository
 
 import (
-	"cpa-usage/internal/repository/dto"
+	"fmt"
 	"strings"
+
+	"cpa-usage/internal/entities"
+	"cpa-usage/internal/repository/dto"
 )
 
 func analyticsCostSQLExpressionWithPromptTokens(promptTokens string, outputTokens string, cachedTokens string) string {
@@ -87,11 +90,7 @@ func analyticsRollupBucketSQLExpression(bucketByDay bool) string {
 }
 
 func analyticsRollupUsageIdentityAuthTypeSQLExpression() string {
-	return `(CASE
-		WHEN TRIM(usage_rollups_hourly.auth_type) = 'oauth' THEN 1
-		WHEN TRIM(usage_rollups_hourly.auth_type) = 'apikey' THEN 2
-		ELSE 0
-	END)`
+	return usageIdentityAuthTypeSQLExpression("usage_rollups_hourly.auth_type")
 }
 
 func analyticsRollupUsageIdentitySQLExpression() string {
@@ -107,11 +106,7 @@ func analyticsTrendBucketsByDay(filter dto.AnalyticsFilter) bool {
 }
 
 func analyticsUsageIdentityAuthTypeSQLExpression() string {
-	return `(CASE
-		WHEN TRIM(usage_events.auth_type) = 'oauth' THEN 1
-		WHEN TRIM(usage_events.auth_type) = 'apikey' THEN 2
-		ELSE 0
-	END)`
+	return usageIdentityAuthTypeSQLExpression("usage_events.auth_type")
 }
 
 func analyticsUsageIdentitySQLExpression() string {
@@ -119,22 +114,27 @@ func analyticsUsageIdentitySQLExpression() string {
 }
 
 func analyticsAPIKeyAuthTypeSQLExpression() string {
-	return "2"
+	return fmt.Sprintf("%d", entities.UsageIdentityAuthTypeAIProvider)
 }
 
 func analyticsAPIKeyIdentitySQLExpression() string {
+	apiKeyName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
 	return `(CASE
 		WHEN TRIM(usage_events.api_group_key) LIKE 'sk-%' THEN TRIM(usage_events.api_group_key)
-		WHEN TRIM(usage_events.auth_type) = 'apikey' AND TRIM(usage_events.source) LIKE 'sk-%' THEN TRIM(usage_events.source)
+		WHEN TRIM(usage_events.auth_type) = '` + apiKeyName + `' AND TRIM(usage_events.source) LIKE 'sk-%' THEN TRIM(usage_events.source)
 		ELSE ''
 	END)`
 }
-func analyticsCostAvailability(missingPricingEvents int64, pricedBillableEvents int64) (bool, string) {
-	if missingPricingEvents == 0 {
-		return true, dto.AnalyticsCostStatusAvailable
-	}
-	if pricedBillableEvents > 0 {
-		return false, dto.AnalyticsCostStatusPartial
-	}
-	return false, dto.AnalyticsCostStatusUnavailable
+
+func usageIdentityAuthTypeSQLExpression(column string) string {
+	authFileName, _ := entities.UsageIdentityAuthTypeAuthFile.CanonicalName()
+	apiKeyName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
+	return fmt.Sprintf(`(CASE
+		WHEN TRIM(%s) = '%s' THEN %d
+		WHEN TRIM(%s) = '%s' THEN %d
+		ELSE 0
+	END)`,
+		column, authFileName, entities.UsageIdentityAuthTypeAuthFile,
+		column, apiKeyName, entities.UsageIdentityAuthTypeAIProvider,
+	)
 }

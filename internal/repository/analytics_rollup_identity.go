@@ -118,13 +118,13 @@ func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, 
 
 // buildAnalyticsAPIKeySegmentRows 按聚合源渲染 API Key 段查询，raw 与 rollup 共用同一份列定义。
 func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
-	identityExpr := source.apiKeyIdentityExpr
-	var rows []analyticsIdentityAggregateRow
-	if err := source.apiKeyQuery(db, filter).
-		Select(analyticsAPIKeyAggregateSelect(source, analyticsAPIKeyAuthTypeSQLExpression(), identityExpr)).
-		Group(identityExpr).
-		Scan(&rows).Error; err != nil {
+	var factRows []apiKeyAggregateFactRow
+	if err := apiKeyAggregateFactsQuery(db, filter, source).Scan(&factRows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics %s api key segment rows: %w", source.name, err)
+	}
+	rows := make([]analyticsIdentityAggregateRow, 0, len(factRows))
+	for _, row := range factRows {
+		rows = append(rows, analyticsIdentityAggregateRowFromAPIKeyFact(row))
 	}
 	return rows, nil
 }
@@ -157,13 +157,13 @@ func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan,
 			return rows[i].Bucket < rows[j].Bucket
 		})
 		for _, row := range rows {
-			costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+			cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 			trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPoint{
 				Label:         row.Bucket,
 				TotalCost:     row.TotalCost,
 				TotalTokens:   row.TotalTokens,
-				CostAvailable: costAvailable,
-				CostStatus:    costStatus,
+				CostAvailable: cost.Available,
+				CostStatus:    cost.Status,
 			})
 		}
 	}
@@ -238,29 +238,6 @@ func analyticsIdentityAggregateSelect(source analyticsAggregateSource, authTypeE
 			COALESCE(MAX(usage_identities.prefix), '') AS prefix,
 			COALESCE(MAX(usage_identities.base_url), '') AS base_url,
 			COALESCE(MAX(CASE WHEN usage_identities.is_deleted THEN 1 ELSE 0 END), 0) AS is_deleted,
-			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
-			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
-			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
-			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', ` + source.lastUsedAtExpr + `)) AS last_used_at`
-}
-
-// analyticsAPIKeyAggregateSelect 按聚合源渲染 API Key 维度的身份聚合列。
-func analyticsAPIKeyAggregateSelect(source analyticsAggregateSource, authTypeExpr string, identityExpr string) string {
-	return `
-			` + authTypeExpr + ` AS auth_type,
-			` + identityExpr + ` AS identity,
-			COALESCE(MAX(key_aliases.alias), '') AS alias,
-			'' AS name,
-			'apikey' AS auth_type_name,
-			'' AS type,
-			COALESCE(MIN(NULLIF(` + source.providerExpr + `, '')), '') AS provider,
-			'' AS prefix,
-			'' AS base_url,
-			0 AS is_deleted,
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,

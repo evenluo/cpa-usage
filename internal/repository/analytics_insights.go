@@ -77,7 +77,7 @@ func buildAnalyticsInsights(
 func metricCompletenessInsight(summary dto.AnalyticsSummary, models []dto.AnalyticsModelBreakdown) dto.AnalyticsInsight {
 	incompleteModels := countModelsWithIncompletePricing(models)
 	cacheComplete := summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateAvailable
-	costComplete := summary.CostStatus == dto.AnalyticsCostStatusAvailable
+	costComplete := summary.CostStatus == dto.CostStatusAvailable
 	insight := dto.AnalyticsInsight{
 		Type:        "metric_completeness",
 		Severity:    "green",
@@ -100,7 +100,7 @@ func metricCompletenessInsight(summary dto.AnalyticsSummary, models []dto.Analyt
 }
 
 func metricCompletenessSubject(summary dto.AnalyticsSummary, incompleteModels int64) string {
-	if summary.CostStatus != dto.AnalyticsCostStatusAvailable {
+	if summary.CostStatus != dto.CostStatusAvailable {
 		return "Cost " + summary.CostStatus
 	}
 	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoCacheData {
@@ -149,7 +149,7 @@ func topCostKeyAlias(rows []dto.AnalyticsKeyAliasBreakdown) (dto.AnalyticsKeyAli
 	var best dto.AnalyticsKeyAliasBreakdown
 	found := false
 	for _, row := range rows {
-		if row.CostAvailable == false || row.CostStatus == dto.AnalyticsCostStatusUnavailable || row.TotalCost <= 0 {
+		if row.CostAvailable == false || row.CostStatus == dto.CostStatusUnavailable || row.TotalCost <= 0 {
 			continue
 		}
 		if !found || row.TotalCost > best.TotalCost {
@@ -199,7 +199,7 @@ func analyticsInsightKeyLabel(row dto.AnalyticsKeyAliasBreakdown) string {
 func countModelsWithIncompletePricing(models []dto.AnalyticsModelBreakdown) int64 {
 	var count int64
 	for _, model := range models {
-		if model.CostStatus != dto.AnalyticsCostStatusAvailable {
+		if model.CostStatus != dto.CostStatusAvailable {
 			count++
 		}
 	}

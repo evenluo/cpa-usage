@@ -219,13 +219,17 @@ func usageEventPublicSource(row repodto.UsageEventRecord, identity resolvedUsage
 		return identity.DisplayName, false
 	}
 	isDelete := strings.TrimSpace(row.AuthIndex) != ""
-	switch strings.TrimSpace(row.AuthType) {
-	case "apikey":
+	authType, ok := entities.ParseUsageIdentityAuthType(row.AuthType)
+	if !ok {
+		return strings.TrimSpace(row.Provider), false
+	}
+	switch authType {
+	case entities.UsageIdentityAuthTypeAIProvider:
 		return strings.TrimSpace(row.Provider), isDelete
-	case "oauth":
+	case entities.UsageIdentityAuthTypeAuthFile:
 		return strings.TrimSpace(row.Source), isDelete
 	default:
-		return strings.TrimSpace(row.Provider), isDelete
+		return strings.TrimSpace(row.Provider), false
 	}
 }
 
