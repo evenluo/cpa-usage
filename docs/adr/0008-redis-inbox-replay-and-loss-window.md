@@ -17,4 +17,4 @@ CPA Usage consumes the CPA usage queue with `LPOP`, then persists each returned 
 
 ## Compatibility
 
-This is an intentional incompatible correction for queue payloads without a provider timestamp: their fallback event timestamp changes from each processing attempt's clock to the persisted `PoppedAt`, and a missing request ID makes the canonical event key follow that stable timestamp. The CPA queue protocol, SQLite schema, and payloads with provider timestamps or request IDs retain their existing semantics.
+Compatible: this is an intentional correction within the existing fallback contract. For queue payloads without a provider timestamp, the fallback event timestamp now comes from the persisted `PoppedAt` instead of each processing attempt's clock; when the request ID is also absent, the canonical event key follows that stable timestamp. The CPA queue protocol, SQLite schema, and payloads with provider timestamps or request IDs retain their existing semantics.

@@ -24,6 +24,10 @@ The production template contains only the `cpa-usage` service:
 
 `deploy/dokploy/cpa-cliproxyapi.compose.yml` is kept only for the one-time split migration of the source Dokploy app. It contains `postgres` and `cliproxyapi` without the `cpa-usage` service, usage route labels, or `cpa-usage-data` volume declaration.
 
+## Ingestion Durability
+
+Production queue consumption uses destructive `LPOP` followed by a separate SQLite inbox write. The interval between those effects is an unavoidable loss window: if the inbox write fails, CPA Usage returns and logs the batch as lost and does not retry, requeue, or recover it automatically. See [ADR 0008](../adr/0008-redis-inbox-replay-and-loss-window.md) for the event identity and replay contract.
+
 `cpa-usage` is rendered to a concrete GHCR version image, for example:
 
 ```text
