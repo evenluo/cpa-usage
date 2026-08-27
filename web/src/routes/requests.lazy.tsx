@@ -27,10 +27,10 @@ function RequestsRoute() {
 }
 
 export function RequestsPage({ provider }: { provider: string }) {
-  return <ScopedRequestsPage key={provider} provider={provider} />
+  return <ProviderScopedRequestsPage key={provider} provider={provider} />
 }
 
-function ScopedRequestsPage({ provider }: { provider: string }) {
+function ProviderScopedRequestsPage({ provider }: { provider: string }) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
   const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page)
