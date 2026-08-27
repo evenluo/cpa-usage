@@ -52,6 +52,8 @@ The workflow is `.github/workflows/release.yml` and runs on pushes to `main` plu
 
 Each workflow run supplies a unique, non-secret `CPA_USAGE_RELEASE_ID` containing the GitHub run, attempt, and commit identifiers. The release script writes it as the exact Dokploy deployment description and uses only an exact description match to correlate deployment status. It never treats the newest deployment as the requested one.
 
+The release workflow is the single mutation authority for this production Compose ID. GitHub concurrency queues runs in one non-cancelling group keyed by `DOKPLOY_CPA_USAGE_COMPOSE_ID`, so another release cannot interleave `compose.update`, converted readback, and `compose.deploy`. The script has no cross-process lock or Dokploy CAS input; do not invoke it concurrently or from a second release writer.
+
 ## Required Dokploy Environment
 
 The Dokploy Compose environment must provide the runtime values referenced by the template:
@@ -122,7 +124,7 @@ make test-dokploy-release
 The release command follows one ordered path:
 
 1. Render the immutable image and pass the canonical Compose gate.
-2. Read `compose.one` and `deployment.allByCompose` and validate their documented response shapes before any Dokploy mutation. The release marker must not already exist.
+2. Read `compose.one` and `deployment.allByCompose` and validate their documented response shapes before any Dokploy mutation. Unrelated historical deployment descriptions may be null; the current release marker must not already exist.
 3. Apply the one-time environment-key migration if needed, then call `compose.update`.
 4. Read `compose.getConvertedCompose`, require its response to be a Compose YAML string, and pass it through the same canonical exact-image gate.
 5. Call `compose.deploy` with the unique release marker in `description`.

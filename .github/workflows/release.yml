@@ -7,6 +7,10 @@ on:
     tags:
       - "v*.*.*"
 
+concurrency:
+  group: cpa-usage-dokploy-compose-${{ vars.DOKPLOY_CPA_USAGE_COMPOSE_ID }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
   packages: write

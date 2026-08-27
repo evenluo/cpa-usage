@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This command has no cross-process lock or Dokploy CAS input. Its caller must
+# provide single-writer serialization for the target Compose ID.
+
 require_env() {
   local name="$1"
   if [[ -z "${!name:-}" ]]; then
@@ -88,7 +91,7 @@ validate_deployments_response() {
     type == "array" and
     all(.[];
       (.deploymentId | type == "string" and length > 0) and
-      (.description | type == "string") and
+      (has("description") and (.description == null or (.description | type == "string"))) and
       (.composeId == $composeId) and
       (.status == "running" or .status == "done" or .status == "error" or .status == "cancelled")
     )

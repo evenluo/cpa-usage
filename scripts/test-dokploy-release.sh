@@ -151,6 +151,8 @@ if grep -Eq 'fixture-api-secret|fixture-secret-value' "$tmpdir/output.log"; then
 fi
 pass "environment migration output omits secrets"
 
+expect_success "nullable unrelated deployment history remains supported" run_release nullable-history
+
 expect_failure "preflight unsupported shape fails" run_release preflight-unsupported
 if grep -q '^POST ' "$tmpdir/state-preflight-unsupported/calls.log"; then
   fail "preflight failure called a mutation endpoint"
@@ -194,5 +196,13 @@ if ! grep -q 'CPA_USAGE_RELEASE_ID:' .github/workflows/release.yml || \
   fail "release workflow does not supply release proof inputs"
 fi
 pass "workflow orders canonical gate and supplies proof inputs"
+
+# The literal GitHub expression must not be expanded by this shell.
+# shellcheck disable=SC2016
+if ! grep -Fq 'group: cpa-usage-dokploy-compose-${{ vars.DOKPLOY_CPA_USAGE_COMPOSE_ID }}' .github/workflows/release.yml || \
+   ! grep -Fq 'cancel-in-progress: false' .github/workflows/release.yml; then
+  fail "release workflow does not serialize the shared Dokploy Compose mutation path"
+fi
+pass "workflow serializes interleaving releases for one Dokploy Compose"
 
 echo "OK $pass_count Dokploy release fixture checks"
