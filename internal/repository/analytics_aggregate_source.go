@@ -37,7 +37,7 @@ type analyticsAggregateSource struct {
 	query                func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	// identityQuery/apiKeyQuery 在 query 基础上附加身份/别名 join 与非空身份过滤。
 	identityQuery func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
-	apiKeyQuery   func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
+	apiKeyQuery   func(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB
 }
 
 func analyticsEventsAggregateSource() analyticsAggregateSource {
@@ -66,7 +66,7 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		bucketExpr:           analyticsBucketSQLExpression,
 		query:                analyticsEventsWithPricingQuery,
 		identityQuery:        analyticsIdentityEventsWithPricingQuery,
-		apiKeyQuery:          analyticsAPIKeyEventsWithPricingQuery,
+		apiKeyQuery:          apiKeyEventsWithPricingQuery,
 	}
 }
 
@@ -94,7 +94,7 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 		bucketExpr:           analyticsRollupBucketSQLExpression,
 		query:                analyticsRollupsWithPricingQuery,
 		identityQuery:        analyticsRollupIdentityWithPricingQuery,
-		apiKeyQuery:          analyticsRollupAPIKeyWithPricingQuery,
+		apiKeyQuery:          rollupAPIKeyWithPricingQuery,
 	}
 }
 

@@ -88,7 +88,8 @@ func TestAPIKeyAggregateFactsMatchAcrossAnalyticsRollupAndAliasTargets(t *testin
 		t.Fatalf("raw and rollup api key read facts differ\nraw=%+v\nrollup=%+v", rawReadModel, rollupReadModel)
 	}
 	var rollupRows []apiKeyAggregateFactRow
-	if err := apiKeyAggregateFactsQuery(db, filter, analyticsRollupsAggregateSource()).Scan(&rollupRows).Error; err != nil {
+	rollupSource := analyticsRollupsAggregateSource()
+	if err := apiKeyAggregateFactsQuery(db, filter.UsageTimeScope, rollupSource).Scan(&rollupRows).Error; err != nil {
 		t.Fatalf("read rollup api key facts: %v", err)
 	}
 	if len(rollupRows) != 1 || rollupRows[0].FirstUsedAt != "" {

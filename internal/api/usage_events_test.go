@@ -173,6 +173,17 @@ func TestUsageEventsResponseDoesNotExposeSourceKey(t *testing.T) {
 	}
 }
 
+func TestUsageEventPublicSourcePreservesUnknownTransportProjection(t *testing.T) {
+	source, isDelete := usageEventPublicSource(dto.UsageEventRecord{
+		AuthType:  "future_auth",
+		Provider:  "Future Provider",
+		AuthIndex: "future-index",
+	}, resolvedUsageIdentity{}, false)
+	if source != "Future Provider" || !isDelete {
+		t.Fatalf("expected unknown transport projection to preserve provider and deleted marker, got source=%q isDelete=%t", source, isDelete)
+	}
+}
+
 func TestUsageEventsIncludesAPIKeyAliasAndMaskedKey(t *testing.T) {
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID:             49,

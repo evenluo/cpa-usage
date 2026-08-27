@@ -119,7 +119,7 @@ func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, 
 // buildAnalyticsAPIKeySegmentRows 按聚合源渲染 API Key 段查询，raw 与 rollup 共用同一份列定义。
 func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
 	var factRows []apiKeyAggregateFactRow
-	if err := apiKeyAggregateFactsQuery(db, filter, source).Scan(&factRows).Error; err != nil {
+	if err := apiKeyAggregateFactsQuery(db, filter.UsageTimeScope, source).Scan(&factRows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics %s api key segment rows: %w", source.name, err)
 	}
 	rows := make([]analyticsIdentityAggregateRow, 0, len(factRows))
@@ -182,7 +182,7 @@ func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.AnalyticsFil
 	if apiKeys {
 		authTypeExpr = analyticsAPIKeyAuthTypeSQLExpression()
 		identityExpr = source.apiKeyIdentityExpr
-		query = source.apiKeyQuery(db, filter)
+		query = source.apiKeyQuery(db, filter.UsageTimeScope)
 		groupExpr = identityExpr + ", bucket"
 	} else {
 		authTypeExpr = source.identityAuthTypeExpr
@@ -218,9 +218,10 @@ func analyticsRollupIdentityWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFi
 		Where(identityExpr + " <> ''")
 }
 
-func analyticsRollupAPIKeyWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
+func rollupAPIKeyWithPricingQuery(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
 	identityExpr := analyticsRollupAPIKeyIdentitySQLExpression()
-	return analyticsRollupsWithPricingQuery(db, filter).
+	return applyAnalyticsRollupScopeFilter(db.Model(&entities.UsageRollupHourly{}), scope).
+		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_rollups_hourly.model)").
 		Joins("LEFT JOIN key_aliases ON key_aliases.auth_type = ? AND key_aliases.identity = "+identityExpr, entities.UsageIdentityAuthTypeAIProvider).
 		Where(identityExpr + " <> ''")
 }

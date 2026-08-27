@@ -48,7 +48,9 @@ func normalizeRedisAuthType(value string) string {
 	}
 	authType, ok := entities.ParseUsageIdentityAuthType(trimmed)
 	if !ok {
-		return ""
+		// UsageEvent keeps unknown CPA transport values losslessly. Identity read
+		// projections parse and explicitly exclude values they do not own.
+		return trimmed
 	}
 	canonical, _ := authType.CanonicalName()
 	return canonical

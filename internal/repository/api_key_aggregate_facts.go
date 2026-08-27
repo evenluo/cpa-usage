@@ -29,8 +29,8 @@ type apiKeyAggregateFactRow struct {
 	LastUsedAt           string
 }
 
-func apiKeyAggregateFactsQuery(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) *gorm.DB {
-	return source.apiKeyQuery(db, filter).
+func apiKeyAggregateFactsQuery(db *gorm.DB, scope dto.UsageTimeScope, source analyticsAggregateSource) *gorm.DB {
+	return source.apiKeyQuery(db, scope).
 		Select(apiKeyAggregateFactSelect(source)).
 		Group(source.apiKeyIdentityExpr)
 }

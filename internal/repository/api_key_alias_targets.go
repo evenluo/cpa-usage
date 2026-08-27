@@ -43,7 +43,7 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 
 	var rows []apiKeyAggregateFactRow
 	source := analyticsEventsAggregateSource()
-	if err := apiKeyAggregateFactsQuery(db.WithContext(ctx), dto.AnalyticsFilter{}, source).
+	if err := apiKeyAggregateFactsQuery(db.WithContext(ctx), dto.UsageTimeScope{}, source).
 		Order("total_cost DESC").
 		Order(analyticsTotalTokensDescOrder(source)).
 		Order("last_used_at DESC").

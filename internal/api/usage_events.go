@@ -221,7 +221,9 @@ func usageEventPublicSource(row repodto.UsageEventRecord, identity resolvedUsage
 	isDelete := strings.TrimSpace(row.AuthIndex) != ""
 	authType, ok := entities.ParseUsageIdentityAuthType(row.AuthType)
 	if !ok {
-		return strings.TrimSpace(row.Provider), false
+		// Preserve the existing request-evidence projection for unknown CPA
+		// transport values without guessing a UsageIdentityAuthType.
+		return strings.TrimSpace(row.Provider), isDelete
 	}
 	switch authType {
 	case entities.UsageIdentityAuthTypeAIProvider:
@@ -229,7 +231,7 @@ func usageEventPublicSource(row repodto.UsageEventRecord, identity resolvedUsage
 	case entities.UsageIdentityAuthTypeAuthFile:
 		return strings.TrimSpace(row.Source), isDelete
 	default:
-		return strings.TrimSpace(row.Provider), false
+		return strings.TrimSpace(row.Provider), isDelete
 	}
 }
 

@@ -286,13 +286,17 @@ func analyticsRollupsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *
 }
 
 func applyAnalyticsRollupQueryFilter(query *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
-	if filter.StartTime != nil {
-		query = query.Where("usage_rollups_hourly.bucket_start >= ?", filter.StartTime.UTC())
+	return applyAnalyticsRollupScopeFilter(query, filter.UsageTimeScope)
+}
+
+func applyAnalyticsRollupScopeFilter(query *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
+	if scope.StartTime != nil {
+		query = query.Where("usage_rollups_hourly.bucket_start >= ?", scope.StartTime.UTC())
 	}
-	if filter.EndTime != nil {
-		query = query.Where("usage_rollups_hourly.bucket_start <= ?", filter.EndTime.UTC())
+	if scope.EndTime != nil {
+		query = query.Where("usage_rollups_hourly.bucket_start <= ?", scope.EndTime.UTC())
 	}
-	if provider := strings.TrimSpace(filter.Provider); provider != "" {
+	if provider := strings.TrimSpace(scope.Provider); provider != "" {
 		query = query.Where("TRIM(usage_rollups_hourly.provider) = ?", provider)
 	}
 	return query

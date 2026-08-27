@@ -121,9 +121,9 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys 
 	return trends, nil
 }
 
-func analyticsAPIKeyEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
+func apiKeyEventsWithPricingQuery(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
 	identityExpr := analyticsAPIKeyIdentitySQLExpression()
-	return analyticsEventsWithPricingQuery(db, filter).
+	return usageEventsWithPricingQuery(db, scope).
 		Joins("LEFT JOIN key_aliases ON key_aliases.auth_type = ? AND key_aliases.identity = "+identityExpr, entities.UsageIdentityAuthTypeAIProvider).
 		Where(identityExpr + " <> ''")
 }
@@ -131,7 +131,7 @@ func analyticsAPIKeyEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilt
 func buildAnalyticsAPIKeyBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	source := analyticsEventsAggregateSource()
 	var factRows []apiKeyAggregateFactRow
-	if err := apiKeyAggregateFactsQuery(db, filter, source).
+	if err := apiKeyAggregateFactsQuery(db, filter.UsageTimeScope, source).
 		Order("total_cost DESC").
 		Order(analyticsTotalTokensDescOrder(source)).
 		Order("last_used_at DESC").
@@ -181,7 +181,7 @@ func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys []
 	bucketByDay := analyticsTrendBucketsByDay(filter)
 	bucketExpr := analyticsBucketSQLExpression(bucketByDay)
 	var rows []analyticsIdentityTrendRow
-	if err := applyAnalyticsIdentityKeyFilter(analyticsAPIKeyEventsWithPricingQuery(db, filter), keys, authTypeExpr, identityExpr).
+	if err := applyAnalyticsIdentityKeyFilter(apiKeyEventsWithPricingQuery(db, filter.UsageTimeScope), keys, authTypeExpr, identityExpr).
 		Select(`
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
