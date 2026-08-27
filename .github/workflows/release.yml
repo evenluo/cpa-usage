@@ -16,8 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DOKPLOY_CPA_USAGE_COMPOSE_ID: ${{ vars.DOKPLOY_CPA_USAGE_COMPOSE_ID }}
+      DOKPLOY_CPA_USAGE_HEALTH_URL: ${{ vars.DOKPLOY_CPA_USAGE_HEALTH_URL }}
       DOKPLOY_URL: ${{ secrets.DOKPLOY_URL }}
       DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+      CPA_USAGE_RELEASE_ID: cpa-usage-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}-sha-${{ github.sha }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -47,7 +49,7 @@ jobs:
       - name: Validate Dokploy configuration
         run: |
           set -euo pipefail
-          for name in DOKPLOY_CPA_USAGE_COMPOSE_ID DOKPLOY_URL DOKPLOY_API_KEY; do
+          for name in DOKPLOY_CPA_USAGE_COMPOSE_ID DOKPLOY_CPA_USAGE_HEALTH_URL DOKPLOY_URL DOKPLOY_API_KEY; do
             if [[ -z "${!name:-}" ]]; then
               echo "$name is required" >&2
               exit 1
@@ -56,6 +58,9 @@ jobs:
 
       - name: Verify
         run: make verify
+
+      - name: Verify Dokploy release logic
+        run: make verify-dokploy-release
 
       - name: Prepare image metadata
         id: image

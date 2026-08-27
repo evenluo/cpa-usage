@@ -1,6 +1,6 @@
 WEB_DIR := ./web
 
-.PHONY: dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose dokploy-migrate-cpa-usage-compose
+.PHONY: dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose-static verify-dokploy-compose test-dokploy-release verify-dokploy-release dokploy-migrate-cpa-usage-compose
 
 dev-backend:
 	go run ./cmd/server/main.go --env .env
@@ -66,8 +66,16 @@ verify-docker:
 render-dokploy-compose:
 	scripts/render-dokploy-compose.sh $${CPA_USAGE_VERSION:?set CPA_USAGE_VERSION} $${OUTPUT:-.tmp/dokploy/cpa-usage.compose.yml}
 
+verify-dokploy-compose-static:
+	scripts/verify-dokploy-compose-static.sh $${COMPOSE_FILE:-}
+
 verify-dokploy-compose:
-	scripts/verify-dokploy-compose.sh
+	scripts/verify-dokploy-compose.sh $${COMPOSE_FILE:-}
+
+test-dokploy-release:
+	scripts/test-dokploy-release.sh
+
+verify-dokploy-release: verify-dokploy-compose test-dokploy-release
 
 dokploy-migrate-cpa-usage-compose:
 	scripts/dokploy-migrate-cpa-usage-compose.sh
