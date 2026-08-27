@@ -390,8 +390,8 @@ func TestUsageEventsPassesPaginationAndAuthIndexSourceFilter(t *testing.T) {
 		t.Fatalf("expected source filter to be translated to auth_index only, got %+v", provider.lastFilter)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"page":3`) || !contains(body, `"page_size":100`) || !contains(body, `"total_count":0`) || !contains(body, `"total_pages":0`) {
-		t.Fatalf("expected response pagination metadata, got %s", body)
+	if !contains(body, `"page":1`) || !contains(body, `"page_size":100`) || !contains(body, `"total_count":0`) || !contains(body, `"total_pages":1`) {
+		t.Fatalf("expected normalized empty response pagination metadata, got %s", body)
 	}
 }
 

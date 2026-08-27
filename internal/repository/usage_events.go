@@ -82,9 +82,11 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 			TotalTokens:     event.TotalTokens,
 		})
 	}
-	totalPages := 0
+	totalPages := 1
 	if totalCount > 0 {
 		totalPages = int((totalCount + int64(pageSize) - 1) / int64(pageSize))
+	} else {
+		page = 1
 	}
 	return &dto.UsageEventsPageRecord{Events: rows, Models: modelOptions, TotalCount: totalCount, Page: page, PageSize: pageSize, TotalPages: totalPages}, nil
 }

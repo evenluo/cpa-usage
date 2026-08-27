@@ -44,6 +44,22 @@ func TestListUsageEventsWithFilterAppliesTimeBoundsAndPagination(t *testing.T) {
 	}
 }
 
+func TestListUsageEventsWithFilterNormalizesEmptyPageMetadata(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-empty.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Page: 7, PageSize: 25})
+	if err != nil {
+		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
+	}
+	if page.TotalCount != 0 || page.TotalPages != 1 || page.Page != 1 || page.PageSize != 25 || len(page.Events) != 0 {
+		t.Fatalf("expected normalized empty page metadata, got %+v", page)
+	}
+}
+
 func TestListUsageEventsWithFilterPagesByTimestampAndID(t *testing.T) {
 	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-pages.db")})
 	if err != nil {

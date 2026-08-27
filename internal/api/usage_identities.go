@@ -107,7 +107,7 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		page := positiveQueryInt(c, "page", 1)
 		pageSize := positiveQueryInt(c, "page_size", 100)
 		if keyAliasProvider == nil {
-			c.JSON(http.StatusOK, usageAPIKeysPageResponse{APIKeys: []usageAPIKeyResponse{}, Page: page, PageSize: pageSize})
+			c.JSON(http.StatusOK, usageAPIKeysPageResponse{APIKeys: []usageAPIKeyResponse{}, Page: 1, PageSize: pageSize, TotalPages: 1})
 			return
 		}
 		result, err := keyAliasProvider.ListAPIKeyAliasTargetsPage(c.Request.Context(), service.ListAPIKeyAliasTargetsRequest{Page: page, PageSize: pageSize})
@@ -119,10 +119,14 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		for _, item := range result.Items {
 			response = append(response, mapUsageAPIKeyResponse(item))
 		}
+		responsePage := page
+		if result.Total == 0 {
+			responsePage = 1
+		}
 		c.JSON(http.StatusOK, usageAPIKeysPageResponse{
 			APIKeys:    response,
 			TotalCount: result.Total,
-			Page:       page,
+			Page:       responsePage,
 			PageSize:   pageSize,
 			TotalPages: totalPages(result.Total, pageSize),
 		})
@@ -174,7 +178,7 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 
 	router.GET("/usage/identities/page", func(c *gin.Context) {
 		if usageIdentityProvider == nil {
-			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: 1, PageSize: 10})
+			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: 1, PageSize: 10, TotalPages: 1})
 			return
 		}
 
@@ -200,10 +204,14 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		for _, item := range items {
 			response = append(response, mapUsageIdentityResponse(item, aliases))
 		}
+		responsePage := request.Page
+		if total == 0 {
+			responsePage = 1
+		}
 		c.JSON(http.StatusOK, usageIdentitiesPageResponse{
 			Identities: response,
 			TotalCount: total,
-			Page:       request.Page,
+			Page:       responsePage,
 			PageSize:   request.PageSize,
 			TotalPages: totalPages(total, request.PageSize),
 		})
@@ -321,7 +329,7 @@ func positiveQueryInt(c *gin.Context, key string, fallback int) int {
 
 func totalPages(total int64, pageSize int) int {
 	if total <= 0 || pageSize <= 0 {
-		return 0
+		return 1
 	}
 	return int((total + int64(pageSize) - 1) / int64(pageSize))
 }

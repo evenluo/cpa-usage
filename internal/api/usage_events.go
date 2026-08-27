@@ -85,7 +85,7 @@ func registerUsageEventsRoute(
 
 	router.GET("/usage/events", func(c *gin.Context) {
 		if usageProvider == nil {
-			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: 1, PageSize: servicedto.DefaultUsageEventsLimit})
+			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: 1, PageSize: servicedto.DefaultUsageEventsLimit, TotalPages: 1})
 			return
 		}
 
@@ -116,12 +116,16 @@ func registerUsageEventsRoute(
 			writeInternalError(c, "load usage event api key aliases failed", err)
 			return
 		}
+		page, totalPages := rows.Page, rows.TotalPages
+		if rows.TotalCount == 0 {
+			page, totalPages = 1, 1
+		}
 		c.JSON(http.StatusOK, usageEventsResponse{
 			Events:     buildUsageEventsPayload(rows.Events, resolver, apiKeyAliases),
 			TotalCount: rows.TotalCount,
-			Page:       rows.Page,
+			Page:       page,
 			PageSize:   rows.PageSize,
-			TotalPages: rows.TotalPages,
+			TotalPages: totalPages,
 		})
 	})
 }
