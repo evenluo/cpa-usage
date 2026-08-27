@@ -1,6 +1,19 @@
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { validatePaginatedPage } from "@/lib/pagination"
 import type { UsageEventsPage } from "@/types/api"
+
+export async function fetchEvents(path: string, page: number, pageSize: number): Promise<UsageEventsPage> {
+  const payload = await apiFetch<UsageEventsPage>(path)
+  validatePaginatedPage<UsageEventsPage, UsageEventsPage["events"][number]>({
+    payload,
+    expectedPage: page,
+    resource: "Request evidence",
+    expectedPageSize: pageSize,
+    getItems: (response) => response.events,
+  })
+  return payload
+}
 
 export function useEvents(
   range: string = "24h",
@@ -14,8 +27,7 @@ export function useEvents(
 
   return useQuery({
     queryKey: ["events", range, pageSize, provider, page],
-    queryFn: () =>
-      apiFetch<UsageEventsPage>(`/usage/events?${params.toString()}`),
+    queryFn: () => fetchEvents(`/usage/events?${params.toString()}`, page, pageSize),
     staleTime: 30_000,
     refetchInterval: () => {
       if (refetchInterval === false) return false

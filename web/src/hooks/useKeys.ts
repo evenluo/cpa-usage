@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
+import { collectPaginatedItems } from "@/lib/pagination"
 import type { APIKeyAliasTarget, APIKeyAliasTargetPage, KeyIdentityPage, KeyIdentity } from "@/types/api"
 
 const PAGE_SIZE = 100
@@ -13,23 +14,21 @@ async function fetchAPIKeyPage(page: number): Promise<APIKeyAliasTargetPage> {
 }
 
 export async function fetchAllKeys(): Promise<KeyIdentity[]> {
-  const first = await fetchPage(1)
-  const totalPages = Math.max(1, Math.trunc(first.total_pages ?? 1))
-  if (totalPages <= 1) return first.identities ?? []
-  const rest = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, i) => fetchPage(i + 2))
-  )
-  return [first, ...rest].flatMap((p) => p.identities ?? [])
+  return collectPaginatedItems({
+    fetchPage,
+    getItems: (page) => page.identities,
+    resource: "Accounts",
+    expectedPageSize: PAGE_SIZE,
+  })
 }
 
 export async function fetchAllAPIKeys(): Promise<APIKeyAliasTarget[]> {
-  const first = await fetchAPIKeyPage(1)
-  const totalPages = Math.max(1, Math.trunc(first.total_pages ?? 1))
-  if (totalPages <= 1) return first.api_keys ?? []
-  const rest = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, i) => fetchAPIKeyPage(i + 2))
-  )
-  return [first, ...rest].flatMap((p) => p.api_keys ?? [])
+  return collectPaginatedItems({
+    fetchPage: fetchAPIKeyPage,
+    getItems: (page) => page.api_keys,
+    resource: "API keys",
+    expectedPageSize: PAGE_SIZE,
+  })
 }
 
 export function useKeys() {

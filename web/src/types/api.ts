@@ -188,7 +188,10 @@ export interface APIKeyAliasTarget {
 
 export interface KeyIdentityPage {
   identities: KeyIdentity[]
-  total_pages?: number
+  total_count: number
+  page: number
+  page_size: number
+  total_pages: number
 }
 
 export interface QuotaWindow {
@@ -256,7 +259,10 @@ export interface QuotaRefreshTaskResponse {
 
 export interface APIKeyAliasTargetPage {
   api_keys: APIKeyAliasTarget[]
-  total_pages?: number
+  total_count: number
+  page: number
+  page_size: number
+  total_pages: number
 }
 
 export interface UsageEvent {
@@ -309,7 +315,7 @@ export interface StatusPayload {
 }
 
 export interface AuthSessionPayload {
-  authenticated?: boolean
+  authenticated: boolean
 }
 
 export interface ServiceHealthBlock {

@@ -1,18 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@/lib/api"
 
-interface AuthSession {
+export interface AuthSession {
   authenticated: boolean
 }
 
 const AUTH_SESSION_QUERY_KEY = ["auth", "session"] as const
 
-async function fetchSession(): Promise<AuthSession> {
-  try {
-    return await apiFetch<AuthSession>("/auth/session")
-  } catch {
-    return { authenticated: false }
+export async function fetchSession(): Promise<AuthSession> {
+  const response = await apiFetch<unknown>("/auth/session")
+  if (
+    typeof response !== "object" ||
+    response === null ||
+    typeof (response as { authenticated?: unknown }).authenticated !== "boolean"
+  ) {
+    throw new Error("Session response is malformed")
   }
+  return { authenticated: (response as { authenticated: boolean }).authenticated }
 }
 
 export function useAuth() {
