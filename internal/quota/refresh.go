@@ -81,9 +81,16 @@ func (s *Service) AttachRefreshWorkerLifecycle(ctx context.Context) {
 	s.refreshWorkerCtx, s.refreshWorkerCancel = context.WithCancel(ctx)
 }
 
-// StopRefreshWorkers 拒绝新的 refresh worker 并等待进行中的 worker 退出。
-// 关闭标志与 worker context 取消在同一把锁下完成，与 startRefreshTask 的接收检查互斥：
-// 一旦开始关闭，后续接收必然被拒绝，不会返回 Accepted 但无法执行的任务。
+// CloseRefreshAdmission atomically rejects new refresh workers without
+// canceling work that was already admitted. App uses this before HTTP drain.
+func (s *Service) CloseRefreshAdmission() {
+	s.refreshWorkerMu.Lock()
+	s.refreshWorkersClose = true
+	s.refreshWorkerMu.Unlock()
+}
+
+// StopRefreshWorkers keeps admission closed, cancels accepted workers, and
+// waits for them to release their owners before application resources close.
 func (s *Service) StopRefreshWorkers() {
 	s.refreshWorkerMu.Lock()
 	s.refreshWorkersClose = true

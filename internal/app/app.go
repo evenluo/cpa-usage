@@ -359,7 +359,7 @@ func (a *App) closeRuntime() (error, bool) {
 		a.manualSync.CloseAdmission()
 	}
 	if a.Quota != nil {
-		a.Quota.StopRefreshWorkers()
+		a.Quota.CloseRefreshAdmission()
 	}
 	if a.Server != nil {
 		timeout := a.shutdownTimeout
@@ -374,6 +374,9 @@ func (a *App) closeRuntime() (error, bool) {
 			// resources remain live until a later Close proves the drain complete.
 			return fmt.Errorf("drain HTTP server: %w", err), false
 		}
+	}
+	if a.Quota != nil {
+		a.Quota.StopRefreshWorkers()
 	}
 
 	if a.backgroundCancel != nil {

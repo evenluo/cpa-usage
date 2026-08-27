@@ -407,6 +407,51 @@ func TestAppCloseRejectsQuotaRefreshAdmission(t *testing.T) {
 	}
 }
 
+func TestHTTPDrainDeadlineStartsBeforeAcceptedQuotaWorkersStop(t *testing.T) {
+	quotaStarted := make(chan struct{})
+	releaseQuota := make(chan struct{})
+	quotaHandler := &blockingLifecycleQuotaHandler{started: quotaStarted, release: releaseQuota}
+	service := quota.NewServiceWithRegistry(
+		lifecycleIdentityLookup{},
+		quota.NewProviderRegistry(map[string]quota.ProviderHandler{"claude": quotaHandler}),
+	)
+	refresh, err := service.Refresh(context.Background(), quota.RefreshRequest{AuthIndexes: []string{"auth-1"}, Limit: 1})
+	if err != nil || refresh.Accepted != 1 {
+		t.Fatalf("expected initial quota refresh admission, response=%+v err=%v", refresh, err)
+	}
+	<-quotaStarted
+
+	httpStarted := make(chan struct{})
+	releaseHTTP := make(chan struct{})
+	server, _ := startBlockingHTTPServer(t, httpStarted, releaseHTTP)
+	application := &App{Quota: service, Server: server, shutdownTimeout: 25 * time.Millisecond}
+	startedAt := time.Now()
+	err = application.Close()
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected HTTP drain deadline while quota worker remains accepted, got %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > 500*time.Millisecond {
+		t.Fatalf("HTTP deadline started too late behind quota worker wait: %s", elapsed)
+	}
+	quotaTask, err := service.GetRefreshTask(context.Background(), refresh.Tasks[0].TaskID)
+	if err != nil || quotaTask.Status != quota.RefreshTaskStatusRunning {
+		t.Fatalf("expected quota worker to remain running after incomplete HTTP drain, task=%+v err=%v", quotaTask, err)
+	}
+
+	close(releaseHTTP)
+	retryDone := make(chan error, 1)
+	go func() { retryDone <- application.Close() }()
+	select {
+	case err := <-retryDone:
+		t.Fatalf("retry returned before accepted quota worker stopped: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	close(releaseQuota)
+	if err := <-retryDone; err != nil {
+		t.Fatalf("retry Close returned error: %v", err)
+	}
+}
+
 func TestRunAndCloseSerializeBackgroundWaitGroupAdmission(t *testing.T) {
 	for index := range 20 {
 		cfg := testAppConfig(t)
@@ -575,6 +620,18 @@ func (lifecycleIdentityLookup) HasActiveIdentity(context.Context, string) (bool,
 type lifecycleQuotaHandler struct{}
 
 func (lifecycleQuotaHandler) Check(context.Context, quota.ProviderInput) (quota.ProviderOutput, error) {
+	return quota.ProviderOutput{}, nil
+}
+
+type blockingLifecycleQuotaHandler struct {
+	started chan struct{}
+	release <-chan struct{}
+	once    sync.Once
+}
+
+func (h *blockingLifecycleQuotaHandler) Check(context.Context, quota.ProviderInput) (quota.ProviderOutput, error) {
+	h.once.Do(func() { close(h.started) })
+	<-h.release
 	return quota.ProviderOutput{}, nil
 }
 

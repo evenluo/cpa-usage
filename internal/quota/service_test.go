@@ -268,6 +268,40 @@ func TestStopRefreshWorkersCancelsQueuedAndRunningWorkers(t *testing.T) {
 	}
 }
 
+func TestCloseRefreshAdmissionRejectsNewTasksWithoutCancelingAcceptedWorker(t *testing.T) {
+	block := make(chan struct{})
+	handler := &refreshHandlerStub{block: block, output: claudeUsageOutput(25)}
+	service := newRefreshTestService(map[string]entities.UsageIdentity{
+		"auth-1": claudeAuthFileIdentity("auth-1"),
+		"auth-2": claudeAuthFileIdentity("auth-2"),
+	}, handler)
+	workerCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service.AttachRefreshWorkerLifecycle(workerCtx)
+
+	taskID := refreshAuthIndex(t, service, "auth-1")
+	waitForRefreshTask(t, service, taskID, RefreshTaskStatusRunning)
+	service.CloseRefreshAdmission()
+
+	response, err := service.Refresh(context.Background(), RefreshRequest{AuthIndexes: []string{"auth-2"}, Limit: 1})
+	if err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+	if response.Accepted != 0 || !hasRefreshRejection(response.Rejected, "auth-2", "refresh_unavailable") {
+		t.Fatalf("expected closed admission to reject new task, got %+v", response)
+	}
+	task, err := service.GetRefreshTask(context.Background(), taskID)
+	if err != nil {
+		t.Fatalf("GetRefreshTask returned error: %v", err)
+	}
+	if task.Status != RefreshTaskStatusRunning {
+		t.Fatalf("expected accepted worker to remain running before stop, got %+v", task)
+	}
+
+	close(block)
+	service.StopRefreshWorkers()
+}
+
 func TestStopRefreshWorkersCancelsWorkersWithoutExternalCancel(t *testing.T) {
 	block := make(chan struct{})
 	defer close(block)
