@@ -15,13 +15,13 @@ type RedisQueue interface {
 	PopUsage(ctx context.Context) ([]string, error)
 }
 
-func DecodeRedisUsageMessage(message string, fetchedAt time.Time) (entities.UsageEvent, json.RawMessage, error) {
+func DecodeRedisUsageMessage(message string, fallbackTimestamp time.Time) (entities.UsageEvent, json.RawMessage, error) {
 	raw := json.RawMessage(message)
 	var payload queuedUsageDetail
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return entities.UsageEvent{}, nil, fmt.Errorf("decode redis usage message: %w", err)
 	}
-	return payload.toUsageEvent(fetchedAt), raw, nil
+	return payload.toUsageEvent(fallbackTimestamp), raw, nil
 }
 
 type queuedUsageDetail struct {
@@ -60,13 +60,13 @@ func trimRedisOptionalString(value *string) *string {
 	return &trimmed
 }
 
-func (d queuedUsageDetail) toUsageEvent(fetchedAt time.Time) entities.UsageEvent {
+func (d queuedUsageDetail) toUsageEvent(fallbackTimestamp time.Time) entities.UsageEvent {
 	tokens := normalizeTokens(d.Tokens)
 	apiGroupKey := firstNonEmpty(d.APIKey, d.Provider, d.Endpoint, "unknown")
 	model := firstNonEmpty(d.Model, "unknown")
 	timestamp := d.Timestamp.UTC()
 	if timestamp.IsZero() {
-		timestamp = fetchedAt.UTC()
+		timestamp = fallbackTimestamp.UTC()
 	}
 	source := strings.TrimSpace(d.Source)
 	authIndex := strings.TrimSpace(d.AuthIndex)
