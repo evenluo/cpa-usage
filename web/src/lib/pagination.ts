@@ -52,8 +52,7 @@ export function validatePaginationMetadata(
   if (expectedPageSize !== undefined && pageSize !== expectedPageSize) {
     throw new Error(`${resource} returned page_size ${pageSize} while ${expectedPageSize} was requested`)
   }
-  const normalizedEmptyPage = totalCount === 0 && page === 1
-  if (page !== expectedPage && !normalizedEmptyPage) {
+  if (page !== expectedPage) {
     throw new Error(`${resource} returned page ${page} while page ${expectedPage} was requested`)
   }
 
@@ -77,14 +76,12 @@ export function validatePaginatedPage<TPage, TItem>(input: {
   if (!Array.isArray(items)) {
     throw new Error(`${input.resource} returned invalid items`)
   }
-  if (items.length > metadata.pageSize) {
-    throw new Error(`${input.resource} returned more items than page_size`)
-  }
-  if (metadata.totalCount === 0 && items.length !== 0) {
-    throw new Error(`${input.resource} returned items for an empty page`)
-  }
-  if (metadata.totalCount > 0 && items.length === 0) {
-    throw new Error(`${input.resource} returned an empty populated page`)
+  const expectedItemCount = Math.min(
+    metadata.pageSize,
+    metadata.totalCount - (metadata.page - 1) * metadata.pageSize,
+  )
+  if (items.length !== expectedItemCount) {
+    throw new Error(`${input.resource} returned an incomplete page item count`)
   }
   return { metadata, items: items as TItem[] }
 }

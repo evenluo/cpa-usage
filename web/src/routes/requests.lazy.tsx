@@ -27,7 +27,6 @@ function RequestsPage() {
   const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, "", page)
   const hasCompleteData = data !== undefined
   const events = data?.events ?? []
-  const totalPages = Math.max(data?.total_pages ?? 1, 1)
   const selectedEvent = events.find((event) => requestEventKey(event) === selectedEventKey) ?? events[0]
   const effectiveSelectedKey = selectedEvent ? requestEventKey(selectedEvent) : null
 
@@ -117,12 +116,12 @@ function RequestsPage() {
                   <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
                   Previous
                 </Button>
-                <span className="whitespace-nowrap text-xs text-muted-foreground">Page {page} of {totalPages}</span>
+                <span className="whitespace-nowrap text-xs text-muted-foreground">Page {data?.page} of {data?.total_pages}</span>
                 <Button
                   variant="outline"
                   size="sm"
                   aria-label="Next page"
-                  disabled={page >= totalPages}
+                  disabled={data === undefined || page >= data.total_pages}
                   onClick={() => changePage(page + 1)}
                 >
                   Next

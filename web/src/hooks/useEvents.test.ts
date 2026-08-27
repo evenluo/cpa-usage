@@ -27,7 +27,7 @@ describe("fetchEvents", () => {
       .mockResolvedValueOnce({ events: [], total_count: 0, page: 1, page_size: 10, total_pages: 1 })
 
     await expect(fetchEvents("/events?page=1", 1, 10)).resolves.toMatchObject({ events: [event] })
-    await expect(fetchEvents("/events?page=7", 7, 10)).resolves.toMatchObject({ events: [], page: 1 })
+    await expect(fetchEvents("/events?page=1", 1, 10)).resolves.toMatchObject({ events: [], page: 1 })
   })
 
   it.each([
@@ -55,5 +55,38 @@ describe("fetchEvents", () => {
 
     await expect(fetchEvents("/events", 1, 10)).rejects.toThrow("inconsistent")
     await expect(fetchEvents("/events", 1, 10)).rejects.toThrow("invalid items")
+  })
+
+  it("rejects a normalized empty response when it does not match the requested page", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      events: [],
+      total_count: 0,
+      page: 1,
+      page_size: 10,
+      total_pages: 1,
+    })
+
+    await expect(fetchEvents("/events?page=7", 7, 10)).rejects.toThrow("page 1 while page 7 was requested")
+  })
+
+  it("rejects a short populated event page instead of publishing partial evidence", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      events: [{
+        timestamp: "2026-08-27T00:00:00Z",
+        model: "gpt-5",
+        source: "account",
+        failed: false,
+        latency_ms: 10,
+        ttft_ms: 2,
+        output_tps: 100,
+        tokens: { output_tokens: 1, total_tokens: 2 },
+      }],
+      total_count: 2,
+      page: 1,
+      page_size: 10,
+      total_pages: 1,
+    })
+
+    await expect(fetchEvents("/events", 1, 10)).rejects.toThrow("incomplete page item count")
   })
 })

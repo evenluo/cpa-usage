@@ -140,7 +140,7 @@ describe("fetchAllKeys", () => {
       return identityPage(page, 101, page === 1 ? firstPage : [])
     })
 
-    await expect(fetchAllKeys()).rejects.toThrow("empty populated page")
+    await expect(fetchAllKeys()).rejects.toThrow("incomplete page item count")
   })
 
   it("returns an empty list when the only page has no identities", async () => {

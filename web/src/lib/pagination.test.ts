@@ -29,11 +29,12 @@ describe("validatePaginationMetadata", () => {
       totalPages: 2,
       totalCount: 3,
     })
-    expect(validatePaginationMetadata(page(1, 1, 0, []), 7, "records")).toMatchObject({
+    expect(validatePaginationMetadata(page(1, 1, 0, []), 1, "records")).toMatchObject({
       page: 1,
       totalPages: 1,
       totalCount: 0,
     })
+    expect(() => validatePaginationMetadata(page(1, 1, 0, []), 7, "records")).toThrow("page 1")
   })
 
   it.each([
@@ -74,9 +75,10 @@ describe("validatePaginationMetadata", () => {
 describe("validatePaginatedPage", () => {
   it("rejects missing, oversized, or count-inconsistent item arrays", () => {
     expect(() => validatePaginatedPage({ payload: { ...page(1, 1, 0, []), items: undefined }, expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("invalid items")
-    expect(() => validatePaginatedPage({ payload: page(1, 2, 3, [1, 2, 3]), expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("more items")
-    expect(() => validatePaginatedPage({ payload: page(1, 1, 0, [1]), expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("items for an empty page")
-    expect(() => validatePaginatedPage({ payload: page(1, 1, 1, []), expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("empty populated page")
+    expect(() => validatePaginatedPage({ payload: page(1, 2, 3, [1, 2, 3]), expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("incomplete page item count")
+    expect(() => validatePaginatedPage({ payload: page(1, 1, 0, [1]), expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("incomplete page item count")
+    expect(() => validatePaginatedPage({ payload: page(1, 1, 1, []), expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("incomplete page item count")
+    expect(() => validatePaginatedPage({ payload: page(1, 1, 2, [1]), expectedPage: 1, resource: "records", getItems: (payload) => payload.items })).toThrow("incomplete page item count")
   })
 })
 
@@ -108,6 +110,6 @@ describe("collectPaginatedItems", () => {
       fetchPage: async (current) => page(current, 2, 4, current === 1 ? [1, 2] : [3]),
       getItems: (payload) => payload.items,
       resource: "records",
-    })).rejects.toThrow("incomplete item count")
+    })).rejects.toThrow("incomplete page item count")
   })
 })
