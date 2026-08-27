@@ -93,7 +93,10 @@ validate_deployments_response() {
       (.deploymentId | type == "string" and length > 0) and
       (has("description") and (.description == null or (.description | type == "string"))) and
       (.composeId == $composeId) and
-      (.status == "running" or .status == "done" or .status == "error" or .status == "cancelled")
+      (has("status") and (
+        .status == null or
+        .status == "running" or .status == "done" or .status == "error" or .status == "cancelled"
+      ))
     )
   ' "$input" >/dev/null
 }

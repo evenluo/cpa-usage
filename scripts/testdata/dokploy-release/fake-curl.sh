@@ -104,6 +104,8 @@ case "$path" in
         render_deployment_fixture "deployment-done.json"
       elif [[ "$scenario" == "nullable-history" ]]; then
         render_deployment_fixture "deployment-null-description.json"
+      elif [[ "$scenario" == "nullable-status-history" ]]; then
+        render_deployment_fixture "deployment-null-status.json"
       else
         printf '[]\n'
       fi
@@ -118,7 +120,7 @@ case "$path" in
     poll_attempt=$((poll_attempt + 1))
     printf '%s' "$poll_attempt" > "$poll_file"
     case "$scenario" in
-      success | env-migration | nullable-history | health-503 | health-non-ok | health-retry)
+      success | env-migration | nullable-history | nullable-status-history | health-503 | health-non-ok | health-retry)
         if [[ "$poll_attempt" == "1" ]]; then
           render_deployment_fixture "deployment-running.json"
         else
