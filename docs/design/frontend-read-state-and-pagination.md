@@ -1,7 +1,9 @@
 # Frontend Read State and Pagination Contract
 
-Status: current  
-Scope: authentication session reads, Usage Intelligence, Reference Data, and paginated usage reads  
+Status: current
+
+Scope: authentication session reads, Usage Intelligence, Reference Data, and paginated usage reads
+
 Authority: GitHub Issue #122
 
 ## Read State
