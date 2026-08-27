@@ -37,7 +37,7 @@ func buildMetricsSnapshot(input metricsSnapshotInput) map[string]any {
 	if input.rollupStatus != nil {
 		status := repodto.NormalizeRollupBackfillStatus(*input.rollupStatus)
 		snapshot["rollup_backfill_status"] = status.Status
-		if !status.CoveredBucketStart.IsZero() {
+		if status.CoveredBucketStart != nil && !status.CoveredBucketStart.IsZero() {
 			snapshot["rollup_backfill_covered_bucket_start"] = status.CoveredBucketStart.UTC()
 		}
 	}
@@ -83,6 +83,10 @@ func (a *App) MetricsSnapshot(ctx context.Context) (map[string]any, error) {
 	}
 	if a.Poller != nil {
 		status := a.Poller.Status()
+		if a.manualSync != nil {
+			// ManualSync owns Last* while retaining the poller's live runner state.
+			status = a.manualSync.Status()
+		}
 		input.pollerStatus = &status
 		if provider, ok := a.Poller.(poller.ProcessMetricsProvider); ok {
 			metrics := provider.ProcessMetrics()

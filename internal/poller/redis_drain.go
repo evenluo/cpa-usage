@@ -33,10 +33,7 @@ type RedisDrain struct {
 
 	mu             sync.Mutex
 	running        bool
-	lastRunAt      time.Time
-	lastError      string
-	lastWarning    string
-	lastStatus     string
+	manualRunning  bool
 	pullRunning    bool
 	processRunning bool
 
@@ -146,24 +143,93 @@ func (d *RedisDrain) Status() Status {
 	defer d.mu.Unlock()
 	return Status{
 		Running:     d.running,
-		LastRunAt:   d.lastRunAt,
-		LastError:   d.lastError,
-		LastWarning: d.lastWarning,
-		LastStatus:  d.lastStatus,
-		SyncRunning: d.pullRunning || d.processRunning,
+		SyncRunning: d.manualRunning || d.pullRunning || d.processRunning,
 	}
 }
 
 // SyncNow 是手动同步入口：Redis 模式下先 Pull 一次再 Process 一次，保持用户手动触发时立即看到新数据的直觉。
-func (d *RedisDrain) SyncNow(ctx context.Context) error {
+// admission 与后台 Pull/Process 的占用检查在同一把锁内完成；只有同时预留两个
+// stage 后才允许第一个远端 Pop 副作用发生。
+func (d *RedisDrain) SyncNow(ctx context.Context) (ManualSyncOutcome, error) {
 	if err := d.validate(); err != nil {
-		return err
+		return ManualSyncOutcome{Status: "failed", Error: err.Error()}, err
 	}
-	if _, err := d.runRedisPull(ctx); err != nil {
-		return err
+	if err := d.beginManualSync(); err != nil {
+		return ManualSyncOutcome{}, err
 	}
-	_, err := d.runRedisProcess(ctx)
-	return err
+	defer d.endManualSync()
+
+	pullResult, err := d.syncer.PullRedisUsageInbox(ctx)
+	if err != nil {
+		outcome := manualPullOutcome(pullResult, err)
+		return outcome, err
+	}
+	processResult, err := d.syncer.ProcessRedisUsageInbox(ctx)
+	returnErr := err
+	if err != nil && processResult != nil && processResult.Status != "" && processResult.Status != "failed" {
+		returnErr = fmt.Errorf("%w: %v", ErrSyncCompletedWithWarnings, err)
+	}
+	d.recordProcessMetrics(processResult)
+	outcome := manualProcessOutcome(processResult, err)
+	return outcome, returnErr
+}
+
+func (d *RedisDrain) beginManualSync() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.manualRunning || d.pullRunning || d.processRunning {
+		return ErrSyncAlreadyRunning
+	}
+	d.manualRunning = true
+	// Reserve both stages for the whole command so background work cannot enter
+	// between the manual Pull and Process operations.
+	d.pullRunning = true
+	d.processRunning = true
+	return nil
+}
+
+func (d *RedisDrain) endManualSync() {
+	d.mu.Lock()
+	d.manualRunning = false
+	d.pullRunning = false
+	d.processRunning = false
+	d.mu.Unlock()
+}
+
+func manualPullOutcome(result *servicedto.RedisInboxPullResult, err error) ManualSyncOutcome {
+	status := "failed"
+	if result != nil && result.Status != "" {
+		status = result.Status
+	}
+	outcome := ManualSyncOutcome{Status: status}
+	if err != nil {
+		outcome.Error = err.Error()
+	}
+	return outcome
+}
+
+func manualProcessOutcome(result *servicedto.RedisBatchSyncResult, err error) ManualSyncOutcome {
+	status := ""
+	if result != nil && result.Status != "" {
+		status = result.Status
+	}
+	if status == "" {
+		if err != nil {
+			status = "failed"
+		} else {
+			status = "completed"
+		}
+	}
+	outcome := ManualSyncOutcome{Status: status}
+	if err == nil {
+		return outcome
+	}
+	if status != "failed" {
+		outcome.Warning = err.Error()
+		return outcome
+	}
+	outcome.Error = err.Error()
+	return outcome
 }
 
 // runRedisPull 只防止 Pull 自身重入，不阻塞 Process；这样 Redis 长轮询或退避不会跳过本地 inbox 处理周期。
@@ -183,7 +249,6 @@ func (d *RedisDrain) runRedisPull(ctx context.Context) (*servicedto.RedisInboxPu
 	}()
 
 	result, err := d.syncer.PullRedisUsageInbox(ctx)
-	d.recordPullResult(result, err)
 	return result, err
 }
 
@@ -209,7 +274,6 @@ func (d *RedisDrain) runRedisProcess(ctx context.Context) (*servicedto.RedisBatc
 		returnErr = fmt.Errorf("%w: %v", ErrSyncCompletedWithWarnings, err)
 	}
 	d.recordProcessMetrics(result)
-	d.recordResult(result, err)
 	return result, returnErr
 }
 
@@ -250,48 +314,6 @@ func (d *RedisDrain) recordProcessMetrics(result *servicedto.RedisBatchSyncResul
 	d.processedBatchesTotal.Add(1)
 	d.processedEventsTotal.Add(events)
 	d.lastProcessedAt.Store(d.now().UnixNano())
-}
-
-func (d *RedisDrain) recordPullResult(result *servicedto.RedisInboxPullResult, err error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.lastRunAt = d.now().UTC()
-	status := ""
-	if result != nil {
-		status = result.Status
-	}
-	if status == "" && err == nil {
-		status = "completed"
-	}
-	d.lastStatus = status
-	d.lastError = ""
-	d.lastWarning = ""
-	if err != nil {
-		d.lastError = err.Error()
-	}
-}
-
-func (d *RedisDrain) recordResult(result *servicedto.RedisBatchSyncResult, err error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.lastRunAt = d.now().UTC()
-	status := ""
-	if result != nil {
-		status = result.Status
-	}
-	if status == "" && err == nil {
-		status = "completed"
-	}
-	d.lastStatus = status
-	d.lastError = ""
-	d.lastWarning = ""
-	if err != nil {
-		if result != nil && result.Status != "" && result.Status != "failed" {
-			d.lastWarning = err.Error()
-		} else {
-			d.lastError = err.Error()
-		}
-	}
 }
 
 func (d *RedisDrain) setRunning(running bool) {

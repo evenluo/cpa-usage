@@ -343,6 +343,10 @@ func registerSyncRoutes(router gin.IRoutes, statusProvider StatusProvider, limit
 				c.JSON(http.StatusConflict, gin.H{"error": "sync already running"})
 				return
 			}
+			if errors.Is(err, poller.ErrSyncUnavailable) {
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sync unavailable"})
+				return
+			}
 			slog.Error("manual sync failed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": manualSyncErrorMessage(err)})
 			return

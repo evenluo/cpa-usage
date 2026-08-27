@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cpa-usage/internal/api"
@@ -26,8 +29,13 @@ import (
 type Runner interface {
 	Run(ctx context.Context) error
 	Status() poller.Status
-	SyncNow(ctx context.Context) error
+	SyncNow(ctx context.Context) (poller.ManualSyncOutcome, error)
 }
+
+// defaultShutdownTimeout bounds accepted HTTP request drain during process
+// shutdown. A timeout is explicit and retryable; it never authorizes closing
+// resources still owned by a live handler or background runner.
+const defaultShutdownTimeout = 10 * time.Second
 
 type Options struct {
 	EnvFile string
@@ -37,6 +45,7 @@ type App struct {
 	Config            *config.Config
 	DB                *gorm.DB
 	Router            *gin.Engine
+	Server            *http.Server
 	Poller            Runner
 	Maintenance       *StorageCleanupRunner
 	MetadataSync      *MetadataSyncRunner
@@ -47,12 +56,26 @@ type App struct {
 
 	rollupBackfillReader repository.RollupBackfillReader
 	startedAt            time.Time
+	manualSync           *manualSyncRunner
+	shutdownTimeout      time.Duration
 	backgroundCancel     context.CancelFunc
 	backgroundWG         sync.WaitGroup
+
+	lifecycleMu    sync.Mutex
+	runtimeStarted bool
+	closed         bool
+	closeErr       error
+	closeAttempt   *appCloseAttempt
+	httpClosed     atomic.Bool
 
 	metricsMu              sync.Mutex
 	lastMetricsSampleAt    time.Time
 	lastMetricsEventsTotal int64
+}
+
+type appCloseAttempt struct {
+	done chan struct{}
+	err  error
 }
 
 func New() (*App, error) {
@@ -142,10 +165,13 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		LogCloser:            logCloser,
 		rollupBackfillReader: rollupBackfillReader,
 		startedAt:            time.Now(),
+		shutdownTimeout:      defaultShutdownTimeout,
 	}
+	manualSync := newManualSyncRunner(backgroundPoller, syncService)
+	appInstance.manualSync = manualSync
 	appInstance.Router = api.NewRouter(
 		webui.Static,
-		newManualSyncRunner(backgroundPoller, syncService),
+		manualSync,
 		usageReader,
 		pricingService,
 		authConfig,
@@ -153,6 +179,10 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		cfg.AppBasePath,
 		api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader, Metrics: appInstance},
 	)
+	appInstance.Server = &http.Server{
+		Addr:    ":" + cfg.AppPort,
+		Handler: appInstance.httpHandler(),
+	}
 	return appInstance, nil
 }
 
@@ -172,7 +202,185 @@ func (a *App) Close() error {
 		return nil
 	}
 
-	a.stopBackgroundTasks()
+	attempt, owner, closedErr := a.beginCloseAttempt()
+	if !owner {
+		if attempt == nil {
+			return closedErr
+		}
+		<-attempt.done
+		return attempt.err
+	}
+
+	closeErr, complete := a.closeRuntime()
+	a.finishCloseAttempt(attempt, closeErr, complete)
+	return closeErr
+}
+
+func (a *App) Run(ctx context.Context) error {
+	if a == nil || a.Router == nil || a.Config == nil {
+		return fmt.Errorf("application is not initialized")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	serverDone, err := a.startRuntime()
+	if err != nil {
+		return errors.Join(err, a.Close())
+	}
+	select {
+	case serveErr := <-serverDone:
+		if errors.Is(serveErr, http.ErrServerClosed) {
+			return nil
+		}
+		return errors.Join(fmt.Errorf("serve HTTP: %w", serveErr), a.Close())
+	case <-ctx.Done():
+		if err := a.Close(); err != nil {
+			return err
+		}
+		serveErr := <-serverDone
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			return fmt.Errorf("serve HTTP: %w", serveErr)
+		}
+		return nil
+	}
+}
+
+func (a *App) startRuntime() (<-chan error, error) {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
+	if a.closed || a.closeAttempt != nil {
+		return nil, fmt.Errorf("application is closing")
+	}
+	if a.runtimeStarted {
+		return nil, fmt.Errorf("application is already running")
+	}
+	if a.Server == nil {
+		a.Server = &http.Server{Addr: ":" + a.Config.AppPort, Handler: a.httpHandler()}
+	}
+	listener, err := net.Listen("tcp", a.Server.Addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen HTTP: %w", err)
+	}
+
+	backgroundCtx, cancel := context.WithCancel(context.Background())
+	a.backgroundCancel = cancel
+	if a.Quota != nil {
+		a.Quota.AttachRefreshWorkerLifecycle(backgroundCtx)
+	}
+	tasks := a.backgroundTasks(backgroundCtx)
+	a.backgroundWG.Add(len(tasks))
+	for _, task := range tasks {
+		task := task
+		go func() {
+			defer a.backgroundWG.Done()
+			task()
+		}()
+	}
+	a.runtimeStarted = true
+	serverDone := make(chan error, 1)
+	go func() {
+		serverDone <- a.Server.Serve(listener)
+	}()
+	return serverDone, nil
+}
+
+func (a *App) backgroundTasks(ctx context.Context) []func() {
+	tasks := make([]func(), 0, 5)
+	if a.Poller != nil {
+		tasks = append(tasks, func() {
+			if err := a.Poller.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("poller stopped", "error", err)
+			}
+		})
+	}
+	if a.Maintenance != nil {
+		tasks = append(tasks, func() {
+			if err := a.Maintenance.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("maintenance cleanup stopped", "error", err)
+			}
+		})
+	}
+	if a.MetadataSync != nil {
+		tasks = append(tasks, func() {
+			if err := a.MetadataSync.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("metadata sync stopped", "error", err)
+			}
+		})
+	}
+	if a.BackupMaintenance != nil {
+		tasks = append(tasks, func() {
+			if err := a.BackupMaintenance.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("database backup stopped", "error", err)
+			}
+		})
+	}
+	if a.RollupBackfill != nil {
+		tasks = append(tasks, func() {
+			if err := a.RollupBackfill.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				slog.Error("usage rollup backfill stopped", "error", err)
+			}
+		})
+	}
+	return tasks
+}
+
+func (a *App) beginCloseAttempt() (*appCloseAttempt, bool, error) {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
+	if a.closed {
+		return nil, false, a.closeErr
+	}
+	if a.closeAttempt != nil {
+		return a.closeAttempt, false, nil
+	}
+	attempt := &appCloseAttempt{done: make(chan struct{})}
+	a.closeAttempt = attempt
+	return attempt, true, nil
+}
+
+func (a *App) finishCloseAttempt(attempt *appCloseAttempt, err error, complete bool) {
+	a.lifecycleMu.Lock()
+	attempt.err = err
+	if complete {
+		a.closed = true
+		a.closeErr = err
+	}
+	a.closeAttempt = nil
+	close(attempt.done)
+	a.lifecycleMu.Unlock()
+}
+
+func (a *App) closeRuntime() (error, bool) {
+	// Admission closes before HTTP drain. Accepted handlers retain their owners
+	// until Shutdown confirms that every active handler has returned.
+	a.httpClosed.Store(true)
+	if a.manualSync != nil {
+		a.manualSync.CloseAdmission()
+	}
+	if a.Quota != nil {
+		a.Quota.StopRefreshWorkers()
+	}
+	if a.Server != nil {
+		timeout := a.shutdownTimeout
+		if timeout <= 0 {
+			timeout = defaultShutdownTimeout
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		err := a.Server.Shutdown(shutdownCtx)
+		cancel()
+		if err != nil {
+			// A drain timeout is retryable. Background owners and their DB/log
+			// resources remain live until a later Close proves the drain complete.
+			return fmt.Errorf("drain HTTP server: %w", err), false
+		}
+	}
+
+	if a.backgroundCancel != nil {
+		a.backgroundCancel()
+		a.backgroundCancel = nil
+	}
+	a.backgroundWG.Wait()
 
 	var closeErr error
 	if a.DB != nil {
@@ -183,82 +391,15 @@ func (a *App) Close() error {
 		closeErr = errors.Join(closeErr, a.LogCloser.Close())
 		a.LogCloser = nil
 	}
-	return closeErr
+	return closeErr, true
 }
 
-func (a *App) Run() error {
-	if a == nil || a.Router == nil || a.Config == nil {
-		return fmt.Errorf("application is not initialized")
-	}
-
-	ctx := a.startBackgroundContext()
-	defer a.stopBackgroundTasks()
-	if a.Quota != nil {
-		a.Quota.AttachRefreshWorkerLifecycle(ctx)
-	}
-	if a.Poller != nil {
-		a.startBackgroundTask(func() {
-			if err := a.Poller.Run(ctx); err != nil {
-				slog.Error("poller stopped", "error", err)
-			}
-		})
-	}
-	if a.Maintenance != nil {
-		a.startBackgroundTask(func() {
-			if err := a.Maintenance.Run(ctx); err != nil {
-				slog.Error("maintenance cleanup stopped", "error", err)
-			}
-		})
-	}
-	if a.MetadataSync != nil {
-		a.startBackgroundTask(func() {
-			if err := a.MetadataSync.Run(ctx); err != nil {
-				slog.Error("metadata sync stopped", "error", err)
-			}
-		})
-	}
-	if a.BackupMaintenance != nil {
-		a.startBackgroundTask(func() {
-			if err := a.BackupMaintenance.Run(ctx); err != nil {
-				slog.Error("database backup stopped", "error", err)
-			}
-		})
-	}
-	if a.RollupBackfill != nil {
-		a.startBackgroundTask(func() {
-			if err := a.RollupBackfill.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				slog.Error("usage rollup backfill stopped", "error", err)
-			}
-		})
-	}
-
-	return a.Router.Run(":" + a.Config.AppPort)
-}
-
-func (a *App) startBackgroundContext() context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	a.backgroundCancel = cancel
-	return ctx
-}
-
-func (a *App) startBackgroundTask(run func()) {
-	a.backgroundWG.Add(1)
-	go func() {
-		defer a.backgroundWG.Done()
-		run()
-	}()
-}
-
-func (a *App) stopBackgroundTasks() {
-	// 先停止 refresh worker：StopRefreshWorkers 在锁内标记 closing 并取消 worker 生命周期，
-	// 与任务接收检查互斥，保证关闭期不会返回 Accepted 但无法执行的任务。
-	if a.Quota != nil {
-		a.Quota.StopRefreshWorkers()
-	}
-	// 再取消后台 ctx：Poller 等后台任务以 ctx 取消退出。
-	if a.backgroundCancel != nil {
-		a.backgroundCancel()
-		a.backgroundCancel = nil
-	}
-	a.backgroundWG.Wait()
+func (a *App) httpHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if a.httpClosed.Load() {
+			http.Error(w, "service unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		a.Router.ServeHTTP(w, request)
+	})
 }
