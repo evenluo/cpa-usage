@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func applyUsageQueryWindow(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func applyUsageQueryWindow(query *gorm.DB, filter dto.UsageTimeScope) *gorm.DB {
 	if filter.StartTime != nil {
 		query = query.Where("timestamp >= ?", filter.StartTime.UTC())
 	}
@@ -18,7 +18,7 @@ func applyUsageQueryWindow(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
 	return query
 }
 
-func applyUsageProviderFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func applyUsageProviderFilter(query *gorm.DB, filter dto.UsageTimeScope) *gorm.DB {
 	if provider := strings.TrimSpace(filter.Provider); provider != "" {
 		query = query.Where("TRIM(provider) = ?", provider)
 	}
@@ -26,7 +26,7 @@ func applyUsageProviderFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm
 }
 
 // Overview Tab 第一步：应用时间窗口和 provider scope，后续 Overview 专属条件也从这里加。
-func applyUsageOverviewQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func applyUsageOverviewQuery(query *gorm.DB, filter dto.UsageTimeScope) *gorm.DB {
 	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
 }
 

@@ -102,7 +102,7 @@ func analyticsRollupAPIKeyIdentitySQLExpression() string {
 	return "TRIM(usage_rollups_hourly.api_key_identity)"
 }
 
-func analyticsTrendBucketsByDay(filter dto.UsageQueryFilter) bool {
+func analyticsTrendBucketsByDay(filter dto.AnalyticsFilter) bool {
 	return strings.TrimSpace(filter.Granularity) == "day"
 }
 

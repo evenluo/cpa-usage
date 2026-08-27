@@ -9,7 +9,6 @@ import (
 	"cpa-usage/internal/redact"
 	repodto "cpa-usage/internal/repository/dto"
 	"cpa-usage/internal/service"
-	servicedto "cpa-usage/internal/service/dto"
 
 	"github.com/gin-gonic/gin"
 )
@@ -66,7 +65,12 @@ func registerUsageEventsRoute(
 	keyAliasProvider service.KeyAliasProvider,
 ) {
 	router.GET("/usage/events/filters/models", func(c *gin.Context) {
-		models, err := loadUsageEventModelFilterOptions(c, usageProvider)
+		filter, err := parseUsageTimeFilterQuery(c.Request, time.Now().UTC())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		models, err := loadUsageEventModelFilterOptions(c, usageProvider, filter.repositoryScope())
 		if err != nil {
 			writeInternalError(c, "list usage event model filter options failed", err)
 			return
@@ -85,8 +89,8 @@ func registerUsageEventsRoute(
 
 	router.GET("/usage/events", func(c *gin.Context) {
 		if usageProvider == nil {
-			page, totalPages := paginationMetadata(0, 1, servicedto.DefaultUsageEventsLimit)
-			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: page, PageSize: servicedto.DefaultUsageEventsLimit, TotalPages: totalPages})
+			page, totalPages := paginationMetadata(0, 1, repodto.DefaultUsageEventsLimit)
+			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: page, PageSize: repodto.DefaultUsageEventsLimit, TotalPages: totalPages})
 			return
 		}
 
@@ -100,7 +104,7 @@ func registerUsageEventsRoute(
 			return
 		}
 
-		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter.EventListQueryFilter())
+		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter.repositoryFilter())
 		if err != nil {
 			writeInternalError(c, "list usage events failed", err)
 			return
@@ -153,7 +157,7 @@ func loadUsageEventAPIKeyAliases(c *gin.Context, keyAliasProvider service.KeyAli
 }
 
 // Source 下拉提交的是 usage identity，进入仓储前转换成 auth_index 查询。
-func applyUsageEventsSourceFilter(filter *servicedto.UsageFilter) error {
+func applyUsageEventsSourceFilter(filter *usageEventListFilter) error {
 	if filter == nil {
 		return nil
 	}
@@ -225,11 +229,11 @@ func usageEventPublicSource(row repodto.UsageEventRecord, identity resolvedUsage
 	}
 }
 
-func loadUsageEventModelFilterOptions(c *gin.Context, usageProvider UsageProvider) ([]string, error) {
+func loadUsageEventModelFilterOptions(c *gin.Context, usageProvider UsageProvider, scope repodto.UsageTimeScope) ([]string, error) {
 	if usageProvider == nil {
 		return []string{}, nil
 	}
-	options, err := usageProvider.ListUsageEventFilterOptions(c.Request.Context(), repodto.UsageQueryFilter{})
+	options, err := usageProvider.ListUsageEventFilterOptions(c.Request.Context(), scope)
 	if err != nil {
 		return nil, err
 	}

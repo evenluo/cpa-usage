@@ -15,7 +15,7 @@ type analyticsIdentityTrendKey struct {
 	Bucket   string
 }
 
-func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	combined := map[analyticsIdentityKey]analyticsIdentityAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
 		rows, err := buildAnalyticsKeyAliasSegmentRows(db, rawFilter, analyticsEventsAggregateSource())
@@ -34,7 +34,7 @@ func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPl
 	return mapAnalyticsCoreIdentityBreakdown(db, plan, filter, combined, false)
 }
 
-func buildAnalyticsCoreAPIKeyBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func buildAnalyticsCoreAPIKeyBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	combined := map[analyticsIdentityKey]analyticsIdentityAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
 		rows, err := buildAnalyticsAPIKeySegmentRows(db, rawFilter, analyticsEventsAggregateSource())
@@ -53,7 +53,7 @@ func buildAnalyticsCoreAPIKeyBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan
 	return mapAnalyticsCoreIdentityBreakdown(db, plan, filter, combined, true)
 }
 
-func mapAnalyticsCoreIdentityBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter, combined map[analyticsIdentityKey]analyticsIdentityAggregateRow, apiKeys bool) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func mapAnalyticsCoreIdentityBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter, combined map[analyticsIdentityKey]analyticsIdentityAggregateRow, apiKeys bool) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	rows := make([]analyticsIdentityAggregateRow, 0, len(combined))
 	for _, row := range combined {
 		rows = append(rows, row)
@@ -105,7 +105,7 @@ func mapAnalyticsCoreIdentityBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan
 }
 
 // buildAnalyticsKeyAliasSegmentRows 按聚合源渲染 Key Alias 段查询，raw 与 rollup 共用同一份列定义。
-func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
+func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
 	var rows []analyticsIdentityAggregateRow
 	if err := source.identityQuery(db, filter).
 		Select(analyticsIdentityAggregateSelect(source, source.identityAuthTypeExpr, source.identityExpr)).
@@ -117,7 +117,7 @@ func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter,
 }
 
 // buildAnalyticsAPIKeySegmentRows 按聚合源渲染 API Key 段查询，raw 与 rollup 共用同一份列定义。
-func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
+func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
 	identityExpr := source.apiKeyIdentityExpr
 	var rows []analyticsIdentityAggregateRow
 	if err := source.apiKeyQuery(db, filter).
@@ -129,7 +129,7 @@ func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, s
 	return rows, nil
 }
 
-func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter, keys []analyticsIdentityKey, apiKeys bool) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
+func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter, keys []analyticsIdentityKey, apiKeys bool) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
 	combined := map[analyticsIdentityTrendKey]analyticsIdentityTrendRow{}
 	for _, rawFilter := range plan.rawFilters {
 		rows, err := buildAnalyticsIdentityTrendSegmentRows(db, rawFilter, keys, apiKeys, analyticsEventsAggregateSource())
@@ -170,7 +170,7 @@ func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan,
 	return trends, nil
 }
 
-func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey, apiKeys bool, source analyticsAggregateSource) ([]analyticsIdentityTrendRow, error) {
+func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, keys []analyticsIdentityKey, apiKeys bool, source analyticsAggregateSource) ([]analyticsIdentityTrendRow, error) {
 	if len(keys) == 0 {
 		return []analyticsIdentityTrendRow{}, nil
 	}
@@ -208,7 +208,7 @@ func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFi
 	return rows, nil
 }
 
-func analyticsRollupIdentityWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func analyticsRollupIdentityWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	authTypeExpr := analyticsRollupUsageIdentityAuthTypeSQLExpression()
 	identityExpr := analyticsRollupUsageIdentitySQLExpression()
 	return analyticsRollupsWithPricingQuery(db, filter).
@@ -218,7 +218,7 @@ func analyticsRollupIdentityWithPricingQuery(db *gorm.DB, filter dto.UsageQueryF
 		Where(identityExpr + " <> ''")
 }
 
-func analyticsRollupAPIKeyWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func analyticsRollupAPIKeyWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	identityExpr := analyticsRollupAPIKeyIdentitySQLExpression()
 	return analyticsRollupsWithPricingQuery(db, filter).
 		Joins("LEFT JOIN key_aliases ON key_aliases.auth_type = ? AND key_aliases.identity = "+identityExpr, entities.UsageIdentityAuthTypeAIProvider).

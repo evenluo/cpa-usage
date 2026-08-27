@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsSummary, error) {
+func buildAnalyticsSummary(db *gorm.DB, filter dto.AnalyticsFilter) (dto.AnalyticsSummary, error) {
 	row, err := buildAnalyticsAggregateRow(db, filter, analyticsEventsAggregateSource())
 	if err != nil {
 		return dto.AnalyticsSummary{}, err
@@ -15,14 +15,14 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	return mapAnalyticsSummary(row), nil
 }
 
-func analyticsPreviousPeriodFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
+func analyticsPreviousPeriodFilter(filter dto.AnalyticsFilter) (dto.AnalyticsFilter, bool) {
 	if filter.StartTime == nil || filter.EndTime == nil {
-		return dto.UsageQueryFilter{}, false
+		return dto.AnalyticsFilter{}, false
 	}
 	start := filter.StartTime.UTC()
 	end := filter.EndTime.UTC()
 	if !end.After(start) {
-		return dto.UsageQueryFilter{}, false
+		return dto.AnalyticsFilter{}, false
 	}
 	duration := end.Sub(start) + time.Nanosecond
 	previousStart := start.Add(-duration)

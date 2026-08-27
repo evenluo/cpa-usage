@@ -198,11 +198,8 @@ func TestParseUsageTimeFilterQueryIgnoresEventListFilters(t *testing.T) {
 	if filter.Range != "24h" || filter.Provider != "OpenAI" {
 		t.Fatalf("expected selected analysis window with provider scope, got %+v", filter)
 	}
-	if filter.Page != 0 || filter.PageSize != 0 || filter.Limit != 0 || filter.Offset != 0 {
-		t.Fatalf("expected analysis window to omit event pagination, got %+v", filter)
-	}
-	if filter.Model != "" || filter.Source != "" || filter.AuthIndex != "" || filter.Result != "" {
-		t.Fatalf("expected analysis window to omit event list filters, got %+v", filter)
+	if filter.repositoryScope().Provider != "OpenAI" {
+		t.Fatalf("expected repository scope to contain only the normalized provider and bounds, got %+v", filter.repositoryScope())
 	}
 }
 
@@ -240,7 +237,7 @@ func TestParseUsageFilterQueryAcceptsCompactEvidencePageSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseUsageFilterQuery returned error: %v", err)
 	}
-	if filter.Page != 1 || filter.PageSize != 10 || filter.Limit != 10 || filter.Offset != 0 {
+	if filter.Page != 1 || filter.PageSize != 10 || filter.Offset != 0 {
 		t.Fatalf("expected compact evidence pagination, got %+v", filter)
 	}
 }

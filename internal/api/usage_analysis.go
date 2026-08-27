@@ -55,7 +55,7 @@ func registerUsageAnalysisRoute(router gin.IRoutes, usageProvider UsageProvider)
 			return
 		}
 
-		apiRows, modelRows, err := usageProvider.GetUsageAnalysis(c.Request.Context(), filter.SelectedWindowQueryFilter())
+		apiRows, modelRows, err := usageProvider.GetUsageAnalysis(c.Request.Context(), filter.repositoryScope())
 		if err != nil {
 			writeInternalError(c, "get usage analysis failed", err)
 			return

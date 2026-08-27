@@ -10,7 +10,6 @@ import (
 
 	"cpa-usage/internal/entities"
 	repodto "cpa-usage/internal/repository/dto"
-	servicedto "cpa-usage/internal/service/dto"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,19 +17,19 @@ type analyticsStub struct {
 	snapshot     *repodto.AnalyticsSummarySnapshot
 	core         *repodto.AnalyticsSummarySnapshot
 	heatmap      repodto.AnalyticsHeatmap
-	filter       repodto.UsageQueryFilter
+	filter       repodto.AnalyticsFilter
 	calls        int
 	coreCalls    int
 	heatmapCalls int
 }
 
-func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter repodto.UsageQueryFilter) (*repodto.AnalyticsSummarySnapshot, error) {
+func (s *analyticsStub) GetAnalyticsSummary(_ context.Context, filter repodto.AnalyticsFilter) (*repodto.AnalyticsSummarySnapshot, error) {
 	s.calls++
 	s.filter = filter
 	return s.snapshot, nil
 }
 
-func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter repodto.UsageQueryFilter) (*repodto.AnalyticsSummarySnapshot, error) {
+func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter repodto.AnalyticsFilter) (*repodto.AnalyticsSummarySnapshot, error) {
 	s.coreCalls++
 	s.filter = filter
 	if s.core != nil {
@@ -39,7 +38,7 @@ func (s *analyticsStub) GetAnalyticsCore(_ context.Context, filter repodto.Usage
 	return s.snapshot, nil
 }
 
-func (s *analyticsStub) GetAnalyticsHeatmap(_ context.Context, filter repodto.UsageQueryFilter) (repodto.AnalyticsHeatmap, error) {
+func (s *analyticsStub) GetAnalyticsHeatmap(_ context.Context, filter repodto.AnalyticsFilter) (repodto.AnalyticsHeatmap, error) {
 	s.heatmapCalls++
 	s.filter = filter
 	return s.heatmap, nil
@@ -52,7 +51,13 @@ func TestBuildAnalyticsSummaryResponseMatchesContractFixture(t *testing.T) {
 
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 18, 0, 0, 0, 0, time.UTC)
-	filter := servicedto.UsageFilter{Range: "7d", Granularity: "day", StartTime: &start, EndTime: &end, Provider: "OpenAI"}
+	filter := analyticsFilter{
+		usageTimeFilter: usageTimeFilter{
+			usageWindow: usageWindow{Range: "7d", StartTime: &start, EndTime: &end},
+			Provider:    "OpenAI",
+		},
+		Granularity: "day",
+	}
 	response := buildAnalyticsSummaryResponse(filter, analyticsSummaryContractSnapshot(start))
 	actual, err := json.Marshal(response)
 	if err != nil {

@@ -17,14 +17,14 @@ func NewAnalyticsReader(db *gorm.DB) AnalyticsReader {
 	return AnalyticsReader{db: db}
 }
 
-func (r AnalyticsReader) GetAnalyticsSummary(ctx context.Context, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func (r AnalyticsReader) GetAnalyticsSummary(ctx context.Context, filter dto.AnalyticsFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	return BuildAnalyticsSummaryWithFilter(ctx, r.db, filter)
 }
 
-func (r AnalyticsReader) GetAnalyticsCore(ctx context.Context, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func (r AnalyticsReader) GetAnalyticsCore(ctx context.Context, filter dto.AnalyticsFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	return BuildAnalyticsCoreWithFilter(ctx, r.db, filter)
 }
 
-func (r AnalyticsReader) GetAnalyticsHeatmap(ctx context.Context, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
+func (r AnalyticsReader) GetAnalyticsHeatmap(ctx context.Context, filter dto.AnalyticsFilter) (dto.AnalyticsHeatmap, error) {
 	return BuildAnalyticsHeatmapWithFilter(ctx, r.db, filter)
 }

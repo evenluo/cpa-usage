@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func BuildAnalyticsSummaryWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func BuildAnalyticsSummaryWithFilter(ctx context.Context, db *gorm.DB, filter dto.AnalyticsFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
@@ -44,7 +44,7 @@ func BuildAnalyticsSummaryWithFilter(ctx context.Context, db *gorm.DB, filter dt
 	}, nil
 }
 
-func buildAnalyticsSummaryComparison(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter, current dto.AnalyticsSummary) (*time.Time, *time.Time, dto.AnalyticsComparison, error) {
+func buildAnalyticsSummaryComparison(ctx context.Context, db *gorm.DB, filter dto.AnalyticsFilter, current dto.AnalyticsSummary) (*time.Time, *time.Time, dto.AnalyticsComparison, error) {
 	previousFilter, ok := analyticsPreviousPeriodFilter(filter)
 	if !ok {
 		return nil, nil, dto.AnalyticsComparison{}, nil

@@ -2,22 +2,37 @@ package dto
 
 import "time"
 
-// UsageQueryFilter 是仓储层的 usage 查询条件。
-type UsageQueryFilter struct {
+// UsageTimeScope 是 usage 读模型共享的时间与 provider 范围。
+type UsageTimeScope struct {
+	StartTime *time.Time
+	EndTime   *time.Time
+	Provider  string
+}
+
+// UsageOverviewFilter 是 overview 与 request health 共享的查询条件。
+type UsageOverviewFilter struct {
+	UsageTimeScope
+	Range string
+}
+
+// AnalyticsFilter 是 analytics 读模型的查询条件。
+type AnalyticsFilter struct {
+	UsageTimeScope
 	Range          string
-	StartTime      *time.Time
-	EndTime        *time.Time
 	FixedWindowEnd *time.Time
-	Limit          int
-	Page           int
-	PageSize       int
-	Offset         int
-	Model          string
 	Granularity    string
-	Provider       string
-	Source         string
-	AuthIndex      string
-	Result         string
+}
+
+// UsageEventListFilter 是 Request Event Log 列表的查询条件。
+type UsageEventListFilter struct {
+	UsageTimeScope
+	Page      int
+	PageSize  int
+	Offset    int
+	Model     string
+	Source    string
+	AuthIndex string
+	Result    string
 }
 
 const DefaultUsageEventsLimit = 100

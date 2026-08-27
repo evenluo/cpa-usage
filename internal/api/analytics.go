@@ -8,16 +8,15 @@ import (
 	"time"
 
 	"cpa-usage/internal/repository/dto"
-	servicedto "cpa-usage/internal/service/dto"
 	"github.com/gin-gonic/gin"
 )
 
 // AnalyticsProvider 是 Usage Intelligence 分析读模型的 HTTP 层入口 seam；
 // 实现由 repository 的 AnalyticsReader 提供，raw/rollup 选择对 HTTP 层不可见。
 type AnalyticsProvider interface {
-	GetAnalyticsSummary(context.Context, dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error)
-	GetAnalyticsCore(context.Context, dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error)
-	GetAnalyticsHeatmap(context.Context, dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error)
+	GetAnalyticsSummary(context.Context, dto.AnalyticsFilter) (*dto.AnalyticsSummarySnapshot, error)
+	GetAnalyticsCore(context.Context, dto.AnalyticsFilter) (*dto.AnalyticsSummarySnapshot, error)
+	GetAnalyticsHeatmap(context.Context, dto.AnalyticsFilter) (dto.AnalyticsHeatmap, error)
 }
 
 func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider AnalyticsProvider) {
@@ -32,7 +31,7 @@ func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider AnalyticsProv
 			return
 		}
 
-		snapshot, err := analyticsProvider.GetAnalyticsCore(c.Request.Context(), filter.SelectedWindowQueryFilter())
+		snapshot, err := analyticsProvider.GetAnalyticsCore(c.Request.Context(), filter.repositoryFilter())
 		if err != nil {
 			writeInternalError(c, "get analytics core failed", err)
 			return
@@ -51,7 +50,7 @@ func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider AnalyticsProv
 			return
 		}
 
-		snapshot, err := analyticsProvider.GetAnalyticsSummary(c.Request.Context(), filter.SelectedWindowQueryFilter())
+		snapshot, err := analyticsProvider.GetAnalyticsSummary(c.Request.Context(), filter.repositoryFilter())
 		if err != nil {
 			writeInternalError(c, "get analytics summary failed", err)
 			return
@@ -70,7 +69,7 @@ func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider AnalyticsProv
 			return
 		}
 
-		heatmap, err := analyticsProvider.GetAnalyticsHeatmap(c.Request.Context(), filter.SelectedWindowQueryFilter())
+		heatmap, err := analyticsProvider.GetAnalyticsHeatmap(c.Request.Context(), filter.repositoryFilter())
 		if err != nil {
 			writeInternalError(c, "get analytics heatmap failed", err)
 			return
@@ -79,12 +78,12 @@ func registerAnalyticsRoutes(router gin.IRoutes, analyticsProvider AnalyticsProv
 	})
 }
 
-func parseAnalyticsSummaryFilterQuery(req *http.Request, anchor time.Time) (servicedto.UsageFilter, error) {
-	filter, err := parseUsageTimeFilterQuery(req, anchor)
+func parseAnalyticsSummaryFilterQuery(req *http.Request, anchor time.Time) (analyticsFilter, error) {
+	timeFilter, err := parseUsageTimeFilterQuery(req, anchor)
 	if err != nil {
-		return servicedto.UsageFilter{}, err
+		return analyticsFilter{}, err
 	}
-	filter.Granularity = "hour"
+	filter := analyticsFilter{usageTimeFilter: timeFilter, Granularity: "hour"}
 	if req != nil {
 		filter.Provider = strings.TrimSpace(req.URL.Query().Get("provider"))
 		if value := strings.TrimSpace(req.URL.Query().Get("granularity")); value != "" {
@@ -92,7 +91,7 @@ func parseAnalyticsSummaryFilterQuery(req *http.Request, anchor time.Time) (serv
 			case "hour", "day":
 				filter.Granularity = value
 			default:
-				return servicedto.UsageFilter{}, fmt.Errorf("unsupported granularity %q", value)
+				return analyticsFilter{}, fmt.Errorf("unsupported granularity %q", value)
 			}
 		}
 	}

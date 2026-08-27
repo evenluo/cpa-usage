@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPoint, error) {
+func buildAnalyticsTrend(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsTrendPoint, error) {
 	bucketByDay := analyticsTrendBucketsByDay(filter)
 	rows, err := buildAnalyticsAggregateRowsByBucket(db, filter, analyticsEventsAggregateSource())
 	if err != nil {
@@ -27,13 +27,13 @@ func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.Analyt
 	return trend, nil
 }
 
-func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	return applyAnalyticsQueryFilter(db.Model(&entities.UsageEvent{}), filter).
 		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_events.model)")
 }
 
-func applyAnalyticsQueryFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	query = applyUsageQueryWindow(query, filter)
+func applyAnalyticsQueryFilter(query *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
+	query = applyUsageQueryWindow(query, filter.UsageTimeScope)
 	if provider := strings.TrimSpace(filter.Provider); provider != "" {
 		query = query.Where("TRIM(usage_events.provider) = ?", provider)
 	}

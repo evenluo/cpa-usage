@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsModelBreakdown, error) {
+func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsModelBreakdown, error) {
 	source := analyticsEventsAggregateSource()
 	var rows []analyticsModelAggregateRow
 	if err := analyticsEventsWithPricingQuery(db, filter).
@@ -47,7 +47,7 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 	return breakdown, nil
 }
 
-func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsProviderOption, error) {
+func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsProviderOption, error) {
 	source := analyticsEventsAggregateSource()
 	var rows []analyticsProviderOptionRow
 	if err := analyticsEventsWithPricingQuery(db, filter).

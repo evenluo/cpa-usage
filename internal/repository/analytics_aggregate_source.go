@@ -32,10 +32,10 @@ type analyticsAggregateSource struct {
 	identityExpr         string
 	apiKeyIdentityExpr   string
 	bucketExpr           func(bucketByDay bool) string
-	query                func(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
+	query                func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	// identityQuery/apiKeyQuery 在 query 基础上附加身份/别名 join 与非空身份过滤。
-	identityQuery func(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
-	apiKeyQuery   func(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
+	identityQuery func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
+	apiKeyQuery   func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 }
 
 func analyticsEventsAggregateSource() analyticsAggregateSource {
@@ -137,7 +137,7 @@ func analyticsSummarySelect(source analyticsAggregateSource) string {
 			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows`
 }
 
-func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) (analyticsAggregateRow, error) {
+func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) (analyticsAggregateRow, error) {
 	var row analyticsAggregateRow
 	if err := source.query(db, filter).
 		Select(analyticsSummarySelect(source)).
@@ -147,7 +147,7 @@ func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter, source
 	return row, nil
 }
 
-func buildAnalyticsAggregateRowsByBucket(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsAggregateRow, error) {
+func buildAnalyticsAggregateRowsByBucket(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsAggregateRow, error) {
 	bucketExpr := source.bucketExpr(analyticsTrendBucketsByDay(filter))
 	var rows []analyticsAggregateRow
 	if err := source.query(db, filter).

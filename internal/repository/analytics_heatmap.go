@@ -12,7 +12,7 @@ import (
 
 const analyticsHeatmapWindow = 30 * 24 * time.Hour
 
-func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
+func buildAnalyticsHeatmap(db *gorm.DB, filter dto.AnalyticsFilter) (dto.AnalyticsHeatmap, error) {
 	heatmap := dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}
 	heatmapFilter, ok := analyticsFixedHeatmapFilter(filter)
 	if !ok {
@@ -30,7 +30,7 @@ func buildAnalyticsHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	return buildAnalyticsHeatmapFromAggregates(aggregates, windowStart, windowEnd, startDay, endDay), nil
 }
 
-func BuildAnalyticsHeatmapWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
+func BuildAnalyticsHeatmapWithFilter(ctx context.Context, db *gorm.DB, filter dto.AnalyticsFilter) (dto.AnalyticsHeatmap, error) {
 	if db == nil {
 		return dto.AnalyticsHeatmap{}, fmt.Errorf("database is nil")
 	}
@@ -55,7 +55,7 @@ func BuildAnalyticsHeatmapWithFilter(ctx context.Context, db *gorm.DB, filter dt
 	return buildAnalyticsRollupHeatmap(db, filter)
 }
 
-func buildAnalyticsRollupHeatmap(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsHeatmap, error) {
+func buildAnalyticsRollupHeatmap(db *gorm.DB, filter dto.AnalyticsFilter) (dto.AnalyticsHeatmap, error) {
 	heatmap := dto.AnalyticsHeatmap{Measure: "tokens", Rows: []dto.AnalyticsHeatmapRow{}}
 	heatmapFilter, ok := analyticsFixedHeatmapFilter(filter)
 	if !ok {
@@ -147,9 +147,9 @@ func addAnalyticsHeatmapAggregates(dst map[string]analyticsHeatmapAggregateRow, 
 	}
 }
 
-func analyticsFixedHeatmapFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
+func analyticsFixedHeatmapFilter(filter dto.AnalyticsFilter) (dto.AnalyticsFilter, bool) {
 	if filter.FixedWindowEnd == nil {
-		return dto.UsageQueryFilter{}, false
+		return dto.AnalyticsFilter{}, false
 	}
 	windowEnd := filter.FixedWindowEnd.UTC()
 	windowStart := windowEnd.Add(-analyticsHeatmapWindow)
@@ -159,7 +159,7 @@ func analyticsFixedHeatmapFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFil
 	return heatmapFilter, true
 }
 
-func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
+func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.AnalyticsFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
 	source := analyticsEventsAggregateSource()
 	var rows []analyticsHeatmapAggregateRow
 	query := `
@@ -201,7 +201,7 @@ func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, s
 	return aggregates, nil
 }
 
-func buildAnalyticsRollupHeatmapAggregates(db *gorm.DB, filter dto.UsageQueryFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
+func buildAnalyticsRollupHeatmapAggregates(db *gorm.DB, filter dto.AnalyticsFilter, startDay time.Time, endDay time.Time) (map[string]analyticsHeatmapAggregateRow, error) {
 	source := analyticsRollupsAggregateSource()
 	var rows []analyticsHeatmapAggregateRow
 	query := `

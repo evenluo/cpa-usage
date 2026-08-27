@@ -59,11 +59,11 @@ type QuotaProvider interface {
 // UsageProvider 是 Usage Overview、Request Evidence 与 Analysis 读模型的 HTTP 层入口 seam；
 // 实现由 repository 的 UsageReader 提供，衍生指标（如 Output TPS）在读模型内计算。
 type UsageProvider interface {
-	GetUsageOverview(context.Context, repodto.UsageQueryFilter) (*repodto.UsageOverviewRecord, error)
-	GetRequestHealth(context.Context, repodto.UsageQueryFilter) (*repodto.UsageOverviewHealthRecord, error)
-	ListUsageEvents(context.Context, repodto.UsageQueryFilter) (*repodto.UsageEventsPageRecord, error)
-	ListUsageEventFilterOptions(context.Context, repodto.UsageQueryFilter) (*repodto.UsageEventFilterOptionsRecord, error)
-	GetUsageAnalysis(context.Context, repodto.UsageQueryFilter) ([]repodto.UsageAnalysisAPIStatRecord, []repodto.UsageAnalysisModelStatRecord, error)
+	GetUsageOverview(context.Context, repodto.UsageOverviewFilter) (*repodto.UsageOverviewRecord, error)
+	GetRequestHealth(context.Context, repodto.UsageOverviewFilter) (*repodto.UsageOverviewHealthRecord, error)
+	ListUsageEvents(context.Context, repodto.UsageEventListFilter) (*repodto.UsageEventsPageRecord, error)
+	ListUsageEventFilterOptions(context.Context, repodto.UsageTimeScope) (*repodto.UsageEventFilterOptionsRecord, error)
+	GetUsageAnalysis(context.Context, repodto.UsageTimeScope) ([]repodto.UsageAnalysisAPIStatRecord, []repodto.UsageAnalysisModelStatRecord, error)
 }
 
 // RollupBackfillStatusProvider 是 status 读模型的 HTTP 层入口 seam；

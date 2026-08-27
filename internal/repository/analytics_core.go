@@ -14,11 +14,11 @@ import (
 )
 
 type analyticsCoreWindowPlan struct {
-	rawFilters   []dto.UsageQueryFilter
-	rollupFilter *dto.UsageQueryFilter
+	rawFilters   []dto.AnalyticsFilter
+	rollupFilter *dto.AnalyticsFilter
 }
 
-func BuildAnalyticsCoreWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func BuildAnalyticsCoreWithFilter(ctx context.Context, db *gorm.DB, filter dto.AnalyticsFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
@@ -73,7 +73,7 @@ func BuildAnalyticsCoreWithFilter(ctx context.Context, db *gorm.DB, filter dto.U
 	}, nil
 }
 
-func buildRawAnalyticsCore(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.AnalyticsSummarySnapshot, error) {
+func buildRawAnalyticsCore(db *gorm.DB, filter dto.AnalyticsFilter) (*dto.AnalyticsSummarySnapshot, error) {
 	summary, err := buildAnalyticsSummary(db, filter)
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func buildRawAnalyticsCore(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.Analy
 	}, nil
 }
 
-func analyticsRollupReadAllowed(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (bool, string, error) {
+func analyticsRollupReadAllowed(ctx context.Context, db *gorm.DB, filter dto.AnalyticsFilter) (bool, string, error) {
 	status, err := GetUsageRollupBackfillStatus(ctx, db)
 	if err != nil {
 		return false, "", err
@@ -130,11 +130,11 @@ func analyticsRollupReadAllowed(ctx context.Context, db *gorm.DB, filter dto.Usa
 	return true, "", nil
 }
 
-func logAnalyticsCoreRawFallback(filter dto.UsageQueryFilter, detail string) {
+func logAnalyticsCoreRawFallback(filter dto.AnalyticsFilter, detail string) {
 	logAnalyticsRawFallback("analytics core raw fallback", filter, detail)
 }
 
-func logAnalyticsRawFallback(message string, filter dto.UsageQueryFilter, detail string) {
+func logAnalyticsRawFallback(message string, filter dto.AnalyticsFilter, detail string) {
 	attrs := []any{
 		"reason", "backfill_incomplete",
 		"detail", detail,
@@ -151,14 +151,14 @@ func logAnalyticsRawFallback(message string, filter dto.UsageQueryFilter, detail
 	slog.Warn(message, attrs...)
 }
 
-func analyticsCoreRollupWindowPlan(filter dto.UsageQueryFilter) analyticsCoreWindowPlan {
+func analyticsCoreRollupWindowPlan(filter dto.AnalyticsFilter) analyticsCoreWindowPlan {
 	if filter.StartTime == nil || filter.EndTime == nil {
-		return analyticsCoreWindowPlan{rawFilters: []dto.UsageQueryFilter{filter}}
+		return analyticsCoreWindowPlan{rawFilters: []dto.AnalyticsFilter{filter}}
 	}
 	start := filter.StartTime.UTC()
 	end := filter.EndTime.UTC()
 	if end.Before(start) {
-		return analyticsCoreWindowPlan{rawFilters: []dto.UsageQueryFilter{filter}}
+		return analyticsCoreWindowPlan{rawFilters: []dto.AnalyticsFilter{filter}}
 	}
 
 	firstFullBucket := start.Truncate(time.Hour)
@@ -171,7 +171,7 @@ func analyticsCoreRollupWindowPlan(filter dto.UsageQueryFilter) analyticsCoreWin
 		lastFullBucket = lastFullBucket.Add(-time.Hour)
 	}
 	if lastFullBucket.Before(firstFullBucket) {
-		return analyticsCoreWindowPlan{rawFilters: []dto.UsageQueryFilter{filter}}
+		return analyticsCoreWindowPlan{rawFilters: []dto.AnalyticsFilter{filter}}
 	}
 
 	plan := analyticsCoreWindowPlan{}
@@ -188,7 +188,7 @@ func analyticsCoreRollupWindowPlan(filter dto.UsageQueryFilter) analyticsCoreWin
 	return plan
 }
 
-func analyticsFilterWithWindow(filter dto.UsageQueryFilter, start time.Time, end time.Time) dto.UsageQueryFilter {
+func analyticsFilterWithWindow(filter dto.AnalyticsFilter, start time.Time, end time.Time) dto.AnalyticsFilter {
 	filter.StartTime = &start
 	filter.EndTime = &end
 	return filter
@@ -220,7 +220,7 @@ func buildAnalyticsCoreSummary(db *gorm.DB, plan analyticsCoreWindowPlan) (dto.A
 	return mapAnalyticsSummary(combined), nil
 }
 
-func buildAnalyticsCoreTrend(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPoint, error) {
+func buildAnalyticsCoreTrend(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter) ([]dto.AnalyticsTrendPoint, error) {
 	bucketByDay := analyticsTrendBucketsByDay(filter)
 	combined := map[string]analyticsAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
@@ -280,12 +280,12 @@ func addAnalyticsAggregateRow(dst *analyticsAggregateRow, src analyticsAggregate
 	dst.PricedBillableEvents += src.PricedBillableEvents
 }
 
-func analyticsRollupsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func analyticsRollupsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	return applyAnalyticsRollupQueryFilter(db.Model(&entities.UsageRollupHourly{}), filter).
 		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_rollups_hourly.model)")
 }
 
-func applyAnalyticsRollupQueryFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func applyAnalyticsRollupQueryFilter(query *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	if filter.StartTime != nil {
 		query = query.Where("usage_rollups_hourly.bucket_start >= ?", filter.StartTime.UTC())
 	}

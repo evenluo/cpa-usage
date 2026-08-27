@@ -11,7 +11,7 @@ import (
 )
 
 // BuildUsageRequestHealthWithFilter builds the fixed Request Health grid with bounded SQL aggregates.
-func BuildUsageRequestHealthWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+func BuildUsageRequestHealthWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageOverviewFilter) (*dto.UsageOverviewHealthRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
@@ -23,7 +23,7 @@ func BuildUsageRequestHealthWithFilter(ctx context.Context, db *gorm.DB, filter 
 		Failure int64
 	}
 	var totals usageRequestHealthTotalRow
-	if err := applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter).
+	if err := applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter.UsageTimeScope).
 		Select(`
 			COALESCE(SUM(CASE WHEN failed THEN 0 ELSE 1 END), 0) AS success,
 			COALESCE(SUM(CASE WHEN failed THEN 1 ELSE 0 END), 0) AS failure`).
@@ -46,7 +46,7 @@ func BuildUsageRequestHealthWithFilter(ctx context.Context, db *gorm.DB, filter 
 		Failure     int64
 	}
 	var rows []usageRequestHealthBucketRow
-	if err := applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter).
+	if err := applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter.UsageTimeScope).
 		Where("timestamp >= ? AND timestamp < ?", health.WindowStart, health.WindowEnd).
 		Select(`
 			CAST((unixepoch(timestamp) - unixepoch(?)) / ? AS INTEGER) AS bucket_index,
@@ -80,7 +80,7 @@ const (
 	usageOverviewHealthPresetSpan     = (usageOverviewHealthPresetWindow + time.Duration(usageOverviewHealthRows*usageOverviewHealthDefaultColumns) - 1) / time.Duration(usageOverviewHealthRows*usageOverviewHealthDefaultColumns)
 )
 
-func buildUsageOverviewHealth(filter dto.UsageQueryFilter) dto.UsageOverviewHealthRecord {
+func buildUsageOverviewHealth(filter dto.UsageOverviewFilter) dto.UsageOverviewHealthRecord {
 	rows, columns, span := usageOverviewHealthGrid(filter)
 	totalBlocks := rows * columns
 	windowStart, windowEnd := usageOverviewHealthWindow(filter, totalBlocks, span)
@@ -103,7 +103,7 @@ func buildUsageOverviewHealth(filter dto.UsageQueryFilter) dto.UsageOverviewHeal
 	}
 }
 
-func usageOverviewHealthGrid(filter dto.UsageQueryFilter) (int, int, time.Duration) {
+func usageOverviewHealthGrid(filter dto.UsageOverviewFilter) (int, int, time.Duration) {
 	if !isUsageOverviewShortHealthRange(filter.Range) {
 		return usageOverviewHealthRows, usageOverviewHealthDefaultColumns, usageOverviewHealthDefaultSpan
 	}
@@ -122,7 +122,7 @@ func isUsageOverviewShortHealthRange(value string) bool {
 	}
 }
 
-func usageOverviewHealthWindow(filter dto.UsageQueryFilter, totalBlocks int, span time.Duration) (time.Time, time.Time) {
+func usageOverviewHealthWindow(filter dto.UsageOverviewFilter, totalBlocks int, span time.Duration) (time.Time, time.Time) {
 	end := time.Now().UTC()
 	if filter.EndTime != nil {
 		end = filter.EndTime.UTC()

@@ -46,7 +46,7 @@ func TestUsageReaderListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 	}
 
 	reader := repository.NewUsageReader(db)
-	page, err := reader.ListUsageEvents(context.Background(), dto.UsageQueryFilter{Page: 1, PageSize: 10})
+	page, err := reader.ListUsageEvents(context.Background(), dto.UsageEventListFilter{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("ListUsageEvents returned error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestUsageReaderListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing.
 	}
 
 	reader := repository.NewUsageReader(db)
-	page, err := reader.ListUsageEvents(context.Background(), dto.UsageQueryFilter{Page: 1, PageSize: 10})
+	page, err := reader.ListUsageEvents(context.Background(), dto.UsageEventListFilter{Page: 1, PageSize: 10})
 	if err != nil {
 		t.Fatalf("ListUsageEvents returned error: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestUsageReaderGetUsageOverviewBuildsFilteredOverview(t *testing.T) {
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 23, 59, 59, 0, time.UTC)
 	reader := repository.NewUsageReader(db)
-	overview, err := reader.GetUsageOverview(context.Background(), dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end})
+	overview, err := reader.GetUsageOverview(context.Background(), dto.UsageOverviewFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end}, Range: "24h"})
 	if err != nil {
 		t.Fatalf("GetUsageOverview returned error: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestUsageReaderGetRequestHealthBuildsFilteredProjection(t *testing.T) {
 	start := time.Date(2026, 4, 16, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 17, 0, 0, 0, 0, time.UTC)
 	reader := repository.NewUsageReader(db)
-	health, err := reader.GetRequestHealth(context.Background(), dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, Provider: "codex"})
+	health, err := reader.GetRequestHealth(context.Background(), dto.UsageOverviewFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end, Provider: "codex"}, Range: "24h"})
 	if err != nil {
 		t.Fatalf("GetRequestHealth returned error: %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func analyticsIdentityEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func analyticsIdentityEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	authTypeExpr := analyticsUsageIdentityAuthTypeSQLExpression()
 	identityExpr := analyticsUsageIdentitySQLExpression()
 	return analyticsEventsWithPricingQuery(db, filter).
@@ -20,7 +20,7 @@ func analyticsIdentityEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryF
 		Where(identityExpr + " <> ''")
 }
 
-func buildAnalyticsKeyAliasBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func buildAnalyticsKeyAliasBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	source := analyticsEventsAggregateSource()
 	authTypeExpr := analyticsUsageIdentityAuthTypeSQLExpression()
 	identityExpr := analyticsUsageIdentitySQLExpression()
@@ -81,7 +81,7 @@ func buildAnalyticsKeyAliasBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) (
 	return breakdown, nil
 }
 
-func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
+func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys []analyticsIdentityKey) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
 	if len(keys) == 0 {
 		return map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint{}, nil
 	}
@@ -121,14 +121,14 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys
 	return trends, nil
 }
 
-func analyticsAPIKeyEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func analyticsAPIKeyEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	identityExpr := analyticsAPIKeyIdentitySQLExpression()
 	return analyticsEventsWithPricingQuery(db, filter).
 		Joins("LEFT JOIN key_aliases ON key_aliases.auth_type = ? AND key_aliases.identity = "+identityExpr, entities.UsageIdentityAuthTypeAIProvider).
 		Where(identityExpr + " <> ''")
 }
 
-func buildAnalyticsAPIKeyBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func buildAnalyticsAPIKeyBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	source := analyticsEventsAggregateSource()
 	authTypeExpr := analyticsAPIKeyAuthTypeSQLExpression()
 	identityExpr := analyticsAPIKeyIdentitySQLExpression()
@@ -189,7 +189,7 @@ func buildAnalyticsAPIKeyBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]
 	return breakdown, nil
 }
 
-func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
+func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys []analyticsIdentityKey) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
 	if len(keys) == 0 {
 		return map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint{}, nil
 	}

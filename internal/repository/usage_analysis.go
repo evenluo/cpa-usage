@@ -11,12 +11,12 @@ import (
 )
 
 // Analysis Tab 第一步：应用时间窗口和 provider scope，避免 Request Event Log 的筛选污染聚合。
-func applyUsageAnalysisTabQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func applyUsageAnalysisTabQuery(query *gorm.DB, filter dto.UsageTimeScope) *gorm.DB {
 	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
 }
 
 // Analysis 第一步：按时间窗口做 API / model / API+model 聚合。
-func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageTimeScope) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
 	if db == nil {
 		return nil, nil, fmt.Errorf("database is nil")
 	}

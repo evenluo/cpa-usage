@@ -7,8 +7,73 @@ import (
 	"strings"
 	"time"
 
-	servicedto "cpa-usage/internal/service/dto"
+	repodto "cpa-usage/internal/repository/dto"
 )
+
+type usageWindow struct {
+	Range          string
+	StartTime      *time.Time
+	EndTime        *time.Time
+	FixedWindowEnd *time.Time
+}
+
+type usageTimeFilter struct {
+	usageWindow
+	Provider string
+}
+
+type usageEventListFilter struct {
+	usageTimeFilter
+	Page      int
+	PageSize  int
+	Offset    int
+	Model     string
+	Source    string
+	AuthIndex string
+	Result    string
+}
+
+type analyticsFilter struct {
+	usageTimeFilter
+	Granularity string
+}
+
+func (f usageTimeFilter) repositoryScope() repodto.UsageTimeScope {
+	return repodto.UsageTimeScope{
+		StartTime: f.StartTime,
+		EndTime:   f.EndTime,
+		Provider:  f.Provider,
+	}
+}
+
+func (f usageTimeFilter) repositoryOverviewFilter() repodto.UsageOverviewFilter {
+	return repodto.UsageOverviewFilter{
+		UsageTimeScope: f.repositoryScope(),
+		Range:          f.Range,
+	}
+}
+
+func (f usageEventListFilter) repositoryFilter() repodto.UsageEventListFilter {
+	return repodto.UsageEventListFilter{
+		UsageTimeScope: f.repositoryScope(),
+		Page:           f.Page,
+		PageSize:       f.PageSize,
+		Offset:         f.Offset,
+		Model:          f.Model,
+		Source:         f.Source,
+		AuthIndex:      f.AuthIndex,
+		Result:         f.Result,
+	}
+}
+
+func (f analyticsFilter) repositoryFilter() repodto.AnalyticsFilter {
+	return repodto.AnalyticsFilter{
+		UsageTimeScope: f.repositoryScope(),
+		Range:          f.Range,
+		FixedWindowEnd: f.FixedWindowEnd,
+		Granularity:    f.Granularity,
+	}
+}
 
 var presetUsageRangeDurations = map[string]time.Duration{
 	"4h":  4 * time.Hour,
@@ -29,12 +94,12 @@ var allowedUsageEventsPageSizes = map[int]struct{}{
 	1000: {},
 }
 
-func parseUsageTimeFilterQuery(req *http.Request, anchor time.Time) (servicedto.UsageFilter, error) {
+func parseUsageTimeFilterQuery(req *http.Request, anchor time.Time) (usageTimeFilter, error) {
 	window, err := parseUsageWindowQuery(req, anchor)
 	if err != nil {
-		return servicedto.UsageFilter{}, err
+		return usageTimeFilter{}, err
 	}
-	filter := window.UsageFilter()
+	filter := usageTimeFilter{usageWindow: window}
 	if req != nil {
 		filter.Provider = strings.TrimSpace(req.URL.Query().Get("provider"))
 	}
@@ -51,24 +116,19 @@ func parseCustomUsageRangeBoundary(value string, endOfDay bool) (time.Time, erro
 	return time.Parse(time.RFC3339, value)
 }
 
-func parseUsageFilterQuery(req *http.Request, anchor time.Time) (servicedto.UsageFilter, error) {
-	filter, err := parseUsageEventListFilterQuery(req, anchor)
-	if err != nil {
-		return servicedto.UsageFilter{}, err
-	}
-	return filter.UsageFilter(), nil
+func parseUsageFilterQuery(req *http.Request, anchor time.Time) (usageEventListFilter, error) {
+	return parseUsageEventListFilterQuery(req, anchor)
 }
 
-func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (servicedto.UsageEventListFilter, error) {
+func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageEventListFilter, error) {
 	window, err := parseUsageWindowQuery(req, anchor)
 	if err != nil {
-		return servicedto.UsageEventListFilter{}, err
+		return usageEventListFilter{}, err
 	}
-	filter := servicedto.UsageEventListFilter{
-		Window:   window,
-		Limit:    servicedto.DefaultUsageEventsLimit,
-		Page:     1,
-		PageSize: servicedto.DefaultUsageEventsLimit,
+	filter := usageEventListFilter{
+		usageTimeFilter: usageTimeFilter{usageWindow: window},
+		Page:            1,
+		PageSize:        repodto.DefaultUsageEventsLimit,
 	}
 	if req == nil {
 		return filter, nil
@@ -78,7 +138,7 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (servic
 	if pageValue := strings.TrimSpace(query.Get("page")); pageValue != "" {
 		page, err := strconv.Atoi(pageValue)
 		if err != nil || page < 1 {
-			return servicedto.UsageEventListFilter{}, fmt.Errorf("invalid page %q", pageValue)
+			return usageEventListFilter{}, fmt.Errorf("invalid page %q", pageValue)
 		}
 		filter.Page = page
 	}
@@ -89,13 +149,12 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (servic
 	if pageSizeValue != "" {
 		pageSize, err := strconv.Atoi(pageSizeValue)
 		if err != nil {
-			return servicedto.UsageEventListFilter{}, fmt.Errorf("invalid page_size %q", pageSizeValue)
+			return usageEventListFilter{}, fmt.Errorf("invalid page_size %q", pageSizeValue)
 		}
 		if _, ok := allowedUsageEventsPageSizes[pageSize]; !ok {
-			return servicedto.UsageEventListFilter{}, fmt.Errorf("invalid page_size %q", pageSizeValue)
+			return usageEventListFilter{}, fmt.Errorf("invalid page_size %q", pageSizeValue)
 		}
 		filter.PageSize = pageSize
-		filter.Limit = pageSize
 	}
 	filter.Offset = (filter.Page - 1) * filter.PageSize
 	filter.Model = strings.TrimSpace(query.Get("model"))
@@ -104,14 +163,14 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (servic
 	filter.AuthIndex = strings.TrimSpace(query.Get("auth_index"))
 	filter.Result = strings.TrimSpace(query.Get("result"))
 	if filter.Result != "" && filter.Result != "success" && filter.Result != "failed" {
-		return servicedto.UsageEventListFilter{}, fmt.Errorf("invalid result %q", filter.Result)
+		return usageEventListFilter{}, fmt.Errorf("invalid result %q", filter.Result)
 	}
 	return filter, nil
 }
 
-func parseUsageWindowQuery(req *http.Request, anchor time.Time) (servicedto.UsageWindow, error) {
+func parseUsageWindowQuery(req *http.Request, anchor time.Time) (usageWindow, error) {
 	if req == nil {
-		return servicedto.UsageWindow{}, nil
+		return usageWindow{}, nil
 	}
 
 	rangeValue := strings.TrimSpace(req.URL.Query().Get("range"))
@@ -120,7 +179,7 @@ func parseUsageWindowQuery(req *http.Request, anchor time.Time) (servicedto.Usag
 	}
 
 	fixedWindowEnd := anchor.UTC()
-	window := servicedto.UsageWindow{Range: rangeValue, FixedWindowEnd: &fixedWindowEnd}
+	window := usageWindow{Range: rangeValue, FixedWindowEnd: &fixedWindowEnd}
 	switch rangeValue {
 	case "all":
 		return window, nil
@@ -139,20 +198,20 @@ func parseUsageWindowQuery(req *http.Request, anchor time.Time) (servicedto.Usag
 		startValue := strings.TrimSpace(req.URL.Query().Get("start"))
 		endValue := strings.TrimSpace(req.URL.Query().Get("end"))
 		if startValue == "" || endValue == "" {
-			return servicedto.UsageWindow{}, fmt.Errorf("custom range requires start and end")
+			return usageWindow{}, fmt.Errorf("custom range requires start and end")
 		}
 		startTime, err := parseCustomUsageRangeBoundary(startValue, false)
 		if err != nil {
-			return servicedto.UsageWindow{}, fmt.Errorf("invalid start: %w", err)
+			return usageWindow{}, fmt.Errorf("invalid start: %w", err)
 		}
 		endTime, err := parseCustomUsageRangeBoundary(endValue, true)
 		if err != nil {
-			return servicedto.UsageWindow{}, fmt.Errorf("invalid end: %w", err)
+			return usageWindow{}, fmt.Errorf("invalid end: %w", err)
 		}
 		startTime = startTime.UTC()
 		endTime = endTime.UTC()
 		if startTime.After(endTime) {
-			return servicedto.UsageWindow{}, fmt.Errorf("custom range start must be before end")
+			return usageWindow{}, fmt.Errorf("custom range start must be before end")
 		}
 		window.StartTime = &startTime
 		window.EndTime = &endTime
@@ -160,7 +219,7 @@ func parseUsageWindowQuery(req *http.Request, anchor time.Time) (servicedto.Usag
 	default:
 		duration, ok := presetUsageRangeDurations[rangeValue]
 		if !ok {
-			return servicedto.UsageWindow{}, fmt.Errorf("unsupported usage range %q", rangeValue)
+			return usageWindow{}, fmt.Errorf("unsupported usage range %q", rangeValue)
 		}
 		endTime := anchor.UTC()
 		startTime := endTime.Add(-duration)
