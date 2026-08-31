@@ -2,10 +2,12 @@ package migration
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
 	"cpa-usage/internal/entities"
+	repodto "cpa-usage/internal/repository/dto"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -47,12 +49,41 @@ func addUsageRollupCacheReadFieldsMigration(tx *gorm.DB) error {
 		return nil
 	}
 
-	covered := earliest.Add(-time.Hour)
+	var existing entities.UsageRollupBackfillState
+	existingErr := tx.Where("name = ?", entities.UsageRollupBackfillStateName).First(&existing).Error
+	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("load usage rollup backfill state before cache-read migration: %w", existingErr)
+	}
+
 	state := entities.UsageRollupBackfillState{
-		Name:               entities.UsageRollupBackfillStateName,
-		Status:             entities.UsageRollupBackfillStateStatusPending,
-		TargetBucketStart:  &latest,
-		CoveredBucketStart: &covered,
+		Name:   entities.UsageRollupBackfillStateName,
+		Status: entities.UsageRollupBackfillStateStatusPending,
+	}
+	exactCovered := earliest.Add(-time.Hour)
+	if existingErr == nil && completedRollupBackfillStateCoversTarget(existing) {
+		state.TargetBucketStart = &latest
+		state.CoveredBucketStart = &exactCovered
+	} else {
+		if existing.CoveredBucketStart != nil {
+			covered := existing.CoveredBucketStart.UTC().Truncate(time.Hour)
+			if exactCovered.Before(covered) {
+				covered = exactCovered
+			}
+			state.CoveredBucketStart = &covered
+		}
+		if existing.TargetBucketStart != nil {
+			target := existing.TargetBucketStart.UTC().Truncate(time.Hour)
+			if latest.After(target) {
+				target = latest
+			}
+			state.TargetBucketStart = &target
+		} else {
+			latestEvent, err := latestUsageEventBucket(tx)
+			if err != nil {
+				return err
+			}
+			state.TargetBucketStart = &latestEvent
+		}
 	}
 	if err := tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "name"}},
@@ -70,6 +101,13 @@ func addUsageRollupCacheReadFieldsMigration(tx *gorm.DB) error {
 		return fmt.Errorf("schedule usage rollup cache-read backfill: %w", err)
 	}
 	return nil
+}
+
+func completedRollupBackfillStateCoversTarget(state entities.UsageRollupBackfillState) bool {
+	return state.Status == repodto.RollupBackfillStatusCompleted &&
+		state.TargetBucketStart != nil &&
+		state.CoveredBucketStart != nil &&
+		!state.CoveredBucketStart.UTC().Truncate(time.Hour).Before(state.TargetBucketStart.UTC().Truncate(time.Hour))
 }
 
 func usageEventCacheReadBucketBounds(tx *gorm.DB) (time.Time, time.Time, bool, error) {
@@ -94,4 +132,20 @@ func usageEventCacheReadBucketBounds(tx *gorm.DB) (time.Time, time.Time, bool, e
 		return time.Time{}, time.Time{}, false, fmt.Errorf("parse latest usage event cache-read bucket %q: %w", latest.String, err)
 	}
 	return earliestBucket, latestBucket, true, nil
+}
+
+func latestUsageEventBucket(tx *gorm.DB) (time.Time, error) {
+	var latest sql.NullString
+	row := tx.Raw(`SELECT strftime('%Y-%m-%dT%H:00:00Z', MAX(timestamp)) FROM usage_events`).Row()
+	if err := row.Scan(&latest); err != nil {
+		return time.Time{}, fmt.Errorf("load latest usage event bucket: %w", err)
+	}
+	if !latest.Valid {
+		return time.Time{}, fmt.Errorf("load latest usage event bucket: no usage events")
+	}
+	bucket, err := time.Parse(time.RFC3339, latest.String)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse latest usage event bucket %q: %w", latest.String, err)
+	}
+	return bucket, nil
 }
