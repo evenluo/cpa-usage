@@ -1,5 +1,5 @@
 import { act } from "react"
-import { render, screen } from "@testing-library/react"
+import { render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
@@ -114,7 +114,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("Alpha Codex")).toBeInTheDocument()
   })
 
-  it("shows probe freshness, subscription window, and additional quota rows", () => {
+  it("visualizes probe freshness, subscription window, and additional quota rows", () => {
     const identities = [identity({
       identity: "codex-pro",
       displayName: "Codex Pro",
@@ -139,9 +139,15 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
-    expect(screen.getByText(/Observed /)).toBeInTheDocument()
-    expect(screen.getByText(/Cache expires /)).toBeInTheDocument()
-    expect(screen.getByText(/Account active /)).toBeInTheDocument()
+    const timing = screen.getByRole("group", { name: "Account timing" })
+    expect(within(timing).getByText("Observed")).toBeInTheDocument()
+    expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
+    expect(within(timing).getByText("Account active")).toBeInTheDocument()
+    expect(within(timing).getByText("Starts")).toBeInTheDocument()
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
+    expect(timing.querySelectorAll("time")).toHaveLength(4)
+    expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
+    expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
   })
 
   it("separates priority accounts from regular accounts with a divider", () => {
