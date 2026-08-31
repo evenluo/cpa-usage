@@ -113,6 +113,95 @@ func TestOpenDatabasePreservesExistingUsageRollupBackfillProgress(t *testing.T) 
 	}
 }
 
+func TestCacheReadRollupUpgradeBackfillsOnlyExactRangeIncludingCurrentHour(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "app.db")
+	db, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("open current-schema database: %v", err)
+	}
+
+	oldBucket := time.Date(2020, 1, 2, 3, 0, 0, 0, time.UTC)
+	currentBucket := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	cacheReadTokens := int64(25)
+	if err := db.Create([]entities.UsageEvent{
+		{EventKey: "old-without-cache-read", Provider: "provider", Model: "model", Timestamp: oldBucket.Add(5 * time.Minute), InputTokens: 10, TotalTokens: 10},
+		{EventKey: "current-with-cache-read", Provider: "provider", Model: "model", Timestamp: currentBucket.Add(15 * time.Minute), InputTokens: 100, CacheReadTokens: &cacheReadTokens, TotalTokens: 100},
+	}).Error; err != nil {
+		t.Fatalf("seed pre-upgrade usage events: %v", err)
+	}
+	if err := db.Create([]entities.UsageRollupHourly{
+		{BucketStart: oldBucket, Provider: "provider", Model: "model", RequestCount: 1, SuccessCount: 1, InputTokens: 10, TotalTokens: 777, LastEventAt: oldBucket.Add(5 * time.Minute)},
+		{BucketStart: currentBucket, Provider: "provider", Model: "model", RequestCount: 1, SuccessCount: 1, InputTokens: 100, TotalTokens: 100, LastEventAt: currentBucket.Add(15 * time.Minute)},
+	}).Error; err != nil {
+		t.Fatalf("seed pre-upgrade rollups: %v", err)
+	}
+	if err := SaveUsageRollupBackfillStatus(db, dto.RollupBackfillStatus{
+		Status:             dto.RollupBackfillStatusCompleted,
+		TargetBucketStart:  &oldBucket,
+		CoveredBucketStart: &oldBucket,
+		CompletedAt:        &oldBucket,
+	}); err != nil {
+		t.Fatalf("seed pre-upgrade completed state: %v", err)
+	}
+	if err := db.Exec("DELETE FROM schema_migrations WHERE version = ?", "20260831_add_usage_rollup_cache_read_fields").Error; err != nil {
+		t.Fatalf("mark cache-read rollup migration pending: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get pre-upgrade sql database: %v", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		t.Fatalf("close pre-upgrade database: %v", err)
+	}
+
+	reopened, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("reopen database for cache-read rollup migration: %v", err)
+	}
+	defer closeTestDatabase(t, reopened)
+
+	status, err := GetUsageRollupBackfillStatus(context.Background(), reopened)
+	if err != nil {
+		t.Fatalf("load migrated cache-read backfill state: %v", err)
+	}
+	wantCovered := currentBucket.Add(-time.Hour)
+	if status.Status != dto.RollupBackfillStatusPending || status.TargetBucketStart == nil || !status.TargetBucketStart.Equal(currentBucket) || status.CoveredBucketStart == nil || !status.CoveredBucketStart.Equal(wantCovered) {
+		t.Fatalf("expected bounded current-hour cache-read backfill, got %+v", status)
+	}
+
+	result, err := BackfillUsageRollupsBatch(reopened, currentBucket.Add(90*time.Minute), 24)
+	if err != nil {
+		t.Fatalf("backfill migrated cache-read rollup: %v", err)
+	}
+	if !result.Done || result.RebuiltBucketCount != 1 || result.BatchStart == nil || !result.BatchStart.Equal(currentBucket) || result.BatchEnd == nil || !result.BatchEnd.Equal(currentBucket) {
+		t.Fatalf("expected only the current exact-fact bucket to rebuild, got %+v", result)
+	}
+	var oldRollup entities.UsageRollupHourly
+	if err := reopened.Where("bucket_start = ?", oldBucket).First(&oldRollup).Error; err != nil {
+		t.Fatalf("load old rollup after bounded backfill: %v", err)
+	}
+	if oldRollup.TotalTokens != 777 {
+		t.Fatalf("expected long-history rollup outside exact range to remain unchanged, got %+v", oldRollup)
+	}
+	if err := reopened.Where("event_key = ?", "current-with-cache-read").Delete(&entities.UsageEvent{}).Error; err != nil {
+		t.Fatalf("remove current raw event to prove crossed-hour rollup read: %v", err)
+	}
+
+	end := currentBucket.Add(time.Hour).Add(-time.Nanosecond)
+	snapshot, err := BuildAnalyticsSummaryWithFilter(context.Background(), reopened, dto.AnalyticsFilter{
+		UsageTimeScope: dto.UsageTimeScope{StartTime: &currentBucket, EndTime: &end},
+		Range:          "custom",
+		Granularity:    "hour",
+		FixedWindowEnd: &end,
+	})
+	if err != nil {
+		t.Fatalf("read crossed-hour analytics from rebuilt rollup: %v", err)
+	}
+	if snapshot.Summary.CacheReadTokens != 25 || snapshot.Summary.CacheReadShare != 25 || snapshot.Summary.CacheReadCoverage != 100 || snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
+		t.Fatalf("expected exact current-hour cache-read metrics after crossing the hour, got %+v", snapshot.Summary)
+	}
+}
+
 func TestOpenDatabaseCreatesMissingSQLiteParentDir(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "data", "nested", "app.db")
 

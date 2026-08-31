@@ -181,8 +181,8 @@ func applyUsageEventToHourlyRollup(rollup *entities.UsageRollupHourly, event ent
 	rollup.OutputTokens += positiveInt64(event.OutputTokens)
 	rollup.ReasoningTokens += positiveInt64(event.ReasoningTokens)
 	rollup.CachedTokens += cachedTokens
-	if event.CacheReadTokens != nil {
-		rollup.CacheReadTokens += positiveInt64(*event.CacheReadTokens)
+	if validCacheReadObservation(event.InputTokens, event.CacheReadTokens) {
+		rollup.CacheReadTokens += *event.CacheReadTokens
 		rollup.CacheReadObservedInputTokens += inputTokens
 	}
 	// TotalTokens 保持原始净和（不钳制负值），与 raw 读侧对 usage_events.total_tokens 的直接 SUM 镜像等价；
@@ -196,6 +196,10 @@ func applyUsageEventToHourlyRollup(rollup *entities.UsageRollupHourly, event ent
 	if rollup.LastEventAt.IsZero() || eventTime.After(rollup.LastEventAt) {
 		rollup.LastEventAt = eventTime
 	}
+}
+
+func validCacheReadObservation(inputTokens int64, cacheReadTokens *int64) bool {
+	return inputTokens > 0 && cacheReadTokens != nil && *cacheReadTokens >= 0 && *cacheReadTokens <= inputTokens
 }
 
 func positiveInt64(value int64) int64 {
