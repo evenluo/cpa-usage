@@ -109,6 +109,9 @@ func metricCompletenessSubject(summary dto.AnalyticsSummary, incompleteModels in
 	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoPromptInput {
 		return "No prompt input"
 	}
+	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStatePartial {
+		return fmt.Sprintf("Cache %.1f%% covered", summary.CacheReadCoverage)
+	}
 	if incompleteModels == 1 {
 		return "1 model"
 	}
@@ -127,10 +130,14 @@ func cacheEfficiencyInsight(summary dto.AnalyticsSummary) dto.AnalyticsInsight {
 		Subject:     "Prompt input cache",
 		MetricLabel: "Cache Read Share",
 		MetricValue: summary.CacheReadShare,
-		Count:       summary.CachedTokens,
+		Count:       summary.CacheReadTokens,
 		CostStatus:  summary.CostStatus,
 	}
 	switch summary.CacheReadShareState {
+	case dto.AnalyticsCacheReadShareStatePartial:
+		insight.Severity = "amber"
+		insight.Subject = fmt.Sprintf("%.1f%% prompt-input coverage", summary.CacheReadCoverage)
+		insight.Detail = "Cache Read Share is calculated only from prompt input with explicit provider cache-read facts."
 	case dto.AnalyticsCacheReadShareStateNoCacheData:
 		insight.Severity = "amber"
 		insight.Subject = "No cache data"

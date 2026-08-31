@@ -181,6 +181,10 @@ func applyUsageEventToHourlyRollup(rollup *entities.UsageRollupHourly, event ent
 	rollup.OutputTokens += positiveInt64(event.OutputTokens)
 	rollup.ReasoningTokens += positiveInt64(event.ReasoningTokens)
 	rollup.CachedTokens += cachedTokens
+	if event.CacheReadTokens != nil {
+		rollup.CacheReadTokens += positiveInt64(*event.CacheReadTokens)
+		rollup.CacheReadObservedInputTokens += inputTokens
+	}
 	// TotalTokens 保持原始净和（不钳制负值），与 raw 读侧对 usage_events.total_tokens 的直接 SUM 镜像等价；
 	// 避免只改写入规则而不重建历史 rollup 时，已覆盖小时的 rollup 与 raw 段返回不同 token 总量。
 	rollup.TotalTokens += event.TotalTokens

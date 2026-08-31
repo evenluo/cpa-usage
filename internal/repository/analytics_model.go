@@ -22,9 +22,11 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dt
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokensExpr) + `), 0) AS cached_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(source.cachedTokensExpr) + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cacheReadTokensExpr) + `), 0) AS cache_read_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cacheReadObservedInputTokensExpr) + `), 0) AS cache_read_observed_input_tokens,
+			COALESCE(SUM(` + analyticsSourceCacheSavingsSQLExpression(source) + `), 0) AS cache_savings,
+			COALESCE(SUM(` + analyticsSourceCacheSavingsEligibleSQLExpression(source) + `), 0) AS cache_savings_eligible_rows,
+			COALESCE(SUM(` + analyticsSourceCacheSavingsIneligibleSQLExpression(source) + `), 0) AS cache_savings_ineligible_rows,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + source.latencySumExpr + `), 0) AS total_latency_ms,
 			COALESCE(SUM(` + source.latencyCountExpr + `), 0) AS latency_sample_count,
@@ -60,6 +62,7 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 		OutputTokens:       row.OutputTokens,
 		ReasoningTokens:    row.ReasoningTokens,
 		CachedTokens:       row.CachedTokens,
+		CacheReadTokens:    row.CacheReadTokens,
 		TotalLatencyMS:     row.TotalLatencyMS,
 		LatencySampleCount: row.LatencySampleCount,
 	}
@@ -74,9 +77,10 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 	}
 	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 	record.CostAvailable, record.CostStatus = cost.Available, cost.Status
-	record.CacheReadShare, record.CacheReadShareState, record.EstimatedCacheSavings = analyticsCacheEfficiency(
+	record.CacheReadShare, record.CacheReadCoverage, record.CacheReadShareState, record.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
-		row.CachedTokens,
+		row.CacheReadObservedInputTokens,
+		row.CacheReadTokens,
 		row.CacheSavings,
 		row.CacheSavingsEligibleRows,
 		row.CacheSavingsIneligibleRows,

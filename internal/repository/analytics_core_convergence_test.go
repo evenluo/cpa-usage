@@ -419,6 +419,11 @@ func newAnalyticsCoreCardinalityFixture(eventCount int, providerCount int, model
 			reasoningTokens = -reasoningTokens
 			cachedTokens = -cachedTokens
 		}
+		var cacheReadTokens *int64
+		if eventIndex%5 != 0 {
+			value := positiveInt64(cachedTokens)
+			cacheReadTokens = &value
+		}
 		authType := entities.UsageIdentityAuthTypeNameOAuth
 		authIndex := fmt.Sprintf("oauth-%04d", identityIndex)
 		apiGroupKey := ""
@@ -441,6 +446,7 @@ func newAnalyticsCoreCardinalityFixture(eventCount int, providerCount int, model
 			OutputTokens:    outputTokens,
 			ReasoningTokens: reasoningTokens,
 			CachedTokens:    cachedTokens,
+			CacheReadTokens: cacheReadTokens,
 			TotalTokens:     inputTokens + outputTokens + reasoningTokens,
 		})
 	}

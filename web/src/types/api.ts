@@ -1,7 +1,7 @@
 export type TimeGranularity = "hour" | "day"
 export type TimeRange = "today" | "yesterday" | "24h" | "7d" | "30d"
 export type CostStatus = "available" | "partial" | "unavailable"
-export type CacheReadShareState = "available" | "no_cache_data" | "no_prompt_input"
+export type CacheReadShareState = "available" | "partial" | "no_cache_data" | "no_prompt_input"
 
 export interface AnalyticsSummary {
   total_cost: number
@@ -13,10 +13,12 @@ export interface AnalyticsSummary {
   output_tokens: number
   reasoning_tokens: number
   cached_tokens: number
+  cache_read_tokens: number
   success_rate: number
   cost_available: boolean
   cost_status: CostStatus
   cache_read_share: number
+  cache_read_coverage: number
   cache_read_share_state: CacheReadShareState
   estimated_cache_savings?: number
 }
@@ -67,7 +69,9 @@ export interface ModelDistribution {
   output_tokens: number
   reasoning_tokens: number
   cached_tokens: number
+  cache_read_tokens: number
   cache_read_share: number
+  cache_read_coverage: number
   cache_read_share_state: CacheReadShareState
   estimated_cache_savings?: number
   request_count: number

@@ -79,10 +79,12 @@ func analyticsSummaryContractSnapshot(start time.Time) *repodto.AnalyticsSummary
 			OutputTokens:        500_000,
 			ReasoningTokens:     100_000,
 			CachedTokens:        100_000,
+			CacheReadTokens:     100_000,
 			SuccessRate:         66.6666666667,
 			CostAvailable:       false,
 			CostStatus:          "partial",
 			CacheReadShare:      6.666222251849877,
+			CacheReadCoverage:   100,
 			CacheReadShareState: "available",
 		},
 		Trend: []repodto.AnalyticsTrendPoint{{
@@ -159,6 +161,7 @@ func analyticsSummaryContractSnapshot(start time.Time) *repodto.AnalyticsSummary
 			OutputTokens:        500_000,
 			ReasoningTokens:     100_000,
 			CachedTokens:        100_000,
+			CacheReadTokens:     100_000,
 			SuccessRate:         66.6666666667,
 			TotalLatencyMS:      600,
 			LatencySampleCount:  3,
@@ -166,6 +169,7 @@ func analyticsSummaryContractSnapshot(start time.Time) *repodto.AnalyticsSummary
 			CostAvailable:       false,
 			CostStatus:          "partial",
 			CacheReadShare:      6.666222251849877,
+			CacheReadCoverage:   100,
 			CacheReadShareState: "available",
 		}},
 		TimeBreakdown: []repodto.AnalyticsTrendPoint{{

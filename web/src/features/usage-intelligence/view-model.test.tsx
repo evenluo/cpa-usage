@@ -8,6 +8,7 @@ import {
   DEFAULT_TIME_RANGE,
   deriveKpiSparklineData,
   getCacheReadShareCaption,
+  getCacheReadShareValue,
   getDefaultGranularity,
   getEffectiveGranularity,
   getLeaderboardSortLabel,
@@ -103,10 +104,12 @@ describe("Usage Intelligence view model", () => {
         output_tokens: 0,
         reasoning_tokens: 0,
         cached_tokens: 5,
+        cache_read_tokens: 5,
         success_rate: 100,
         cost_available: false,
         cost_status: "partial",
         cache_read_share: 25,
+        cache_read_coverage: 100,
         cache_read_share_state: "available",
       },
       trend: [trendPoint({ label: "selected-window", request_count: 1 })],
@@ -165,10 +168,12 @@ describe("Usage Intelligence view model", () => {
           output_tokens: 0,
           reasoning_tokens: 0,
           cached_tokens: 0,
+          cache_read_tokens: 0,
           success_rate: 0,
           cost_available: true,
           cost_status: "available",
           cache_read_share: 0,
+          cache_read_coverage: 0,
           cache_read_share_state: "no_cache_data",
         },
         trend: [],
@@ -202,10 +207,14 @@ describe("Usage Intelligence view model", () => {
   })
 
   it("derives the Cache KPI caption from the cache read share state", () => {
-    expect(getCacheReadShareCaption(undefined)).toBeUndefined()
-    expect(getCacheReadShareCaption("available")).toBe("Exact aggregate unavailable")
-    expect(getCacheReadShareCaption("no_cache_data")).toBe("Exact aggregate unavailable")
-    expect(getCacheReadShareCaption("no_prompt_input")).toBe("Exact aggregate unavailable")
+    expect(getCacheReadShareCaption(undefined, undefined)).toBeUndefined()
+    expect(getCacheReadShareCaption("available", 100)).toBe("Exact · covers 100.0% of prompt input")
+    expect(getCacheReadShareCaption("partial", 82.4)).toBe("Partial · covers 82.4% of prompt input")
+    expect(getCacheReadShareCaption("no_cache_data", 0)).toBe("No exact cache data")
+    expect(getCacheReadShareCaption("no_prompt_input", 0)).toBe("No prompt input")
+    expect(getCacheReadShareValue(24.6, "partial")).toBe(24.6)
+    expect(getCacheReadShareValue(24.6, "available")).toBe(24.6)
+    expect(getCacheReadShareValue(0, "no_cache_data")).toBeUndefined()
   })
 
   it("hides the semantically incomplete cache insight without hiding other insights", () => {
