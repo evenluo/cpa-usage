@@ -53,6 +53,7 @@ export interface UsageDashboardViewModel {
   hasLeaderboardBreakdown: boolean
   leaderboardSortLabel: string
   cacheReadShareCaption?: string
+  cacheReadShareValue?: number
   kpiData: UsageKpiSparklineData | null
 }
 
@@ -103,9 +104,17 @@ export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
   return "Sort: Cost"
 }
 
-export function getCacheReadShareCaption(state?: CacheReadShareState): string | undefined {
+export function getCacheReadShareCaption(state?: CacheReadShareState, coverage?: number): string | undefined {
   if (state === undefined) return undefined
-  return "Exact aggregate unavailable"
+  if (state === "no_prompt_input") return "No prompt input"
+  if (state === "no_cache_data") return "No exact cache data"
+  const label = state === "available" ? "Exact" : "Partial"
+  return `${label} · covers ${(coverage ?? 0).toFixed(1)}% of prompt input`
+}
+
+export function getCacheReadShareValue(value?: number, state?: CacheReadShareState): number | undefined {
+  if (state !== "available" && state !== "partial") return undefined
+  return value
 }
 
 export function getModelMixPresentation(costStatus?: CostStatus): {
@@ -113,12 +122,12 @@ export function getModelMixPresentation(costStatus?: CostStatus): {
   costStateLabel: string
 } {
   if (costStatus === "available") {
-    return { measure: "cost", costStateLabel: "Cost state: available · Cost share" }
+    return { measure: "cost", costStateLabel: "By cost" }
   }
   if (costStatus === "partial") {
-    return { measure: "tokens", costStateLabel: "Cost state: partial · Token share" }
+    return { measure: "tokens", costStateLabel: "Cost partial, by tokens" }
   }
-  return { measure: "tokens", costStateLabel: "Cost state: unavailable · Token share" }
+  return { measure: "tokens", costStateLabel: "Cost unavailable, by tokens" }
 }
 
 export function buildUsageDashboardViewModel(input: {
@@ -134,11 +143,11 @@ export function buildUsageDashboardViewModel(input: {
     ? Array.isArray(input.analytics?.api_key_breakdown)
     : Array.isArray(input.analytics?.key_alias_breakdown)
   const modelDistribution = input.analytics?.model_distribution ?? []
-  // The compatibility `cached_tokens` aggregate does not have stable
-  // cross-provider cache-read semantics. Exact cache read/create facts remain
-  // available in Request Evidence, but the aggregate insight stays hidden
-  // until raw/rollup completeness can be proven.
-  const insights = (input.analytics?.insights ?? []).filter((insight) => insight.type !== "cache_efficiency")
+  // The Cache KPI is the compact cache presentation owner; keep its parallel
+  // insight hidden and reserve the Attention rail for warning-level signals.
+  const insights = (input.analytics?.insights ?? []).filter(
+    (insight) => insight.type !== "cache_efficiency" && insight.severity === "amber",
+  )
   const modelMix = getModelMixPresentation(input.analytics?.summary?.cost_status)
   return {
     trend,
@@ -156,7 +165,8 @@ export function buildUsageDashboardViewModel(input: {
     serviceHealth: input.requestHealth?.service_health,
     hasLeaderboardBreakdown,
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
-    cacheReadShareCaption: getCacheReadShareCaption(input.analytics?.summary?.cache_read_share_state),
+    cacheReadShareCaption: getCacheReadShareCaption(input.analytics?.summary?.cache_read_share_state, input.analytics?.summary?.cache_read_coverage),
+    cacheReadShareValue: getCacheReadShareValue(input.analytics?.summary?.cache_read_share, input.analytics?.summary?.cache_read_share_state),
     kpiData: deriveKpiSparklineData(trend),
   }
 }

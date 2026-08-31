@@ -4,6 +4,7 @@ import "time"
 
 const (
 	AnalyticsCacheReadShareStateAvailable     = "available"
+	AnalyticsCacheReadShareStatePartial       = "partial"
 	AnalyticsCacheReadShareStateNoCacheData   = "no_cache_data"
 	AnalyticsCacheReadShareStateNoPromptInput = "no_prompt_input"
 )
@@ -17,11 +18,13 @@ type AnalyticsSummary struct {
 	InputTokens           int64
 	OutputTokens          int64
 	CachedTokens          int64
+	CacheReadTokens       int64
 	ReasoningTokens       int64
 	SuccessRate           float64
 	CostAvailable         bool
 	CostStatus            string
 	CacheReadShare        float64
+	CacheReadCoverage     float64
 	CacheReadShareState   string
 	EstimatedCacheSavings *float64
 }
@@ -89,6 +92,7 @@ type AnalyticsModelBreakdown struct {
 	OutputTokens          int64
 	ReasoningTokens       int64
 	CachedTokens          int64
+	CacheReadTokens       int64
 	SuccessRate           float64
 	TotalLatencyMS        int64
 	LatencySampleCount    int64
@@ -96,6 +100,7 @@ type AnalyticsModelBreakdown struct {
 	CostAvailable         bool
 	CostStatus            string
 	CacheReadShare        float64
+	CacheReadCoverage     float64
 	CacheReadShareState   string
 	EstimatedCacheSavings *float64
 }

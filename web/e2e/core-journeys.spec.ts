@@ -43,10 +43,12 @@ function analyticsCoreFor(url: URL): Record<string, unknown> {
       output_tokens: 40_000,
       reasoning_tokens: 5_000,
       cached_tokens: 5_000,
+      cache_read_tokens: 200,
       success_rate: 0.96,
       cost_available: true,
       cost_status: "available",
       cache_read_share: 0.4,
+      cache_read_coverage: 100,
       cache_read_share_state: "available",
     },
     trend: Array.from({ length: pointCount }, (_, index) => ({
@@ -78,8 +80,10 @@ function analyticsCoreFor(url: URL): Record<string, unknown> {
       output_tokens: 40_000,
       reasoning_tokens: 5_000,
       cached_tokens: 5_000,
+      cache_read_tokens: 4_000,
       cache_read_share: 10,
-      cache_read_share_state: "available",
+      cache_read_coverage: 80,
+      cache_read_share_state: "partial",
       request_count: pointCount,
       success_count: pointCount - 1,
       failure_count: 1,
@@ -139,8 +143,8 @@ test("dashboard renders KPIs, trend, leaderboard, and fixed overview surfaces", 
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
   await expect(page.getByText("all-model")).toBeVisible()
-  await expect(page.getByText("Insights", { exact: true })).toBeVisible()
-  await expect(page.getByText("All providers metrics complete")).toBeVisible()
+  await expect(page.getByText("Needs attention", { exact: true })).toHaveCount(0)
+  await expect(page.getByText("All providers metrics complete")).toHaveCount(0)
 })
 
 test("switching time range and granularity changes the analytics request and the visible KPIs", async ({ page }) => {
@@ -190,7 +194,7 @@ test("provider filter scopes the analytics request and manual sync reports compl
   await page.getByRole("button", { name: /^claude/ }).click()
   await expect.poll(() => analyticsRequests.at(-1)?.searchParams.get("provider")).toBe("claude")
   await expect(page.getByText("claude-model")).toBeVisible()
-  await expect(page.getByText("claude metrics complete")).toBeVisible()
+  await expect(page.getByText("claude metrics complete")).toHaveCount(0)
 
   await page.getByRole("link", { name: "View all attempts" }).click()
   await expect(page).toHaveURL(/\/requests\?/)

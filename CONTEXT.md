@@ -21,7 +21,7 @@ A user-maintained model unit rate used to calculate **Cost** from token usage.
 _Avoid_: Price, pricing entry
 
 **Cache Read Share**:
-The intended share of prompt input served from explicit provider cache reads. The aggregate is deferred until raw and rollup paths can prove explicit cache-read completeness; legacy generic `cached_tokens` must not be presented as this metric.
+The share of observed prompt input served from explicit provider cache reads. It is exact at complete prompt-input token coverage and otherwise carries an explicit partial coverage percentage; legacy generic `cached_tokens` is not used for this metric.
 _Avoid_: Cache hit rate, cache/reasoning share
 
 **Metric Completeness**:
@@ -110,18 +110,18 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
 - The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.
 - KPI comparison uses the immediately previous period for the same selected range; missing previous-period data is shown explicitly instead of inferred.
-- Exact **Cache Read Share** is temporarily unavailable. Request Evidence may show provider-reported generic, cache-read, and cache-creation token facts separately; it must not add generic and explicit fields together.
+- **Cache Read Share** is calculated only from internally consistent explicit provider cache-read observations: provider-normalized prompt input must be positive and cache-read tokens must be between zero and that input total. Invalid provider facts contribute to neither the read numerator nor the observed-input denominator, while Request Evidence preserves and shows their raw generic, cache-read, and cache-creation values separately. Coverage is the valid observed prompt-input token volume divided by total prompt-input token volume; complete coverage is `Exact`, incomplete nonzero coverage is `Partial`, and no valid observed coverage is unavailable.
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
 - Leaderboards default to **Cost** ordering when cost metrics are complete; partial **Cost** may still order by the priced cost portion when labeled as partial; token volume becomes the ordering measure when cost is unavailable.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
-- **Model Mix** and deterministic **Insights** are current visible **Selected Analysis Window** readings, not dormant response fields.
+- **Model Mix** is a current visible **Selected Analysis Window** reading of the returned model breakdown; rankings and shares are scoped to that returned set. Deterministic **Insights** appear only when a warning affects how the selected window should be interpreted; informational maxima remain in their owning trend, ranking, or metric surface.
 - Attempt health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent attempt samples; it is not the complete request event inspection surface.
 - **Request Evidence** status and failure metadata describe the selected upstream attempt, not the final client request outcome.
 - **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.
 - **Request Evidence** drill-down lives inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
-- First-version insights are deterministic metrics and warnings, not AI-generated summaries.
-- **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.
+- First-version insights are conditional deterministic warnings, not AI-generated summaries and not a duplicate summary of visible metrics.
+- **Usage Intelligence** insights prioritize metric completeness and health risks; cost, token, and contributor movements remain in their owning analysis surfaces.
 - CPA native quota administration remains out of scope; the supported capacity surface is the restricted **Live Capacity** probe inside **Usage Intelligence**.
 - The first **Operations Console** covers manual sync state, rollup backfill coverage from the existing status contract, runtime state, access state, and logout. It does not claim background-ingestion freshness.
 - Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.

@@ -75,6 +75,7 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 		InputTokens:     row.InputTokens,
 		OutputTokens:    row.OutputTokens,
 		CachedTokens:    row.CachedTokens,
+		CacheReadTokens: row.CacheReadTokens,
 		ReasoningTokens: row.ReasoningTokens,
 	}
 	if row.RequestCount > 0 {
@@ -82,9 +83,10 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 	}
 	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 	summary.CostAvailable, summary.CostStatus = cost.Available, cost.Status
-	summary.CacheReadShare, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
+	summary.CacheReadShare, summary.CacheReadCoverage, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
-		row.CachedTokens,
+		row.CacheReadObservedInputTokens,
+		row.CacheReadTokens,
 		row.CacheSavings,
 		row.CacheSavingsEligibleRows,
 		row.CacheSavingsIneligibleRows,
@@ -92,16 +94,25 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 	)
 	return summary
 }
-func analyticsCacheEfficiency(inputTokens int64, cachedTokens int64, cacheSavings float64, eligibleRows int64, ineligibleRows int64, pricingComplete bool) (float64, string, *float64) {
+func analyticsCacheReadMetrics(inputTokens int64, observedInputTokens int64, cacheReadTokens int64) (float64, float64, string) {
 	if inputTokens <= 0 {
-		return 0, dto.AnalyticsCacheReadShareStateNoPromptInput, nil
+		return 0, 0, dto.AnalyticsCacheReadShareStateNoPromptInput
 	}
-	if cachedTokens <= 0 {
-		return 0, dto.AnalyticsCacheReadShareStateNoCacheData, nil
+	if observedInputTokens <= 0 {
+		return 0, 0, dto.AnalyticsCacheReadShareStateNoCacheData
 	}
-	share := (float64(cachedTokens) / float64(inputTokens)) * 100
-	if !pricingComplete || eligibleRows == 0 || ineligibleRows > 0 {
-		return share, dto.AnalyticsCacheReadShareStateAvailable, nil
+	share := (float64(cacheReadTokens) / float64(observedInputTokens)) * 100
+	coverage := (float64(observedInputTokens) / float64(inputTokens)) * 100
+	if coverage >= 100 {
+		return share, 100, dto.AnalyticsCacheReadShareStateAvailable
 	}
-	return share, dto.AnalyticsCacheReadShareStateAvailable, &cacheSavings
+	return share, coverage, dto.AnalyticsCacheReadShareStatePartial
+}
+
+func analyticsCacheEfficiency(inputTokens int64, observedInputTokens int64, cacheReadTokens int64, cacheSavings float64, eligibleRows int64, ineligibleRows int64, pricingComplete bool) (float64, float64, string, *float64) {
+	share, coverage, state := analyticsCacheReadMetrics(inputTokens, observedInputTokens, cacheReadTokens)
+	if state != dto.AnalyticsCacheReadShareStateAvailable || !pricingComplete || eligibleRows == 0 || ineligibleRows > 0 {
+		return share, coverage, state, nil
+	}
+	return share, coverage, state, &cacheSavings
 }

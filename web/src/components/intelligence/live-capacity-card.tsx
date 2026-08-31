@@ -1,4 +1,16 @@
-import { AlertTriangle, CalendarDays, Clock, Gauge, RefreshCw, Timer } from "lucide-react"
+import {
+  AlertTriangle,
+  ArrowRight,
+  CalendarDays,
+  CalendarRange,
+  Clock,
+  Eye,
+  Gauge,
+  Hourglass,
+  RefreshCw,
+  Timer,
+  type LucideIcon,
+} from "lucide-react"
 import { useLayoutEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -209,23 +221,136 @@ function LiveCapacityAccountTile({
         ))}
       </div>
       {row.observedAt || row.expiresAt || row.activeStart || row.activeUntil ? (
-        <div className="mt-3 space-y-1 border-t border-border/70 pt-2 text-[10px] text-muted-foreground">
-          {row.observedAt ? <p>Observed {formatDate(row.observedAt)}</p> : null}
-          {row.expiresAt ? <p>Cache expires {formatDate(row.expiresAt)}</p> : null}
-          {row.activeStart || row.activeUntil ? (
-            <p>Account active {formatCapacityWindow(row.activeStart, row.activeUntil)}</p>
+        <AccountTiming
+          observedAt={row.observedAt}
+          expiresAt={row.expiresAt}
+          activeStart={row.activeStart}
+          activeUntil={row.activeUntil}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function AccountTiming({
+  observedAt,
+  expiresAt,
+  activeStart,
+  activeUntil,
+}: {
+  observedAt?: string | null
+  expiresAt?: string | null
+  activeStart?: string | null
+  activeUntil?: string | null
+}) {
+  const hasProbeWindow = Boolean(observedAt || expiresAt)
+  const hasActiveWindow = Boolean(activeStart || activeUntil)
+  const hasBothProbeEndpoints = Boolean(observedAt && expiresAt)
+  const hasBothActiveEndpoints = Boolean(activeStart && activeUntil)
+
+  return (
+    <div
+      className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5"
+      role="group"
+      aria-label="Account timing"
+    >
+      {hasProbeWindow ? (
+        <div
+          className={cn(
+            "grid items-center gap-2",
+            hasBothProbeEndpoints
+              ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+              : "grid-cols-1",
+          )}
+        >
+          {observedAt ? (
+            <TimingEndpoint icon={Eye} label="Observed" value={observedAt} />
           ) : null}
+          {hasBothProbeEndpoints ? <TimingConnector /> : null}
+          {expiresAt ? (
+            <TimingEndpoint
+              icon={Hourglass}
+              label="Cache expires"
+              value={expiresAt}
+              align={observedAt ? "end" : "start"}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {hasActiveWindow ? (
+        <div className={cn(hasProbeWindow && "mt-2 border-t border-border/60 pt-2")}>
+          <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
+            <CalendarRange className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+            <span>Account active</span>
+          </div>
+          <div
+            className={cn(
+              "mt-1.5 grid items-center gap-2",
+              hasBothActiveEndpoints
+                ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
+                : "grid-cols-1",
+            )}
+          >
+            {activeStart ? (
+              <TimingEndpoint label="Starts" value={activeStart} compact />
+            ) : null}
+            {hasBothActiveEndpoints ? <TimingConnector /> : null}
+            {activeUntil ? (
+              <TimingEndpoint
+                label="Ends"
+                value={activeUntil}
+                align={activeStart ? "end" : "start"}
+                compact
+              />
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>
   )
 }
 
-function formatCapacityWindow(start?: string | null, until?: string | null): string {
-  if (start && until) return `${formatDate(start)} – ${formatDate(until)}`
-  if (start) return `from ${formatDate(start)}`
-  if (until) return `until ${formatDate(until)}`
-  return "-"
+function TimingEndpoint({
+  icon: Icon,
+  label,
+  value,
+  align = "start",
+  compact = false,
+}: {
+  icon?: LucideIcon
+  label: string
+  value: string
+  align?: "start" | "end"
+  compact?: boolean
+}) {
+  return (
+    <div className={cn("min-w-0", align === "end" && "text-right")}>
+      <div
+        className={cn(
+          "flex items-center gap-1.5 text-[10px] text-foreground/65",
+          align === "end" && "justify-end",
+        )}
+      >
+        {Icon ? (
+          <Icon className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+        ) : null}
+        <span>{label}</span>
+      </div>
+      <div className={cn("mt-0.5 truncate font-medium text-foreground/90", compact ? "text-[10px]" : "text-[11px]")}>
+        <time dateTime={value} title={formatDate(value)}>{formatDate(value)}</time>
+      </div>
+    </div>
+  )
+}
+
+function TimingConnector() {
+  return (
+    <div className="flex w-7 items-center text-muted-foreground/55" aria-hidden="true">
+      <span className="h-px min-w-0 flex-1 bg-muted-foreground/35" />
+      <ArrowRight className="h-3 w-3 shrink-0 -ml-px" />
+    </div>
+  )
 }
 
 function PlanBadge({

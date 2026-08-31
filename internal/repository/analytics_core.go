@@ -268,6 +268,8 @@ func addAnalyticsAggregateRow(dst *analyticsAggregateRow, src analyticsAggregate
 	dst.TotalTokens += src.TotalTokens
 	dst.TotalCost += src.TotalCost
 	dst.CachedTokens += src.CachedTokens
+	dst.CacheReadTokens += src.CacheReadTokens
+	dst.CacheReadObservedInputTokens += src.CacheReadObservedInputTokens
 	dst.ReasoningTokens += src.ReasoningTokens
 	dst.CacheSavings += src.CacheSavings
 	dst.CacheSavingsEligibleRows += src.CacheSavingsEligibleRows

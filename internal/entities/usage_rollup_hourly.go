@@ -19,12 +19,16 @@ type UsageRollupHourly struct {
 	OutputTokens         int64     `gorm:"not null"`
 	ReasoningTokens      int64     `gorm:"not null"`
 	CachedTokens         int64     `gorm:"not null"`
-	TotalTokens          int64     `gorm:"not null"`
-	TotalLatencyMS       int64     `gorm:"not null"`
-	LatencySampleCount   int64     `gorm:"not null"`
-	LastEventAt          time.Time `gorm:"not null"`
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	CacheReadTokens      int64     `gorm:"not null"`
+	// CacheReadObservedInputTokens is the prompt-input denominator from attempts
+	// that carried a valid explicit cache_read_tokens fact, including explicit zero.
+	CacheReadObservedInputTokens int64     `gorm:"not null"`
+	TotalTokens                  int64     `gorm:"not null"`
+	TotalLatencyMS               int64     `gorm:"not null"`
+	LatencySampleCount           int64     `gorm:"not null"`
+	LastEventAt                  time.Time `gorm:"not null"`
+	CreatedAt                    time.Time
+	UpdatedAt                    time.Time
 }
 
 func (UsageRollupHourly) TableName() string {

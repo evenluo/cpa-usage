@@ -93,6 +93,21 @@ Raw output summary:
 
 Candidate versus retained raw median: elapsed `+4.45%`, bytes/op `+913.15%` (`10.13x`), allocations/op `+1,622.92%` (`17.23x`). Frozen decision thresholds were a stable elapsed regression above 10%, or bytes/allocations above 20%. The allocation and memory regressions independently require retention.
 
+### Exact cache-read coverage extension receipt
+
+The cache-read coverage extension keeps the existing query ownership: raw analytics aggregates the two exact facts in SQL, while covered windows read the same facts from hourly rollups. The frontend does not fetch or reduce usage events. The deterministic 65,536-event fixture marks 80% of events as having an explicit `cache_read_tokens` observation so the benchmark exercises partial-coverage arithmetic as well as aggregation.
+
+Commands are the raw-fast and covered-rollup commands above with `GOCACHE=/private/tmp/cpa-usage-cache-read-bench-go-cache`, run on the same `darwin/arm64` Apple M4 host with Go `1.27.0`, `GOMAXPROCS=1`, `-count=3`, and `-benchtime=1x`. The baseline is an unmodified `git archive` of the current `HEAD`; both baseline and working tree therefore use the same toolchain and host.
+
+| Benchmark | ns/op (min / median / max) | B/op (median) | allocs/op (median) | Working-tree delta from same-version `HEAD` |
+|---|---:|---:|---:|---:|
+| `HEAD` raw SQL-limited fast Adapter | 8,349,258,125 / 8,429,325,958 / 10,477,457,625 | 734,928 | 7,566 | baseline |
+| working tree raw Adapter with exact cache-read coverage | 8,127,883,459 / 8,620,860,875 / 9,535,730,583 | 749,984 | 7,709 | elapsed `+2.27%`, bytes `+2.05%`, allocs `+1.89%` |
+| `HEAD` covered rollup shared plan | 832,822,125 / 842,358,750 / 854,286,625 | 7,326,624 | 128,289 | baseline |
+| working tree covered rollup with exact cache-read coverage | 798,766,583 / 805,970,417 / 806,303,875 | 7,420,424 | 130,409 | elapsed `-4.32%`, bytes `+1.28%`, allocs `+1.65%` |
+
+Both paths remain inside the frozen regression thresholds. The covered-rollup median remains about `10.7x` faster than the raw median, so adding coverage does not justify a frontend per-event scan or a second analytics path.
+
 ## Test locality ledger
 
 No existing test was moved or renamed. `analytics_core_convergence_test.go` owns the new plan/candidate parity proof and deterministic fixture; `analytics_core_benchmark_test.go` owns repeatable performance evidence. Existing `analytics_test.go` fixtures and unique proofs remain intact. This is an owner-local addition, not a size-based reshuffle.
