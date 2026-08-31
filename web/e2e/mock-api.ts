@@ -66,6 +66,8 @@ export const authFileIdentitiesPayload = {
       total_cost: 0,
       cost_available: false,
       last_used_at: null,
+      active_start: "2026-08-21T02:59:00Z",
+      active_until: "2026-09-25T07:15:00Z",
     },
     {
       id: 502,
@@ -93,6 +95,8 @@ const quotaCachePayload = {
   items: [
     {
       id: "codex-auth-e2e",
+      cachedAt: "2026-08-31T09:05:00Z",
+      expiresAt: "2026-08-31T09:25:00Z",
       quota: [
         { key: "rate_limit.primary_window", label: "5h", usedPercent: 35, resetAfterSeconds: 3600, planType: "plus" },
         { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 62, resetAfterSeconds: 7200, planType: "plus" },
