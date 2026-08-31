@@ -48,7 +48,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
   await expect(page.getByText("priced-model")).toBeVisible()
-  await expect(page.getByText("Insights", { exact: true })).toBeVisible()
+  await expect(page.getByText("Needs attention", { exact: true })).toBeVisible()
   await expect(page.getByText("Pricing Missing")).toBeVisible()
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Agent Codex")).toBeVisible()

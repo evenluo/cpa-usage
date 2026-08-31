@@ -155,55 +155,45 @@ export function DashboardCharts({
       </Card>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-        <Card>
-          <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-            <div>
-              <CardTitle>Model Mix</CardTitle>
-              <CardDescription>Usage distribution across models in the selected window</CardDescription>
-            </div>
-            <Badge variant="outline" data-testid="model-mix-cost-state">{modelMixCostStateLabel}</Badge>
-          </CardHeader>
-          <CardContent>
-            {surfaces.modelMix.status === "loading" ? (
-              <Skeleton className="h-[260px] w-full" />
-            ) : surfaces.modelMix.status === "error" ? (
-              <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-sm text-red-500">
-                <span>Failed to load model mix</span>
-                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry model mix</Button>
-              </div>
-            ) : surfaces.modelMix.status === "empty" ? (
-              <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">No model usage in this window</div>
-            ) : (
-              <ModelDistributionChart data={surfaces.modelMix.data} measure={modelMixMeasure} />
-            )}
-          </CardContent>
-        </Card>
+      {surfaces.insights.status === "loading" ? (
+        <Skeleton className="h-24 w-full" />
+      ) : surfaces.insights.status === "error" ? (
+        <div className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+          <span>Failed to load attention signals</span>
+          <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry attention signals</Button>
+        </div>
+      ) : surfaces.insights.status === "ready" ? (
+        <InsightRail insights={surfaces.insights.data} />
+      ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Insights</CardTitle>
-            <CardDescription>Deterministic signals from the selected window</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {surfaces.insights.status === "loading" ? (
-              <div className="space-y-3">
-                <Skeleton className="h-24 w-full" />
-                <Skeleton className="h-24 w-full" />
-              </div>
-            ) : surfaces.insights.status === "error" ? (
-              <div className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-sm text-red-500">
-                <span>Failed to load insights</span>
-                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry insights</Button>
-              </div>
-            ) : surfaces.insights.status === "empty" ? (
-              <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">No deterministic insights</div>
-            ) : (
-              <InsightRail insights={surfaces.insights.data} />
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          <div>
+            <CardTitle>Model Mix</CardTitle>
+            <CardDescription>Usage composition across models in the selected window</CardDescription>
+          </div>
+          <Badge
+            variant={modelMixMeasure === "cost" ? "terracotta" : "outline"}
+            data-testid="model-mix-cost-state"
+          >
+            {modelMixCostStateLabel}
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          {surfaces.modelMix.status === "loading" ? (
+            <Skeleton className="h-[300px] w-full" />
+          ) : surfaces.modelMix.status === "error" ? (
+            <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-sm text-red-500">
+              <span>Failed to load model mix</span>
+              <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry model mix</Button>
+            </div>
+          ) : surfaces.modelMix.status === "empty" ? (
+            <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">No model usage in this window</div>
+          ) : (
+            <ModelDistributionChart data={surfaces.modelMix.data} measure={modelMixMeasure} />
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

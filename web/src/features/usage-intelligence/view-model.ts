@@ -113,12 +113,12 @@ export function getModelMixPresentation(costStatus?: CostStatus): {
   costStateLabel: string
 } {
   if (costStatus === "available") {
-    return { measure: "cost", costStateLabel: "Cost state: available · Cost share" }
+    return { measure: "cost", costStateLabel: "By cost" }
   }
   if (costStatus === "partial") {
-    return { measure: "tokens", costStateLabel: "Cost state: partial · Token share" }
+    return { measure: "tokens", costStateLabel: "Cost partial, by tokens" }
   }
-  return { measure: "tokens", costStateLabel: "Cost state: unavailable · Token share" }
+  return { measure: "tokens", costStateLabel: "Cost unavailable, by tokens" }
 }
 
 export function buildUsageDashboardViewModel(input: {
@@ -138,7 +138,9 @@ export function buildUsageDashboardViewModel(input: {
   // cross-provider cache-read semantics. Exact cache read/create facts remain
   // available in Request Evidence, but the aggregate insight stays hidden
   // until raw/rollup completeness can be proven.
-  const insights = (input.analytics?.insights ?? []).filter((insight) => insight.type !== "cache_efficiency")
+  const insights = (input.analytics?.insights ?? []).filter(
+    (insight) => insight.type !== "cache_efficiency" && insight.severity === "amber",
+  )
   const modelMix = getModelMixPresentation(input.analytics?.summary?.cost_status)
   return {
     trend,

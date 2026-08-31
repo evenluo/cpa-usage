@@ -145,7 +145,7 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.hasModelDistribution).toBe(false)
     expect(viewModel.hasInsights).toBe(false)
     expect(viewModel.modelMixMeasure).toBe("tokens")
-    expect(viewModel.modelMixCostStateLabel).toBe("Cost state: partial · Token share")
+    expect(viewModel.modelMixCostStateLabel).toBe("Cost partial, by tokens")
     expect(viewModel.fixedHeatmap).toBe(fixedHeatmap)
     expect(viewModel.serviceHealth).toBe(requestHealth.service_health)
     expect(viewModel.hasLeaderboardBreakdown).toBe(true)
@@ -197,7 +197,7 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.modelDistribution[0].model).toBe("priced-model")
     expect(viewModel.insights[0].title).toBe("Pricing Missing")
     expect(viewModel.modelMixMeasure).toBe("tokens")
-    expect(viewModel.modelMixCostStateLabel).toBe("Cost state: partial · Token share")
+    expect(viewModel.modelMixCostStateLabel).toBe("Cost partial, by tokens")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
   })
 
@@ -233,6 +233,17 @@ describe("Usage Intelligence view model", () => {
         count: 1,
         cost_status: "partial",
       },
+      {
+        type: "top_cost_key",
+        severity: "green",
+        title: "Top Cost Key",
+        detail: "Already visible in the leaderboard.",
+        subject: "Research Agent",
+        metric_label: "Cost",
+        metric_value: 12,
+        count: 4,
+        cost_status: "available",
+      },
     ]
 
     const viewModel = buildUsageDashboardViewModel({ analytics, leaderboardScope: "account" })
@@ -244,15 +255,15 @@ describe("Usage Intelligence view model", () => {
   it("uses Cost for Model Mix only when the summary Cost status is available", () => {
     expect(getModelMixPresentation("available")).toEqual({
       measure: "cost",
-      costStateLabel: "Cost state: available · Cost share",
+      costStateLabel: "By cost",
     })
     expect(getModelMixPresentation("partial")).toEqual({
       measure: "tokens",
-      costStateLabel: "Cost state: partial · Token share",
+      costStateLabel: "Cost partial, by tokens",
     })
     expect(getModelMixPresentation("unavailable")).toEqual({
       measure: "tokens",
-      costStateLabel: "Cost state: unavailable · Token share",
+      costStateLabel: "Cost unavailable, by tokens",
     })
   })
 
