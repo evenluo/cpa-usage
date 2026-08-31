@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"cpa-usage/internal/quota"
 )
@@ -181,7 +182,11 @@ func TestQuotaCheckMapsProviderInputTo422(t *testing.T) {
 
 func TestQuotaCacheReturnsCachedCurrentPageQuota(t *testing.T) {
 	provider := &quotaProviderStub{cacheResponse: quota.CacheResponse{
-		Items: []quota.CheckResponse{{ID: "auth-1", Quota: []quota.QuotaRow{{Key: "rate_limit.secondary_window", Label: "Weekly", PlanType: "plus"}}}},
+		Items: []quota.CachedCheckResponse{{
+			CheckResponse: quota.CheckResponse{ID: "auth-1", Quota: []quota.QuotaRow{{Key: "rate_limit.secondary_window", Label: "Weekly", PlanType: "plus"}}},
+			CachedAt:      time.Date(2026, 8, 31, 1, 0, 0, 0, time.UTC),
+			ExpiresAt:     time.Date(2026, 8, 31, 1, 5, 0, 0, time.UTC),
+		}},
 	}}
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Quota: provider})
 
@@ -202,6 +207,9 @@ func TestQuotaCacheReturnsCachedCurrentPageQuota(t *testing.T) {
 	body := resp.Body.String()
 	if !contains(body, `"items"`) || !contains(body, `"id":"auth-1"`) || !contains(body, `"label":"Weekly"`) || !contains(body, `"planType":"plus"`) {
 		t.Fatalf("unexpected response body: %s", body)
+	}
+	if !contains(body, `"cachedAt":"2026-08-31T01:00:00Z"`) || !contains(body, `"expiresAt":"2026-08-31T01:05:00Z"`) {
+		t.Fatalf("expected cache observation and expiry in response body: %s", body)
 	}
 }
 

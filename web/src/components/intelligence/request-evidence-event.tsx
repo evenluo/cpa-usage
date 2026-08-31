@@ -6,9 +6,10 @@ interface RequestEvidenceEventProps {
   event: UsageEvent
   label: string
   syncState?: "synced" | "refreshing"
+  detail?: boolean
 }
 
-export function RequestEvidenceEvent({ event, label, syncState }: RequestEvidenceEventProps) {
+export function RequestEvidenceEvent({ event, label, syncState, detail = false }: RequestEvidenceEventProps) {
   const { keyLabel, keyTrace } = getRequestEventLabels(event)
 
   return (
@@ -31,15 +32,55 @@ export function RequestEvidenceEvent({ event, label, syncState }: RequestEvidenc
         </Badge>
       </div>
       <p className="mt-2 truncate text-xs text-muted-foreground">
-        {event.model || "Unknown model"} · {formatDate(event.timestamp)}
+        {event.endpoint ? `${event.endpoint} · ` : ""}{event.model || "Unknown model"} · {formatDate(event.timestamp)}
       </p>
       <div className="mt-3 grid min-w-0 grid-cols-3 gap-3">
         <RequestMetric label="Output TPS" value={formatOutputTPS(event.output_tps)} />
         <RequestMetric label="Latency" value={formatLatency(event.latency_ms)} />
         <RequestMetric label="Tokens" value={formatCompact(event.tokens?.total_tokens ?? 0, 2)} />
       </div>
+      {detail ? <RequestEvidenceDetail event={event} /> : null}
     </section>
   )
+}
+
+function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
+  const fields = [
+    ["Requested model", event.model_alias || "-"],
+    ["Actual model", event.model || "-"],
+    ["Endpoint", event.endpoint || "-"],
+    ["Request ID", event.request_id || "-"],
+    ["Status code", formatOptionalNumber(event.status_code)],
+    ["Executor", event.executor_type || "-"],
+    ["Reasoning effort", event.reasoning_effort || "-"],
+    ["Service tier", event.service_tier || "-"],
+    ["TTFT", event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms)],
+    ["Input tokens", formatTokenCount(event.tokens?.input_tokens)],
+    ["Output tokens", formatTokenCount(event.tokens?.output_tokens)],
+    ["Reasoning tokens", formatTokenCount(event.tokens?.reasoning_tokens)],
+    ["Generic cached tokens", formatTokenCount(event.tokens?.cached_tokens)],
+    ["Cache read tokens", formatTokenCount(event.tokens?.cache_read_tokens)],
+    ["Cache creation tokens", formatTokenCount(event.tokens?.cache_creation_tokens)],
+  ]
+
+  return (
+    <dl className="mt-4 grid min-w-0 gap-x-4 gap-y-3 border-t border-terracotta-200 pt-3 sm:grid-cols-2 dark:border-terracotta-900/60">
+      {fields.map(([label, value]) => (
+        <div key={label} className="min-w-0">
+          <dt className="text-[10px] text-muted-foreground">{label}</dt>
+          <dd className="break-all text-xs font-medium">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function formatOptionalNumber(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? String(value) : "-"
+}
+
+function formatTokenCount(value: number | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? formatCompact(value, 2) : "-"
 }
 
 function EvidenceSyncSignal({ state }: { state: "synced" | "refreshing" }) {

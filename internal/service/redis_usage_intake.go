@@ -26,7 +26,7 @@ func newRedisUsageIntake(db *gorm.DB, queue RedisQueue, queueKey string, now fun
 	return redisUsageIntake{db: db, queue: queue, queueKey: queueKey, now: now}
 }
 
-// pull 只 LPOP 队列消息并原样写入 redis_usage_inboxes。
+// pull 只 LPOP 队列消息并把 replay-safe 投影写入 redis_usage_inboxes。
 func (i redisUsageIntake) pull(ctx context.Context) (*servicedto.RedisInboxPullResult, error) {
 	if i.queue == nil {
 		return nil, fmt.Errorf("sync service redis queue is nil")
@@ -63,9 +63,13 @@ func (i redisUsageIntake) process(ctx context.Context) (*servicedto.RedisBatchSy
 func insertRedisInboxMessages(db *gorm.DB, queueKey string, messages []string, poppedAt time.Time) ([]entities.RedisUsageInbox, error) {
 	inputs := make([]repodto.RedisInboxInsert, 0, len(messages))
 	for _, message := range messages {
+		replaySafeMessage, err := replaySafeRedisUsageMessage(message)
+		if err != nil {
+			return nil, err
+		}
 		inputs = append(inputs, repodto.RedisInboxInsert{
 			QueueKey:   queueKey,
-			RawMessage: message,
+			RawMessage: replaySafeMessage,
 			PoppedAt:   poppedAt,
 		})
 	}

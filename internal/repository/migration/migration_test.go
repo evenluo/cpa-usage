@@ -42,6 +42,7 @@ func TestOrderedMigrationsPreservesExecutionOrder(t *testing.T) {
 		"20260707_create_usage_rollups_hourly",
 		"20260707_add_redis_inbox_processable_index",
 		"20260714_add_usage_event_ttft",
+		"20260831_add_usage_attempt_fields",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected ordered migrations %v, got %v", want, got)
@@ -101,6 +102,7 @@ func TestOpenDatabaseRunsSchemaMigrationsAndAddsUsageEventRedisFields(t *testing
 		"20260707_create_usage_rollup_backfill_state",
 		"20260707_create_usage_rollups_hourly",
 		"20260714_add_usage_event_ttft",
+		"20260831_add_usage_attempt_fields",
 	}
 	if len(versions) != len(expected) {
 		t.Fatalf("expected migration versions %v, got %v", expected, versions)

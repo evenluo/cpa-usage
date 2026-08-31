@@ -21,12 +21,15 @@ export function useEvents(
   provider: string = "",
   page: number = 1,
   refetchInterval: number | false = 60_000,
+  filters: { model?: string; result?: "" | "success" | "failed" } = {},
 ) {
   const params = new URLSearchParams({ range, page_size: String(pageSize), page: String(page) })
   if (provider) params.set("provider", provider)
+  if (filters.model) params.set("model", filters.model)
+  if (filters.result) params.set("result", filters.result)
 
   return useQuery({
-    queryKey: ["events", range, pageSize, provider, page],
+    queryKey: ["events", range, pageSize, provider, page, filters.model || "", filters.result || ""],
     queryFn: () => fetchEvents(`/usage/events?${params.toString()}`, page, pageSize),
     staleTime: 30_000,
     refetchInterval: () => {

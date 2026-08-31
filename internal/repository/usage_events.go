@@ -59,24 +59,33 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 	rows := make([]dto.UsageEventRecord, 0, len(events))
 	for _, event := range events {
 		rows = append(rows, dto.UsageEventRecord{
-			ID:              event.ID,
-			Timestamp:       event.Timestamp.UTC(),
-			APIGroupKey:     strings.TrimSpace(event.APIGroupKey),
-			APIKeyIdentity:  usageEventAPIKeyIdentity(event),
-			Model:           strings.TrimSpace(event.Model),
-			AuthType:        strings.TrimSpace(event.AuthType),
-			Provider:        strings.TrimSpace(event.Provider),
-			Source:          strings.TrimSpace(event.Source),
-			AuthIndex:       strings.TrimSpace(event.AuthIndex),
-			Failed:          event.Failed,
-			LatencyMS:       event.LatencyMS,
-			TTFTMS:          event.TTFTMS,
-			OutputTPS:       usageEventOutputTPS(event.OutputTokens, event.LatencyMS, event.TTFTMS),
-			InputTokens:     event.InputTokens,
-			OutputTokens:    event.OutputTokens,
-			ReasoningTokens: event.ReasoningTokens,
-			CachedTokens:    event.CachedTokens,
-			TotalTokens:     event.TotalTokens,
+			ID:                  event.ID,
+			Timestamp:           event.Timestamp.UTC(),
+			APIGroupKey:         strings.TrimSpace(event.APIGroupKey),
+			APIKeyIdentity:      usageEventAPIKeyIdentity(event),
+			Model:               strings.TrimSpace(event.Model),
+			ModelAlias:          strings.TrimSpace(usageEventOptionalString(event.ModelAlias)),
+			Endpoint:            strings.TrimSpace(event.Endpoint),
+			RequestID:           strings.TrimSpace(event.RequestID),
+			AuthType:            strings.TrimSpace(event.AuthType),
+			Provider:            strings.TrimSpace(event.Provider),
+			Source:              strings.TrimSpace(event.Source),
+			AuthIndex:           strings.TrimSpace(event.AuthIndex),
+			Failed:              event.Failed,
+			StatusCode:          usageEventStatusCode(event.StatusCode),
+			ExecutorType:        strings.TrimSpace(event.ExecutorType),
+			ReasoningEffort:     strings.TrimSpace(event.ReasoningEffort),
+			ServiceTier:         strings.TrimSpace(event.ServiceTier),
+			LatencyMS:           event.LatencyMS,
+			TTFTMS:              event.TTFTMS,
+			OutputTPS:           usageEventOutputTPS(event.OutputTokens, event.LatencyMS, event.TTFTMS),
+			InputTokens:         event.InputTokens,
+			OutputTokens:        event.OutputTokens,
+			ReasoningTokens:     event.ReasoningTokens,
+			CachedTokens:        event.CachedTokens,
+			CacheReadTokens:     event.CacheReadTokens,
+			CacheCreationTokens: event.CacheCreationTokens,
+			TotalTokens:         event.TotalTokens,
 		})
 	}
 	totalPages := 1
@@ -86,6 +95,20 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 		page = 1
 	}
 	return &dto.UsageEventsPageRecord{Events: rows, Models: modelOptions, TotalCount: totalCount, Page: page, PageSize: pageSize, TotalPages: totalPages}, nil
+}
+
+func usageEventStatusCode(value int) *int {
+	if value <= 0 {
+		return nil
+	}
+	return &value
+}
+
+func usageEventOptionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 // usageEventOutputTPS 是 Request Evidence 的 Output TPS 规则：仅当 output tokens、总延迟与 TTFT 可用且自洽时才计算，否则保持 nil，不估算回退值。

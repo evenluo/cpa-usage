@@ -33,29 +33,38 @@ type usageEventFilterOptionsResponse struct {
 }
 
 type usageEventPayload struct {
-	ID            uint                   `json:"id,omitempty"`
-	Timestamp     string                 `json:"timestamp"`
-	Model         string                 `json:"model"`
-	Source        string                 `json:"source"`
-	SourceRaw     string                 `json:"source_raw,omitempty"`
-	SourceType    string                 `json:"source_type,omitempty"`
-	AuthIndex     string                 `json:"auth_index,omitempty"`
-	APIKeyAlias   string                 `json:"api_key_alias,omitempty"`
-	APIKeyDisplay string                 `json:"api_key_display,omitempty"`
-	IsDelete      bool                   `json:"isDelete,omitempty"`
-	Failed        bool                   `json:"failed"`
-	LatencyMS     int64                  `json:"latency_ms"`
-	TTFTMS        *int64                 `json:"ttft_ms"`
-	OutputTPS     *float64               `json:"output_tps"`
-	Tokens        usageEventTokenPayload `json:"tokens"`
+	ID              uint                   `json:"id,omitempty"`
+	Timestamp       string                 `json:"timestamp"`
+	Model           string                 `json:"model"`
+	ModelAlias      string                 `json:"model_alias,omitempty"`
+	Endpoint        string                 `json:"endpoint,omitempty"`
+	RequestID       string                 `json:"request_id,omitempty"`
+	Source          string                 `json:"source"`
+	SourceRaw       string                 `json:"source_raw,omitempty"`
+	SourceType      string                 `json:"source_type,omitempty"`
+	AuthIndex       string                 `json:"auth_index,omitempty"`
+	APIKeyAlias     string                 `json:"api_key_alias,omitempty"`
+	APIKeyDisplay   string                 `json:"api_key_display,omitempty"`
+	IsDelete        bool                   `json:"isDelete,omitempty"`
+	Failed          bool                   `json:"failed"`
+	StatusCode      *int                   `json:"status_code,omitempty"`
+	ExecutorType    string                 `json:"executor_type,omitempty"`
+	ReasoningEffort string                 `json:"reasoning_effort,omitempty"`
+	ServiceTier     string                 `json:"service_tier,omitempty"`
+	LatencyMS       int64                  `json:"latency_ms"`
+	TTFTMS          *int64                 `json:"ttft_ms"`
+	OutputTPS       *float64               `json:"output_tps"`
+	Tokens          usageEventTokenPayload `json:"tokens"`
 }
 
 type usageEventTokenPayload struct {
-	InputTokens     int64 `json:"input_tokens"`
-	OutputTokens    int64 `json:"output_tokens"`
-	ReasoningTokens int64 `json:"reasoning_tokens"`
-	CachedTokens    int64 `json:"cached_tokens"`
-	TotalTokens     int64 `json:"total_tokens"`
+	InputTokens         int64  `json:"input_tokens"`
+	OutputTokens        int64  `json:"output_tokens"`
+	ReasoningTokens     int64  `json:"reasoning_tokens"`
+	CachedTokens        int64  `json:"cached_tokens"`
+	CacheReadTokens     *int64 `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
+	TotalTokens         int64  `json:"total_tokens"`
 }
 
 func registerUsageEventsRoute(
@@ -181,29 +190,44 @@ func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIden
 		source, isDelete := usageEventPublicSource(row, identity, matched)
 		apiKeyIdentity := strings.TrimSpace(row.APIKeyIdentity)
 		payload = append(payload, usageEventPayload{
-			ID:            row.ID,
-			Timestamp:     row.Timestamp.UTC().Format(time.RFC3339),
-			Model:         row.Model,
-			Source:        source,
-			SourceType:    identity.Type,
-			AuthIndex:     row.AuthIndex,
-			APIKeyAlias:   strings.TrimSpace(apiKeyAliases[apiKeyIdentity]),
-			APIKeyDisplay: usageEventAPIKeyDisplay(apiKeyIdentity),
-			IsDelete:      isDelete,
-			Failed:        row.Failed,
-			LatencyMS:     row.LatencyMS,
-			TTFTMS:        row.TTFTMS,
-			OutputTPS:     row.OutputTPS,
+			ID:              row.ID,
+			Timestamp:       row.Timestamp.UTC().Format(time.RFC3339),
+			Model:           row.Model,
+			ModelAlias:      row.ModelAlias,
+			Endpoint:        usageEventPublicEndpoint(row.Endpoint),
+			RequestID:       row.RequestID,
+			Source:          source,
+			SourceType:      identity.Type,
+			AuthIndex:       row.AuthIndex,
+			APIKeyAlias:     strings.TrimSpace(apiKeyAliases[apiKeyIdentity]),
+			APIKeyDisplay:   usageEventAPIKeyDisplay(apiKeyIdentity),
+			IsDelete:        isDelete,
+			Failed:          row.Failed,
+			StatusCode:      row.StatusCode,
+			ExecutorType:    row.ExecutorType,
+			ReasoningEffort: row.ReasoningEffort,
+			ServiceTier:     row.ServiceTier,
+			LatencyMS:       row.LatencyMS,
+			TTFTMS:          row.TTFTMS,
+			OutputTPS:       row.OutputTPS,
 			Tokens: usageEventTokenPayload{
-				InputTokens:     row.InputTokens,
-				OutputTokens:    row.OutputTokens,
-				ReasoningTokens: row.ReasoningTokens,
-				CachedTokens:    row.CachedTokens,
-				TotalTokens:     row.TotalTokens,
+				InputTokens:         row.InputTokens,
+				OutputTokens:        row.OutputTokens,
+				ReasoningTokens:     row.ReasoningTokens,
+				CachedTokens:        row.CachedTokens,
+				CacheReadTokens:     row.CacheReadTokens,
+				CacheCreationTokens: row.CacheCreationTokens,
+				TotalTokens:         row.TotalTokens,
 			},
 		})
 	}
 	return payload
+}
+
+func usageEventPublicEndpoint(endpoint string) string {
+	endpoint, _, _ = strings.Cut(strings.TrimSpace(endpoint), "?")
+	endpoint, _, _ = strings.Cut(endpoint, "#")
+	return endpoint
 }
 
 func usageEventAPIKeyDisplay(identity string) string {

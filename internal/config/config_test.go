@@ -151,7 +151,7 @@ func TestLoadFromEnvAppliesDefaults(t *testing.T) {
 		t.Fatalf("expected default redis queue addr to be empty, got %q", cfg.RedisQueueAddr)
 	}
 	if cfg.RedisQueueKey != RedisQueueKeyDefault {
-		t.Fatalf("expected default redis queue key queue, got %s", cfg.RedisQueueKey)
+		t.Fatalf("expected default redis queue key usage, got %s", cfg.RedisQueueKey)
 	}
 	if cfg.RedisQueueBatchSize != 1000 {
 		t.Fatalf("expected default redis queue batch size 1000, got %d", cfg.RedisQueueBatchSize)

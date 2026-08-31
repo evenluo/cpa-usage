@@ -24,7 +24,13 @@ type CacheRequest struct {
 }
 
 type CacheResponse struct {
-	Items []CheckResponse `json:"items"`
+	Items []CachedCheckResponse `json:"items"`
+}
+
+type CachedCheckResponse struct {
+	CheckResponse
+	CachedAt  time.Time `json:"cachedAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 type RefreshRequest struct {
@@ -108,7 +114,7 @@ func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (Cac
 	if limit <= 0 {
 		return CacheResponse{}, fmt.Errorf("%w: limit is required", ErrValidation)
 	}
-	response := CacheResponse{Items: make([]CheckResponse, 0, min(limit, len(request.AuthIndexes)))}
+	response := CacheResponse{Items: make([]CachedCheckResponse, 0, min(limit, len(request.AuthIndexes)))}
 	s.refreshTasks.cleanupExpired(time.Now())
 	// 按请求顺序去重并读取每个 auth_index 最近一次完成的任务缓存。
 	seen := make(map[string]struct{}, len(request.AuthIndexes))
@@ -128,7 +134,11 @@ func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (Cac
 		if !ok {
 			continue
 		}
-		response.Items = append(response.Items, *task.Quota)
+		response.Items = append(response.Items, CachedCheckResponse{
+			CheckResponse: *task.Quota,
+			CachedAt:      task.CachedAt,
+			ExpiresAt:     task.ExpiresAt,
+		})
 	}
 	return response, nil
 }

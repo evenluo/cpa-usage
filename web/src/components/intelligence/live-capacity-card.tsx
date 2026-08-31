@@ -13,6 +13,7 @@ import {
 } from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
 import { useFlipReorder } from "@/hooks/useFlipReorder"
+import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { ProviderBrandIcon } from "./provider-brand-icon"
 
@@ -133,7 +134,8 @@ function LiveCapacityAccountTile({
   onRefresh: () => void
 }) {
   const primaryMetric = row.fiveHour ?? row.additionalMetrics[0]
-  const secondaryMetric = row.weekly ?? row.additionalMetrics[1]
+  const secondaryMetric = row.weekly ?? row.additionalMetrics.find((metric) => metric !== primaryMetric)
+  const remainingMetrics = row.additionalMetrics.filter((metric) => metric !== primaryMetric && metric !== secondaryMetric)
   const isRowRefreshing = row.status === "refreshing"
   const hasAttention = row.isConstrained || row.status === "failed"
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
@@ -202,9 +204,28 @@ function LiveCapacityAccountTile({
       <div className="mt-3 grid gap-2">
         <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} iconKind={primaryMetric === row.fiveHour ? "5h" : undefined} />
         <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} iconKind={secondaryMetric === row.weekly ? "weekly" : undefined} />
+        {remainingMetrics.map((metric, index) => (
+          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} />
+        ))}
       </div>
+      {row.observedAt || row.expiresAt || row.activeStart || row.activeUntil ? (
+        <div className="mt-3 space-y-1 border-t border-border/70 pt-2 text-[10px] text-muted-foreground">
+          {row.observedAt ? <p>Observed {formatDate(row.observedAt)}</p> : null}
+          {row.expiresAt ? <p>Cache expires {formatDate(row.expiresAt)}</p> : null}
+          {row.activeStart || row.activeUntil ? (
+            <p>Account active {formatCapacityWindow(row.activeStart, row.activeUntil)}</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
+}
+
+function formatCapacityWindow(start?: string | null, until?: string | null): string {
+  if (start && until) return `${formatDate(start)} – ${formatDate(until)}`
+  if (start) return `from ${formatDate(start)}`
+  if (until) return `until ${formatDate(until)}`
+  return "-"
 }
 
 function PlanBadge({

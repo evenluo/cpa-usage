@@ -17,5 +17,5 @@ const (
 	ManagementRedisDefaultPort    = "8317"
 	cpaManagementRedisAuthCommand = "AUTH"
 	cpaManagementRedisPopCommand  = "LPOP"
-	ManagementUsageQueueKey       = "queue"
+	ManagementUsageQueueKey       = "usage"
 )

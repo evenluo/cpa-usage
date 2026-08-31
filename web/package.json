@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e:mobile": "playwright test"
+    "test:e2e:mobile": "playwright test",
+    "bench:live-capacity": "vitest bench --run --maxWorkers=1 --no-file-parallelism src/components/intelligence/live-capacity-card.bench.tsx",
+    "perf:bundle": "tsc && vite build --manifest && node scripts/bundle-report.mjs"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.1",

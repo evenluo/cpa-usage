@@ -60,7 +60,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{row.model}</p>
                   <p className="text-xs text-muted-foreground">
-                    {row.provider || "Unknown"} · {formatCompact(row.total_tokens, 1)} tokens · {formatCompact(row.request_count, 0)} requests
+                    {row.provider || "Unknown"} · {formatCompact(row.total_tokens, 1)} tokens · {formatCompact(row.request_count, 0)} attempts
                   </p>
                 </div>
                 <div className="text-right">

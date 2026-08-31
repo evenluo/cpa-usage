@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { UsageEventsPage } from "@/types/api"
 
 vi.mock("@tanstack/react-router", () => ({
-  createLazyFileRoute: () => (options: object) => ({ ...options, useSearch: () => ({ provider: "" }) }),
+  createLazyFileRoute: () => (options: object) => ({
+    ...options,
+    useSearch: () => ({ provider: "", model: "", result: "" }),
+    useNavigate: () => vi.fn(),
+  }),
   Link: ({ children }: { children: React.ReactNode }) => <a href="/">{children}</a>,
 }))
 
@@ -52,9 +56,9 @@ describe("RequestsPage provider scope", () => {
     const { rerender } = render(<RequestsPage provider="claude" />)
 
     await user.click(screen.getByRole("button", { name: "Next page" }))
-    await user.click(screen.getByRole("button", { name: "Select request 21" }))
+    await user.click(screen.getByRole("button", { name: "Select attempt 21" }))
     expect(screen.getByText("Page 2 of 2")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Select request 21" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "Select attempt 21" })).toHaveAttribute("aria-pressed", "true")
 
     rerender(<RequestsPage provider="codex" />)
 
@@ -62,6 +66,30 @@ describe("RequestsPage provider scope", () => {
     expect(calls[calls.length - 1]?.slice(0, 4)).toEqual(["24h", 10, "codex", 1])
     expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
     expect(screen.getByTestId("request-provider-scope")).toHaveTextContent("Provider: codex")
-    expect(screen.getByRole("button", { name: "Select request 10" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "Select attempt 10" })).toHaveAttribute("aria-pressed", "true")
+  })
+
+  it("passes model and result scope to the existing evidence query", async () => {
+    vi.mocked(useEvents).mockReturnValue({
+      data: eventsPage(1, "claude"),
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as never)
+
+    const onFiltersChange = vi.fn()
+    const user = userEvent.setup()
+    render(<RequestsPage provider="claude" model="gpt-5" result="failed" onFiltersChange={onFiltersChange} />)
+
+    const calls = vi.mocked(useEvents).mock.calls
+    const call = calls[calls.length - 1]
+    expect(call?.[5]).toEqual({ model: "gpt-5", result: "failed" })
+    expect(screen.getByDisplayValue("gpt-5")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Failed attempts")).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText("Actual model"))
+    await user.type(screen.getByLabelText("Actual model"), "claude-sonnet")
+    await user.click(screen.getByRole("button", { name: "Apply model" }))
+    expect(onFiltersChange).toHaveBeenCalledWith({ model: "claude-sonnet", result: "failed" })
   })
 })

@@ -50,15 +50,15 @@ export function RequestEvidence({ provider, data, isLoading, isRefreshing, error
           <div className="flex h-full min-w-0 flex-col justify-between gap-3">
             <RequestEvidenceEvent
               event={latestEvent}
-              label="Latest request"
+              label="Latest upstream attempt"
               syncState={isRefreshing ? "refreshing" : "synced"}
             />
             <Link
               to="/requests"
-              search={{ provider }}
+              search={{ provider, model: "", result: "" }}
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-terracotta-700 transition-colors hover:bg-terracotta-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
             >
-              View all requests
+              View all attempts
               <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
             </Link>
           </div>

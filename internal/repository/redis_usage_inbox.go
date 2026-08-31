@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"strings"
@@ -151,26 +150,6 @@ func MarkRedisUsageInboxProcessFailedBatch(db *gorm.DB, ids []uint, processErr e
 		}
 		return nil
 	})
-}
-
-func ListProcessedRedisUsageInboxEventKeys(ctx context.Context, db *gorm.DB, eventKeys []string) ([]string, error) {
-	if len(eventKeys) == 0 {
-		return nil, nil
-	}
-	db = db.WithContext(ctx)
-	result := make([]string, 0, len(eventKeys))
-	maxKeysPerBatch := sqliteVariableLimit - 1
-	for start := 0; start < len(eventKeys); start += maxKeysPerBatch {
-		end := min(start+maxKeysPerBatch, len(eventKeys))
-		var keys []string
-		if err := db.Model(&entities.RedisUsageInbox{}).
-			Where("status = ? AND usage_event_key IN ?", RedisUsageInboxStatusProcessed, eventKeys[start:end]).
-			Pluck("usage_event_key", &keys).Error; err != nil {
-			return nil, fmt.Errorf("load redis inbox references: %w", err)
-		}
-		result = append(result, keys...)
-	}
-	return result, nil
 }
 
 // ListProcessableRedisUsageInbox 返回待处理和可重试的数据，不返回已解码失败或已丢弃的数据。

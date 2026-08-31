@@ -54,7 +54,7 @@ export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                {costPct.toFixed(1)}% cost · {formatCompact(row.request_count, 0)} req · {tokenPct.toFixed(1)}% tokens
+                {costPct.toFixed(1)}% cost · {formatCompact(row.request_count, 0)} attempts · {tokenPct.toFixed(1)}% tokens
               </p>
             </div>
           </div>

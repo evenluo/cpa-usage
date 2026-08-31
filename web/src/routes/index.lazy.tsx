@@ -69,7 +69,7 @@ function DashboardPage() {
           tone="blue"
         />
         <KpiCard
-          label="Requests"
+          label="Attempts"
           rawValue={summary?.request_count}
           formatter={(n) => n.toLocaleString("en")}
           sparkline={kpiData?.requests}
@@ -88,7 +88,7 @@ function DashboardPage() {
         />
         <KpiCard
           label="Cache"
-          rawValue={summary?.cache_read_share}
+          rawValue={undefined}
           formatter={formatPercent}
           valueDecimals={1}
           caption={cacheReadShareCaption}

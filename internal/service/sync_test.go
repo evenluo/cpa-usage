@@ -221,7 +221,7 @@ func TestProcessRedisUsageInboxPersistsEventsWithoutSnapshot(t *testing.T) {
 	if err := db.First(&event).Error; err != nil {
 		t.Fatalf("load usage event: %v", err)
 	}
-	if event.EventKey != "process-only" {
+	if event.EventKey != redisUsageAttemptEventKey(rows[0].ID) {
 		t.Fatalf("expected Redis event without snapshot run id, got %+v", event)
 	}
 	if event.Provider != "claude" || event.Endpoint != "/v1/messages" || event.AuthType != "apikey" || event.RequestID != "process-only" {
@@ -231,7 +231,7 @@ func TestProcessRedisUsageInboxPersistsEventsWithoutSnapshot(t *testing.T) {
 	if err := db.First(&inbox, rows[0].ID).Error; err != nil {
 		t.Fatalf("load inbox row: %v", err)
 	}
-	if inbox.Status != repository.RedisUsageInboxStatusProcessed || inbox.UsageEventKey != "process-only" {
+	if inbox.Status != repository.RedisUsageInboxStatusProcessed || inbox.UsageEventKey != redisUsageAttemptEventKey(rows[0].ID) {
 		t.Fatalf("expected processed inbox row without snapshot link, got %+v", inbox)
 	}
 }
@@ -266,7 +266,7 @@ func TestProcessRedisUsageInboxDoesNotFetchMetadata(t *testing.T) {
 	if err := db.First(&inbox, rows[0].ID).Error; err != nil {
 		t.Fatalf("load inbox row: %v", err)
 	}
-	if inbox.Status != repository.RedisUsageInboxStatusProcessed || inbox.UsageEventKey != "redis-no-metadata" {
+	if inbox.Status != repository.RedisUsageInboxStatusProcessed || inbox.UsageEventKey != redisUsageAttemptEventKey(rows[0].ID) {
 		t.Fatalf("expected inbox row processed, got %+v", inbox)
 	}
 }
@@ -317,14 +317,14 @@ func TestRedisInboxPullThenProcessPersistsEventsWithoutMetadata(t *testing.T) {
 	if err := db.First(&event).Error; err != nil {
 		t.Fatalf("load usage event: %v", err)
 	}
-	if event.EventKey != "redis-1" {
-		t.Fatalf("unexpected usage event: %+v", event)
-	}
 	var inbox entities.RedisUsageInbox
 	if err := db.First(&inbox).Error; err != nil {
 		t.Fatalf("load inbox row: %v", err)
 	}
-	if inbox.Status != repository.RedisUsageInboxStatusProcessed || inbox.UsageEventKey != "redis-1" {
+	if event.EventKey != redisUsageAttemptEventKey(inbox.ID) || event.RequestID != "redis-1" {
+		t.Fatalf("unexpected usage event: %+v", event)
+	}
+	if inbox.Status != repository.RedisUsageInboxStatusProcessed || inbox.UsageEventKey != redisUsageAttemptEventKey(inbox.ID) {
 		t.Fatalf("expected processed inbox row without snapshot link, got %+v", inbox)
 	}
 }
@@ -351,10 +351,6 @@ func TestRedisInboxPullThenProcessPersistsValidRowsWhenBatchContainsMalformedMes
 	if err := db.First(&event).Error; err != nil {
 		t.Fatalf("load usage event: %v", err)
 	}
-	if event.EventKey != "redis-valid" {
-		t.Fatalf("unexpected usage event: %+v", event)
-	}
-
 	var inboxRows []entities.RedisUsageInbox
 	if err := db.Order("id asc").Find(&inboxRows).Error; err != nil {
 		t.Fatalf("load inbox rows: %v", err)
@@ -362,7 +358,10 @@ func TestRedisInboxPullThenProcessPersistsValidRowsWhenBatchContainsMalformedMes
 	if len(inboxRows) != 2 {
 		t.Fatalf("expected 2 inbox rows, got %d", len(inboxRows))
 	}
-	if inboxRows[0].Status != repository.RedisUsageInboxStatusProcessed || inboxRows[0].UsageEventKey != "redis-valid" {
+	if event.EventKey != redisUsageAttemptEventKey(inboxRows[0].ID) || event.RequestID != "redis-valid" {
+		t.Fatalf("unexpected usage event: %+v", event)
+	}
+	if inboxRows[0].Status != repository.RedisUsageInboxStatusProcessed || inboxRows[0].UsageEventKey != redisUsageAttemptEventKey(inboxRows[0].ID) {
 		t.Fatalf("expected first row processed, got %+v", inboxRows[0])
 	}
 	if inboxRows[1].Status != repository.RedisUsageInboxStatusDecodeFailed || inboxRows[1].LastError == "" {
@@ -372,9 +371,10 @@ func TestRedisInboxPullThenProcessPersistsValidRowsWhenBatchContainsMalformedMes
 
 func TestRedisInboxPullThenProcessMarksMalformedOnlyBatchWithoutSnapshot(t *testing.T) {
 	db := openSyncTestDatabase(t)
+	malformedMessage := `{bad-json}`
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL:    "https://cpa.example.com",
-		RedisQueue: staticRedisQueue{messages: []string{`{bad-json}`}},
+		RedisQueue: staticRedisQueue{messages: []string{malformedMessage}},
 	})
 
 	result, err := pullThenProcessRedisInbox(t, service)
@@ -389,8 +389,8 @@ func TestRedisInboxPullThenProcessMarksMalformedOnlyBatchWithoutSnapshot(t *test
 	if err := db.First(&inbox).Error; err != nil {
 		t.Fatalf("load inbox row: %v", err)
 	}
-	if inbox.Status != repository.RedisUsageInboxStatusDecodeFailed || inbox.RawMessage != `{bad-json}` {
-		t.Fatalf("expected decode_failed raw inbox row, got %+v", inbox)
+	if inbox.Status != repository.RedisUsageInboxStatusDecodeFailed || inbox.RawMessage == malformedMessage || !strings.Contains(inbox.RawMessage, "sha256=") || !strings.Contains(inbox.RawMessage, "bytes="+strconv.Itoa(len(malformedMessage))) {
+		t.Fatalf("expected decode_failed redacted inbox marker, got %+v", inbox)
 	}
 }
 
@@ -422,7 +422,7 @@ func TestProcessRedisUsageInboxProcessesPendingRowsWithoutPoppingRedis(t *testin
 	if err := db.First(&event).Error; err != nil {
 		t.Fatalf("load usage event: %v", err)
 	}
-	if event.EventKey != "pending-1" {
+	if event.EventKey != redisUsageAttemptEventKey(rows[0].ID) || event.RequestID != "pending-1" {
 		t.Fatalf("unexpected usage event: %+v", event)
 	}
 	var inbox entities.RedisUsageInbox
@@ -460,7 +460,7 @@ func TestRedisInboxPullThenProcessDoesNotWatermarkFilterRedisInboxEvents(t *test
 	}
 
 	var event entities.UsageEvent
-	if err := db.Where("event_key = ?", "old-but-unique").First(&event).Error; err != nil {
+	if err := db.Where("request_id = ?", "old-but-unique").First(&event).Error; err != nil {
 		t.Fatalf("load old unique Redis event: %v", err)
 	}
 }
@@ -541,8 +541,8 @@ func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEven
 	if err := db.First(&inbox).Error; err != nil {
 		t.Fatalf("load inbox row: %v", err)
 	}
-	if inbox.UsageEventKey != "redis-request-canonical" {
-		t.Fatalf("expected inbox to keep Redis request_id event key, got %+v", inbox)
+	if inbox.UsageEventKey != redisUsageAttemptEventKey(inbox.ID) {
+		t.Fatalf("expected inbox to keep its attempt event key, got %+v", inbox)
 	}
 }
 
