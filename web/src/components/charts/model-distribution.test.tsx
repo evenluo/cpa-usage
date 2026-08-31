@@ -60,4 +60,17 @@ describe("ModelDistributionChart", () => {
     expect(screen.getByText("66.7%", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("$2.00", { exact: true })).toBeInTheDocument()
   })
+
+  it("shows an explicit zero-value state instead of naming a leading model", () => {
+    render(
+      <ModelDistributionChart
+        data={[model(1), model(2)].map((row) => ({ ...row, total_cost: 0 }))}
+        measure="cost"
+      />,
+    )
+
+    expect(screen.getByText("No cost recorded for shown models", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("Leading shown model", { exact: true })).not.toBeInTheDocument()
+    expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
 })

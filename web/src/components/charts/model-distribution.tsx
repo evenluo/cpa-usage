@@ -82,8 +82,15 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
       </div>
     )
   }
+  if (total <= 0) {
+    return (
+      <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
+        {measure === "cost" ? "No cost recorded for shown models" : "No token usage recorded for shown models"}
+      </div>
+    )
+  }
 
-  const shareOf = (row: ModelMixRow) => total > 0 ? (row.value / total) * 100 : 0
+  const shareOf = (row: ModelMixRow) => (row.value / total) * 100
 
   return (
     <div className="grid gap-8 py-1 lg:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.55fr)] lg:items-center xl:gap-12">
