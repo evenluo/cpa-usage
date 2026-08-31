@@ -13,6 +13,7 @@ interface ModelMixRow {
   provider: string
   value: number
   totalCost: number
+  costAvailable: boolean
   totalTokens: number
   requestCount: number
   color: string
@@ -23,6 +24,10 @@ const PALETTE = ["#d97757", "#7f8f96", "#8d806f", "#6f8a7b", "#8b7f9c", "#a39b92
 
 function measureValue(row: ModelDistribution, measure: ModelDistributionProps["measure"]): number {
   return measure === "cost" ? row.total_cost : row.total_tokens
+}
+
+function hasAvailableCost(row: Pick<ModelDistribution, "cost_available" | "cost_status">): boolean {
+  return row.cost_available && row.cost_status === "available"
 }
 
 function formatMeasure(value: number, measure: ModelDistributionProps["measure"]): string {
@@ -40,6 +45,7 @@ function buildRows(data: ModelDistribution[], measure: ModelDistributionProps["m
     provider: row.provider || "Unknown provider",
     value: measureValue(row, measure),
     totalCost: row.total_cost,
+    costAvailable: hasAvailableCost(row),
     totalTokens: row.total_tokens,
     requestCount: row.request_count,
     color: PALETTE[index],
@@ -53,6 +59,7 @@ function buildRows(data: ModelDistribution[], measure: ModelDistributionProps["m
     provider: `${remaining.length} additional shown ${remaining.length === 1 ? "model" : "models"}`,
     value: remaining.reduce((sum, row) => sum + measureValue(row, measure), 0),
     totalCost: remaining.reduce((sum, row) => sum + row.total_cost, 0),
+    costAvailable: remaining.every(hasAvailableCost),
     totalTokens: remaining.reduce((sum, row) => sum + row.total_tokens, 0),
     requestCount: remaining.reduce((sum, row) => sum + row.request_count, 0),
     color: PALETTE[PALETTE.length - 1],
@@ -64,7 +71,7 @@ function SupportingMetrics({ row, measure }: { row: ModelMixRow; measure: ModelD
   return (
     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
       <span>{row.provider}</span>
-      {measure === "cost" ? <span>{formatCompact(row.totalTokens, 1)} tokens</span> : <span>{formatCost(row.totalCost)}</span>}
+      {measure === "cost" ? <span>{formatCompact(row.totalTokens, 1)} tokens</span> : <span>{row.costAvailable ? formatCost(row.totalCost) : "Cost n/a"}</span>}
       <span>{formatCompact(row.requestCount, 0)} attempts</span>
     </div>
   )

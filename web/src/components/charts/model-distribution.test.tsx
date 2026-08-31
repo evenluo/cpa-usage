@@ -61,6 +61,35 @@ describe("ModelDistributionChart", () => {
     expect(screen.getByText("$2.00", { exact: true })).toBeInTheDocument()
   })
 
+  it("does not format an unavailable model cost in the token presentation", () => {
+    render(
+      <ModelDistributionChart
+        data={[{ ...model(1), total_cost: 0, cost_available: false, cost_status: "partial" }]}
+        measure="tokens"
+      />,
+    )
+
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("$0.00", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("marks Other cost unavailable when any aggregated model is incomplete", () => {
+    render(
+      <ModelDistributionChart
+        data={[
+          ...[3, 4, 5, 6, 7].map(model),
+          { ...model(2), total_cost: 0 },
+          { ...model(1), total_cost: 0, cost_available: false, cost_status: "unavailable" },
+        ]}
+        measure="tokens"
+      />,
+    )
+
+    expect(screen.getByText("Other shown models", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("$0.00", { exact: true })).not.toBeInTheDocument()
+  })
+
   it("shows an explicit zero-value state instead of naming a leading model", () => {
     render(
       <ModelDistributionChart
