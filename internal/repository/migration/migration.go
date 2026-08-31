@@ -34,6 +34,7 @@ const (
 	migrationAddRedisInboxProcessableIndex          = "20260707_add_redis_inbox_processable_index"
 	migrationAddUsageEventTTFT                      = "20260714_add_usage_event_ttft"
 	migrationAddUsageAttemptFields                  = "20260831_add_usage_attempt_fields"
+	migrationAddUsageRollupCacheReadFields          = "20260831_add_usage_rollup_cache_read_fields"
 )
 
 type schemaMigration struct {
@@ -112,6 +113,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationAddRedisInboxProcessableIndex, run: addRedisInboxProcessableIndexMigration},
 		{version: migrationAddUsageEventTTFT, run: addUsageEventTTFTMigration},
 		{version: migrationAddUsageAttemptFields, run: addUsageAttemptFieldsMigration},
+		{version: migrationAddUsageRollupCacheReadFields, run: addUsageRollupCacheReadFieldsMigration},
 	}
 }
 

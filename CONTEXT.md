@@ -21,7 +21,7 @@ A user-maintained model unit rate used to calculate **Cost** from token usage.
 _Avoid_: Price, pricing entry
 
 **Cache Read Share**:
-The intended share of prompt input served from explicit provider cache reads. The aggregate is deferred until raw and rollup paths can prove explicit cache-read completeness; legacy generic `cached_tokens` must not be presented as this metric.
+The share of observed prompt input served from explicit provider cache reads. It is exact at complete prompt-input token coverage and otherwise carries an explicit partial coverage percentage; legacy generic `cached_tokens` is not used for this metric.
 _Avoid_: Cache hit rate, cache/reasoning share
 
 **Metric Completeness**:
@@ -110,7 +110,7 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
 - The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.
 - KPI comparison uses the immediately previous period for the same selected range; missing previous-period data is shown explicitly instead of inferred.
-- Exact **Cache Read Share** is temporarily unavailable. Request Evidence may show provider-reported generic, cache-read, and cache-creation token facts separately; it must not add generic and explicit fields together.
+- **Cache Read Share** is calculated only from attempts with an explicit provider cache-read fact. Its coverage is the observed prompt-input token volume divided by total prompt-input token volume; complete coverage is `Exact`, incomplete nonzero coverage is `Partial`, and no observed coverage is unavailable. Request Evidence continues to show generic, cache-read, and cache-creation token facts separately; it must not add generic and explicit fields together.
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
 - Leaderboards default to **Cost** ordering when cost metrics are complete; partial **Cost** may still order by the priced cost portion when labeled as partial; token volume becomes the ordering measure when cost is unavailable.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.

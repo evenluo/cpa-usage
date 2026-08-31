@@ -15,10 +15,12 @@
     "output_tokens": 500000,
     "reasoning_tokens": 100000,
     "cached_tokens": 100000,
+    "cache_read_tokens": 100000,
     "success_rate": 66.6666666667,
     "cost_available": false,
     "cost_status": "partial",
     "cache_read_share": 6.666222251849877,
+    "cache_read_coverage": 100,
     "cache_read_share_state": "available"
   },
   "comparison": {
@@ -123,6 +125,7 @@
       "output_tokens": 500000,
       "reasoning_tokens": 100000,
       "cached_tokens": 100000,
+      "cache_read_tokens": 100000,
       "success_rate": 66.6666666667,
       "total_latency_ms": 600,
       "latency_sample_count": 3,
@@ -130,6 +133,7 @@
       "cost_available": false,
       "cost_status": "partial",
       "cache_read_share": 6.666222251849877,
+      "cache_read_coverage": 100,
       "cache_read_share_state": "available"
     }
   ],

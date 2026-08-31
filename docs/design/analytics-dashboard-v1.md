@@ -186,7 +186,7 @@ The new analytics direction needs more direct key-centric aggregation:
 - Key Alias plus model drill-down.
 - Deterministic insight payloads.
 - Alias update API.
-- Cache efficiency fields for summary and model breakdowns: input tokens, cached tokens, **Cache Read Share**, and estimated cache savings when model pricing is complete.
+- Cache efficiency fields for summary and model breakdowns: input tokens, explicit cache-read tokens, **Cache Read Share**, prompt-input coverage, and estimated cache savings when coverage is exact and model pricing is complete.
 
 The existing `api_group_key` analysis is not enough because it is not the same as a user-facing **CPA Key** / **Key Alias** dimension.
 
@@ -265,17 +265,17 @@ The cache efficiency metric is **Cache Read Share**, not a generic cache hit rat
 
 UI placement:
 
-- Show **Cache Read Share** in the first-screen signature module as a supporting efficiency rail.
-- Show estimated cache savings only when the relevant model pricing is complete; if pricing is partial or unavailable, show cached tokens and **Cache Read Share** without inventing a savings amount.
-- Estimated cache savings uses local pricing only: `cached_tokens * (prompt_price_per_1m - cache_price_per_1m) / 1_000_000`. Show it only when both prices exist and prompt price is greater than or equal to cache price; present it as an estimate, not as a provider billing fact.
-- Keep **Cache Read Share** out of the four primary KPI cards unless a later product decision explicitly makes cache optimization the page's main story.
+- Show **Cache Read Share** in the first-screen Cache KPI using only explicit provider cache-read facts. Report prompt-input token coverage beside the observed rate; label 100% coverage as exact and incomplete nonzero coverage as partial.
+- Show estimated cache savings only when cache-read coverage is exact and the relevant model pricing is complete; otherwise show the observed **Cache Read Share** and its coverage without inventing a savings amount.
+- Estimated cache savings uses local pricing only: `cache_read_tokens * (prompt_price_per_1m - cache_price_per_1m) / 1_000_000`. Show it only when both prices exist and prompt price is greater than or equal to cache price; present it as an estimate, not as a provider billing fact.
+- The current first screen includes Cache as a fifth compact KPI beside Cost, Tokens, Attempts, and Success. Missing exact observations render unavailable rather than falling back to generic cached tokens.
 - Add cache read share to model-level breakdowns so users can see which models or providers are not benefiting from prompt caching.
 - Split cache and reasoning token insights; do not keep the current combined cache/reasoning share as the primary user-facing metric.
 
 Implementation boundary:
 
 - Do not ship a cache efficiency UI backed by placeholder or mocked values.
-- Extend the analytics API with real `input_tokens`, `cached_tokens`, and `cache_read_share` fields for the summary and model breakdown.
+- Extend the analytics API with real `input_tokens`, `cache_read_tokens`, `cache_read_share`, and `cache_read_coverage` fields for the summary and model breakdown.
 - Add `estimated_cache_savings` only when pricing is complete enough to compute it honestly.
 - When cache data or pricing is unavailable, render an unavailable state rather than a fabricated zero or savings amount.
 - Split cache-share unavailable states into `No cache data` when cached-token data is not available from the source, and `No prompt input` when input tokens are zero so the share has no denominator.
@@ -301,7 +301,7 @@ In scope:
 - Add real cache efficiency fields to analytics summary and model breakdown responses.
 - Replace the current horizontal deterministic insight strip with a right-side vertical insight rail.
 - Upgrade the combined **Cost and Token Trend** into the first-screen signature module.
-- Add the **Cache Read Share** efficiency rail, using unavailable states when source data or pricing is incomplete.
+- Add the **Cache Read Share** KPI with exact, partial, and unavailable observation states; pricing completeness independently controls whether estimated savings is available.
 - Keep the breakdown area as a single active workbench with a compact segmented control.
 - Keep request health visible as a compact bottom stability strip.
 

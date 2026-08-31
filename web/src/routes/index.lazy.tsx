@@ -17,7 +17,7 @@ function DashboardPage() {
   const dashboard = useUsageDashboard()
   const { summary } = dashboard.coreAnalyticsData ?? {}
   const { surfaces, viewModel, loadPlan } = dashboard
-  const { providerOptions, leaderboardSortLabel, cacheReadShareCaption, kpiData } = viewModel
+  const { providerOptions, leaderboardSortLabel, cacheReadShareCaption, cacheReadShareValue, kpiData } = viewModel
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
@@ -88,7 +88,7 @@ function DashboardPage() {
         />
         <KpiCard
           label="Cache"
-          rawValue={undefined}
+          rawValue={cacheReadShareValue}
           formatter={formatPercent}
           valueDecimals={1}
           caption={cacheReadShareCaption}

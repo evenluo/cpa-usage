@@ -1,21 +1,23 @@
 package repository
 
 type analyticsAggregateRow struct {
-	Bucket                     string
-	RequestCount               int64
-	SuccessCount               int64
-	FailureCount               int64
-	InputTokens                int64
-	OutputTokens               int64
-	TotalTokens                int64
-	TotalCost                  float64
-	CachedTokens               int64
-	ReasoningTokens            int64
-	CacheSavings               float64
-	CacheSavingsEligibleRows   int64
-	CacheSavingsIneligibleRows int64
-	MissingPricingEvents       int64
-	PricedBillableEvents       int64
+	Bucket                       string
+	RequestCount                 int64
+	SuccessCount                 int64
+	FailureCount                 int64
+	InputTokens                  int64
+	OutputTokens                 int64
+	TotalTokens                  int64
+	TotalCost                    float64
+	CachedTokens                 int64
+	CacheReadTokens              int64
+	CacheReadObservedInputTokens int64
+	ReasoningTokens              int64
+	CacheSavings                 float64
+	CacheSavingsEligibleRows     int64
+	CacheSavingsIneligibleRows   int64
+	MissingPricingEvents         int64
+	PricedBillableEvents         int64
 }
 
 type analyticsIdentityAggregateRow struct {
@@ -50,25 +52,27 @@ type analyticsIdentityTrendRow struct {
 }
 
 type analyticsModelAggregateRow struct {
-	Model                      string
-	Provider                   string
-	ProviderCount              int64
-	RequestCount               int64
-	SuccessCount               int64
-	FailureCount               int64
-	InputTokens                int64
-	OutputTokens               int64
-	ReasoningTokens            int64
-	TotalTokens                int64
-	TotalCost                  float64
-	CachedTokens               int64
-	CacheSavings               float64
-	CacheSavingsEligibleRows   int64
-	CacheSavingsIneligibleRows int64
-	TotalLatencyMS             int64
-	LatencySampleCount         int64
-	MissingPricingEvents       int64
-	PricedBillableEvents       int64
+	Model                        string
+	Provider                     string
+	ProviderCount                int64
+	RequestCount                 int64
+	SuccessCount                 int64
+	FailureCount                 int64
+	InputTokens                  int64
+	OutputTokens                 int64
+	ReasoningTokens              int64
+	TotalTokens                  int64
+	TotalCost                    float64
+	CachedTokens                 int64
+	CacheReadTokens              int64
+	CacheReadObservedInputTokens int64
+	CacheSavings                 float64
+	CacheSavingsEligibleRows     int64
+	CacheSavingsIneligibleRows   int64
+	TotalLatencyMS               int64
+	LatencySampleCount           int64
+	MissingPricingEvents         int64
+	PricedBillableEvents         int64
 }
 
 type analyticsProviderOptionRow struct {

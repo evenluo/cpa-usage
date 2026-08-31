@@ -138,9 +138,11 @@ func buildAnalyticsModelSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, sou
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokensExpr) + `), 0) AS cached_tokens,
-			COALESCE(SUM(` + analyticsCacheSavingsSQLExpressionFor(source.cachedTokensExpr) + `), 0) AS cache_savings,
-			COALESCE(SUM(` + analyticsCacheSavingsEligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cacheReadTokensExpr) + `), 0) AS cache_read_tokens,
+			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cacheReadObservedInputTokensExpr) + `), 0) AS cache_read_observed_input_tokens,
+			COALESCE(SUM(` + analyticsSourceCacheSavingsSQLExpression(source) + `), 0) AS cache_savings,
+			COALESCE(SUM(` + analyticsSourceCacheSavingsEligibleSQLExpression(source) + `), 0) AS cache_savings_eligible_rows,
+			COALESCE(SUM(` + analyticsSourceCacheSavingsIneligibleSQLExpression(source) + `), 0) AS cache_savings_ineligible_rows,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + source.latencySumExpr + `), 0) AS total_latency_ms,
 			COALESCE(SUM(` + source.latencyCountExpr + `), 0) AS latency_sample_count,
@@ -180,6 +182,8 @@ func addAnalyticsModelRows(dst map[string]analyticsModelAggregateRow, providersB
 		combined.TotalTokens += row.TotalTokens
 		combined.TotalCost += row.TotalCost
 		combined.CachedTokens += row.CachedTokens
+		combined.CacheReadTokens += row.CacheReadTokens
+		combined.CacheReadObservedInputTokens += row.CacheReadObservedInputTokens
 		combined.CacheSavings += row.CacheSavings
 		combined.CacheSavingsEligibleRows += row.CacheSavingsEligibleRows
 		combined.CacheSavingsIneligibleRows += row.CacheSavingsIneligibleRows

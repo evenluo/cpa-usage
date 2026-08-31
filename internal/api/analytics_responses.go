@@ -64,10 +64,12 @@ type analyticsSummaryPayload struct {
 	OutputTokens          int64    `json:"output_tokens"`
 	ReasoningTokens       int64    `json:"reasoning_tokens"`
 	CachedTokens          int64    `json:"cached_tokens"`
+	CacheReadTokens       int64    `json:"cache_read_tokens"`
 	SuccessRate           float64  `json:"success_rate"`
 	CostAvailable         bool     `json:"cost_available"`
 	CostStatus            string   `json:"cost_status"`
 	CacheReadShare        float64  `json:"cache_read_share"`
+	CacheReadCoverage     float64  `json:"cache_read_coverage"`
 	CacheReadShareState   string   `json:"cache_read_share_state"`
 	EstimatedCacheSavings *float64 `json:"estimated_cache_savings,omitempty"`
 }
@@ -131,6 +133,7 @@ type analyticsModelRow struct {
 	OutputTokens          int64    `json:"output_tokens"`
 	ReasoningTokens       int64    `json:"reasoning_tokens"`
 	CachedTokens          int64    `json:"cached_tokens"`
+	CacheReadTokens       int64    `json:"cache_read_tokens"`
 	SuccessRate           float64  `json:"success_rate"`
 	TotalLatencyMS        int64    `json:"total_latency_ms"`
 	LatencySampleCount    int64    `json:"latency_sample_count"`
@@ -138,6 +141,7 @@ type analyticsModelRow struct {
 	CostAvailable         bool     `json:"cost_available"`
 	CostStatus            string   `json:"cost_status"`
 	CacheReadShare        float64  `json:"cache_read_share"`
+	CacheReadCoverage     float64  `json:"cache_read_coverage"`
 	CacheReadShareState   string   `json:"cache_read_share_state"`
 	EstimatedCacheSavings *float64 `json:"estimated_cache_savings,omitempty"`
 }
@@ -290,10 +294,12 @@ func mapAnalyticsSummaryPayload(summary dto.AnalyticsSummary) analyticsSummaryPa
 		OutputTokens:          summary.OutputTokens,
 		ReasoningTokens:       summary.ReasoningTokens,
 		CachedTokens:          summary.CachedTokens,
+		CacheReadTokens:       summary.CacheReadTokens,
 		SuccessRate:           summary.SuccessRate,
 		CostAvailable:         summary.CostAvailable,
 		CostStatus:            summary.CostStatus,
 		CacheReadShare:        summary.CacheReadShare,
+		CacheReadCoverage:     summary.CacheReadCoverage,
 		CacheReadShareState:   summary.CacheReadShareState,
 		EstimatedCacheSavings: summary.EstimatedCacheSavings,
 	}
@@ -345,6 +351,7 @@ func mapAnalyticsModelRows(rows []dto.AnalyticsModelBreakdown) []analyticsModelR
 			OutputTokens:          row.OutputTokens,
 			ReasoningTokens:       row.ReasoningTokens,
 			CachedTokens:          row.CachedTokens,
+			CacheReadTokens:       row.CacheReadTokens,
 			SuccessRate:           row.SuccessRate,
 			TotalLatencyMS:        row.TotalLatencyMS,
 			LatencySampleCount:    row.LatencySampleCount,
@@ -352,6 +359,7 @@ func mapAnalyticsModelRows(rows []dto.AnalyticsModelBreakdown) []analyticsModelR
 			CostAvailable:         row.CostAvailable,
 			CostStatus:            row.CostStatus,
 			CacheReadShare:        row.CacheReadShare,
+			CacheReadCoverage:     row.CacheReadCoverage,
 			CacheReadShareState:   row.CacheReadShareState,
 			EstimatedCacheSavings: row.EstimatedCacheSavings,
 		})
