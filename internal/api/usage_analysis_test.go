@@ -15,27 +15,27 @@ type usageAnalysisStub struct {
 	apiRows       []dto.UsageAnalysisAPIStatRecord
 	modelRows     []dto.UsageAnalysisModelStatRecord
 	err           error
-	lastFilter    dto.UsageQueryFilter
+	lastFilter    dto.UsageTimeScope
 	analysisCalls int
 }
 
-func (s *usageAnalysisStub) GetUsageOverview(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
+func (s *usageAnalysisStub) GetUsageOverview(context.Context, dto.UsageOverviewFilter) (*dto.UsageOverviewRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) GetRequestHealth(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+func (s *usageAnalysisStub) GetRequestHealth(context.Context, dto.UsageOverviewFilter) (*dto.UsageOverviewHealthRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) ListUsageEvents(context.Context, dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
+func (s *usageAnalysisStub) ListUsageEvents(context.Context, dto.UsageEventListFilter) (*dto.UsageEventsPageRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) ListUsageEventFilterOptions(context.Context, dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
+func (s *usageAnalysisStub) ListUsageEventFilterOptions(context.Context, dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	return nil, nil
 }
 
-func (s *usageAnalysisStub) GetUsageAnalysis(_ context.Context, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+func (s *usageAnalysisStub) GetUsageAnalysis(_ context.Context, filter dto.UsageTimeScope) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
 	s.lastFilter = filter
 	s.analysisCalls++
 	return s.apiRows, s.modelRows, s.err
@@ -102,9 +102,6 @@ func TestUsageAnalysisReturnsAggregatedRows(t *testing.T) {
 	}
 	if provider.analysisCalls != 1 {
 		t.Fatalf("expected GetUsageAnalysis to be called once, got %d", provider.analysisCalls)
-	}
-	if provider.lastFilter.Range != "24h" {
-		t.Fatalf("expected range to be passed through, got %+v", provider.lastFilter)
 	}
 	if provider.lastFilter.StartTime == nil || provider.lastFilter.EndTime == nil {
 		t.Fatalf("expected resolved time bounds in filter, got %+v", provider.lastFilter)

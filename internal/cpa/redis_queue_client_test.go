@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -91,6 +92,432 @@ func TestRedisQueueClientFallsBackToHTTPUsageQueueWhenRedisFails(t *testing.T) {
 	}
 	if !strings.Contains(content, "redis_error=") {
 		t.Fatalf("expected redis error field in fallback log, got %q", content)
+	}
+}
+
+func TestRedisQueueClientDoesNotFallbackAfterLPOPResponseLoss(t *testing.T) {
+	redisServer := newRedisQueueTestServer(t, func(t *testing.T, conn net.Conn) {
+		reader := bufio.NewReader(conn)
+		readRESPCommand(t, reader)
+		fmt.Fprint(conn, "+OK\r\n")
+		if got := readRESPCommand(t, reader); strings.Join(got, " ") != cpaManagementRedisPopCommand+" "+ManagementUsageQueueKey+" 1" {
+			t.Fatalf("unexpected pop command: %v", got)
+		}
+		// Close without a response after the destructive command was received.
+	})
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     redisServer.Addr,
+		ManagementKey: "secret",
+		Timeout:       time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	_, err := client.PopUsage(ctxWithTimeout(t))
+	if err == nil || !strings.Contains(err.Error(), "read redis queue pop response") {
+		t.Fatalf("expected response-loss error, got %v", err)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected no HTTP fallback after LPOP, got %d calls", calls)
+	}
+}
+
+func TestRedisQueueClientTreatsPartialLPOPWriteAsAmbiguous(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		defer serverConn.Close()
+		reader := bufio.NewReader(serverConn)
+		readRESPCommand(t, reader)
+		fmt.Fprint(serverConn, "+OK\r\n")
+		_, _ = io.Copy(io.Discard, serverConn)
+	}()
+	t.Cleanup(func() {
+		clientConn.Close()
+		<-serverDone
+	})
+
+	var authCommand bytes.Buffer
+	if err := writeRESPCommand(&authCommand, cpaManagementRedisAuthCommand, "secret"); err != nil {
+		t.Fatalf("encode auth command: %v", err)
+	}
+	partialConn := &failAfterWriteConn{Conn: clientConn, remaining: authCommand.Len() + 2}
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     "redis.example.test:6379",
+		ManagementKey: "secret",
+		Timeout:       time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	client.dial = func(context.Context, string, string) (net.Conn, error) {
+		return partialConn, nil
+	}
+
+	_, err := client.PopUsage(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "write redis queue pop command") {
+		t.Fatalf("expected partial-write error, got %v", err)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected no HTTP fallback after partial LPOP write, got %d calls", calls)
+	}
+}
+
+func TestRedisQueueClientDoesNotFallbackAfterLPOPErrorResponse(t *testing.T) {
+	redisServer := newRedisQueueTestServer(t, func(t *testing.T, conn net.Conn) {
+		reader := bufio.NewReader(conn)
+		readRESPCommand(t, reader)
+		fmt.Fprint(conn, "+OK\r\n")
+		readRESPCommand(t, reader)
+		fmt.Fprint(conn, "-ERR queue unavailable\r\n")
+	})
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     redisServer.Addr,
+		ManagementKey: "secret",
+		Timeout:       time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	_, err := client.PopUsage(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "redis queue pop failed") {
+		t.Fatalf("expected Redis error response, got %v", err)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected no HTTP fallback after Redis handled LPOP, got %d calls", calls)
+	}
+}
+
+func TestRedisQueueClientCancellationInterruptsLPOPResponseRead(t *testing.T) {
+	lpopReceived := make(chan struct{})
+	redisServer := newRedisQueueTestServer(t, func(t *testing.T, conn net.Conn) {
+		reader := bufio.NewReader(conn)
+		readRESPCommand(t, reader)
+		fmt.Fprint(conn, "+OK\r\n")
+		readRESPCommand(t, reader)
+		close(lpopReceived)
+		_, _ = io.Copy(io.Discard, conn)
+	})
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     redisServer.Addr,
+		ManagementKey: "secret",
+		Timeout:       2 * time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-lpopReceived
+		cancel()
+	}()
+
+	startedAt := time.Now()
+	_, err := client.PopUsage(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 500*time.Millisecond {
+		t.Fatalf("expected cancellation to interrupt RESP read promptly, took %s", elapsed)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected no HTTP fallback after cancellation, got %d calls", calls)
+	}
+	if client.syncMode != "" {
+		t.Fatalf("expected cancellation not to cache a sync mode, got %q", client.syncMode)
+	}
+}
+
+func TestRedisQueueClientCancellationInterruptsDial(t *testing.T) {
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     "redis.example.test:6379",
+		ManagementKey: "secret",
+		Timeout:       2 * time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	dialStarted := make(chan struct{})
+	client.dial = func(ctx context.Context, _, _ string) (net.Conn, error) {
+		close(dialStarted)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-dialStarted
+		cancel()
+	}()
+
+	_, err := client.PopUsage(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected dial cancellation, got %v", err)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected cancellation not to select HTTP fallback, got %d calls", calls)
+	}
+	if client.syncMode != "" {
+		t.Fatalf("expected cancellation not to cache a sync mode, got %q", client.syncMode)
+	}
+}
+
+func TestRedisQueueClientCancellationInterruptsTLSHandshake(t *testing.T) {
+	listener, err := net.Listen(cpaManagementRedisNetwork, "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	accepted := make(chan struct{})
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer conn.Close()
+		close(accepted)
+		_, _ = io.Copy(io.Discard, conn)
+	}()
+	t.Cleanup(func() {
+		listener.Close()
+		<-serverDone
+	})
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     listener.Addr().String(),
+		ManagementKey: "secret",
+		Timeout:       2 * time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+		TLS:           true,
+		TLSSkipVerify: true,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-accepted
+		cancel()
+	}()
+
+	startedAt := time.Now()
+	_, err = client.PopUsage(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected TLS handshake cancellation, got %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 500*time.Millisecond {
+		t.Fatalf("expected cancellation to interrupt TLS handshake promptly, took %s", elapsed)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected cancellation not to select HTTP fallback, got %d calls", calls)
+	}
+}
+
+func TestRedisQueueClientCancellationInterruptsAuthResponseRead(t *testing.T) {
+	authReceived := make(chan struct{})
+	redisServer := newRedisQueueTestServer(t, func(t *testing.T, conn net.Conn) {
+		readRESPCommand(t, bufio.NewReader(conn))
+		close(authReceived)
+		_, _ = io.Copy(io.Discard, conn)
+	})
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     redisServer.Addr,
+		ManagementKey: "secret",
+		Timeout:       2 * time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-authReceived
+		cancel()
+	}()
+
+	startedAt := time.Now()
+	_, err := client.PopUsage(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected auth read cancellation, got %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 500*time.Millisecond {
+		t.Fatalf("expected cancellation to interrupt auth response read promptly, took %s", elapsed)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected cancellation not to select HTTP fallback, got %d calls", calls)
+	}
+}
+
+func TestRedisQueueClientCancellationInterruptsLPOPCommandWrite(t *testing.T) {
+	clientConn, serverConn := net.Pipe()
+	authAccepted := make(chan struct{})
+	popFinished := make(chan struct{})
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		defer serverConn.Close()
+		readRESPCommand(t, bufio.NewReader(serverConn))
+		fmt.Fprint(serverConn, "+OK\r\n")
+		close(authAccepted)
+		<-popFinished
+	}()
+	t.Cleanup(func() {
+		clientConn.Close()
+		<-serverDone
+	})
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     "redis.example.test:6379",
+		ManagementKey: "secret",
+		Timeout:       2 * time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	client.dial = func(context.Context, string, string) (net.Conn, error) {
+		return clientConn, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-authAccepted
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	startedAt := time.Now()
+	_, err := client.PopUsage(ctx)
+	close(popFinished)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected command write cancellation, got %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 500*time.Millisecond {
+		t.Fatalf("expected cancellation to interrupt command write promptly, took %s", elapsed)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected no HTTP fallback after LPOP write started, got %d calls", calls)
+	}
+}
+
+func TestRedisQueueClientTimeoutInterruptsLPOPResponseRead(t *testing.T) {
+	redisServer := newRedisQueueTestServer(t, func(t *testing.T, conn net.Conn) {
+		reader := bufio.NewReader(conn)
+		readRESPCommand(t, reader)
+		fmt.Fprint(conn, "+OK\r\n")
+		readRESPCommand(t, reader)
+		_, _ = io.Copy(io.Discard, conn)
+	})
+
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     redisServer.Addr,
+		ManagementKey: "secret",
+		Timeout:       50 * time.Millisecond,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1,
+	})
+	startedAt := time.Now()
+	_, err := client.PopUsage(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected operation deadline, got %v", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed >= 500*time.Millisecond {
+		t.Fatalf("expected configured timeout to interrupt RESP read, took %s", elapsed)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected no HTTP fallback after timeout, got %d calls", calls)
+	}
+	if client.syncMode != "" {
+		t.Fatalf("expected timeout not to cache a sync mode, got %q", client.syncMode)
+	}
+}
+
+func TestRedisQueueClientRejectsNonPositiveTimeout(t *testing.T) {
+	for _, timeout := range []time.Duration{0, -time.Second} {
+		t.Run(timeout.String(), func(t *testing.T) {
+			client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+				BaseURL:       "http://127.0.0.1:1",
+				ManagementKey: "secret",
+				Timeout:       timeout,
+				QueueKey:      ManagementUsageQueueKey,
+				BatchSize:     1,
+			})
+			_, err := client.PopUsage(context.Background())
+			if err == nil || err.Error() != "redis queue timeout must be positive" {
+				t.Fatalf("expected timeout validation error, got %v", err)
+			}
+		})
 	}
 }
 
@@ -326,7 +753,7 @@ func TestRedisQueueClientDefaultsToManagementPortFromBaseURLHost(t *testing.T) {
 }
 
 func TestRedisQueueClientReportsMalformedRESP(t *testing.T) {
-	server := newRedisQueueTestServer(t, func(t *testing.T, conn net.Conn) {
+	redisServer := newRedisQueueTestServer(t, func(t *testing.T, conn net.Conn) {
 		reader := bufio.NewReader(conn)
 		readRESPCommand(t, reader)
 		fmt.Fprint(conn, "+OK\r\n")
@@ -334,16 +761,56 @@ func TestRedisQueueClientReportsMalformedRESP(t *testing.T) {
 		fmt.Fprint(conn, "!not-resp\r\n")
 	})
 
-	client := NewRedisQueueClientWithOptions(RedisQueueOptions{BaseURL: server.URL, ManagementKey: "secret", Timeout: time.Second, QueueKey: ManagementUsageQueueKey, BatchSize: 1000})
+	var httpCalls atomic.Int32
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		httpCalls.Add(1)
+		_, _ = w.Write([]byte(`[{"h":1}]`))
+	}))
+	defer httpServer.Close()
+
+	client := NewRedisQueueClientWithOptions(RedisQueueOptions{
+		BaseURL:       httpServer.URL,
+		RedisAddr:     redisServer.Addr,
+		ManagementKey: "secret",
+		Timeout:       time.Second,
+		QueueKey:      ManagementUsageQueueKey,
+		BatchSize:     1000,
+	})
 	_, err := client.PopUsage(ctxWithTimeout(t))
 	if err == nil || !strings.Contains(err.Error(), "read redis queue pop response") {
 		t.Fatalf("expected malformed response error, got %v", err)
+	}
+	if calls := httpCalls.Load(); calls != 0 {
+		t.Fatalf("expected no HTTP fallback after malformed LPOP response, got %d calls", calls)
 	}
 }
 
 type redisQueueTestServer struct {
 	URL  string
 	Addr string
+}
+
+type failAfterWriteConn struct {
+	net.Conn
+	remaining int
+}
+
+func (c *failAfterWriteConn) Write(p []byte) (int, error) {
+	if c.remaining <= 0 {
+		return 0, io.ErrUnexpectedEOF
+	}
+	if len(p) <= c.remaining {
+		n, err := c.Conn.Write(p)
+		c.remaining -= n
+		return n, err
+	}
+
+	n, err := c.Conn.Write(p[:c.remaining])
+	c.remaining -= n
+	if err != nil {
+		return n, err
+	}
+	return n, io.ErrUnexpectedEOF
 }
 
 func newRedisQueueTestServer(t *testing.T, handler func(*testing.T, net.Conn)) redisQueueTestServer {

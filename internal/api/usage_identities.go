@@ -107,7 +107,8 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		page := positiveQueryInt(c, "page", 1)
 		pageSize := positiveQueryInt(c, "page_size", 100)
 		if keyAliasProvider == nil {
-			c.JSON(http.StatusOK, usageAPIKeysPageResponse{APIKeys: []usageAPIKeyResponse{}, Page: page, PageSize: pageSize})
+			responsePage, totalPages := paginationMetadata(0, page, pageSize)
+			c.JSON(http.StatusOK, usageAPIKeysPageResponse{APIKeys: []usageAPIKeyResponse{}, Page: responsePage, PageSize: pageSize, TotalPages: totalPages})
 			return
 		}
 		result, err := keyAliasProvider.ListAPIKeyAliasTargetsPage(c.Request.Context(), service.ListAPIKeyAliasTargetsRequest{Page: page, PageSize: pageSize})
@@ -119,12 +120,13 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		for _, item := range result.Items {
 			response = append(response, mapUsageAPIKeyResponse(item))
 		}
+		responsePage, totalPages := paginationMetadata(result.Total, page, pageSize)
 		c.JSON(http.StatusOK, usageAPIKeysPageResponse{
 			APIKeys:    response,
 			TotalCount: result.Total,
-			Page:       page,
+			Page:       responsePage,
 			PageSize:   pageSize,
-			TotalPages: totalPages(result.Total, pageSize),
+			TotalPages: totalPages,
 		})
 	})
 
@@ -174,7 +176,8 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 
 	router.GET("/usage/identities/page", func(c *gin.Context) {
 		if usageIdentityProvider == nil {
-			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: 1, PageSize: 10})
+			page, totalPages := paginationMetadata(0, 1, 10)
+			c.JSON(http.StatusOK, usageIdentitiesPageResponse{Identities: []usageIdentityResponse{}, Page: page, PageSize: 10, TotalPages: totalPages})
 			return
 		}
 
@@ -200,12 +203,13 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		for _, item := range items {
 			response = append(response, mapUsageIdentityResponse(item, aliases))
 		}
+		responsePage, totalPages := paginationMetadata(total, request.Page, request.PageSize)
 		c.JSON(http.StatusOK, usageIdentitiesPageResponse{
 			Identities: response,
 			TotalCount: total,
-			Page:       request.Page,
+			Page:       responsePage,
 			PageSize:   request.PageSize,
-			TotalPages: totalPages(total, request.PageSize),
+			TotalPages: totalPages,
 		})
 	})
 
@@ -301,11 +305,11 @@ func parseUsageIdentitiesPageRequest(c *gin.Context) (repository.ListUsageIdenti
 	request := repository.ListUsageIdentitiesPageRequest{Page: page, PageSize: pageSize}
 	if rawAuthType := c.Query("auth_type"); rawAuthType != "" {
 		value, err := strconv.Atoi(rawAuthType)
-		if err != nil || (value != int(entities.UsageIdentityAuthTypeAuthFile) && value != int(entities.UsageIdentityAuthTypeAIProvider)) {
+		authType := entities.UsageIdentityAuthType(value)
+		if err != nil || !authType.Valid() {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_type must be 1 or 2"})
 			return repository.ListUsageIdentitiesPageRequest{}, false
 		}
-		authType := entities.UsageIdentityAuthType(value)
 		request.AuthType = &authType
 	}
 	return request, true
@@ -319,11 +323,11 @@ func positiveQueryInt(c *gin.Context, key string, fallback int) int {
 	return value
 }
 
-func totalPages(total int64, pageSize int) int {
-	if total <= 0 || pageSize <= 0 {
-		return 0
+func paginationMetadata(total int64, page, pageSize int) (int, int) {
+	if total <= 0 {
+		return 1, 1
 	}
-	return int((total + int64(pageSize) - 1) / int64(pageSize))
+	return page, int((total + int64(pageSize) - 1) / int64(pageSize))
 }
 
 func aliasesForUsageIdentities(ctx context.Context, keyAliasProvider service.KeyAliasProvider, items []entities.UsageIdentity) (map[service.UsageIdentityAliasKey]string, error) {
@@ -360,6 +364,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		identity = redact.APIKeyDisplayName(item.Identity)
 	}
 	alias := aliases[service.UsageIdentityAliasKey{AuthType: item.AuthType, Identity: item.Identity}]
+	authTypeName, _ := item.AuthType.CanonicalName()
 
 	return usageIdentityResponse{
 		ID:                         item.ID,
@@ -367,7 +372,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		DisplayName:                item.DisplayName(),
 		Alias:                      alias,
 		AuthType:                   item.AuthType,
-		AuthTypeName:               item.AuthTypeName,
+		AuthTypeName:               authTypeName,
 		Identity:                   identity,
 		Type:                       item.Type,
 		Provider:                   item.Provider,
@@ -400,6 +405,7 @@ func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse 
 	if strings.TrimSpace(item.Alias) != "" {
 		displayName = item.Alias
 	}
+	authTypeName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
 	return usageAPIKeyResponse{
 		ID:              item.ID,
 		Identity:        item.Identity,
@@ -407,7 +413,7 @@ func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse 
 		Alias:           item.Alias,
 		Provider:        item.Provider,
 		AuthType:        int(entities.UsageIdentityAuthTypeAIProvider),
-		AuthTypeName:    "apikey",
+		AuthTypeName:    authTypeName,
 		TotalRequests:   item.TotalRequests,
 		SuccessCount:    item.SuccessCount,
 		FailureCount:    item.FailureCount,

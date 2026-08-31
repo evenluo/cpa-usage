@@ -61,15 +61,15 @@ Review checklist:
 Prefer repository Make targets when they match the risk:
 
 ```bash
-make test-api
-make test-unit
+make test-backend
+make test-frontend
 ```
 
 Do not assume Make targets accept pass-through variables. If a target does not wire a variable, use a direct command or another repository-approved route:
 
 ```bash
-cd server && go test ./internal/api ./internal/worker ./internal/synccontrol
-cd server && go test ./internal/api -run 'TestName'
+go test ./internal/api ./internal/repository
+go test ./internal/api -run '^TestName$'
 ```
 
 Record reviewer-run test failures separately when caused by command misuse or sandbox limitations, such as `Makefile target does not consume TESTARGS` or `httptest port binding denied in reviewer sandbox`.

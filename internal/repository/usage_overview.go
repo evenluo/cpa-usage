@@ -13,11 +13,11 @@ import (
 )
 
 func BuildUsageSnapshot(db *gorm.DB) (*dto.StatisticsSnapshot, error) {
-	return BuildUsageSnapshotWithFilter(db, dto.UsageQueryFilter{})
+	return BuildUsageSnapshotWithFilter(db, dto.UsageTimeScope{})
 }
 
 // Snapshot 先读事件，再按时间窗口在内存里汇总。
-func BuildUsageSnapshotWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dto.StatisticsSnapshot, error) {
+func BuildUsageSnapshotWithFilter(db *gorm.DB, filter dto.UsageTimeScope) (*dto.StatisticsSnapshot, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
@@ -31,13 +31,13 @@ func BuildUsageSnapshotWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) (*dt
 }
 
 // Overview 先读事件，再组合窗口、系列和价格信息。
-func BuildUsageOverviewWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
+func BuildUsageOverviewWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageOverviewFilter) (*dto.UsageOverviewRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
 	db = db.WithContext(ctx)
 
-	events, err := loadUsageOverviewEventsWithFilter(db, filter)
+	events, err := loadUsageOverviewEventsWithFilter(db, filter.UsageTimeScope)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func BuildUsageOverviewWithFilter(ctx context.Context, db *gorm.DB, filter dto.U
 	return buildUsageOverviewFromEvents(events, filter, pricingByModel), nil
 }
 
-func buildUsageOverviewFromEvents(events []entities.UsageEvent, filter dto.UsageQueryFilter, pricingByModel map[string]entities.ModelPriceSetting) *dto.UsageOverviewRecord {
+func buildUsageOverviewFromEvents(events []entities.UsageEvent, filter dto.UsageOverviewFilter, pricingByModel map[string]entities.ModelPriceSetting) *dto.UsageOverviewRecord {
 	windowMinutes := computeWindowMinutes(filter)
 	bucketByDay := shouldBucketUsageOverviewByDay(filter, windowMinutes)
 	latestHourlyStart := latestHourlySeriesStart(filter)
@@ -74,16 +74,27 @@ func buildUsageOverviewFromEvents(events []entities.UsageEvent, filter dto.Usage
 		return overview
 	}
 
+	var missingPricingEvents int64
+	var pricedBillableEvents int64
 	for _, event := range events {
+		_, hasPricing := pricingByModel[strings.TrimSpace(event.Model)]
+		if usageEventRequiresPricing(event) {
+			if hasPricing {
+				pricedBillableEvents++
+			} else {
+				missingPricingEvents++
+			}
+		}
 		applyUsageEventToSnapshot(overview.Usage, event, false)
 		applyUsageEventToOverview(overview, event, bucketByDay, latestHourlyStart, pricingByModel)
 	}
+	overview.Summary.CostAvailable = assessCostCompleteness(missingPricingEvents, pricedBillableEvents).Available
 	finalizeUsageOverview(overview, false)
 	return overview
 }
 
 // Overview 第二步：按时间窗口读事件，再交给内存汇总。
-func loadUsageOverviewEventsWithFilter(db *gorm.DB, filter dto.UsageQueryFilter) ([]entities.UsageEvent, error) {
+func loadUsageOverviewEventsWithFilter(db *gorm.DB, filter dto.UsageTimeScope) ([]entities.UsageEvent, error) {
 	query := applyUsageOverviewQuery(db.Model(&entities.UsageEvent{}), filter).Order("timestamp asc")
 
 	var events []entities.UsageEvent
@@ -236,10 +247,7 @@ func applyUsageEventToOverview(overview *dto.UsageOverviewRecord, event entities
 	} else {
 		overview.Health.TotalSuccess++
 	}
-	pricing, ok := pricingByModel[strings.TrimSpace(event.Model)]
-	if !ok && usageEventRequiresPricing(event) {
-		overview.Summary.CostAvailable = false
-	}
+	pricing := pricingByModel[strings.TrimSpace(event.Model)]
 	cost := calculateUsageEventCost(event, pricing)
 	overview.Summary.TotalCost += cost
 
@@ -279,7 +287,7 @@ func normalizeUsageOverviewDimension(value string) string {
 
 const usageOverviewDailyBucketThresholdMinutes int64 = 7 * 24 * 60
 
-func computeWindowMinutes(filter dto.UsageQueryFilter) int64 {
+func computeWindowMinutes(filter dto.UsageOverviewFilter) int64 {
 	if filter.StartTime == nil || filter.EndTime == nil {
 		return 0
 	}
@@ -298,7 +306,7 @@ func computeWindowMinutes(filter dto.UsageQueryFilter) int64 {
 	return minutes
 }
 
-func shouldBucketUsageOverviewByDay(filter dto.UsageQueryFilter, windowMinutes int64) bool {
+func shouldBucketUsageOverviewByDay(filter dto.UsageOverviewFilter, windowMinutes int64) bool {
 	if filter.Range == "all" || filter.Range == "7d" {
 		return true
 	}
@@ -312,7 +320,7 @@ func usageOverviewBucket(timestamp time.Time, byDay bool) (string, int64) {
 	return timestamp.UTC().Format("2006-01-02T15:00:00Z"), 60
 }
 
-func latestHourlySeriesStart(filter dto.UsageQueryFilter) *time.Time {
+func latestHourlySeriesStart(filter dto.UsageOverviewFilter) *time.Time {
 	if filter.EndTime == nil {
 		return nil
 	}

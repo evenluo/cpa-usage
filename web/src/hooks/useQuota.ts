@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 import { apiFetch } from "@/lib/api"
+import { collectPaginatedItems } from "@/lib/pagination"
 import type {
   KeyIdentity,
   KeyIdentityPage,
@@ -36,16 +37,14 @@ async function fetchAuthFileIdentitiesPage(page: number): Promise<KeyIdentityPag
   return apiFetch(`/usage/identities/page?auth_type=1&page=${page}&page_size=${PAGE_SIZE}`)
 }
 
-async function fetchAllAuthFileIdentities(): Promise<KeyIdentity[]> {
-  const first = await fetchAuthFileIdentitiesPage(1)
-  const totalPages = Math.max(1, Math.trunc(first.total_pages ?? 1))
-  if (totalPages <= 1) return (first.identities ?? []).filter((identity) => identity.auth_type === 1)
-  const rest = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, index) => fetchAuthFileIdentitiesPage(index + 2)),
-  )
-  return [first, ...rest]
-    .flatMap((page) => page.identities ?? [])
-    .filter((identity) => identity.auth_type === 1)
+export async function fetchAllAuthFileIdentities(): Promise<KeyIdentity[]> {
+  const identities = await collectPaginatedItems<KeyIdentityPage, KeyIdentity>({
+    fetchPage: fetchAuthFileIdentitiesPage,
+    getItems: (page) => page.identities,
+    resource: "Auth-file accounts",
+    expectedPageSize: PAGE_SIZE,
+  })
+  return identities.filter((identity) => identity.auth_type === 1)
 }
 
 function identityFingerprint(identities: KeyIdentity[]): string {

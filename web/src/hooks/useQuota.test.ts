@@ -1,12 +1,18 @@
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { KeyIdentity } from "@/types/api"
+import { apiFetch } from "@/lib/api"
 import {
   QUOTA_REFRESH_LIMIT,
+  fetchAllAuthFileIdentities,
   quotaCacheQueryKey,
   resolveRefreshTaskUpdates,
   selectRefreshAuthIndexes,
   type LiveCapacityTaskState,
 } from "./useQuota"
+
+vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+
+const mockedApiFetch = vi.mocked(apiFetch)
 
 function identity(authIndex: string, provider: string): KeyIdentity {
   return {
@@ -27,6 +33,39 @@ function identity(authIndex: string, provider: string): KeyIdentity {
 }
 
 describe("quota hooks", () => {
+  beforeEach(() => {
+    mockedApiFetch.mockReset()
+  })
+
+  it("collects every auth-file identity page through the strict pagination contract", async () => {
+    const identities = Array.from({ length: 101 }, (_, index) => identity(`auth-${index + 1}`, "Codex"))
+    mockedApiFetch.mockImplementation(async (path) => {
+      const page = Number(new URLSearchParams(String(path).split("?")[1]).get("page"))
+      return {
+        identities: page === 1 ? identities.slice(0, 100) : identities.slice(100),
+        total_count: identities.length,
+        page,
+        page_size: 100,
+        total_pages: 2,
+      }
+    })
+
+    await expect(fetchAllAuthFileIdentities()).resolves.toEqual(identities)
+    expect(mockedApiFetch).toHaveBeenCalledTimes(2)
+  })
+
+  it("rejects malformed auth-file pagination instead of exposing an empty identity set", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      identities: [],
+      total_count: 0,
+      page: 1,
+      page_size: 100,
+      total_pages: 0,
+    })
+
+    await expect(fetchAllAuthFileIdentities()).rejects.toThrow("invalid total_pages")
+  })
+
   it("keys the cache query by provider and auth-file identities, not analysis range or granularity", () => {
     const identities = [identity("b-auth", "Codex"), identity("a-auth", "Codex")]
 

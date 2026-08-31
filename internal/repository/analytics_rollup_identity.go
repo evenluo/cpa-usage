@@ -15,7 +15,7 @@ type analyticsIdentityTrendKey struct {
 	Bucket   string
 }
 
-func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	combined := map[analyticsIdentityKey]analyticsIdentityAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
 		rows, err := buildAnalyticsKeyAliasSegmentRows(db, rawFilter, analyticsEventsAggregateSource())
@@ -34,7 +34,7 @@ func buildAnalyticsCoreKeyAliasBreakdown(db *gorm.DB, plan analyticsCoreWindowPl
 	return mapAnalyticsCoreIdentityBreakdown(db, plan, filter, combined, false)
 }
 
-func buildAnalyticsCoreAPIKeyBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func buildAnalyticsCoreAPIKeyBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	combined := map[analyticsIdentityKey]analyticsIdentityAggregateRow{}
 	for _, rawFilter := range plan.rawFilters {
 		rows, err := buildAnalyticsAPIKeySegmentRows(db, rawFilter, analyticsEventsAggregateSource())
@@ -53,7 +53,7 @@ func buildAnalyticsCoreAPIKeyBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan
 	return mapAnalyticsCoreIdentityBreakdown(db, plan, filter, combined, true)
 }
 
-func mapAnalyticsCoreIdentityBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter, combined map[analyticsIdentityKey]analyticsIdentityAggregateRow, apiKeys bool) ([]dto.AnalyticsKeyAliasBreakdown, error) {
+func mapAnalyticsCoreIdentityBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter, combined map[analyticsIdentityKey]analyticsIdentityAggregateRow, apiKeys bool) ([]dto.AnalyticsKeyAliasBreakdown, error) {
 	rows := make([]analyticsIdentityAggregateRow, 0, len(combined))
 	for _, row := range combined {
 		rows = append(rows, row)
@@ -105,7 +105,7 @@ func mapAnalyticsCoreIdentityBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan
 }
 
 // buildAnalyticsKeyAliasSegmentRows 按聚合源渲染 Key Alias 段查询，raw 与 rollup 共用同一份列定义。
-func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
+func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
 	var rows []analyticsIdentityAggregateRow
 	if err := source.identityQuery(db, filter).
 		Select(analyticsIdentityAggregateSelect(source, source.identityAuthTypeExpr, source.identityExpr)).
@@ -117,19 +117,19 @@ func buildAnalyticsKeyAliasSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter,
 }
 
 // buildAnalyticsAPIKeySegmentRows 按聚合源渲染 API Key 段查询，raw 与 rollup 共用同一份列定义。
-func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
-	identityExpr := source.apiKeyIdentityExpr
-	var rows []analyticsIdentityAggregateRow
-	if err := source.apiKeyQuery(db, filter).
-		Select(analyticsAPIKeyAggregateSelect(source, analyticsAPIKeyAuthTypeSQLExpression(), identityExpr)).
-		Group(identityExpr).
-		Scan(&rows).Error; err != nil {
+func buildAnalyticsAPIKeySegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsIdentityAggregateRow, error) {
+	var factRows []apiKeyAggregateFactRow
+	if err := apiKeyAggregateFactsQuery(db, filter.UsageTimeScope, source).Scan(&factRows).Error; err != nil {
 		return nil, fmt.Errorf("build analytics %s api key segment rows: %w", source.name, err)
+	}
+	rows := make([]analyticsIdentityAggregateRow, 0, len(factRows))
+	for _, row := range factRows {
+		rows = append(rows, analyticsIdentityAggregateRowFromAPIKeyFact(row))
 	}
 	return rows, nil
 }
 
-func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.UsageQueryFilter, keys []analyticsIdentityKey, apiKeys bool) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
+func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan, filter dto.AnalyticsFilter, keys []analyticsIdentityKey, apiKeys bool) (map[analyticsIdentityKey][]dto.AnalyticsKeyAliasTrendPoint, error) {
 	combined := map[analyticsIdentityTrendKey]analyticsIdentityTrendRow{}
 	for _, rawFilter := range plan.rawFilters {
 		rows, err := buildAnalyticsIdentityTrendSegmentRows(db, rawFilter, keys, apiKeys, analyticsEventsAggregateSource())
@@ -157,20 +157,20 @@ func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan,
 			return rows[i].Bucket < rows[j].Bucket
 		})
 		for _, row := range rows {
-			costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+			cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 			trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPoint{
 				Label:         row.Bucket,
 				TotalCost:     row.TotalCost,
 				TotalTokens:   row.TotalTokens,
-				CostAvailable: costAvailable,
-				CostStatus:    costStatus,
+				CostAvailable: cost.Available,
+				CostStatus:    cost.Status,
 			})
 		}
 	}
 	return trends, nil
 }
 
-func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, keys []analyticsIdentityKey, apiKeys bool, source analyticsAggregateSource) ([]analyticsIdentityTrendRow, error) {
+func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, keys []analyticsIdentityKey, apiKeys bool, source analyticsAggregateSource) ([]analyticsIdentityTrendRow, error) {
 	if len(keys) == 0 {
 		return []analyticsIdentityTrendRow{}, nil
 	}
@@ -182,7 +182,7 @@ func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFi
 	if apiKeys {
 		authTypeExpr = analyticsAPIKeyAuthTypeSQLExpression()
 		identityExpr = source.apiKeyIdentityExpr
-		query = source.apiKeyQuery(db, filter)
+		query = source.apiKeyQuery(db, filter.UsageTimeScope)
 		groupExpr = identityExpr + ", bucket"
 	} else {
 		authTypeExpr = source.identityAuthTypeExpr
@@ -208,7 +208,7 @@ func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.UsageQueryFi
 	return rows, nil
 }
 
-func analyticsRollupIdentityWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func analyticsRollupIdentityWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
 	authTypeExpr := analyticsRollupUsageIdentityAuthTypeSQLExpression()
 	identityExpr := analyticsRollupUsageIdentitySQLExpression()
 	return analyticsRollupsWithPricingQuery(db, filter).
@@ -218,9 +218,10 @@ func analyticsRollupIdentityWithPricingQuery(db *gorm.DB, filter dto.UsageQueryF
 		Where(identityExpr + " <> ''")
 }
 
-func analyticsRollupAPIKeyWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func rollupAPIKeyWithPricingQuery(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
 	identityExpr := analyticsRollupAPIKeyIdentitySQLExpression()
-	return analyticsRollupsWithPricingQuery(db, filter).
+	return applyAnalyticsRollupScopeFilter(db.Model(&entities.UsageRollupHourly{}), scope).
+		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_rollups_hourly.model)").
 		Joins("LEFT JOIN key_aliases ON key_aliases.auth_type = ? AND key_aliases.identity = "+identityExpr, entities.UsageIdentityAuthTypeAIProvider).
 		Where(identityExpr + " <> ''")
 }
@@ -238,29 +239,6 @@ func analyticsIdentityAggregateSelect(source analyticsAggregateSource, authTypeE
 			COALESCE(MAX(usage_identities.prefix), '') AS prefix,
 			COALESCE(MAX(usage_identities.base_url), '') AS base_url,
 			COALESCE(MAX(CASE WHEN usage_identities.is_deleted THEN 1 ELSE 0 END), 0) AS is_deleted,
-			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
-			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
-			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
-			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', ` + source.lastUsedAtExpr + `)) AS last_used_at`
-}
-
-// analyticsAPIKeyAggregateSelect 按聚合源渲染 API Key 维度的身份聚合列。
-func analyticsAPIKeyAggregateSelect(source analyticsAggregateSource, authTypeExpr string, identityExpr string) string {
-	return `
-			` + authTypeExpr + ` AS auth_type,
-			` + identityExpr + ` AS identity,
-			COALESCE(MAX(key_aliases.alias), '') AS alias,
-			'' AS name,
-			'apikey' AS auth_type_name,
-			'' AS type,
-			COALESCE(MIN(NULLIF(` + source.providerExpr + `, '')), '') AS provider,
-			'' AS prefix,
-			'' AS base_url,
-			0 AS is_deleted,
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,

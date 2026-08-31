@@ -11,6 +11,8 @@ Self-hosted usage intelligence dashboard for CPA usage data, with shared login f
 
 CPA Usage turns CPA usage data into a human-readable operating workspace without becoming a general CPA administration console. It keeps the stable CPA usage keeper backend foundation for queue consumption, SQLite persistence, migrations, pricing semantics, auth/session, backup, update checks, and Docker-friendly deployment, then adds a React analytics frontend for people who need to read usage patterns quickly.
 
+The application owns one bounded shutdown path for HTTP and background work. Queue consumption also has an explicit destructive-pop-to-SQLite loss window; it does not guess at recovery after an ambiguous pop. See the [project contract](docs/project/contract.md) and [Redis inbox ADR](docs/adr/0008-redis-inbox-replay-and-loss-window.md) for the current operational boundaries.
+
 ## Highlights
 
 - **Shared self-hosted login**: CPA Usage can share auth/session state with the CPA root service when deployed under `/usage`, so operators do not need a separate login loop for the usage dashboard.
@@ -18,7 +20,7 @@ CPA Usage turns CPA usage data into a human-readable operating workspace without
 
 ## What It Does
 
-- **Usage Intelligence**: selected-window KPIs, hourly or daily trends, provider filters, key leaderboards, model distribution, activity heatmap, request health, and recent request evidence.
+- **Usage Intelligence**: selected-window KPIs, hourly or daily trends, provider filters, key leaderboards, model distribution, deterministic insights, activity heatmap, request health, recent request evidence, and restricted cache-first Live Capacity.
 - **Reference Data**: human-readable Key Aliases and Cost Rates that make raw CPA usage data understandable without writing alias data back to CPA.
 - **Operations Console**: lightweight sync, runtime, shared-login access, and logout state for the usage dashboard.
 - **Self-hosted persistence**: local SQLite data, migrations, backups, and logs under the configured work directory.
@@ -43,11 +45,14 @@ CPA_MANAGEMENT_KEY=replace-with-your-management-key
 Run the app locally:
 
 ```bash
-make dev-backend
-make dev-frontend
+make dev-app
 ```
 
-The Go server serves the built frontend assets from `web/dist` after `npm --prefix ./web run build`. For self-hosted shared login between the CPA root service and this `/usage` service, see [self-hosted shared login](docs/deploy/self-hosted-shared-login.md).
+`make dev-app` builds the frontend, then starts the Go application that serves both the embedded UI and `/api/v1` from one origin. It uses `.env` by default; set `ENV_FILE=/path/to/file` to select another environment file.
+
+`make dev-frontend` runs isolated Vite HMR on port `5173`. It has no API proxy and is not an integrated UI/API or end-to-end entrypoint. Use it only for frontend-only iteration; rebuild with `make dev-app` to exercise the real embedded application path.
+
+For self-hosted shared login between the CPA root service and this `/usage` service, see [self-hosted shared login](docs/deploy/self-hosted-shared-login.md).
 
 ## Architecture At A Glance
 
@@ -122,6 +127,8 @@ make build-frontend
 
 The Makefile is the canonical repository-root entrypoint for common development and verification tasks. Targets intentionally stay as thin wrappers around Go and npm commands; use the underlying tools directly for focused package or file-level work.
 
+Deployment verification has two distinct levels: `make verify-dokploy-compose` is the canonical fail-closed Compose gate and requires Docker Compose plus `jq`; `make verify-dokploy-compose-static` is a narrower static-only check and cannot satisfy the release gate. `make verify-dokploy-release` combines the canonical Compose gate with local release decision fixtures.
+
 ## Project Docs
 
 - [Project contract](docs/project/contract.md): repository positioning, compatibility rules, naming rules, documentation rules, shared contribution invariants, and risk-matched verification policy.
@@ -133,4 +140,4 @@ The Makefile is the canonical repository-root entrypoint for common development 
 
 ## Non-Goals
 
-CPA Usage is intentionally scoped to usage intelligence. It is not a CPA admin console, quota management surface, raw event audit log, backup browser, log inspector, or replacement for the CPA root service.
+CPA Usage is intentionally scoped to usage intelligence. Restricted Live Capacity does not make it a CPA admin console or native quota-management surface; it is also not a raw event audit log, backup browser, log inspector, or replacement for the CPA root service.

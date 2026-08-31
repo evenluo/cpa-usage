@@ -565,6 +565,44 @@ func TestUsageIdentitiesPageRouteFiltersByAuthTypeAndPaginates(t *testing.T) {
 	}
 }
 
+func TestUsageIdentitiesPageRouteNormalizesEmptyPageMetadata(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{
+		UsageIdentity: usageIdentitiesStub{},
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/identities/page?page=7&page_size=10", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	for _, expected := range []string{`"identities":[]`, `"total_count":0`, `"page":1`, `"page_size":10`, `"total_pages":1`} {
+		if !contains(body, expected) {
+			t.Fatalf("expected %s in response body: %s", expected, body)
+		}
+	}
+}
+
+func TestUsageAPIKeyPageRouteNormalizesEmptyPageMetadata(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{KeyAlias: &keyAliasStub{}})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/api-keys/page?page=7&page_size=10", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	for _, expected := range []string{`"api_keys":[]`, `"total_count":0`, `"page":1`, `"page_size":10`, `"total_pages":1`} {
+		if !contains(body, expected) {
+			t.Fatalf("expected %s in response body: %s", expected, body)
+		}
+	}
+}
+
 func TestUsageIdentitiesRouteReturnsProviderDisplayName(t *testing.T) {
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{UsageIdentity: usageIdentitiesStub{items: []entities.UsageIdentity{{
 		ID:           1,

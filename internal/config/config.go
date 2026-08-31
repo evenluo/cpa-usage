@@ -175,6 +175,9 @@ func Load(options LoadOptions) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	if requestTimeout <= 0 {
+		return nil, fmt.Errorf("REQUEST_TIMEOUT must be positive")
+	}
 
 	backupEnabled, err := getBool("BACKUP_ENABLED", true)
 	if err != nil {

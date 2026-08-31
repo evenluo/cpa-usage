@@ -14,32 +14,32 @@ type usageFilterStub struct {
 	overview           *dto.UsageOverviewRecord
 	requestHealth      *dto.UsageOverviewHealthRecord
 	err                error
-	lastFilter         dto.UsageQueryFilter
+	lastFilter         dto.UsageOverviewFilter
 	overviewCalls      int
 	requestHealthCalls int
 }
 
-func (s *usageFilterStub) GetUsageOverview(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
+func (s *usageFilterStub) GetUsageOverview(_ context.Context, filter dto.UsageOverviewFilter) (*dto.UsageOverviewRecord, error) {
 	s.lastFilter = filter
 	s.overviewCalls++
 	return s.overview, s.err
 }
 
-func (s *usageFilterStub) GetRequestHealth(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+func (s *usageFilterStub) GetRequestHealth(_ context.Context, filter dto.UsageOverviewFilter) (*dto.UsageOverviewHealthRecord, error) {
 	s.lastFilter = filter
 	s.requestHealthCalls++
 	return s.requestHealth, s.err
 }
 
-func (s *usageFilterStub) ListUsageEvents(context.Context, dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
+func (s *usageFilterStub) ListUsageEvents(context.Context, dto.UsageEventListFilter) (*dto.UsageEventsPageRecord, error) {
 	return nil, s.err
 }
 
-func (s *usageFilterStub) ListUsageEventFilterOptions(context.Context, dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
+func (s *usageFilterStub) ListUsageEventFilterOptions(context.Context, dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	return nil, s.err
 }
 
-func (s *usageFilterStub) GetUsageAnalysis(context.Context, dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+func (s *usageFilterStub) GetUsageAnalysis(context.Context, dto.UsageTimeScope) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
 	return nil, nil, s.err
 }
 

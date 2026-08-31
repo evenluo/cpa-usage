@@ -1,6 +1,9 @@
 package app
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -88,6 +91,53 @@ func TestBuildMetricsSnapshotOmitsUnavailableStates(t *testing.T) {
 		if _, exists := snapshot[key]; !exists {
 			t.Fatalf("expected %q to always be present", key)
 		}
+	}
+}
+
+func TestBuildMetricsSnapshotOmitsMissingRollupCoverageTimestamp(t *testing.T) {
+	for _, status := range []string{
+		repodto.RollupBackfillStatusPending,
+		repodto.RollupBackfillStatusRunning,
+		repodto.RollupBackfillStatusFailed,
+	} {
+		t.Run(status, func(t *testing.T) {
+			snapshot := buildMetricsSnapshot(metricsSnapshotInput{
+				startedAt:    time.Now(),
+				now:          time.Now(),
+				rollupStatus: &repodto.RollupBackfillStatus{Status: status},
+			})
+			if snapshot["rollup_backfill_status"] != status {
+				t.Fatalf("expected status %q, got %v", status, snapshot["rollup_backfill_status"])
+			}
+			if _, exists := snapshot["rollup_backfill_covered_bucket_start"]; exists {
+				t.Fatal("expected missing coverage timestamp to be omitted")
+			}
+		})
+	}
+}
+
+func TestMetricsRouteServesPendingRollupWithoutCoverageTimestamp(t *testing.T) {
+	application, err := NewWithConfig(testAppConfig(t))
+	if err != nil {
+		t.Fatalf("NewWithConfig returned error: %v", err)
+	}
+	defer application.Close()
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	application.Router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected /metrics 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var snapshot map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("decode metrics response: %v", err)
+	}
+	if snapshot["rollup_backfill_status"] != repodto.RollupBackfillStatusPending {
+		t.Fatalf("expected pending rollup status, got %v", snapshot["rollup_backfill_status"])
+	}
+	if _, exists := snapshot["rollup_backfill_covered_bucket_start"]; exists {
+		t.Fatal("expected uncovered pending status to omit coverage timestamp")
 	}
 }
 

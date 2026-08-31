@@ -27,15 +27,17 @@ type analyticsAggregateSource struct {
 	latencySumExpr   string
 	latencyCountExpr string
 	lastUsedAtExpr   string
+	// firstUsedAtExpr 仅 raw events 有精确事实；rollup 不伪造 first-used。
+	firstUsedAtExpr string
 	// identityAuthTypeExpr/identityExpr 是 Key Alias 维度的身份列；apiKeyIdentityExpr 是 API Key 维度的身份列。
 	identityAuthTypeExpr string
 	identityExpr         string
 	apiKeyIdentityExpr   string
 	bucketExpr           func(bucketByDay bool) string
-	query                func(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
+	query                func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	// identityQuery/apiKeyQuery 在 query 基础上附加身份/别名 join 与非空身份过滤。
-	identityQuery func(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
-	apiKeyQuery   func(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB
+	identityQuery func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
+	apiKeyQuery   func(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB
 }
 
 func analyticsEventsAggregateSource() analyticsAggregateSource {
@@ -57,13 +59,14 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		latencySumExpr:       "CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END",
 		latencyCountExpr:     "CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END",
 		lastUsedAtExpr:       "usage_events.timestamp",
+		firstUsedAtExpr:      "usage_events.timestamp",
 		identityAuthTypeExpr: analyticsUsageIdentityAuthTypeSQLExpression(),
 		identityExpr:         analyticsUsageIdentitySQLExpression(),
 		apiKeyIdentityExpr:   analyticsAPIKeyIdentitySQLExpression(),
 		bucketExpr:           analyticsBucketSQLExpression,
 		query:                analyticsEventsWithPricingQuery,
 		identityQuery:        analyticsIdentityEventsWithPricingQuery,
-		apiKeyQuery:          analyticsAPIKeyEventsWithPricingQuery,
+		apiKeyQuery:          apiKeyEventsWithPricingQuery,
 	}
 }
 
@@ -84,13 +87,14 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 		latencySumExpr:       "usage_rollups_hourly.total_latency_ms",
 		latencyCountExpr:     "usage_rollups_hourly.latency_sample_count",
 		lastUsedAtExpr:       "usage_rollups_hourly.last_event_at",
+		firstUsedAtExpr:      "",
 		identityAuthTypeExpr: analyticsRollupUsageIdentityAuthTypeSQLExpression(),
 		identityExpr:         analyticsRollupUsageIdentitySQLExpression(),
 		apiKeyIdentityExpr:   analyticsRollupAPIKeyIdentitySQLExpression(),
 		bucketExpr:           analyticsRollupBucketSQLExpression,
 		query:                analyticsRollupsWithPricingQuery,
 		identityQuery:        analyticsRollupIdentityWithPricingQuery,
-		apiKeyQuery:          analyticsRollupAPIKeyWithPricingQuery,
+		apiKeyQuery:          rollupAPIKeyWithPricingQuery,
 	}
 }
 
@@ -137,7 +141,7 @@ func analyticsSummarySelect(source analyticsAggregateSource) string {
 			COALESCE(SUM(` + analyticsCacheSavingsIneligibleSQLExpressionFor(source.cachedTokensExpr, source.requestCountExpr) + `), 0) AS cache_savings_ineligible_rows`
 }
 
-func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) (analyticsAggregateRow, error) {
+func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) (analyticsAggregateRow, error) {
 	var row analyticsAggregateRow
 	if err := source.query(db, filter).
 		Select(analyticsSummarySelect(source)).
@@ -147,7 +151,7 @@ func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.UsageQueryFilter, source
 	return row, nil
 }
 
-func buildAnalyticsAggregateRowsByBucket(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsAggregateRow, error) {
+func buildAnalyticsAggregateRowsByBucket(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsAggregateRow, error) {
 	bucketExpr := source.bucketExpr(analyticsTrendBucketsByDay(filter))
 	var rows []analyticsAggregateRow
 	if err := source.query(db, filter).

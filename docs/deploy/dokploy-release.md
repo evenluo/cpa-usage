@@ -2,7 +2,7 @@
 
 ## Goal
 
-Dokploy is the source of truth for the production `cpa-usage` Compose app. Pushes to `main` and release tags build immutable GHCR images, render the repository Compose template, update only the `cpa-usage` Dokploy app through its API, and trigger a Dokploy deployment.
+Dokploy is the source of truth for the production `cpa-usage` Compose app. Pushes to `main` and release tags build immutable GHCR images. The release job reports success only after it verifies the release contract before mutation, reads back the exact converted image, observes the correlated Dokploy deployment reach terminal success, and verifies the deployed health response.
 
 ## Production Compose
 
@@ -24,6 +24,10 @@ The production template contains only the `cpa-usage` service:
 
 `deploy/dokploy/cpa-cliproxyapi.compose.yml` is kept only for the one-time split migration of the source Dokploy app. It contains `postgres` and `cliproxyapi` without the `cpa-usage` service, usage route labels, or `cpa-usage-data` volume declaration.
 
+## Ingestion Durability
+
+Production queue consumption uses destructive `LPOP` followed by a separate SQLite inbox write. The interval between those effects is an unavoidable loss window: if the inbox write fails, CPA Usage returns and logs the batch as lost and does not retry, requeue, or recover it automatically. See [ADR 0008](../adr/0008-redis-inbox-replay-and-loss-window.md) for the event identity and replay contract.
+
 `cpa-usage` is rendered to a concrete GHCR version image, for example:
 
 ```text
@@ -40,6 +44,7 @@ GitHub Actions expects:
 secret: DOKPLOY_API_KEY
 secret: DOKPLOY_URL
 variable: DOKPLOY_CPA_USAGE_COMPOSE_ID=<new cpa-usage compose id>
+variable: DOKPLOY_CPA_USAGE_HEALTH_URL=https://<production-host>/usage/healthz
 ```
 
 Do not keep using `DOKPLOY_COMPOSE_ID` for this repository after the split. That variable points at the old full-stack compose app and would put `postgres` / `cliproxyapi` back into the release blast radius.
@@ -48,6 +53,10 @@ The workflow is `.github/workflows/release.yml` and runs on pushes to `main` plu
 
 - stable: `v0.1.0`
 - release candidate: `v0.2.0-rc.1`
+
+Each workflow run supplies a unique, non-secret `CPA_USAGE_RELEASE_ID` containing the GitHub run, attempt, and commit identifiers. The release script writes it as the exact Dokploy deployment description and uses only an exact description match to correlate deployment status. It never treats the newest deployment as the requested one.
+
+The release workflow is the single mutation authority for this production Compose ID. GitHub concurrency permits only one running writer in the group keyed by `DOKPLOY_CPA_USAGE_COMPOSE_ID`; `cancel-in-progress: false` protects the active writer and `queue: max` retains every pending release. Another release therefore cannot interleave `compose.update`, converted readback, and `compose.deploy`. The script has no cross-process lock or Dokploy CAS input; do not invoke it concurrently or from a second release writer.
 
 ## Required Dokploy Environment
 
@@ -97,18 +106,41 @@ Render and validate a versioned Compose file:
 
 ```bash
 CPA_USAGE_VERSION=v0.1.0 make render-dokploy-compose
+CPA_USAGE_IMAGE=ghcr.io/evenluo/cpa-usage:v0.1.0 \
+COMPOSE_FILE=.tmp/dokploy/cpa-usage.compose.yml \
 make verify-dokploy-compose
+make test-dokploy-release
 ```
 
-The validation checks that the rendered Compose does not contain:
+`make verify-dokploy-compose` is the canonical gate. It requires Docker Compose and `jq`, runs `docker compose config --format json`, and requires the rendered JSON to contain only `services["cpa-usage"]` with the exact expected image. Missing parser/runtime support is a failure, not a skipped check.
+
+`make verify-dokploy-compose-static` is a distinctly narrower static-only check for environments without Docker. It cannot satisfy the release gate. Both checks reject:
 
 - `postgres` or `cliproxyapi` as services
 - `cpa-usage-keeper`
 - `KEEPER_LOGIN_PASSWORD`
 - `:latest`
 
-It also runs `docker compose config` with sample non-secret values when Docker is available.
+`make test-dokploy-release` uses only local fake Docker, Dokploy API, deployment, and health fixtures. It does not contact Dokploy or production.
+
+## Release Proof and Failure Policy
+
+The release command follows one ordered path:
+
+1. Render the immutable image and pass the canonical Compose gate.
+2. Read `compose.one` and `deployment.allByCompose` and validate their documented response shapes before any Dokploy mutation. Unrelated historical deployment descriptions and statuses may be null; the current release marker must not already exist.
+3. Apply the one-time environment-key migration if needed, then call `compose.update`.
+4. Read `compose.getConvertedCompose`, require its response to be a Compose YAML string, and pass it through the same canonical exact-image gate.
+5. Call `compose.deploy` with the unique release marker in `description`.
+6. Poll official `deployment.allByCompose` for exactly one row with that marker. Only `running`, `done`, `error`, and `cancelled` are supported; success requires `done` within the bounded polling window.
+7. Poll the configured HTTPS `/usage/healthz` URL within a bounded window and require HTTP 200 with JSON `status: "ok"`.
+
+Missing or malformed control-plane responses, zero correlated rows until timeout, multiple correlated rows, an unknown status, `error`, `cancelled`, timeout, an unhealthy response, or an image mismatch all exit non-zero. A successful HTTP response from `compose.deploy` is only trigger acceptance and is never release success.
+
+There is no automatic rollback or alternate API fallback. Recovery is an explicit operator redeploy of a selected immutable image after investigating the reported failed stage.
 
 ## Compatibility Decision
 
 External compatibility is kept for the public path `/usage`, CPA management password semantics, CPA internal DNS, Redis usage queue address, and the existing `cpa-usage` SQLite data volume. The production release chain intentionally stops managing `postgres` and `cliproxyapi`. The old keeper service name and `KEEPER_LOGIN_PASSWORD` are not kept as runtime compatibility paths.
+
+The fail-closed proof is an intentional operational tightening: automation that previously stopped after deployment trigger acceptance now fails unless the requested immutable image, the exact terminal deployment, and deployed health are all proven.

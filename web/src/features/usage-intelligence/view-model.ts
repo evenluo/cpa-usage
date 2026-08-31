@@ -3,7 +3,9 @@ import type {
   CacheReadShareState,
   CostStatus,
   HeatmapData,
+  Insight,
   KeyAliasBreakdown,
+  ModelDistribution,
   ProviderOption,
   RequestHealthResponse,
   ServiceHealth,
@@ -40,6 +42,12 @@ export interface UsageDashboardViewModel {
   apiKeys: KeyAliasBreakdown[]
   leaderboardRows: KeyAliasBreakdown[]
   providerOptions: ProviderOption[]
+  modelDistribution: ModelDistribution[]
+  insights: Insight[]
+  hasModelDistribution: boolean
+  hasInsights: boolean
+  modelMixMeasure: "cost" | "tokens"
+  modelMixCostStateLabel: string
   fixedHeatmap?: HeatmapData
   serviceHealth?: ServiceHealth
   hasLeaderboardBreakdown: boolean
@@ -101,6 +109,19 @@ export function getCacheReadShareCaption(state?: CacheReadShareState): string | 
   return state.replace(/_/g, " ")
 }
 
+export function getModelMixPresentation(costStatus?: CostStatus): {
+  measure: "cost" | "tokens"
+  costStateLabel: string
+} {
+  if (costStatus === "available") {
+    return { measure: "cost", costStateLabel: "Cost state: available · Cost share" }
+  }
+  if (costStatus === "partial") {
+    return { measure: "tokens", costStateLabel: "Cost state: partial · Token share" }
+  }
+  return { measure: "tokens", costStateLabel: "Cost state: unavailable · Token share" }
+}
+
 export function buildUsageDashboardViewModel(input: {
   analytics?: AnalyticsCoreResponse
   fixedHeatmap?: HeatmapData
@@ -113,12 +134,21 @@ export function buildUsageDashboardViewModel(input: {
   const hasLeaderboardBreakdown = input.leaderboardScope === "api-key"
     ? Array.isArray(input.analytics?.api_key_breakdown)
     : Array.isArray(input.analytics?.key_alias_breakdown)
+  const modelDistribution = input.analytics?.model_distribution ?? []
+  const insights = input.analytics?.insights ?? []
+  const modelMix = getModelMixPresentation(input.analytics?.summary?.cost_status)
   return {
     trend,
     keyAliases,
     apiKeys,
     leaderboardRows: getLeaderboardRows(input.leaderboardScope, apiKeys, keyAliases),
     providerOptions: input.analytics?.provider_options ?? [],
+    modelDistribution,
+    insights,
+    hasModelDistribution: Array.isArray(input.analytics?.model_distribution),
+    hasInsights: Array.isArray(input.analytics?.insights),
+    modelMixMeasure: modelMix.measure,
+    modelMixCostStateLabel: modelMix.costStateLabel,
     fixedHeatmap: input.fixedHeatmap,
     serviceHealth: input.requestHealth?.service_health,
     hasLeaderboardBreakdown,

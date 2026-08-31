@@ -21,6 +21,8 @@ type redisDrainSyncStub struct {
 	processErrs    []error
 	pullStarted    chan struct{}
 	releasePull    chan struct{}
+	processStarted chan struct{}
+	releaseProcess chan struct{}
 	pullCalls      int
 	processCalls   int
 }
@@ -70,6 +72,16 @@ func (s *redisDrainSyncStub) ProcessRedisUsageInbox(ctx context.Context) (*servi
 		err = s.processErrs[len(s.processErrs)-1]
 	}
 	s.mu.Unlock()
+	if s.processStarted != nil {
+		close(s.processStarted)
+	}
+	if s.releaseProcess != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-s.releaseProcess:
+		}
+	}
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -171,13 +183,59 @@ func TestRedisDrainSyncNowPullsThenProcesses(t *testing.T) {
 	syncer := &redisDrainSyncStub{}
 	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
 
-	if err := drain.SyncNow(context.Background()); err != nil {
+	if _, err := drain.SyncNow(context.Background()); err != nil {
 		t.Fatalf("SyncNow returned error: %v", err)
 	}
 
 	pulls, processes := syncer.counts()
 	if pulls != 1 || processes != 1 {
 		t.Fatalf("expected SyncNow to pull and process once, got pulls=%d processes=%d", pulls, processes)
+	}
+}
+
+func TestRedisDrainSyncNowRejectsBeforePopWhenPullIsActive(t *testing.T) {
+	syncer := &redisDrainSyncStub{pullStarted: make(chan struct{}), releasePull: make(chan struct{})}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+	pullDone := make(chan error, 1)
+	go func() {
+		_, err := drain.runRedisPull(context.Background())
+		pullDone <- err
+	}()
+	<-syncer.pullStarted
+
+	if _, err := drain.SyncNow(context.Background()); !errors.Is(err, ErrSyncAlreadyRunning) {
+		t.Fatalf("expected pull-active conflict, got %v", err)
+	}
+	pulls, processes := syncer.counts()
+	if pulls != 1 || processes != 0 {
+		t.Fatalf("expected rejected manual sync to perform no Pop/Process, got pulls=%d processes=%d", pulls, processes)
+	}
+	close(syncer.releasePull)
+	if err := <-pullDone; err != nil {
+		t.Fatalf("background pull returned error: %v", err)
+	}
+}
+
+func TestRedisDrainSyncNowRejectsBeforePopWhenProcessIsActive(t *testing.T) {
+	syncer := &redisDrainSyncStub{processStarted: make(chan struct{}), releaseProcess: make(chan struct{})}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+	processDone := make(chan error, 1)
+	go func() {
+		_, err := drain.runRedisProcess(context.Background())
+		processDone <- err
+	}()
+	<-syncer.processStarted
+
+	if _, err := drain.SyncNow(context.Background()); !errors.Is(err, ErrSyncAlreadyRunning) {
+		t.Fatalf("expected process-active conflict, got %v", err)
+	}
+	pulls, processes := syncer.counts()
+	if pulls != 0 || processes != 1 {
+		t.Fatalf("expected rejected manual sync to perform no Pop, got pulls=%d processes=%d", pulls, processes)
+	}
+	close(syncer.releaseProcess)
+	if err := <-processDone; err != nil {
+		t.Fatalf("background process returned error: %v", err)
 	}
 }
 
@@ -191,7 +249,7 @@ func TestRedisDrainTracksProcessedEventMetrics(t *testing.T) {
 	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
 
 	for range 4 {
-		if err := drain.SyncNow(context.Background()); err != nil {
+		if _, err := drain.SyncNow(context.Background()); err != nil {
 			t.Fatalf("SyncNow returned error: %v", err)
 		}
 	}
@@ -217,7 +275,7 @@ func TestRedisDrainProcessMetricsStayZeroWithoutRealBatches(t *testing.T) {
 	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
 
 	for range 2 {
-		if err := drain.SyncNow(context.Background()); err != nil {
+		if _, err := drain.SyncNow(context.Background()); err != nil {
 			t.Fatalf("SyncNow returned error: %v", err)
 		}
 	}
@@ -255,6 +313,7 @@ func TestRedisDrainPullAndProcessCanRunIndependently(t *testing.T) {
 }
 
 func TestRedisDrainBacksOffAfterPullError(t *testing.T) {
+	logs := captureRedisDrainSlogOutput(t)
 	syncer := &redisDrainSyncStub{pullErrs: []error{errors.New("dial failed")}}
 	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: 25 * time.Millisecond})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -271,7 +330,10 @@ func TestRedisDrainBacksOffAfterPullError(t *testing.T) {
 		t.Fatalf("expected error backoff sleep, got %s", slept)
 	}
 	status := drain.Status()
-	if status.LastError != "dial failed" {
-		t.Fatalf("expected recorded pull error, got %+v", status)
+	if status.LastError != "" || status.LastStatus != "" {
+		t.Fatalf("expected background failure not to overwrite manual command status, got %+v", status)
+	}
+	if content := logs.String(); !strings.Contains(content, "redis drain pull failed") || !strings.Contains(content, "dial failed") {
+		t.Fatalf("expected background pull failure log, got %q", content)
 	}
 }

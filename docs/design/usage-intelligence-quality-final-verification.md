@@ -1,5 +1,9 @@
 # Usage Intelligence quality final verification
 
+Status: historical verification evidence (2026-05-18); not current-head proof
+
+Current verification policy: [`docs/project/contract.md`](../project/contract.md) and the repository-root [`Makefile`](../../Makefile)
+
 Date: 2026-05-18
 Parent PRD: #43
 Frozen child queue: #44, #45, #46, #47, #48

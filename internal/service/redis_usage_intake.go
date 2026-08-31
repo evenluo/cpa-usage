@@ -44,7 +44,12 @@ func (i redisUsageIntake) pull(ctx context.Context) (*servicedto.RedisInboxPullR
 
 	inboxRows, err := insertRedisInboxMessages(i.db, i.queueKey, messages, fetchedAt)
 	if err != nil {
-		return &servicedto.RedisInboxPullResult{Status: "failed"}, fmt.Errorf("insert redis usage inbox: %w", err)
+		slog.Error("redis usage messages lost after destructive queue pop",
+			"queue_key", i.queueKey,
+			"message_count", len(messages),
+			"error", err,
+		)
+		return &servicedto.RedisInboxPullResult{Status: "failed"}, fmt.Errorf("redis usage messages lost after destructive queue pop: persist inbox: %w", err)
 	}
 	slog.Debug("redis usage inbox rows inserted", "queue_key", i.queueKey, "row_count", len(inboxRows))
 	return &servicedto.RedisInboxPullResult{Status: "completed", InsertedRows: len(inboxRows)}, nil

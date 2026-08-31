@@ -163,11 +163,12 @@ func syncProviderMetadata(ctx context.Context, db *gorm.DB, inputs []servicedto.
 
 func providerMetadataUsageIdentities(inputs []servicedto.ProviderMetadataInput) []entities.UsageIdentity {
 	identities := make([]entities.UsageIdentity, 0, len(inputs))
+	authTypeName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
 	for _, input := range inputs {
 		identities = append(identities, entities.UsageIdentity{
 			Name:         input.DisplayName,
 			AuthType:     entities.UsageIdentityAuthTypeAIProvider,
-			AuthTypeName: "apikey",
+			AuthTypeName: authTypeName,
 			Identity:     input.AuthIndex,
 			Type:         input.ProviderType,
 			Provider:     input.DisplayName,

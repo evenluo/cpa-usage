@@ -41,14 +41,14 @@ func buildAnalyticsCoreProviderOptions(db *gorm.DB, plan analyticsCoreWindowPlan
 
 	options := make([]dto.AnalyticsProviderOption, 0, len(rows))
 	for _, row := range rows {
-		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		options = append(options, dto.AnalyticsProviderOption{
 			Provider:      row.Provider,
 			RequestCount:  row.RequestCount,
 			TotalTokens:   row.TotalTokens,
 			TotalCost:     row.TotalCost,
-			CostAvailable: costAvailable,
-			CostStatus:    costStatus,
+			CostAvailable: cost.Available,
+			CostStatus:    cost.Status,
 		})
 	}
 	return options, nil
@@ -105,7 +105,7 @@ func buildAnalyticsCoreModelBreakdown(db *gorm.DB, plan analyticsCoreWindowPlan)
 }
 
 // buildAnalyticsProviderOptionSegmentRows 按聚合源渲染 provider 选项段查询，raw 与 rollup 共用同一份列定义。
-func buildAnalyticsProviderOptionSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsProviderOptionRow, error) {
+func buildAnalyticsProviderOptionSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsProviderOptionRow, error) {
 	var rows []analyticsProviderOptionRow
 	if err := source.query(db, filter).
 		Select(`
@@ -124,7 +124,7 @@ func buildAnalyticsProviderOptionSegmentRows(db *gorm.DB, filter dto.UsageQueryF
 }
 
 // buildAnalyticsModelSegmentRows 按聚合源渲染 model 段查询，raw 与 rollup 共用同一份列定义。
-func buildAnalyticsModelSegmentRows(db *gorm.DB, filter dto.UsageQueryFilter, source analyticsAggregateSource) ([]analyticsModelAggregateRow, error) {
+func buildAnalyticsModelSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) ([]analyticsModelAggregateRow, error) {
 	var rows []analyticsModelAggregateRow
 	if err := source.query(db, filter).
 		Select(`

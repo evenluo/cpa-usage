@@ -134,7 +134,7 @@ func registerUsageOverviewRoute(router gin.IRoutes, usageProvider UsageProvider)
 			return
 		}
 
-		overview, err := usageProvider.GetUsageOverview(c.Request.Context(), filter.SelectedWindowQueryFilter())
+		overview, err := usageProvider.GetUsageOverview(c.Request.Context(), filter.repositoryOverviewFilter())
 		if err != nil {
 			writeInternalError(c, "get usage overview failed", err)
 			return
@@ -173,7 +173,7 @@ func registerUsageOverviewRoute(router gin.IRoutes, usageProvider UsageProvider)
 			return
 		}
 
-		health, err := usageProvider.GetRequestHealth(c.Request.Context(), filter.SelectedWindowQueryFilter())
+		health, err := usageProvider.GetRequestHealth(c.Request.Context(), filter.repositoryOverviewFilter())
 		if err != nil {
 			writeInternalError(c, "get request health failed", err)
 			return

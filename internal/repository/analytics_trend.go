@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsTrendPoint, error) {
+func buildAnalyticsTrend(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsTrendPoint, error) {
 	bucketByDay := analyticsTrendBucketsByDay(filter)
 	rows, err := buildAnalyticsAggregateRowsByBucket(db, filter, analyticsEventsAggregateSource())
 	if err != nil {
@@ -27,14 +27,22 @@ func buildAnalyticsTrend(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.Analyt
 	return trend, nil
 }
 
-func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	return applyAnalyticsQueryFilter(db.Model(&entities.UsageEvent{}), filter).
+func analyticsEventsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
+	return usageEventsWithPricingQuery(db, filter.UsageTimeScope)
+}
+
+func usageEventsWithPricingQuery(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
+	return applyAnalyticsScopeFilter(db.Model(&entities.UsageEvent{}), scope).
 		Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_events.model)")
 }
 
-func applyAnalyticsQueryFilter(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	query = applyUsageQueryWindow(query, filter)
-	if provider := strings.TrimSpace(filter.Provider); provider != "" {
+func applyAnalyticsQueryFilter(query *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
+	return applyAnalyticsScopeFilter(query, filter.UsageTimeScope)
+}
+
+func applyAnalyticsScopeFilter(query *gorm.DB, scope dto.UsageTimeScope) *gorm.DB {
+	query = applyUsageQueryWindow(query, scope)
+	if provider := strings.TrimSpace(scope.Provider); provider != "" {
 		query = query.Where("TRIM(usage_events.provider) = ?", provider)
 	}
 	return query
@@ -53,7 +61,7 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 	if err != nil {
 		return dto.AnalyticsTrendPoint{}, fmt.Errorf("parse analytics trend bucket %q: %w", row.Bucket, err)
 	}
-	costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 	label := row.Bucket
 	if !bucketByDay {
 		label = bucketStart.In(time.Local).Format("2006-01-02 15:04 -0700")
@@ -71,7 +79,7 @@ func mapAnalyticsTrendPoint(row analyticsAggregateRow, bucketByDay bool) (dto.An
 		RequestCount:    row.RequestCount,
 		SuccessCount:    row.SuccessCount,
 		FailureCount:    row.FailureCount,
-		CostAvailable:   costAvailable,
-		CostStatus:      costStatus,
+		CostAvailable:   cost.Available,
+		CostStatus:      cost.Status,
 	}, nil
 }

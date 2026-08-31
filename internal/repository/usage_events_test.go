@@ -29,7 +29,7 @@ func TestListUsageEventsWithFilterAppliesTimeBoundsAndPagination(t *testing.T) {
 
 	start := time.Date(2026, 4, 16, 9, 30, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC)
-	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end, Page: 1, PageSize: 1})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end}, Page: 1, PageSize: 1})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -41,6 +41,22 @@ func TestListUsageEventsWithFilterAppliesTimeBoundsAndPagination(t *testing.T) {
 	}
 	if page.Events[0].Source != "source-c" {
 		t.Fatalf("expected newest in-range row first, got %+v", page.Events[0])
+	}
+}
+
+func TestListUsageEventsWithFilterNormalizesEmptyPageMetadata(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-empty.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{Page: 7, PageSize: 25})
+	if err != nil {
+		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
+	}
+	if page.TotalCount != 0 || page.TotalPages != 1 || page.Page != 1 || page.PageSize != 25 || len(page.Events) != 0 {
+		t.Fatalf("expected normalized empty page metadata, got %+v", page)
 	}
 }
 
@@ -60,11 +76,11 @@ func TestListUsageEventsWithFilterPagesByTimestampAndID(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	firstPage, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Page: 1, PageSize: 1})
+	firstPage, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{Page: 1, PageSize: 1})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
-	secondPage, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Page: 2, PageSize: 1})
+	secondPage, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{Page: 2, PageSize: 1})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -95,7 +111,7 @@ func TestListUsageEventsWithFilterAppliesModelSourceAndResultFilters(t *testing.
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Page: 1, PageSize: 20, Model: "claude-sonnet", Source: "source-a", Result: "success"})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{Page: 1, PageSize: 20, Model: "claude-sonnet", Source: "source-a", Result: "success"})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -123,7 +139,7 @@ func TestListUsageEventsWithFilterAppliesAuthIndexFilter(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageQueryFilter{Source: "auth-1", AuthIndex: "auth-1", Page: 1, PageSize: 20})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{Source: "auth-1", AuthIndex: "auth-1", Page: 1, PageSize: 20})
 	if err != nil {
 		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
@@ -137,7 +153,7 @@ func TestListUsageEventsWithFilterAppliesAuthIndexFilter(t *testing.T) {
 	}
 }
 
-func TestListUsageEventFilterOptionsWithFilterReturnsStableModels(t *testing.T) {
+func TestListUsageEventsWithFilterReturnsModelsUnaffectedByListFilters(t *testing.T) {
 	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-filter-options.db")})
 	if err != nil {
 		t.Fatalf("OpenDatabase returned error: %v", err)
@@ -152,12 +168,14 @@ func TestListUsageEventFilterOptionsWithFilterReturnsStableModels(t *testing.T) 
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	options, err := ListUsageEventFilterOptionsWithFilter(context.Background(), db, dto.UsageQueryFilter{Result: "success"})
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{
+		Page: 1, PageSize: 20, Model: "claude-sonnet", Source: "source-a", Result: "success",
+	})
 	if err != nil {
-		t.Fatalf("ListUsageEventFilterOptionsWithFilter returned error: %v", err)
+		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
 	}
-	if len(options.Models) != 2 || options.Models[0] != "claude-sonnet" || options.Models[1] != "gpt-5" {
-		t.Fatalf("expected stable model options, got %+v", options.Models)
+	if len(page.Models) != 2 || page.Models[0] != "claude-sonnet" || page.Models[1] != "gpt-5" {
+		t.Fatalf("expected model options to ignore list filters, got %+v", page.Models)
 	}
 }
 
@@ -191,7 +209,7 @@ func TestListUsageAnalysisWithFilterAggregatesApisAndModels(t *testing.T) {
 
 	start := time.Date(2026, 4, 16, 9, 30, 0, 0, time.UTC)
 	end := time.Date(2026, 4, 16, 11, 30, 0, 0, time.UTC)
-	apiRows, modelRows, err := ListUsageAnalysisWithFilter(context.Background(), db, dto.UsageQueryFilter{StartTime: &start, EndTime: &end})
+	apiRows, modelRows, err := ListUsageAnalysisWithFilter(context.Background(), db, dto.UsageTimeScope{StartTime: &start, EndTime: &end})
 	if err != nil {
 		t.Fatalf("ListUsageAnalysisWithFilter returned error: %v", err)
 	}
@@ -234,7 +252,7 @@ func TestListUsageAnalysisWithFilterKeepsModelsForBlankAPIGroup(t *testing.T) {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
-	apiRows, _, err := ListUsageAnalysisWithFilter(context.Background(), db, dto.UsageQueryFilter{})
+	apiRows, _, err := ListUsageAnalysisWithFilter(context.Background(), db, dto.UsageTimeScope{})
 	if err != nil {
 		t.Fatalf("ListUsageAnalysisWithFilter returned error: %v", err)
 	}

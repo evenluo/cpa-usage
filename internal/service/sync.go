@@ -233,10 +233,11 @@ func authFileUsageIdentity(file authfiles.AuthFile) entities.UsageIdentity {
 }
 
 func baseAuthFileUsageIdentity(file authfiles.AuthFile) entities.UsageIdentity {
+	authTypeName, _ := entities.UsageIdentityAuthTypeAuthFile.CanonicalName()
 	return entities.UsageIdentity{
 		Name:         firstNonEmpty(file.Email, file.Label, file.Name, file.AuthIndex),
 		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
-		AuthTypeName: "oauth",
+		AuthTypeName: authTypeName,
 		Identity:     file.AuthIndex,
 		Type:         file.Type,
 		Provider:     file.Provider,

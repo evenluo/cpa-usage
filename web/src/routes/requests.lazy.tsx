@@ -18,15 +18,24 @@ import type { UsageEvent } from "@/types/api"
 const PAGE_SIZE = 10
 
 export const Route = createLazyFileRoute("/requests")({
-  component: RequestsPage,
+  component: RequestsRoute,
 })
 
-function RequestsPage() {
+function RequestsRoute() {
+  const { provider } = Route.useSearch()
+  return <RequestsPage provider={provider} />
+}
+
+export function RequestsPage({ provider }: { provider: string }) {
+  return <ProviderScopedRequestsPage key={provider} provider={provider} />
+}
+
+function ProviderScopedRequestsPage({ provider }: { provider: string }) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
-  const { data, isLoading, error } = useEvents("24h", PAGE_SIZE, "", page)
+  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page)
+  const hasCompleteData = data !== undefined
   const events = data?.events ?? []
-  const totalPages = Math.max(data?.total_pages ?? 1, 1)
   const selectedEvent = events.find((event) => requestEventKey(event) === selectedEventKey) ?? events[0]
   const effectiveSelectedKey = selectedEvent ? requestEventKey(selectedEvent) : null
 
@@ -52,18 +61,31 @@ function RequestsPage() {
           <h1 className="mt-1 font-serif text-3xl font-semibold tracking-tight">Request Evidence</h1>
           <p className="mt-1 text-sm text-muted-foreground">Recent request-level evidence behind service health.</p>
         </div>
-        <Badge variant="outline" className="shrink-0">Last 24h</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline">Last 24h</Badge>
+          <Badge variant="terracotta" data-testid="request-provider-scope">
+            Provider: {provider || "All providers"}
+          </Badge>
+        </div>
       </header>
 
-      {isLoading ? (
+      {hasCompleteData && error ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <span>Request evidence refresh failed; showing the last complete page.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>Retry</Button>
+        </div>
+      ) : null}
+
+      {!hasCompleteData && isLoading ? (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <Skeleton className="h-[420px] w-full" />
           <Skeleton className="h-[280px] w-full" />
         </div>
-      ) : error ? (
+      ) : !hasCompleteData && error ? (
         <Card>
-          <CardContent className="flex min-h-[280px] items-center justify-center text-sm text-red-500">
-            Failed to load request evidence
+          <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-sm text-red-500">
+            <span>Failed to load request evidence</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>Retry request evidence</Button>
           </CardContent>
         </Card>
       ) : events.length === 0 ? (
@@ -108,12 +130,12 @@ function RequestsPage() {
                   <ChevronLeft className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
                   Previous
                 </Button>
-                <span className="whitespace-nowrap text-xs text-muted-foreground">Page {page} of {totalPages}</span>
+                <span className="whitespace-nowrap text-xs text-muted-foreground">Page {data?.page} of {data?.total_pages}</span>
                 <Button
                   variant="outline"
                   size="sm"
                   aria-label="Next page"
-                  disabled={page >= totalPages}
+                  disabled={data === undefined || page >= data.total_pages}
                   onClick={() => changePage(page + 1)}
                 >
                   Next

@@ -5,7 +5,6 @@ import (
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository/dto"
-	servicedto "cpa-usage/internal/service/dto"
 )
 
 type analyticsSummaryResponse struct {
@@ -200,7 +199,7 @@ type analyticsHeatmapCell struct {
 	CostStatus    string    `json:"cost_status"`
 }
 
-func buildAnalyticsCoreResponse(filter servicedto.UsageFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsCoreResponse {
+func buildAnalyticsCoreResponse(filter analyticsFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsCoreResponse {
 	response := analyticsCoreResponse{
 		Range:       filter.Range,
 		Granularity: filter.Granularity,
@@ -229,7 +228,7 @@ func buildAnalyticsCoreResponse(filter servicedto.UsageFilter, snapshot *dto.Ana
 	return response
 }
 
-func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsSummaryResponse {
+func buildAnalyticsSummaryResponse(filter analyticsFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsSummaryResponse {
 	response := analyticsSummaryResponse{
 		Range:       filter.Range,
 		Granularity: filter.Granularity,
@@ -275,7 +274,7 @@ func buildAnalyticsSummaryResponse(filter servicedto.UsageFilter, snapshot *dto.
 func emptyAnalyticsSummaryPayload() analyticsSummaryPayload {
 	return analyticsSummaryPayload{
 		CostAvailable:       true,
-		CostStatus:          dto.AnalyticsCostStatusAvailable,
+		CostStatus:          dto.CostStatusAvailable,
 		CacheReadShareState: dto.AnalyticsCacheReadShareStateNoPromptInput,
 	}
 }
@@ -393,7 +392,7 @@ func mapAnalyticsProviderOptions(options []dto.AnalyticsProviderOption) []analyt
 	return result
 }
 
-func buildAnalyticsHeatmapResponse(filter servicedto.UsageFilter, heatmap dto.AnalyticsHeatmap) analyticsHeatmapResponse {
+func buildAnalyticsHeatmapResponse(filter analyticsFilter, heatmap dto.AnalyticsHeatmap) analyticsHeatmapResponse {
 	return analyticsHeatmapResponse{
 		Range:       filter.Range,
 		Granularity: filter.Granularity,

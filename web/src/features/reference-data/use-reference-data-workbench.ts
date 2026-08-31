@@ -31,15 +31,15 @@ export interface UseReferenceDataWorkbenchResult {
   keyAliasScope: KeyAliasScope
   selectKeyAliasScope: (scope: KeyAliasScope) => void
   scopeDescription: string
-  apiKeyCount: number
-  accountCount: number
-  aliasedAPIKeys: number
-  aliasedAccounts: number
-  missingRates: number
-  isAPIKeysLoading: boolean
-  isKeysLoading: boolean
-  isPricingLoading: boolean
-  isAliasLoading: boolean
+  apiKeyCount?: number
+  accountCount?: number
+  aliasedAPIKeys?: number
+  aliasedAccounts?: number
+  missingRates?: number
+  apiKeysRead: ReferenceReadState
+  accountsRead: ReferenceReadState
+  pricingRead: ReferenceReadState
+  aliasRead: ReferenceReadState
   filteredKeys: ReferenceKeyRow[]
   editingId: string | null
   draftAlias: string
@@ -56,15 +56,44 @@ export interface UseReferenceDataWorkbenchResult {
   savingModel: string | null
 }
 
+export type ReferenceReadStatus = "loading" | "error" | "empty" | "ready"
+
+export interface ReferenceReadState {
+  status: ReferenceReadStatus
+  refreshError?: unknown
+  retry: () => void
+}
+
+function buildReferenceReadState<T>(input: {
+  data: T | undefined
+  isLoading: boolean
+  error: unknown
+  isEmpty: (data: T) => boolean
+  retry: () => void
+}): ReferenceReadState {
+  if (input.data === undefined) {
+    if (input.isLoading) return { status: "loading", retry: input.retry }
+    if (input.error) return { status: "error", retry: input.retry }
+    return { status: "empty", retry: input.retry }
+  }
+  const status = input.isEmpty(input.data) ? "empty" : "ready"
+  return input.error
+    ? { status, refreshError: input.error, retry: input.retry }
+    : { status, retry: input.retry }
+}
+
 /**
  * Owns the Reference Data page state: Key Alias / Cost Rate edit drafts,
  * derived workbench rows, and save/clear command wiring.
  * Route files consume the returned state and setters for composition only.
  */
 export function useReferenceDataWorkbench(): UseReferenceDataWorkbenchResult {
-  const { data: keys, isLoading: isKeysLoading } = useKeys()
-  const { data: apiKeys, isLoading: isAPIKeysLoading } = useAPIKeys()
-  const { data: pricingData, isLoading: isPricingLoading } = usePricing()
+  const keysQuery = useKeys()
+  const apiKeysQuery = useAPIKeys()
+  const pricingQuery = usePricing()
+  const { data: keys } = keysQuery
+  const { data: apiKeys } = apiKeysQuery
+  const { data: pricingData } = pricingQuery
   const updateAlias = useUpdateAlias()
   const updateAPIKeyAlias = useUpdateAPIKeyAlias()
   const deleteAlias = useDeleteAlias()
@@ -81,7 +110,6 @@ export function useReferenceDataWorkbench(): UseReferenceDataWorkbenchResult {
   const apiKeyRows: ReferenceKeyRow[] = useMemo(() => normalizeAPIKeyRows(apiKeys ?? []), [apiKeys])
   const accountRows: ReferenceKeyRow[] = useMemo(() => normalizeAccountKeyRows(keys ?? []), [keys])
   const visibleRows = selectKeyAliasRows(keyAliasScope, apiKeyRows, accountRows)
-  const isAliasLoading = keyAliasScope === "api-key" ? isAPIKeysLoading : isKeysLoading
   const filteredKeys = useMemo(() => filterKeyAliasRows(visibleRows, query), [visibleRows, query])
 
   const pricing = useMemo(() => pricingData?.pricing ?? [], [pricingData?.pricing])
@@ -90,6 +118,28 @@ export function useReferenceDataWorkbench(): UseReferenceDataWorkbenchResult {
   const missingRates = countMissingCostRates(models, pricingMap)
   const aliasedAPIKeys = countAliasedRows(apiKeyRows)
   const aliasedAccounts = countAliasedRows(accountRows)
+  const apiKeysRead = buildReferenceReadState({
+    data: apiKeys,
+    isLoading: apiKeysQuery.isLoading,
+    error: apiKeysQuery.error,
+    isEmpty: (rows) => rows.length === 0,
+    retry: () => void apiKeysQuery.refetch(),
+  })
+  const accountsRead = buildReferenceReadState({
+    data: keys,
+    isLoading: keysQuery.isLoading,
+    error: keysQuery.error,
+    isEmpty: (rows) => rows.length === 0,
+    retry: () => void keysQuery.refetch(),
+  })
+  const pricingRead = buildReferenceReadState({
+    data: pricingData,
+    isLoading: pricingQuery.isLoading,
+    error: pricingQuery.error,
+    isEmpty: () => models.length === 0,
+    retry: () => void pricingQuery.refetch(),
+  })
+  const aliasRead = keyAliasScope === "api-key" ? apiKeysRead : accountsRead
 
   function selectKeyAliasScope(scope: KeyAliasScope) {
     setKeyAliasScope(scope)
@@ -176,15 +226,15 @@ export function useReferenceDataWorkbench(): UseReferenceDataWorkbenchResult {
     keyAliasScope,
     selectKeyAliasScope,
     scopeDescription: keyAliasScopeDescription(keyAliasScope),
-    apiKeyCount: apiKeys?.length ?? 0,
-    accountCount: keys?.length ?? 0,
-    aliasedAPIKeys,
-    aliasedAccounts,
-    missingRates,
-    isAPIKeysLoading,
-    isKeysLoading,
-    isPricingLoading,
-    isAliasLoading,
+    apiKeyCount: apiKeys?.length,
+    accountCount: keys?.length,
+    aliasedAPIKeys: apiKeys === undefined ? undefined : aliasedAPIKeys,
+    aliasedAccounts: keys === undefined ? undefined : aliasedAccounts,
+    missingRates: pricingData === undefined ? undefined : missingRates,
+    apiKeysRead,
+    accountsRead,
+    pricingRead,
+    aliasRead,
     filteredKeys,
     editingId,
     draftAlias,

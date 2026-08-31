@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.AnalyticsSummary, error) {
+func buildAnalyticsSummary(db *gorm.DB, filter dto.AnalyticsFilter) (dto.AnalyticsSummary, error) {
 	row, err := buildAnalyticsAggregateRow(db, filter, analyticsEventsAggregateSource())
 	if err != nil {
 		return dto.AnalyticsSummary{}, err
@@ -15,14 +15,14 @@ func buildAnalyticsSummary(db *gorm.DB, filter dto.UsageQueryFilter) (dto.Analyt
 	return mapAnalyticsSummary(row), nil
 }
 
-func analyticsPreviousPeriodFilter(filter dto.UsageQueryFilter) (dto.UsageQueryFilter, bool) {
+func analyticsPreviousPeriodFilter(filter dto.AnalyticsFilter) (dto.AnalyticsFilter, bool) {
 	if filter.StartTime == nil || filter.EndTime == nil {
-		return dto.UsageQueryFilter{}, false
+		return dto.AnalyticsFilter{}, false
 	}
 	start := filter.StartTime.UTC()
 	end := filter.EndTime.UTC()
 	if !end.After(start) {
-		return dto.UsageQueryFilter{}, false
+		return dto.AnalyticsFilter{}, false
 	}
 	duration := end.Sub(start) + time.Nanosecond
 	previousStart := start.Add(-duration)
@@ -47,7 +47,7 @@ func mapAnalyticsComparison(current dto.AnalyticsSummary, previous dto.Analytics
 }
 
 func analyticsCostPercentChange(current dto.AnalyticsSummary, previous dto.AnalyticsSummary) *float64 {
-	if current.CostStatus != dto.AnalyticsCostStatusAvailable || previous.CostStatus != dto.AnalyticsCostStatusAvailable {
+	if current.CostStatus != dto.CostStatusAvailable || previous.CostStatus != dto.CostStatusAvailable {
 		return nil
 	}
 	return analyticsPercentChange(current.TotalCost, previous.TotalCost)
@@ -80,14 +80,15 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 	if row.RequestCount > 0 {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
-	summary.CostAvailable, summary.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+	summary.CostAvailable, summary.CostStatus = cost.Available, cost.Status
 	summary.CacheReadShare, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
 		row.CachedTokens,
 		row.CacheSavings,
 		row.CacheSavingsEligibleRows,
 		row.CacheSavingsIneligibleRows,
-		summary.CostStatus == dto.AnalyticsCostStatusAvailable,
+		summary.CostStatus == dto.CostStatusAvailable,
 	)
 	return summary
 }

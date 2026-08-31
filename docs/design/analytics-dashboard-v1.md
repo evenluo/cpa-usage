@@ -1,5 +1,9 @@
 # CPA Usage Analytics Dashboard v1
 
+Status: historical planning artifact; not current runtime or release guidance
+
+Current SoT: [`CONTEXT.md`](../../CONTEXT.md), [`docs/project/contract.md`](../project/contract.md), [`docs/project/layout.md`](../project/layout.md), and [Web Capability Coverage](web-capability-coverage.md)
+
 ## Conclusion
 
 CPA Usage v1 will redesign the product around an analytics-first experience: one data analysis page for total usage and breakdowns, plus focused configuration pages for keys, pricing, request events, and settings. The visual direction should reference the Magic dashboard style: airy white surfaces, clear hierarchy, compact operational density, subtle borders, pill controls, and restrained accent colors.

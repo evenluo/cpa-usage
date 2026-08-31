@@ -3,10 +3,6 @@ package dto
 import "time"
 
 const (
-	AnalyticsCostStatusAvailable   = "available"
-	AnalyticsCostStatusPartial     = "partial"
-	AnalyticsCostStatusUnavailable = "unavailable"
-
 	AnalyticsCacheReadShareStateAvailable     = "available"
 	AnalyticsCacheReadShareStateNoCacheData   = "no_cache_data"
 	AnalyticsCacheReadShareStateNoPromptInput = "no_prompt_input"

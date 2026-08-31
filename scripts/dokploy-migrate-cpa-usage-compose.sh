@@ -25,8 +25,10 @@ tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
 cpa_usage_compose_file="$tmpdir/cpa-usage.compose.yml"
-CPA_USAGE_VERSION="${CPA_USAGE_VERSION:-v0.1.25}" scripts/render-dokploy-compose.sh "${CPA_USAGE_VERSION:-v0.1.25}" "$cpa_usage_compose_file"
-scripts/verify-dokploy-compose.sh "$cpa_usage_compose_file"
+cpa_usage_version="${CPA_USAGE_VERSION:-v0.1.25}"
+cpa_usage_image="ghcr.io/evenluo/cpa-usage:$cpa_usage_version"
+CPA_USAGE_IMAGE="$cpa_usage_image" scripts/render-dokploy-compose.sh "$cpa_usage_version" "$cpa_usage_compose_file"
+CPA_USAGE_IMAGE="$cpa_usage_image" scripts/verify-dokploy-compose.sh "$cpa_usage_compose_file"
 
 api_get() {
   local path="$1"

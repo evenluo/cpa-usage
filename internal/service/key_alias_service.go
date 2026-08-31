@@ -113,18 +113,9 @@ func (s *keyAliasService) ListAPIKeyAliasTargetsPage(ctx context.Context, reques
 	if err != nil {
 		return ListAPIKeyAliasTargetsResponse{}, err
 	}
-	keys := make([]repository.KeyAliasKey, 0, len(rows))
-	for _, row := range rows {
-		keys = append(keys, repository.KeyAliasKey{AuthType: entities.UsageIdentityAuthTypeAIProvider, Identity: row.Identity})
-	}
-	aliases, err := repository.ListKeyAliases(ctx, s.db, keys)
-	if err != nil {
-		return ListAPIKeyAliasTargetsResponse{}, err
-	}
 	items := make([]APIKeyAliasTarget, 0, len(rows))
 	for _, row := range rows {
-		alias := aliases[repository.KeyAliasKey{AuthType: entities.UsageIdentityAuthTypeAIProvider, Identity: row.Identity}].Alias
-		items = append(items, mapAPIKeyAliasTarget(row, alias))
+		items = append(items, mapAPIKeyAliasTarget(row))
 	}
 	return ListAPIKeyAliasTargetsResponse{Items: items, Total: total}, nil
 }
@@ -226,12 +217,11 @@ func (s *keyAliasService) ClearUsageIdentityAlias(ctx context.Context, id uint) 
 	return repository.ClearKeyAlias(ctx, s.db, identity.AuthType, identity.Identity)
 }
 
-func mapAPIKeyAliasTarget(row repodto.APIKeyAliasTargetRecord, alias string) APIKeyAliasTarget {
-	costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+func mapAPIKeyAliasTarget(row repodto.APIKeyAliasTargetRecord) APIKeyAliasTarget {
 	return APIKeyAliasTarget{
 		ID:              redact.APIAlias(row.Identity),
 		Identity:        redact.APIKeyDisplayName(row.Identity),
-		Alias:           alias,
+		Alias:           row.Alias,
 		Provider:        row.Provider,
 		TotalRequests:   row.RequestCount,
 		SuccessCount:    row.SuccessCount,
@@ -242,19 +232,9 @@ func mapAPIKeyAliasTarget(row repodto.APIKeyAliasTargetRecord, alias string) API
 		CachedTokens:    row.CachedTokens,
 		TotalTokens:     row.TotalTokens,
 		TotalCost:       row.TotalCost,
-		CostAvailable:   costAvailable,
-		CostStatus:      costStatus,
+		CostAvailable:   row.CostAvailable,
+		CostStatus:      row.CostStatus,
 		FirstUsedAt:     row.FirstUsedAt,
 		LastUsedAt:      row.LastUsedAt,
 	}
-}
-
-func analyticsCostAvailability(missingPricingEvents int64, pricedBillableEvents int64) (bool, string) {
-	if missingPricingEvents == 0 {
-		return true, "available"
-	}
-	if pricedBillableEvents > 0 {
-		return false, "partial"
-	}
-	return false, "unavailable"
 }

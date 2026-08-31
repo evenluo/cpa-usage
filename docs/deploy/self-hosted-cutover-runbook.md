@@ -1,5 +1,9 @@
 # Self-Hosted CPA Usage Cutover Runbook
 
+Status: current migration-only runbook; not a routine Dokploy release procedure
+
+Routine release SoT: [Dokploy Release Chain](dokploy-release.md)
+
 Date:
 
 ## Goal
@@ -67,7 +71,8 @@ backup=<backup-directory>/<stamp>/cpa-usage-keeper-data.tgz
 target=/var/lib/docker/volumes/<cpa-usage-data-volume>/_data
 
 mkdir -p "$target"
-tar -C "$target" -czf "<backup-directory>/pre-new-volume-$(date -u +%Y%m%dT%H%M%SZ).tgz" . 2>/dev/null || true
+tar -C "$target" -czf "<backup-directory>/pre-new-volume-$(date -u +%Y%m%dT%H%M%SZ).tgz" .
+tar -tzf "$backup" >/dev/null
 rm -rf "$target"/*
 tar -C "$target" -xzf "$backup"
 ```

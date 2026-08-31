@@ -1,9 +1,29 @@
 WEB_DIR := ./web
+ENV_FILE ?= .env
 
-.PHONY: dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose dokploy-migrate-cpa-usage-compose
+.DEFAULT_GOAL := help
+
+.PHONY: help dev-app dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose-static verify-dokploy-compose test-dokploy-release verify-dokploy-release dokploy-migrate-cpa-usage-compose
+
+help:
+	@printf '%s\n' \
+		'Development:' \
+		'  make dev-app       Build the frontend, then serve integrated UI/API' \
+		'  make dev-backend   Serve the last built frontend and API' \
+		'  make dev-frontend  Run isolated Vite HMR (no API proxy or E2E)' \
+		'' \
+		'Verification:' \
+		'  make verify          Run backend and frontend verification' \
+		'  make verify-backend  Run backend tests and vet' \
+		'  make verify-frontend Run frontend lint, tests, typecheck, and mobile E2E' \
+		'  make verify-docker   Build the deployment image' \
+		'  make verify-dokploy-release  Run canonical local release proof'
+
+dev-app: build-frontend
+	$(MAKE) dev-backend
 
 dev-backend:
-	go run ./cmd/server/main.go --env .env
+	go run ./cmd/server/main.go --env "$(ENV_FILE)"
 
 dev-frontend:
 	npm --prefix $(WEB_DIR) run dev
@@ -66,8 +86,16 @@ verify-docker:
 render-dokploy-compose:
 	scripts/render-dokploy-compose.sh $${CPA_USAGE_VERSION:?set CPA_USAGE_VERSION} $${OUTPUT:-.tmp/dokploy/cpa-usage.compose.yml}
 
+verify-dokploy-compose-static:
+	scripts/verify-dokploy-compose-static.sh $${COMPOSE_FILE:-}
+
 verify-dokploy-compose:
-	scripts/verify-dokploy-compose.sh
+	scripts/verify-dokploy-compose.sh $${COMPOSE_FILE:-}
+
+test-dokploy-release:
+	scripts/test-dokploy-release.sh
+
+verify-dokploy-release: verify-dokploy-compose test-dokploy-release
 
 dokploy-migrate-cpa-usage-compose:
 	scripts/dokploy-migrate-cpa-usage-compose.sh

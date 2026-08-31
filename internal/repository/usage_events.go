@@ -11,7 +11,7 @@ import (
 )
 
 // Request Event Log Tab：先按列表条件统计总数，再加载当前页和筛选项。
-func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
+func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageEventListFilter) (*dto.UsageEventsPageRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
@@ -27,7 +27,7 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 	}
 
 	// 第二步：model 筛选项只跟随时间窗口，不跟随当前列表筛选。
-	modelOptions, err := listUsageEventModelFilterOptions(db, filter)
+	modelOptions, err := listUsageEventModelFilterOptions(db, filter.UsageTimeScope)
 	if err != nil {
 		return nil, err
 	}
@@ -37,9 +37,6 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 		page = 1
 	}
 	pageSize := filter.PageSize
-	if pageSize <= 0 {
-		pageSize = filter.Limit
-	}
 	if pageSize <= 0 {
 		pageSize = dto.DefaultUsageEventsLimit
 	}
@@ -82,9 +79,11 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 			TotalTokens:     event.TotalTokens,
 		})
 	}
-	totalPages := 0
+	totalPages := 1
 	if totalCount > 0 {
 		totalPages = int((totalCount + int64(pageSize) - 1) / int64(pageSize))
+	} else {
+		page = 1
 	}
 	return &dto.UsageEventsPageRecord{Events: rows, Models: modelOptions, TotalCount: totalCount, Page: page, PageSize: pageSize, TotalPages: totalPages}, nil
 }
@@ -102,7 +101,8 @@ func usageEventAPIKeyIdentity(event entities.UsageEvent) string {
 	if apiGroupKey := strings.TrimSpace(event.APIGroupKey); strings.HasPrefix(apiGroupKey, "sk-") {
 		return apiGroupKey
 	}
-	if strings.TrimSpace(event.AuthType) == "apikey" {
+	apiKeyName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
+	if strings.TrimSpace(event.AuthType) == apiKeyName {
 		if source := strings.TrimSpace(event.Source); strings.HasPrefix(source, "sk-") {
 			return source
 		}
@@ -111,7 +111,7 @@ func usageEventAPIKeyIdentity(event entities.UsageEvent) string {
 }
 
 // Request Event Log Filter Options：只按时间窗口收集 model 候选值。
-func ListUsageEventFilterOptionsWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
+func ListUsageEventFilterOptionsWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
@@ -123,7 +123,7 @@ func ListUsageEventFilterOptionsWithFilter(ctx context.Context, db *gorm.DB, fil
 	return &dto.UsageEventFilterOptionsRecord{Models: models}, nil
 }
 
-func listUsageEventModelFilterOptions(db *gorm.DB, filter dto.UsageQueryFilter) ([]string, error) {
+func listUsageEventModelFilterOptions(db *gorm.DB, filter dto.UsageTimeScope) ([]string, error) {
 	// 第一步：model 候选值只来自 usage_events，并且只套用时间窗口。
 	query := applyUsageEventFilterOptionsQuery(queryUsageEvents(db), filter)
 
@@ -140,14 +140,14 @@ func queryUsageEvents(db *gorm.DB) *gorm.DB {
 }
 
 // Request Event Log 筛选项第一步：应用时间窗口和 provider scope，不叠加当前列表筛选。
-func applyUsageEventFilterOptionsQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
+func applyUsageEventFilterOptionsQuery(query *gorm.DB, filter dto.UsageTimeScope) *gorm.DB {
 	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
 }
 
 // Request Event Log 列表第一步：在时间窗口和 provider scope 上叠加 model/source/auth_index/result。
-func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageQueryFilter) *gorm.DB {
-	query = applyUsageQueryWindow(query, filter)
-	query = applyUsageProviderFilter(query, filter)
+func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
+	query = applyUsageQueryWindow(query, filter.UsageTimeScope)
+	query = applyUsageProviderFilter(query, filter.UsageTimeScope)
 	if model := strings.TrimSpace(filter.Model); model != "" {
 		query = query.Where("TRIM(model) = ?", model)
 	}

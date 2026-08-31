@@ -15,7 +15,7 @@ func TestUsageReaderListUsageEventsHonorsCancelledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := NewUsageReader(db).ListUsageEvents(ctx, dto.UsageQueryFilter{Page: 1, PageSize: 10})
+	_, err := NewUsageReader(db).ListUsageEvents(ctx, dto.UsageEventListFilter{Page: 1, PageSize: 10})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -28,7 +28,7 @@ func TestAnalyticsReaderGetAnalyticsSummaryHonorsCancelledContext(t *testing.T) 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := NewAnalyticsReader(db).GetAnalyticsSummary(ctx, dto.UsageQueryFilter{Range: "24h", StartTime: &start, EndTime: &end, FixedWindowEnd: &end})
+	_, err := NewAnalyticsReader(db).GetAnalyticsSummary(ctx, dto.AnalyticsFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end}, Range: "24h", FixedWindowEnd: &end})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}

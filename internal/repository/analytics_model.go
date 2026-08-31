@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsModelBreakdown, error) {
+func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dto.AnalyticsModelBreakdown, error) {
 	source := analyticsEventsAggregateSource()
 	var rows []analyticsModelAggregateRow
 	if err := analyticsEventsWithPricingQuery(db, filter).
@@ -47,40 +47,6 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.UsageQueryFilter) ([]d
 	return breakdown, nil
 }
 
-func buildAnalyticsProviderOptions(db *gorm.DB, filter dto.UsageQueryFilter) ([]dto.AnalyticsProviderOption, error) {
-	source := analyticsEventsAggregateSource()
-	var rows []analyticsProviderOptionRow
-	if err := analyticsEventsWithPricingQuery(db, filter).
-		Select(`
-			TRIM(usage_events.provider) AS provider,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
-		Where("TRIM(usage_events.provider) <> ''").
-		Group("TRIM(usage_events.provider)").
-		Order("total_cost DESC").
-		Order(analyticsTotalTokensDescOrder(source)).
-		Order("provider ASC").
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("build analytics provider options: %w", err)
-	}
-
-	options := make([]dto.AnalyticsProviderOption, 0, len(rows))
-	for _, row := range rows {
-		costAvailable, costStatus := analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
-		options = append(options, dto.AnalyticsProviderOption{
-			Provider:      row.Provider,
-			RequestCount:  row.RequestCount,
-			TotalTokens:   row.TotalTokens,
-			TotalCost:     row.TotalCost,
-			CostAvailable: costAvailable,
-			CostStatus:    costStatus,
-		})
-	}
-	return options, nil
-}
 func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsModelBreakdown {
 	record := dto.AnalyticsModelBreakdown{
 		Model:              row.Model,
@@ -106,14 +72,15 @@ func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsMod
 	if row.LatencySampleCount > 0 {
 		record.AverageLatencyMS = float64(row.TotalLatencyMS) / float64(row.LatencySampleCount)
 	}
-	record.CostAvailable, record.CostStatus = analyticsCostAvailability(row.MissingPricingEvents, row.PricedBillableEvents)
+	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+	record.CostAvailable, record.CostStatus = cost.Available, cost.Status
 	record.CacheReadShare, record.CacheReadShareState, record.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
 		row.CachedTokens,
 		row.CacheSavings,
 		row.CacheSavingsEligibleRows,
 		row.CacheSavingsIneligibleRows,
-		record.CostStatus == dto.AnalyticsCostStatusAvailable,
+		record.CostStatus == dto.CostStatusAvailable,
 	)
 	return record
 }

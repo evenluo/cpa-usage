@@ -15,13 +15,13 @@ type RedisQueue interface {
 	PopUsage(ctx context.Context) ([]string, error)
 }
 
-func DecodeRedisUsageMessage(message string, fetchedAt time.Time) (entities.UsageEvent, json.RawMessage, error) {
+func DecodeRedisUsageMessage(message string, fallbackTimestamp time.Time) (entities.UsageEvent, json.RawMessage, error) {
 	raw := json.RawMessage(message)
 	var payload queuedUsageDetail
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return entities.UsageEvent{}, nil, fmt.Errorf("decode redis usage message: %w", err)
 	}
-	return payload.toUsageEvent(fetchedAt), raw, nil
+	return payload.toUsageEvent(fallbackTimestamp), raw, nil
 }
 
 type queuedUsageDetail struct {
@@ -44,9 +44,16 @@ type queuedUsageDetail struct {
 func normalizeRedisAuthType(value string) string {
 	trimmed := strings.ToLower(strings.TrimSpace(value))
 	if trimmed == "api_key" {
-		return "apikey"
+		trimmed = entities.UsageIdentityAuthTypeNameAPIKey
 	}
-	return trimmed
+	authType, ok := entities.ParseUsageIdentityAuthType(trimmed)
+	if !ok {
+		// UsageEvent keeps unknown CPA transport values losslessly. Identity read
+		// projections parse and explicitly exclude values they do not own.
+		return trimmed
+	}
+	canonical, _ := authType.CanonicalName()
+	return canonical
 }
 
 func trimRedisOptionalString(value *string) *string {
@@ -60,13 +67,13 @@ func trimRedisOptionalString(value *string) *string {
 	return &trimmed
 }
 
-func (d queuedUsageDetail) toUsageEvent(fetchedAt time.Time) entities.UsageEvent {
+func (d queuedUsageDetail) toUsageEvent(fallbackTimestamp time.Time) entities.UsageEvent {
 	tokens := normalizeTokens(d.Tokens)
 	apiGroupKey := firstNonEmpty(d.APIKey, d.Provider, d.Endpoint, "unknown")
 	model := firstNonEmpty(d.Model, "unknown")
 	timestamp := d.Timestamp.UTC()
 	if timestamp.IsZero() {
-		timestamp = fetchedAt.UTC()
+		timestamp = fallbackTimestamp.UTC()
 	}
 	source := strings.TrimSpace(d.Source)
 	authIndex := strings.TrimSpace(d.AuthIndex)

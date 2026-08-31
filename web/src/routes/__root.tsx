@@ -1,47 +1,44 @@
 import { createRootRoute, Outlet, useLocation } from "@tanstack/react-router"
 import App from "@/App"
+import { ProtectedSessionShell } from "@/components/layout/protected-session-shell"
 import { useAuth } from "@/hooks/useAuth"
 import { appBasePath } from "@/lib/api"
-import { useEffect } from "react"
+import { useCallback } from "react"
 
 export const Route = createRootRoute({
   component: RootComponent,
 })
 
 function RootComponent() {
-  const { data: auth, isLoading } = useAuth()
+  const { data: auth, isLoading, error, isFetching, refetch } = useAuth()
   const location = useLocation()
   const isLoginPage = location.pathname === "/login"
+  const redirectToLogin = useCallback(() => {
+    window.location.assign(`${appBasePath()}/login`)
+  }, [])
 
-  useEffect(() => {
-    if (!isLoading && !auth?.authenticated && !isLoginPage) {
-      window.location.assign(`${appBasePath()}/login`)
-    }
-  }, [auth?.authenticated, isLoading, isLoginPage])
-
-  if (isLoading) {
+  if (isLoginPage) {
     return (
       <App>
-        <div className="flex min-h-[80vh] items-center justify-center text-muted-foreground">
-          Checking session...
-        </div>
-      </App>
-    )
-  }
-
-  if (!auth?.authenticated && !isLoginPage) {
-    return (
-      <App>
-        <div className="flex min-h-[80vh] items-center justify-center text-muted-foreground">
-          Redirecting to sign in...
-        </div>
+        <Outlet />
       </App>
     )
   }
 
   return (
     <App>
-      <Outlet />
+      <ProtectedSessionShell
+        session={auth}
+        isLoading={isLoading}
+        error={error}
+        isRetrying={isFetching}
+        onRetry={() => {
+          void refetch()
+        }}
+        onUnauthenticated={redirectToLogin}
+      >
+        <Outlet />
+      </ProtectedSessionShell>
     </App>
   )
 }

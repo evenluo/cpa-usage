@@ -17,22 +17,22 @@ func NewUsageReader(db *gorm.DB) UsageReader {
 	return UsageReader{db: db}
 }
 
-func (r UsageReader) GetUsageOverview(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
+func (r UsageReader) GetUsageOverview(ctx context.Context, filter dto.UsageOverviewFilter) (*dto.UsageOverviewRecord, error) {
 	return BuildUsageOverviewWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) GetRequestHealth(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+func (r UsageReader) GetRequestHealth(ctx context.Context, filter dto.UsageOverviewFilter) (*dto.UsageOverviewHealthRecord, error) {
 	return BuildUsageRequestHealthWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) ListUsageEvents(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
+func (r UsageReader) ListUsageEvents(ctx context.Context, filter dto.UsageEventListFilter) (*dto.UsageEventsPageRecord, error) {
 	return ListUsageEventsWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) ListUsageEventFilterOptions(ctx context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
+func (r UsageReader) ListUsageEventFilterOptions(ctx context.Context, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	return ListUsageEventFilterOptionsWithFilter(ctx, r.db, filter)
 }
 
-func (r UsageReader) GetUsageAnalysis(ctx context.Context, filter dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+func (r UsageReader) GetUsageAnalysis(ctx context.Context, filter dto.UsageTimeScope) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
 	return ListUsageAnalysisWithFilter(ctx, r.db, filter)
 }

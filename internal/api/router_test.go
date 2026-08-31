@@ -275,6 +275,22 @@ func TestManualSyncReturnsConflictWhenAlreadyRunning(t *testing.T) {
 	}
 }
 
+func TestManualSyncReturnsUnavailableDuringShutdown(t *testing.T) {
+	syncer := &syncStatusStub{err: poller.ErrSyncUnavailable}
+	router := NewRouter(nil, syncer, nil, nil, AuthConfig{}, nil, "", OptionalProviders{})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/sync", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status 503, got %d", resp.Code)
+	}
+	if body := resp.Body.String(); !contains(body, `"error":"sync unavailable"`) {
+		t.Fatalf("unexpected response body: %s", body)
+	}
+}
+
 func TestManualSyncReturnsWarningsAsError(t *testing.T) {
 	syncer := &syncStatusStub{
 		status: poller.Status{LastStatus: "completed_with_warnings", LastWarning: "metadata unavailable"},

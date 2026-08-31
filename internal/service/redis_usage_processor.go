@@ -37,13 +37,13 @@ func (p redisUsageProcessor) process(ctx context.Context, now time.Time) (*servi
 }
 
 // processRows 从已落库原始消息解码并写入事件；坏消息标记为 decode_failed，不阻塞同批其它数据。
-func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entities.RedisUsageInbox, fetchedAt time.Time) (*servicedto.RedisBatchSyncResult, error) {
+func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entities.RedisUsageInbox, processedAt time.Time) (*servicedto.RedisBatchSyncResult, error) {
 	slog.Debug("redis usage inbox processing started", "row_count", len(inboxRows))
 	validRows := make([]entities.RedisUsageInbox, 0, len(inboxRows))
 	events := make([]entities.UsageEvent, 0, len(inboxRows))
 	decodeErrs := make([]error, 0)
 	for _, row := range inboxRows {
-		event, _, decodeErr := DecodeRedisUsageMessage(row.RawMessage, fetchedAt)
+		event, decodeErr := decodeRedisUsageInboxRow(row)
 		if decodeErr != nil {
 			if markErr := repository.MarkRedisUsageInboxDecodeFailed(p.db, row.ID, decodeErr); markErr != nil {
 				return &servicedto.RedisBatchSyncResult{Status: "failed"}, fmt.Errorf("mark redis usage inbox decode failed: %w", markErr)
@@ -84,7 +84,7 @@ func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entiti
 			UsageEventKey: events[index].EventKey,
 		})
 	}
-	if markErr := repository.MarkRedisUsageInboxProcessedBatch(p.db, marks, fetchedAt); markErr != nil {
+	if markErr := repository.MarkRedisUsageInboxProcessedBatch(p.db, marks, processedAt); markErr != nil {
 		return &servicedto.RedisBatchSyncResult{Status: "failed"}, fmt.Errorf("mark redis usage inbox processed: %w", markErr)
 	}
 	slog.Debug("redis usage inbox rows processed",
@@ -109,6 +109,14 @@ func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entiti
 		InsertedEvents: result.InsertedEvents,
 		DedupedEvents:  result.DedupedEvents,
 	}, returnErr
+}
+
+func decodeRedisUsageInboxRow(row entities.RedisUsageInbox) (entities.UsageEvent, error) {
+	if row.PoppedAt.IsZero() {
+		return entities.UsageEvent{}, fmt.Errorf("redis usage inbox persisted invariant failed: popped_at is zero for row %d", row.ID)
+	}
+	event, _, err := DecodeRedisUsageMessage(row.RawMessage, row.PoppedAt)
+	return event, err
 }
 
 func (p redisUsageProcessor) persistEvents(ctx context.Context, events []entities.UsageEvent) (*servicedto.SyncResult, error) {

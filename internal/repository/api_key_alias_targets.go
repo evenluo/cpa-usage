@@ -11,24 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type apiKeyAliasTargetScanRow struct {
-	Identity             string
-	Provider             string
-	RequestCount         int64
-	SuccessCount         int64
-	FailureCount         int64
-	InputTokens          int64
-	OutputTokens         int64
-	ReasoningTokens      int64
-	CachedTokens         int64
-	TotalTokens          int64
-	TotalCost            float64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
-	FirstUsedAt          string
-	LastUsedAt           string
-}
-
 type ListAPIKeyAliasTargetsPageRequest struct {
 	Page     int
 	PageSize int
@@ -59,27 +41,9 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 	}
 	offset := (page - 1) * pageSize
 
-	var rows []apiKeyAliasTargetScanRow
+	var rows []apiKeyAggregateFactRow
 	source := analyticsEventsAggregateSource()
-	if err := analyticsEventsWithPricingQuery(db.WithContext(ctx), dto.UsageQueryFilter{}).
-		Select(`
-			` + identityExpr + ` AS identity,
-			COALESCE(MIN(NULLIF(TRIM(usage_events.provider), '')), '') AS provider,
-			COUNT(*) AS request_count,
-			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
-			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokensExpr) + `), 0) AS input_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokensExpr) + `), 0) AS output_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
-			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cachedTokensExpr) + `), 0) AS cached_tokens,
-			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
-			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
-			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
-			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events,
-			MIN(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS first_used_at,
-			MAX(strftime('%Y-%m-%dT%H:%M:%SZ', usage_events.timestamp)) AS last_used_at`).
-		Where(identityExpr + " <> ''").
-		Group(identityExpr).
+	if err := apiKeyAggregateFactsQuery(db.WithContext(ctx), dto.UsageTimeScope{}, source).
 		Order("total_cost DESC").
 		Order(analyticsTotalTokensDescOrder(source)).
 		Order("last_used_at DESC").
@@ -91,22 +55,24 @@ func ListAPIKeyAliasTargetsPage(ctx context.Context, db *gorm.DB, request ListAP
 
 	result := make([]dto.APIKeyAliasTargetRecord, 0, len(rows))
 	for _, row := range rows {
+		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		result = append(result, dto.APIKeyAliasTargetRecord{
-			Identity:             row.Identity,
-			Provider:             row.Provider,
-			RequestCount:         row.RequestCount,
-			SuccessCount:         row.SuccessCount,
-			FailureCount:         row.FailureCount,
-			InputTokens:          row.InputTokens,
-			OutputTokens:         row.OutputTokens,
-			ReasoningTokens:      row.ReasoningTokens,
-			CachedTokens:         row.CachedTokens,
-			TotalTokens:          row.TotalTokens,
-			TotalCost:            row.TotalCost,
-			MissingPricingEvents: row.MissingPricingEvents,
-			PricedBillableEvents: row.PricedBillableEvents,
-			FirstUsedAt:          parseAnalyticsTimestamp(row.FirstUsedAt),
-			LastUsedAt:           parseAnalyticsTimestamp(row.LastUsedAt),
+			Identity:        row.Identity,
+			Alias:           row.Alias,
+			Provider:        row.Provider,
+			RequestCount:    row.RequestCount,
+			SuccessCount:    row.SuccessCount,
+			FailureCount:    row.FailureCount,
+			InputTokens:     row.InputTokens,
+			OutputTokens:    row.OutputTokens,
+			ReasoningTokens: row.ReasoningTokens,
+			CachedTokens:    row.CachedTokens,
+			TotalTokens:     row.TotalTokens,
+			TotalCost:       row.TotalCost,
+			CostAvailable:   cost.Available,
+			CostStatus:      cost.Status,
+			FirstUsedAt:     parseAnalyticsTimestamp(row.FirstUsedAt),
+			LastUsedAt:      parseAnalyticsTimestamp(row.LastUsedAt),
 		})
 	}
 

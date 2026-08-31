@@ -9,7 +9,6 @@ import (
 	"cpa-usage/internal/redact"
 	repodto "cpa-usage/internal/repository/dto"
 	"cpa-usage/internal/service"
-	servicedto "cpa-usage/internal/service/dto"
 
 	"github.com/gin-gonic/gin"
 )
@@ -66,7 +65,12 @@ func registerUsageEventsRoute(
 	keyAliasProvider service.KeyAliasProvider,
 ) {
 	router.GET("/usage/events/filters/models", func(c *gin.Context) {
-		models, err := loadUsageEventModelFilterOptions(c, usageProvider)
+		filter, err := parseUsageTimeFilterQuery(c.Request, time.Now().UTC())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		models, err := loadUsageEventModelFilterOptions(c, usageProvider, filter.repositoryScope())
 		if err != nil {
 			writeInternalError(c, "list usage event model filter options failed", err)
 			return
@@ -85,11 +89,12 @@ func registerUsageEventsRoute(
 
 	router.GET("/usage/events", func(c *gin.Context) {
 		if usageProvider == nil {
-			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: 1, PageSize: servicedto.DefaultUsageEventsLimit})
+			page, totalPages := paginationMetadata(0, 1, repodto.DefaultUsageEventsLimit)
+			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: page, PageSize: repodto.DefaultUsageEventsLimit, TotalPages: totalPages})
 			return
 		}
 
-		filter, err := parseUsageFilterQuery(c.Request, time.Now().UTC())
+		filter, err := parseUsageEventListFilterQuery(c.Request, time.Now().UTC())
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -99,7 +104,7 @@ func registerUsageEventsRoute(
 			return
 		}
 
-		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter.EventListQueryFilter())
+		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter.repositoryFilter())
 		if err != nil {
 			writeInternalError(c, "list usage events failed", err)
 			return
@@ -116,12 +121,13 @@ func registerUsageEventsRoute(
 			writeInternalError(c, "load usage event api key aliases failed", err)
 			return
 		}
+		page, totalPages := paginationMetadata(rows.TotalCount, rows.Page, rows.PageSize)
 		c.JSON(http.StatusOK, usageEventsResponse{
 			Events:     buildUsageEventsPayload(rows.Events, resolver, apiKeyAliases),
 			TotalCount: rows.TotalCount,
-			Page:       rows.Page,
+			Page:       page,
 			PageSize:   rows.PageSize,
-			TotalPages: rows.TotalPages,
+			TotalPages: totalPages,
 		})
 	})
 }
@@ -151,7 +157,7 @@ func loadUsageEventAPIKeyAliases(c *gin.Context, keyAliasProvider service.KeyAli
 }
 
 // Source 下拉提交的是 usage identity，进入仓储前转换成 auth_index 查询。
-func applyUsageEventsSourceFilter(filter *servicedto.UsageFilter) error {
+func applyUsageEventsSourceFilter(filter *usageEventListFilter) error {
 	if filter == nil {
 		return nil
 	}
@@ -213,21 +219,27 @@ func usageEventPublicSource(row repodto.UsageEventRecord, identity resolvedUsage
 		return identity.DisplayName, false
 	}
 	isDelete := strings.TrimSpace(row.AuthIndex) != ""
-	switch strings.TrimSpace(row.AuthType) {
-	case "apikey":
+	authType, ok := entities.ParseUsageIdentityAuthType(row.AuthType)
+	if !ok {
+		// Preserve the existing request-evidence projection for unknown CPA
+		// transport values without guessing a UsageIdentityAuthType.
 		return strings.TrimSpace(row.Provider), isDelete
-	case "oauth":
+	}
+	switch authType {
+	case entities.UsageIdentityAuthTypeAIProvider:
+		return strings.TrimSpace(row.Provider), isDelete
+	case entities.UsageIdentityAuthTypeAuthFile:
 		return strings.TrimSpace(row.Source), isDelete
 	default:
 		return strings.TrimSpace(row.Provider), isDelete
 	}
 }
 
-func loadUsageEventModelFilterOptions(c *gin.Context, usageProvider UsageProvider) ([]string, error) {
+func loadUsageEventModelFilterOptions(c *gin.Context, usageProvider UsageProvider, scope repodto.UsageTimeScope) ([]string, error) {
 	if usageProvider == nil {
 		return []string{}, nil
 	}
-	options, err := usageProvider.ListUsageEventFilterOptions(c.Request.Context(), repodto.UsageQueryFilter{})
+	options, err := usageProvider.ListUsageEventFilterOptions(c.Request.Context(), scope)
 	if err != nil {
 		return nil, err
 	}

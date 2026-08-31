@@ -9,24 +9,29 @@ import { DEFAULT_TIME_RANGE, SELECTED_TIME_RANGE_STORAGE_KEY } from "./view-mode
 
 vi.mock("@/hooks/useAnalytics", () => ({
   useAnalyticsCore: vi.fn(() => ({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined })),
-  useAnalyticsHeatmap: vi.fn(() => ({ data: undefined, isLoading: false, error: undefined })),
+  useAnalyticsHeatmap: vi.fn(() => ({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined })),
 }))
 vi.mock("@/hooks/useEvents", () => ({
   useEvents: vi.fn(() => ({ data: undefined, isLoading: false, isFetching: false, refetch: vi.fn(), error: undefined })),
 }))
 vi.mock("@/hooks/useRequestHealth", () => ({
-  useRequestHealth: vi.fn(() => ({ data: undefined, isLoading: false, error: undefined })),
+  useRequestHealth: vi.fn(() => ({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined })),
 }))
 vi.mock("./refresh", () => ({
   useVisibilityRefresh: vi.fn(),
 }))
 
-import { useAnalyticsCore } from "@/hooks/useAnalytics"
+import { useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useEvents } from "@/hooks/useEvents"
+import { useRequestHealth } from "@/hooks/useRequestHealth"
 
 describe("stored time range helpers", () => {
   beforeEach(() => {
     window.localStorage.clear()
+    vi.mocked(useAnalyticsCore).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
+    vi.mocked(useAnalyticsHeatmap).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
+    vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, isFetching: false, refetch: vi.fn(), error: undefined } as never)
+    vi.mocked(useRequestHealth).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
   })
 
   it("defaults to the dashboard default when nothing is stored", () => {
@@ -148,5 +153,29 @@ describe("useUsageDashboard", () => {
       expect(refetchCore).toHaveBeenCalledTimes(1)
       expect(refetchEvidence).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it("exposes independent retry commands for every dashboard read", () => {
+    const retryCore = vi.fn()
+    const retryHeatmap = vi.fn()
+    const retryEvidence = vi.fn()
+    const retryHealth = vi.fn()
+    vi.mocked(useAnalyticsCore).mockReturnValue({ data: undefined, isLoading: false, refetch: retryCore, error: new Error("core") } as never)
+    vi.mocked(useAnalyticsHeatmap).mockReturnValue({ data: undefined, isLoading: false, refetch: retryHeatmap, error: new Error("heatmap") } as never)
+    vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, isFetching: false, refetch: retryEvidence, error: new Error("evidence") } as never)
+    vi.mocked(useRequestHealth).mockReturnValue({ data: undefined, isLoading: false, refetch: retryHealth, error: new Error("health") } as never)
+
+    const { result } = renderHook(() => useUsageDashboard())
+    act(() => {
+      result.current.retryCore()
+      result.current.retryHeatmap()
+      result.current.retryRequestEvidence()
+      result.current.retryRequestHealth()
+    })
+
+    expect(retryCore).toHaveBeenCalledTimes(1)
+    expect(retryHeatmap).toHaveBeenCalledTimes(1)
+    expect(retryEvidence).toHaveBeenCalledTimes(1)
+    expect(retryHealth).toHaveBeenCalledTimes(1)
   })
 })

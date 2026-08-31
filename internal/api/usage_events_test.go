@@ -17,20 +17,21 @@ type usageEventsStub struct {
 	eventsPage         *dto.UsageEventsPageRecord
 	eventFilterOptions *dto.UsageEventFilterOptionsRecord
 	err                error
-	lastFilter         dto.UsageQueryFilter
+	lastFilter         dto.UsageEventListFilter
+	lastOptionsFilter  dto.UsageTimeScope
 	filterCalls        int
 	filterOptionCalls  int
 }
 
-func (s *usageEventsStub) GetUsageOverview(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewRecord, error) {
+func (s *usageEventsStub) GetUsageOverview(context.Context, dto.UsageOverviewFilter) (*dto.UsageOverviewRecord, error) {
 	return nil, nil
 }
 
-func (s *usageEventsStub) GetRequestHealth(context.Context, dto.UsageQueryFilter) (*dto.UsageOverviewHealthRecord, error) {
+func (s *usageEventsStub) GetRequestHealth(context.Context, dto.UsageOverviewFilter) (*dto.UsageOverviewHealthRecord, error) {
 	return nil, nil
 }
 
-func (s *usageEventsStub) ListUsageEvents(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventsPageRecord, error) {
+func (s *usageEventsStub) ListUsageEvents(_ context.Context, filter dto.UsageEventListFilter) (*dto.UsageEventsPageRecord, error) {
 	s.lastFilter = filter
 	s.filterCalls++
 	if s.eventsPage != nil {
@@ -39,8 +40,8 @@ func (s *usageEventsStub) ListUsageEvents(_ context.Context, filter dto.UsageQue
 	return &dto.UsageEventsPageRecord{Events: s.events, TotalCount: int64(len(s.events)), Page: 1, PageSize: dto.DefaultUsageEventsLimit, TotalPages: 1}, s.err
 }
 
-func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter dto.UsageQueryFilter) (*dto.UsageEventFilterOptionsRecord, error) {
-	s.lastFilter = filter
+func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
+	s.lastOptionsFilter = filter
 	s.filterOptionCalls++
 	if s.eventFilterOptions != nil {
 		return s.eventFilterOptions, s.err
@@ -48,7 +49,7 @@ func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter 
 	return &dto.UsageEventFilterOptionsRecord{}, s.err
 }
 
-func (s *usageEventsStub) GetUsageAnalysis(context.Context, dto.UsageQueryFilter) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
+func (s *usageEventsStub) GetUsageAnalysis(context.Context, dto.UsageTimeScope) ([]dto.UsageAnalysisAPIStatRecord, []dto.UsageAnalysisModelStatRecord, error) {
 	return nil, nil, s.err
 }
 
@@ -169,6 +170,17 @@ func TestUsageEventsResponseDoesNotExposeSourceKey(t *testing.T) {
 	}
 	if contains(body, `"source_key"`) {
 		t.Fatalf("expected source_key to be removed from usage event response, got %s", body)
+	}
+}
+
+func TestUsageEventPublicSourcePreservesUnknownTransportProjection(t *testing.T) {
+	source, isDelete := usageEventPublicSource(dto.UsageEventRecord{
+		AuthType:  "future_auth",
+		Provider:  "Future Provider",
+		AuthIndex: "future-index",
+	}, resolvedUsageIdentity{}, false)
+	if source != "Future Provider" || !isDelete {
+		t.Fatalf("expected unknown transport projection to preserve provider and deleted marker, got source=%q isDelete=%t", source, isDelete)
 	}
 }
 
@@ -390,8 +402,8 @@ func TestUsageEventsPassesPaginationAndAuthIndexSourceFilter(t *testing.T) {
 		t.Fatalf("expected source filter to be translated to auth_index only, got %+v", provider.lastFilter)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"page":3`) || !contains(body, `"page_size":100`) || !contains(body, `"total_count":0`) || !contains(body, `"total_pages":0`) {
-		t.Fatalf("expected response pagination metadata, got %s", body)
+	if !contains(body, `"page":1`) || !contains(body, `"page_size":100`) || !contains(body, `"total_count":0`) || !contains(body, `"total_pages":1`) {
+		t.Fatalf("expected normalized empty response pagination metadata, got %s", body)
 	}
 }
 
@@ -470,7 +482,7 @@ func TestUsageEventModelFilterOptionsReturnsStableModels(t *testing.T) {
 		Models: []string{"claude-sonnet", "gpt-5"},
 	}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/filters/models?range=24h&model=ignored&source=ignored&result=failed&page=3&page_size=20", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/filters/models?range=24h&provider=OpenAI&model=ignored&source=ignored&result=failed&page=3&page_size=20", nil)
 	resp := httptest.NewRecorder()
 
 	router.ServeHTTP(resp, req)
@@ -481,8 +493,8 @@ func TestUsageEventModelFilterOptionsReturnsStableModels(t *testing.T) {
 	if provider.filterOptionCalls != 1 || provider.filterCalls != 0 {
 		t.Fatalf("expected model filter options endpoint only, events=%d filterOptions=%d", provider.filterCalls, provider.filterOptionCalls)
 	}
-	if provider.lastFilter.Range != "" || provider.lastFilter.StartTime != nil || provider.lastFilter.EndTime != nil || provider.lastFilter.Model != "" || provider.lastFilter.Source != "" || provider.lastFilter.Result != "" || provider.lastFilter.Page != 0 || provider.lastFilter.PageSize != 0 {
-		t.Fatalf("expected model filters endpoint to ignore query filters, got %+v", provider.lastFilter)
+	if provider.lastOptionsFilter.StartTime == nil || provider.lastOptionsFilter.EndTime == nil || provider.lastOptionsFilter.Provider != "OpenAI" {
+		t.Fatalf("expected model filters endpoint to preserve the selected time scope, got %+v", provider.lastOptionsFilter)
 	}
 	body := resp.Body.String()
 	if body != `{"models":["claude-sonnet","gpt-5"]}` {

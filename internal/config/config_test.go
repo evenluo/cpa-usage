@@ -534,6 +534,21 @@ func TestLoadFromEnvRejectsNonPositiveBackupInterval(t *testing.T) {
 	}
 }
 
+func TestLoadFromEnvRejectsNonPositiveRequestTimeout(t *testing.T) {
+	for _, value := range []string{"0s", "-1s"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("CPA_BASE_URL", "http://127.0.0.1:"+cpa.ManagementRedisDefaultPort)
+			t.Setenv("CPA_MANAGEMENT_KEY", "secret")
+			t.Setenv("REQUEST_TIMEOUT", value)
+
+			_, err := LoadFromEnv()
+			if err == nil || err.Error() != "REQUEST_TIMEOUT must be positive" {
+				t.Fatalf("expected REQUEST_TIMEOUT validation error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestLoadFromEnvRejectsNegativeBackupRetentionDays(t *testing.T) {
 	t.Setenv("CPA_BASE_URL", "http://127.0.0.1:"+cpa.ManagementRedisDefaultPort)
 	t.Setenv("CPA_MANAGEMENT_KEY", "secret")

@@ -20,10 +20,21 @@ var ErrRedisQueueAuth = errors.New("redis queue auth failed")
 
 type redisQueueSyncMode string
 
+type redisQueueEffectState uint8
+
 const (
 	redisQueueSyncModeRedis redisQueueSyncMode = "redis"
 	redisQueueSyncModeHTTP  redisQueueSyncMode = "http"
+
+	redisQueueEffectNotStarted redisQueueEffectState = iota
+	redisQueueEffectMayHaveStarted
 )
+
+type redisQueuePopResult struct {
+	messages    []string
+	err         error
+	effectState redisQueueEffectState
+}
 
 type RedisQueueClient struct {
 	address       string
@@ -90,55 +101,74 @@ func (c *RedisQueueClient) PopUsage(ctx context.Context) ([]string, error) {
 	if c.batchSize <= 0 {
 		return nil, fmt.Errorf("redis queue batch size must be positive")
 	}
+	if c.timeout <= 0 {
+		return nil, fmt.Errorf("redis queue timeout must be positive")
+	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	switch c.syncMode {
 	case redisQueueSyncModeRedis:
-		return c.popUsageOverRedis(ctx)
+		result := c.popUsageOverRedis(ctx)
+		return result.messages, result.err
 	case redisQueueSyncModeHTTP:
 		return c.popUsageOverHTTP(ctx)
 	}
 
-	messages, err := c.popUsageOverRedis(ctx)
-	if err == nil {
+	result := c.popUsageOverRedis(ctx)
+	if result.err == nil {
 		c.syncMode = redisQueueSyncModeRedis
-		slog.Info("usage queue sync used redis protocol", "message_count", len(messages))
-		return messages, nil
+		slog.Info("usage queue sync used redis protocol", "message_count", len(result.messages))
+		return result.messages, nil
 	}
-	slog.Error("usage queue sync failed to use redis protocol", "redis_error", err.Error())
+	slog.Error("usage queue sync failed to use redis protocol", "redis_error", result.err.Error())
+	if errors.Is(result.err, context.Canceled) || errors.Is(result.err, context.DeadlineExceeded) {
+		return nil, fmt.Errorf("usage queue sync stopped: %w", result.err)
+	}
+	if result.effectState == redisQueueEffectMayHaveStarted {
+		return nil, fmt.Errorf("usage queue sync failed after redis queue pop may have started: %w", result.err)
+	}
 	if !c.canFallbackToHTTP() {
-		return nil, fmt.Errorf("usage queue sync failed: %w; http usage queue fallback not possible", err)
+		return nil, fmt.Errorf("usage queue sync failed: %w; http usage queue fallback not possible", result.err)
 	}
 
 	messages, fallbackErr := c.popUsageOverHTTP(ctx)
 	if fallbackErr != nil {
-		return nil, fmt.Errorf("usage queue sync failed: %w; http usage queue fallback failed: %w", err, fallbackErr)
+		return nil, fmt.Errorf("usage queue sync failed: %w; http usage queue fallback failed: %w", result.err, fallbackErr)
 	}
 	c.syncMode = redisQueueSyncModeHTTP
 	slog.Info("usage queue sync used http protocol", "message_count", len(messages))
 	return messages, nil
 }
 
-func (c *RedisQueueClient) popUsageOverRedis(ctx context.Context) ([]string, error) {
-	conn, reader, err := c.openAuthenticatedConnection(ctx)
+func (c *RedisQueueClient) popUsageOverRedis(ctx context.Context) redisQueuePopResult {
+	operationCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	conn, reader, stopCancellation, err := c.openAuthenticatedConnection(operationCtx)
 	if err != nil {
-		return nil, err
+		return redisQueuePopResult{err: err}
 	}
+	defer stopCancellation()
 	defer conn.Close()
 
+	result := redisQueuePopResult{effectState: redisQueueEffectMayHaveStarted}
 	if err := writeRESPCommand(conn, cpaManagementRedisPopCommand, c.queueKey, strconv.Itoa(c.batchSize)); err != nil {
-		return nil, fmt.Errorf("write redis queue pop command: %w", err)
+		result.err = fmt.Errorf("write redis queue pop command: %w", connectionContextError(operationCtx, err))
+		return result
 	}
 	popResponse, err := readRESPValue(reader)
 	if err != nil {
-		return nil, fmt.Errorf("read redis queue pop response: %w", err)
+		result.err = fmt.Errorf("read redis queue pop response: %w", connectionContextError(operationCtx, err))
+		return result
 	}
 	if popResponse.err != "" {
-		return nil, fmt.Errorf("redis queue pop failed: %s", popResponse.err)
+		result.err = fmt.Errorf("redis queue pop failed: %s", popResponse.err)
+		return result
 	}
-	return popResponse.strings(), nil
+	result.messages = popResponse.strings()
+	return result
 }
 
 func (c *RedisQueueClient) canFallbackToHTTP() bool {
@@ -164,40 +194,54 @@ func (c *RedisQueueClient) popUsageOverHTTP(ctx context.Context) ([]string, erro
 	return messages, nil
 }
 
-func (c *RedisQueueClient) openAuthenticatedConnection(ctx context.Context) (net.Conn, *bufio.Reader, error) {
+func (c *RedisQueueClient) openAuthenticatedConnection(ctx context.Context) (net.Conn, *bufio.Reader, func(), error) {
 	if c == nil {
-		return nil, nil, fmt.Errorf("redis queue client is nil")
+		return nil, nil, nil, fmt.Errorf("redis queue client is nil")
 	}
 	if c.address == "" {
-		return nil, nil, fmt.Errorf("redis queue address is required")
+		return nil, nil, nil, fmt.Errorf("redis queue address is required")
 	}
 	if c.managementKey == "" {
-		return nil, nil, fmt.Errorf("redis queue management key is required")
+		return nil, nil, nil, fmt.Errorf("redis queue management key is required")
 	}
 
 	conn, err := c.dial(ctx, cpaManagementRedisNetwork, c.address)
 	if err != nil {
-		return nil, nil, fmt.Errorf("connect redis queue: %w", err)
+		return nil, nil, nil, fmt.Errorf("connect redis queue: %w", connectionContextError(ctx, err))
 	}
-	if c.timeout > 0 {
-		_ = conn.SetDeadline(time.Now().Add(c.timeout))
+	stopContextWatch := context.AfterFunc(ctx, func() {
+		_ = conn.SetDeadline(time.Now())
+	})
+	stopCancellation := func() {
+		stopContextWatch()
+	}
+	closeConnection := func() {
+		stopCancellation()
+		_ = conn.Close()
 	}
 
 	reader := bufio.NewReader(conn)
 	if err := writeRESPCommand(conn, cpaManagementRedisAuthCommand, c.managementKey); err != nil {
-		conn.Close()
-		return nil, nil, fmt.Errorf("write redis queue auth command: %w", err)
+		closeConnection()
+		return nil, nil, nil, fmt.Errorf("write redis queue auth command: %w", connectionContextError(ctx, err))
 	}
 	authResponse, err := readRESPValue(reader)
 	if err != nil {
-		conn.Close()
-		return nil, nil, fmt.Errorf("read redis queue auth response: %w", err)
+		closeConnection()
+		return nil, nil, nil, fmt.Errorf("read redis queue auth response: %w", connectionContextError(ctx, err))
 	}
 	if authResponse.err != "" {
-		conn.Close()
-		return nil, nil, fmt.Errorf("%w: %s", ErrRedisQueueAuth, authResponse.err)
+		closeConnection()
+		return nil, nil, nil, fmt.Errorf("%w: %s", ErrRedisQueueAuth, authResponse.err)
 	}
-	return conn, reader, nil
+	return conn, reader, stopCancellation, nil
+}
+
+func connectionContextError(ctx context.Context, err error) error {
+	if contextErr := ctx.Err(); contextErr != nil {
+		return contextErr
+	}
+	return err
 }
 
 func redisQueueAddress(baseURL, redisQueueAddr string) (string, bool) {

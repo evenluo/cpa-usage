@@ -15,7 +15,7 @@ export const Route = createLazyFileRoute("/reference")({
   component: ReferencePage,
 })
 
-function ReferencePage() {
+export function ReferencePage() {
   const {
     query,
     setQuery,
@@ -27,10 +27,10 @@ function ReferencePage() {
     aliasedAPIKeys,
     aliasedAccounts,
     missingRates,
-    isAPIKeysLoading,
-    isKeysLoading,
-    isPricingLoading,
-    isAliasLoading,
+    apiKeysRead,
+    accountsRead,
+    pricingRead,
+    aliasRead,
     filteredKeys,
     editingId,
     draftAlias,
@@ -59,9 +59,9 @@ function ReferencePage() {
       </header>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <SummaryCard label="API Keys" value={apiKeyCount} caption={`${aliasedAPIKeys} aliased`} loading={isAPIKeysLoading} />
-        <SummaryCard label="Accounts" value={accountCount} caption={`${aliasedAccounts} aliased`} loading={isKeysLoading} />
-        <SummaryCard label="Missing Cost Rates" value={missingRates} caption="Models without configured rates" loading={isPricingLoading} tone={missingRates > 0 ? "amber" : "green"} />
+        <SummaryCard label="API Keys" value={apiKeyCount} caption={aliasedAPIKeys === undefined ? undefined : `${aliasedAPIKeys} aliased`} loading={apiKeysRead.status === "loading"} error={apiKeysRead.status === "error"} refreshError={Boolean(apiKeysRead.refreshError)} onRetry={apiKeysRead.retry} />
+        <SummaryCard label="Accounts" value={accountCount} caption={aliasedAccounts === undefined ? undefined : `${aliasedAccounts} aliased`} loading={accountsRead.status === "loading"} error={accountsRead.status === "error"} refreshError={Boolean(accountsRead.refreshError)} onRetry={accountsRead.retry} />
+        <SummaryCard label="Missing Cost Rates" value={missingRates} caption={missingRates === undefined ? undefined : "Models without configured rates"} loading={pricingRead.status === "loading"} error={pricingRead.status === "error"} refreshError={Boolean(pricingRead.refreshError)} onRetry={pricingRead.retry} tone={(missingRates ?? 0) > 0 ? "amber" : "green"} />
       </div>
 
       <Card>
@@ -104,13 +104,24 @@ function ReferencePage() {
           </div>
         </CardHeader>
         <CardContent>
+          {aliasRead.refreshError ? (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <span>Key alias refresh failed; showing the last complete result.</span>
+              <Button type="button" size="sm" variant="outline" onClick={aliasRead.retry}>Retry</Button>
+            </div>
+          ) : null}
           <div className="space-y-2">
-            {isAliasLoading ? (
+            {aliasRead.status === "loading" ? (
               <>
                 <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
               </>
+            ) : aliasRead.status === "error" ? (
+              <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm text-red-600">
+                <span>Failed to load {keyAliasScope === "api-key" ? "API keys" : "accounts"}</span>
+                <Button type="button" size="sm" variant="outline" onClick={aliasRead.retry}>Retry key aliases</Button>
+              </div>
             ) : filteredKeys.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 No keys found
@@ -203,12 +214,23 @@ function ReferencePage() {
           <CardDescription>Model unit rates used by Cost calculations</CardDescription>
         </CardHeader>
         <CardContent>
+          {pricingRead.refreshError ? (
+            <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <span>Cost rate refresh failed; showing the last complete result.</span>
+              <Button type="button" size="sm" variant="outline" onClick={pricingRead.retry}>Retry</Button>
+            </div>
+          ) : null}
           <div className="space-y-2">
-            {isPricingLoading ? (
+            {pricingRead.status === "loading" ? (
               <>
                 <Skeleton className="h-16 w-full" />
                 <Skeleton className="h-16 w-full" />
               </>
+            ) : pricingRead.status === "error" ? (
+              <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm text-red-600">
+                <span>Failed to load cost rates</span>
+                <Button type="button" size="sm" variant="outline" onClick={pricingRead.retry}>Retry cost rates</Button>
+              </div>
             ) : models.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
                 No models available for cost rates

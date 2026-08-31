@@ -90,6 +90,16 @@ func TestDecodeRedisUsageMessageFallsBackToProviderWhenAPIKeyIsBlank(t *testing.
 	}
 }
 
+func TestDecodeRedisUsageMessagePreservesUnknownAuthType(t *testing.T) {
+	event, _, err := DecodeRedisUsageMessage(`{"auth_type":"  Future_Auth  ","request_id":"req-future"}`, time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("DecodeRedisUsageMessage returned error: %v", err)
+	}
+	if event.AuthType != "future_auth" {
+		t.Fatalf("expected unknown CPA auth type to remain lossless after transport normalization, got %q", event.AuthType)
+	}
+}
+
 func TestDecodeRedisUsageMessageReportsOnlyMessageError(t *testing.T) {
 	_, _, err := DecodeRedisUsageMessage(`{bad-json}`, time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC))
 	if err == nil || !strings.Contains(err.Error(), "decode redis usage message") {
