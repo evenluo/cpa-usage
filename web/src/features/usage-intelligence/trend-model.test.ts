@@ -102,7 +102,7 @@ describe("buildTrendSeriesConfig", () => {
 
     expect(config.primaryKey).toBe("tokens")
     expect(config.overlayKey).toBe("requests")
-    expect(config.overlayName).toBe("Requests")
+    expect(config.overlayName).toBe("Attempts")
     expect(config.tokenSeries.map((series) => series.key)).toEqual([
       "inputTokens",
       "outputTokens",
@@ -115,7 +115,7 @@ describe("buildTrendSeriesConfig", () => {
     const config = buildTrendSeriesConfig("requests-token")
 
     expect(config.primaryKey).toBe("requests")
-    expect(config.primaryName).toBe("Requests")
+    expect(config.primaryName).toBe("Attempts")
     expect(config.gradientId).toBe("requestGradient")
   })
 })

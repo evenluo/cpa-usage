@@ -3,7 +3,7 @@ ENV_FILE ?= .env
 
 .DEFAULT_GOAL := help
 
-.PHONY: help dev-app dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend verify-docker render-dokploy-compose verify-dokploy-compose-static verify-dokploy-compose test-dokploy-release verify-dokploy-release dokploy-migrate-cpa-usage-compose
+.PHONY: help dev-app dev-backend dev-frontend test-backend test-frontend install-playwright test-frontend-mobile fmt-backend vet-backend build-backend build-frontend lint-frontend typecheck-frontend ensure-frontend-embed-dir verify verify-backend verify-frontend benchmark-cpa-data-surface verify-docker render-dokploy-compose verify-dokploy-compose-static verify-dokploy-compose test-dokploy-release verify-dokploy-release dokploy-migrate-cpa-usage-compose
 
 help:
 	@printf '%s\n' \
@@ -16,6 +16,7 @@ help:
 		'  make verify          Run backend and frontend verification' \
 		'  make verify-backend  Run backend tests and vet' \
 		'  make verify-frontend Run frontend lint, tests, typecheck, and mobile E2E' \
+		'  make benchmark-cpa-data-surface  Run manual synthetic performance evidence' \
 		'  make verify-docker   Build the deployment image' \
 		'  make verify-dokploy-release  Run canonical local release proof'
 
@@ -79,6 +80,16 @@ verify-frontend:
 	$(MAKE) lint-frontend
 	$(MAKE) test-frontend
 	$(MAKE) test-frontend-mobile
+
+# Manual review evidence only. Keep timing comparisons on the same idle host;
+# this target is intentionally not part of verify or CI.
+benchmark-cpa-data-surface:
+	GOMAXPROCS=1 go test ./internal/service -run '^$$' -bench='^(BenchmarkReplaySafeRedisUsageMessage|BenchmarkRedisUsageInboxBatchEndToEnd)$$' -benchmem -count=3 -benchtime=1x
+	GOMAXPROCS=1 go test ./internal/repository -run '^TestRequestEvidenceQueryPlansAvoidFullScans$$' -bench='^(BenchmarkListUsageEventsHighCardinalityCombinedFilters|BenchmarkInsertUsageEventsAttemptAmplification)$$' -benchmem -count=3 -benchtime=1x
+	GOMAXPROCS=1 go test ./internal/repository/migration -run '^$$' -bench='^BenchmarkAddUsageAttemptFieldsMigrationHighCardinality$$' -benchmem -count=3 -benchtime=1x
+	npm --prefix $(WEB_DIR) run bench:live-capacity
+	npm --prefix $(WEB_DIR) run perf:bundle
+	$(MAKE) ensure-frontend-embed-dir
 
 verify-docker:
 	docker build -t cpa-usage:ci .

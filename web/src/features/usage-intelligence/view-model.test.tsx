@@ -203,9 +203,42 @@ describe("Usage Intelligence view model", () => {
 
   it("derives the Cache KPI caption from the cache read share state", () => {
     expect(getCacheReadShareCaption(undefined)).toBeUndefined()
-    expect(getCacheReadShareCaption("available")).toBe("Cache Read Share")
-    expect(getCacheReadShareCaption("no_cache_data")).toBe("no cache data")
-    expect(getCacheReadShareCaption("no_prompt_input")).toBe("no prompt input")
+    expect(getCacheReadShareCaption("available")).toBe("Exact aggregate unavailable")
+    expect(getCacheReadShareCaption("no_cache_data")).toBe("Exact aggregate unavailable")
+    expect(getCacheReadShareCaption("no_prompt_input")).toBe("Exact aggregate unavailable")
+  })
+
+  it("hides the semantically incomplete cache insight without hiding other insights", () => {
+    const analytics = structuredClone(analyticsSummaryFixture) as AnalyticsCoreResponse
+    analytics.insights = [
+      {
+        type: "cache_efficiency",
+        severity: "blue",
+        title: "Cache Read Share",
+        detail: "Legacy generic cache projection",
+        subject: "all models",
+        metric_label: "Cache Read Share",
+        metric_value: 25,
+        count: 1,
+        cost_status: "available",
+      },
+      {
+        type: "metric_completeness",
+        severity: "amber",
+        title: "Pricing Missing",
+        detail: "One model has no cost rate.",
+        subject: "1 model",
+        metric_label: "Cost status",
+        metric_value: 1,
+        count: 1,
+        cost_status: "partial",
+      },
+    ]
+
+    const viewModel = buildUsageDashboardViewModel({ analytics, leaderboardScope: "account" })
+
+    expect(viewModel.insights.map((insight) => insight.type)).toEqual(["metric_completeness"])
+    expect(viewModel.hasInsights).toBe(true)
   })
 
   it("uses Cost for Model Mix only when the summary Cost status is available", () => {

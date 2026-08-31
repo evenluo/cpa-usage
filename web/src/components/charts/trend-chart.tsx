@@ -48,8 +48,8 @@ export function TrendChart({ data, granularity, mode = "cost-token" }: TrendChar
       if (costStatus === "unavailable") return ["Unavailable", "Cost"]
       return [formatCost(Number(value)), "Cost"]
     }
-    if (name === "Requests") {
-      return [Number(value).toLocaleString("en"), "Requests"]
+    if (name === "Attempts") {
+      return [Number(value).toLocaleString("en"), "Attempts"]
     }
     return [`${formatCompact(Number(value), 2)} tokens`, String(name)]
   }

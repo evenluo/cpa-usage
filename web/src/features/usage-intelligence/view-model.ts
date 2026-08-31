@@ -105,8 +105,7 @@ export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
 
 export function getCacheReadShareCaption(state?: CacheReadShareState): string | undefined {
   if (state === undefined) return undefined
-  if (state === "available") return "Cache Read Share"
-  return state.replace(/_/g, " ")
+  return "Exact aggregate unavailable"
 }
 
 export function getModelMixPresentation(costStatus?: CostStatus): {
@@ -135,7 +134,11 @@ export function buildUsageDashboardViewModel(input: {
     ? Array.isArray(input.analytics?.api_key_breakdown)
     : Array.isArray(input.analytics?.key_alias_breakdown)
   const modelDistribution = input.analytics?.model_distribution ?? []
-  const insights = input.analytics?.insights ?? []
+  // The compatibility `cached_tokens` aggregate does not have stable
+  // cross-provider cache-read semantics. Exact cache read/create facts remain
+  // available in Request Evidence, but the aggregate insight stays hidden
+  // until raw/rollup completeness can be proven.
+  const insights = (input.analytics?.insights ?? []).filter((insight) => insight.type !== "cache_efficiency")
   const modelMix = getModelMixPresentation(input.analytics?.summary?.cost_status)
   return {
     trend,

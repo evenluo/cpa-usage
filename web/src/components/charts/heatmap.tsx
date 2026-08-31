@@ -30,7 +30,7 @@ interface HeatmapTooltip {
 
 function cellTooltipLabel(fc: FlatCell): string {
   if (!fc.cell) return ""
-  return `${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}r · ${cellCostLabel(fc.cell)}`
+  return `${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}a · ${cellCostLabel(fc.cell)}`
 }
 
 export function Heatmap({ data }: HeatmapProps) {

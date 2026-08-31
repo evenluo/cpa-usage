@@ -132,8 +132,8 @@ func (s *SyncService) SyncMetadata(ctx context.Context) error {
 	return nil
 }
 
-// PullRedisUsageInbox 是 Redis 同步的拉取阶段：只 LPOP 队列消息并原样写入 redis_usage_inboxes。
-// 这个阶段不解码消息、不写 usage_events，保证 Redis 消费和本地处理职责分离。
+// PullRedisUsageInbox 是 Redis 同步的拉取阶段：LPOP 队列消息并把 replay-safe 投影写入 redis_usage_inboxes。
+// 这个阶段不构建或写入 usage_events，保证 Redis 消费和本地处理职责分离。
 func (s *SyncService) PullRedisUsageInbox(ctx context.Context) (*servicedto.RedisInboxPullResult, error) {
 	if err := s.validate(syncMetadataOptional); err != nil {
 		return nil, err

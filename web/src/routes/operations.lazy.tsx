@@ -8,6 +8,7 @@ import { useToast } from "@/components/providers/toast-provider"
 import { useAuth, useLogout } from "@/hooks/useAuth"
 import { useManualSync, useStatus } from "@/hooks/useStatus"
 import { formatDate } from "@/lib/format"
+import type { StatusPayload } from "@/types/api"
 
 export const Route = createLazyFileRoute("/operations")({
   component: OperationsPage,
@@ -35,7 +36,25 @@ function syncStatusDescription(status?: string): string {
   if (status === "empty") {
     return "Redis queue was empty at the last manual sync"
   }
-  return "Last sync result"
+  return "Last manual sync result"
+}
+
+export function RollupCoverage({ status }: { status?: StatusPayload }) {
+  const rollup = status?.rollup_backfill
+  const rollupLabel = rollup?.status ? `Rollup ${rollup.status.replace(/_/g, " ")}` : "Rollup unavailable"
+
+  return (
+    <div className="rounded-lg border border-border p-3">
+      <Badge variant={rollup?.status === "failed" ? "amber" : "outline"}>{rollupLabel}</Badge>
+      <p className="mt-2 text-xs text-muted-foreground">
+        {rollup?.covered_bucket_start ? `Coverage through ${formatDate(rollup.covered_bucket_start)}` : "No covered bucket observed"}
+      </p>
+      {rollup?.target_bucket_start ? (
+        <p className="mt-1 text-xs text-muted-foreground">Target {formatDate(rollup.target_bucket_start)}</p>
+      ) : null}
+      {rollup?.last_error ? <p className="mt-2 text-xs text-red-600">{rollup.last_error}</p> : null}
+    </div>
+  )
 }
 
 function OperationsPage() {
@@ -62,7 +81,7 @@ function OperationsPage() {
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
               <CardTitle>Operational Status</CardTitle>
-              <CardDescription>Ingestion state and manual sync control</CardDescription>
+              <CardDescription>Manual sync state and rollup coverage</CardDescription>
             </div>
             <Badge variant={status?.sync_running ? "amber" : "green"}>
               {status?.sync_running ? "Running" : "Idle"}
@@ -82,7 +101,7 @@ function OperationsPage() {
                       {syncStatusLabel(status?.last_status)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {status?.last_run_at ? `${formatDate(status.last_run_at)} · ${syncStatusDescription(status.last_status)}` : "Never run"}
+                      {status?.last_run_at ? `${formatDate(status.last_run_at)} · ${syncStatusDescription(status.last_status)}` : "No manual sync observed"}
                     </p>
                   </div>
                 </div>
@@ -101,6 +120,8 @@ function OperationsPage() {
                     )}
                   </div>
                 )}
+
+                <RollupCoverage status={status} />
 
                 <Button
                   variant="outline"

@@ -24,13 +24,14 @@ The current web navigation is intentionally incompatible with the old `/keys`, `
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Usage Intelligence | KPI cards, primary trend, Key/API Key leaderboards, Model Mix, provider options, deterministic Insights | `web/src/features/usage-intelligence/use-usage-dashboard.ts`, `web/src/components/intelligence/dashboard-charts.tsx`, `web/src/hooks/useAnalytics.ts` | `GET /api/v1/analytics/core?range=&granularity=&provider=` | `internal/api/analytics.go`, `internal/repository/analytics_reader.go`, `internal/repository/analytics_core.go` | SQLite usage events and rollups, usage identities, key aliases, cost rates | Covered | Uses the **Selected Analysis Window**; summary/trend/provider/snapshot orchestration follows the [accepted raw/rollup disposition](analytics-raw-rollup-convergence.md). |
 | Usage Intelligence | Activity Heatmap | `web/src/features/usage-intelligence/use-usage-dashboard.ts`, `web/src/components/intelligence/dashboard-fixed-overview.tsx`, `web/src/components/charts/heatmap.tsx` | `GET /api/v1/analytics/heatmap?range=30d&granularity=day&provider=` | `internal/api/analytics.go`, `internal/repository/analytics_reader.go`, `internal/repository/analytics_heatmap.go` | SQLite usage events and rollups | Covered | Fixed 30-day date-by-hour **Fixed Operational Window**; independent of the selected window. |
-| Usage Intelligence | Request Health | `web/src/features/usage-intelligence/use-usage-dashboard.ts`, `web/src/hooks/useRequestHealth.ts`, `web/src/components/charts/health-grid.tsx` | `GET /api/v1/usage/request-health?range=24h&provider=` | `internal/api/usage_overview.go`, `internal/repository/usage_reader.go`, `internal/repository/usage_health.go` | SQLite usage events | Covered | Fixed 24-hour **Fixed Operational Window**. |
-| Usage Intelligence | Request Evidence strip and provider-scoped paginated drill-down | `web/src/components/intelligence/request-evidence.tsx`, `web/src/routes/requests.lazy.tsx`, `web/src/hooks/useEvents.ts` | `GET /api/v1/usage/events?range=24h&page=&page_size=&provider=` | `internal/api/usage_events.go`, `internal/repository/usage_reader.go`, `internal/repository/usage_events.go` | SQLite usage events and usage identity/alias resolution | Covered | Dashboard shows the latest sample; `/requests?provider=` is a paginated 24-hour drill-down, not an arbitrary or all-time audit log. |
-| Usage Intelligence | **Live Capacity** cached reading and manual refresh | `web/src/components/intelligence/live-capacity-card.tsx`, `web/src/hooks/useQuota.ts`, `web/src/features/usage-intelligence/live-capacity.ts` | `POST /api/v1/quota/cache`, `POST /api/v1/quota/refresh`, `GET /api/v1/quota/refresh/:task_id` | `internal/api/quota.go`, `internal/quota/*`, `internal/repository/usage_identity_reader.go` | Active auth-file identities and CPA generic `api-call` probe results | Covered as restricted capacity | Cache-first and provider-scoped. Manual refresh triggers bounded tasks; shutdown rejects new refresh. This is not CPA native quota administration. |
+| Usage Intelligence | Attempt Health | `web/src/features/usage-intelligence/use-usage-dashboard.ts`, `web/src/hooks/useRequestHealth.ts`, `web/src/components/charts/health-grid.tsx` | `GET /api/v1/usage/request-health?range=24h&provider=` | `internal/api/usage_overview.go`, `internal/repository/usage_reader.go`, `internal/repository/usage_health.go` | SQLite usage attempts | Covered | Fixed 24-hour **Fixed Operational Window**. Counts and rates are attempt-grain for newly ingested data; historical request-ID-collapsed rows are not reconstructed. |
+| Usage Intelligence | Request Evidence strip and provider-scoped paginated drill-down | `web/src/components/intelligence/request-evidence.tsx`, `web/src/routes/requests.lazy.tsx`, `web/src/hooks/useEvents.ts` | `GET /api/v1/usage/events?range=24h&page=&page_size=&provider=&model=&result=` | `internal/api/usage_events.go`, `internal/repository/usage_reader.go`, `internal/repository/usage_events.go` | SQLite usage attempts and usage identity/alias resolution | Covered | Dashboard shows the latest upstream-attempt sample; the drill-down can narrow its fixed 24-hour provider scope by actual model and result. It is not an arbitrary or all-time audit log. |
+| Usage Intelligence | Exact cache token evidence | `web/src/components/intelligence/request-evidence-event.tsx` | Existing Request Evidence response | `internal/api/usage_events.go`, `internal/service/redis_usage.go` | Generic cached-token compatibility projection plus nullable explicit cache-read and cache-creation facts | Covered per attempt | Generic, read, and creation facts are shown separately; the explicit split is shown only when present. Aggregate Cache Read Share remains unavailable until raw/rollup completeness is proven, and generic and explicit fields are never added together. |
+| Usage Intelligence | **Live Capacity** cached reading and manual refresh | `web/src/components/intelligence/live-capacity-card.tsx`, `web/src/hooks/useQuota.ts`, `web/src/features/usage-intelligence/live-capacity.ts` | `POST /api/v1/quota/cache`, `POST /api/v1/quota/refresh`, `GET /api/v1/quota/refresh/:task_id` | `internal/api/quota.go`, `internal/quota/*`, `internal/repository/usage_identity_reader.go` | Active auth-file identities and CPA generic `api-call` probe results | Covered as restricted capacity | Cache-first and provider-scoped. It shows observation/cache-expiry timestamps, auth-file active windows, and all quota rows from the existing probe response. Manual refresh stays bounded; this is not billing history or CPA native quota administration. Synthetic scale and bundle evidence are recorded in [CPA data-surface performance evidence](cpa-data-surface-performance.md). |
 | Reference Data | Key Alias search, edit, and clear | `web/src/routes/reference.lazy.tsx`, `web/src/hooks/useKeys.ts` | `GET /api/v1/usage/identities/page`, `GET /api/v1/usage/api-keys/page`, alias `PUT`/`DELETE` routes | `internal/api/usage_identities.go`, `internal/service/key_alias_service.go`, `internal/repository/usage_identities.go`, `internal/repository/api_key_alias_targets.go`, `internal/repository/key_alias.go` | Usage identities, API-key aggregate facts, and key aliases | Covered | Direct editing only; account and API-key alias lifecycles remain separate caller policies. |
 | Reference Data | Cost Rate view and save | `web/src/routes/reference.lazy.tsx`, `web/src/hooks/usePricing.ts` | `GET /api/v1/pricing`, `GET /api/v1/models/used`, `PUT /api/v1/pricing` | `internal/api/pricing.go`, `internal/service/pricing_service.go`, `internal/repository/pricing.go` | Used models and model price settings | Covered | Saving/overwriting rates is required for the primary completeness workflow. |
 | Reference Data | Cost Rate delete | No first-version frontend owner | `DELETE /api/v1/pricing?model=` | `internal/api/pricing.go`, `internal/service/pricing_service.go`, `internal/repository/pricing.go` | Model price settings | Deliberate gap | Secondary maintenance action, not first-version blocking coverage. |
-| Operations Console | Sync state and manual sync | `web/src/routes/operations.lazy.tsx`, `web/src/hooks/useStatus.ts` | `GET /api/v1/status`, `POST /api/v1/sync` | `internal/api/router.go`, `internal/app/manual_sync.go`, `internal/poller/*` | Poller status and sync runner | Covered | First-version operations scope. |
+| Operations Console | Manual sync state/control and rollup coverage | `web/src/routes/operations.lazy.tsx`, `web/src/hooks/useStatus.ts` | `GET /api/v1/status`, `POST /api/v1/sync` | `internal/api/router.go`, `internal/app/manual_sync.go` | Manual sync runner and rollup backfill state | Covered | Shows the last manual command outcome/timestamp plus rollup status/coverage from the existing status contract. It does not claim background-ingestion freshness, sample `/metrics`, or infer application health. |
 | Operations Console | Runtime state | `web/src/routes/operations.lazy.tsx`, `web/src/hooks/useStatus.ts` | `GET /api/v1/status` | `internal/api/router.go`, `internal/version/version.go`, `internal/config/config.go` | Runtime config and version metadata | Covered | Displays version and timezone only. |
 | Operations Console | Access state and logout | `web/src/routes/operations.lazy.tsx`, `web/src/hooks/useAuth.ts` | `GET /api/v1/auth/session`, `POST /api/v1/auth/logout` | `internal/api/auth.go`, `internal/auth/session.go` | Dashboard session and same-origin management bearer | Covered | Supports process-local or signed cookie sessions plus shared CPA management login. |
 | Operations Console | Update check execution and state | No frontend owner | `GET /api/v1/update/check` | `internal/api/update.go`, `internal/updatecheck/checker.go` | GitHub release checker | Explicit non-feature | Current web and `GET /api/v1/status` do not expose update-check actions or update-check state. |
@@ -45,6 +46,8 @@ The current web navigation is intentionally incompatible with the old `/keys`, `
 - A missing frontend entry is **product scope pending** when the backend capability is real but the product has not decided whether to expose it.
 - Provider filtering scopes both selected-window analytics and fixed-window health/activity/evidence modules.
 - Fixed operational windows must be visually labeled so users do not expect them to follow the selected analysis range.
+- User-facing counts and rates identify upstream attempt semantics; request ID remains correlation detail only.
+- Redis intake persists a replay-safe projection, not provider failure bodies, response headers, or arbitrary unknown fields.
 
 ## Review Sequence
 
@@ -59,11 +62,11 @@ The current web navigation is intentionally incompatible with the old `/keys`, `
 
 Status: fixed and verified.
 
-The first **Usage Intelligence** review found that provider filtering was not consistently applied to fixed-window modules. Analytics and Activity Heatmap were scoped by provider, but Request Health and **Request Evidence** were effectively reading all providers.
+The first **Usage Intelligence** review found that provider filtering was not consistently applied to fixed-window modules. Analytics and Activity Heatmap were scoped by provider, but Attempt Health and **Request Evidence** were effectively reading all providers.
 
 Impact:
 
-- Request Health could show 24-hour health for all providers while the selected provider filter visually suggested a narrower scope.
+- Attempt Health could show 24-hour health for all providers while the selected provider filter visually suggested a narrower scope.
 - **Request Evidence** could show recent samples from providers outside the selected provider.
 
 Fix:
@@ -197,20 +200,22 @@ Verification:
 
 - `npm --prefix ./web run typecheck`
 
-### Cache KPI Vocabulary
+### Cache KPI Completeness
 
-Status: fixed and verified.
+Status: corrected and verified.
 
-The cache KPI represents **Cache Read Share**, not request-level cache hit rate.
+The generic `cached_tokens` aggregate does not have stable cross-provider cache-read semantics and cannot currently support an exact **Cache Read Share**.
 
-Fixed mismatch:
+Corrected mismatch:
 
-- The **Usage Intelligence** Cache KPI caption uses `Cache hit rate`.
-- That term conflicts with the project glossary and can be read as request hit rate.
+- The **Usage Intelligence** Cache KPI previously rendered the generic aggregate as a precise cache-read percentage.
+- The deterministic cache-efficiency insight used the same incomplete interpretation.
 
 Fix:
 
-- The caption now uses `Cache Read Share`.
+- The Cache KPI value stays unavailable and its caption says `Exact aggregate unavailable`.
+- The incomplete aggregate cache-efficiency insight is hidden.
+- Request Evidence shows generic, explicit read, and explicit creation facts separately without adding them together.
 
 Verification:
 
@@ -247,7 +252,7 @@ Verification:
 - Deleting a **Cost Rate** remains a possible future secondary maintenance action inside **Reference Data**; it is not a first-version blocking capability and is not an explicit non-feature.
 - Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
 - Keeping the backend `/api/v1/update/check` endpoint does not create a web product commitment because the current web frontend does not expose, imply, or depend on update-check behavior.
-- Restricted **Live Capacity** is a current **Usage Intelligence** capability: cache-first reads are provider-scoped, and only manual refresh starts generic `api-call` probe tasks.
+- Restricted **Live Capacity** is a current **Usage Intelligence** capability: cache-first reads are provider-scoped, cached observation/expiry and auth-file active windows qualify the reading, and only manual refresh starts generic `api-call` probe tasks.
 - CPA native quota administration remains an explicit non-feature. The restricted cache/refresh endpoints do not create a general quota-management commitment.
 - Backup and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.
 

@@ -21,7 +21,7 @@ A user-maintained model unit rate used to calculate **Cost** from token usage.
 _Avoid_: Price, pricing entry
 
 **Cache Read Share**:
-The share of provider-normalized prompt input tokens served from cache reads, calculated as cached tokens divided by input tokens.
+The intended share of prompt input served from explicit provider cache reads. The aggregate is deferred until raw and rollup paths can prove explicit cache-read completeness; legacy generic `cached_tokens` must not be presented as this metric.
 _Avoid_: Cache hit rate, cache/reasoning share
 
 **Metric Completeness**:
@@ -29,7 +29,7 @@ The degree to which a dashboard metric has the required supporting data to be re
 _Avoid_: Data trust, data truth
 
 **Usage Intelligence**:
-The primary analytics workspace for understanding aggregate usage, cost, request health, and time patterns before drilling into individual events.
+The primary analytics workspace for understanding aggregate usage, cost, attempt health, and time patterns before drilling into individual events.
 _Avoid_: Request event log, raw events page
 
 **Time Granularity**:
@@ -57,11 +57,15 @@ The workspace for maintaining ingestion, runtime, and access state.
 _Avoid_: Settings, admin panel, analytics controls
 
 **Request Evidence**:
-Recent request samples shown inside **Usage Intelligence** to support aggregate health and usage readings.
+Recent **Usage Attempt** samples shown inside **Usage Intelligence** to support aggregate health and usage readings.
 _Avoid_: Request event workbench, full event search, audit log
 
+**Usage Attempt**:
+One CPA usage record for one upstream provider call. Retries, failovers, and additional-model calls can be separate attempts that share one request ID.
+_Avoid_: Final request outcome, request-ID event
+
 **Output TPS**:
-The per-request provider-normalized output tokens generated per second after the first token; it excludes input and cached tokens.
+The per-attempt provider-normalized output tokens generated per second after the first token; it excludes input and cached tokens.
 _Avoid_: Total token TPS, Effective TPS, Visible TPS
 
 ## Relationships
@@ -87,33 +91,39 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - The primary trend is controlled by **Time Granularity** and must not be limited to a fixed by-day aggregation.
 - The frontend defaults the 30-day **Selected Analysis Window** to daily granularity and all other selectable windows to hourly granularity; an explicit user selection overrides that default.
 - **Usage Intelligence** uses the **Selected Analysis Window** for KPIs, primary trends, and ranked contributors.
-- **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, request health, recent request evidence, and **Live Capacity**.
+- **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, attempt health, recent request evidence, and **Live Capacity**.
 - **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility; it is powered by CPA generic `api-call` quota probes and cached refresh tasks, not by a CPA native quota datasource.
 - **Live Capacity** displays active auth-file accounts that can be probed for capacity. Unsupported auth-file accounts are shown explicitly instead of blocking supported accounts.
 - **Live Capacity** is cache-first. Loading **Usage Intelligence** reads cached quota probe results only; manual refresh is the user action that may trigger provider calls.
+- **Live Capacity** shows the probe observation and cache-expiry times, the auth-file active window, and every provider quota row returned by the existing probe contract. These timestamps and rows are operational evidence, not billing renewal or account-history claims.
 - A manual **Live Capacity** refresh is rejected as unavailable once its worker lifecycle starts shutting down; it must not return a task that cannot run.
 - **Live Capacity** follows provider filtering, but the **Selected Analysis Window** and **Time Granularity** do not change its query key or probe window.
 - **Activity Heatmap** uses a fixed 30-day **Fixed Operational Window** with date-by-hour cells to show recent usage rhythm. Its dedicated frontend load uses day granularity and remains independent of the **Selected Analysis Window**.
-- Request health and **Request Evidence** use fixed 24-hour **Fixed Operational Windows** to show recent stability and supporting samples, independent of the **Selected Analysis Window**.
+- Attempt health and **Request Evidence** use fixed 24-hour **Fixed Operational Windows** to show recent stability and supporting samples, independent of the **Selected Analysis Window**.
+- Usage event counts, success rates, and failure rates describe **Usage Attempts**. A request ID is correlation detail only and does not collapse retries or imply the final client-visible outcome.
+- New Redis-ingested attempts use their persisted inbox row as stable identity. Historical request-ID-collapsed rows remain unchanged because missing attempts cannot be reconstructed locally.
+- Newly popped Redis records are projected to replay-required fields before inbox persistence. Provider failure bodies, response headers, and unknown fields do not enter SQLite or its backups; malformed records retain only a digest and byte length for decode-failure observability.
 - Provider filtering scopes both **Selected Analysis Window** modules and **Fixed Operational Window** modules.
 - **Request Evidence** drill-down preserves the current provider scope and begins that scope on its first result page.
+- **Request Evidence** drill-down may further filter its fixed 24-hour attempt set by actual model and attempt result.
 - Provider filter options are derived from the **Selected Analysis Window**, not from fixed windows or a global provider catalog.
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
 - The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.
 - KPI comparison uses the immediately previous period for the same selected range; missing previous-period data is shown explicitly instead of inferred.
-- **Cache Read Share** is an efficiency metric for prompt input tokens, not a replacement for **Cost**, token volume, requests, or success rate.
+- Exact **Cache Read Share** is temporarily unavailable. Request Evidence may show provider-reported generic, cache-read, and cache-creation token facts separately; it must not add generic and explicit fields together.
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
 - Leaderboards default to **Cost** ordering when cost metrics are complete; partial **Cost** may still order by the priced cost portion when labeled as partial; token volume becomes the ordering measure when cost is unavailable.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
 - **Model Mix** and deterministic **Insights** are current visible **Selected Analysis Window** readings, not dormant response fields.
-- Request health appears as a stability breakdown within analytics, not as the primary dashboard story.
-- **Request Evidence** supports **Usage Intelligence** with recent samples; it is not the complete request event inspection surface.
+- Attempt health appears as a stability breakdown within analytics, not as the primary dashboard story.
+- **Request Evidence** supports **Usage Intelligence** with recent attempt samples; it is not the complete request event inspection surface.
+- **Request Evidence** status and failure metadata describe the selected upstream attempt, not the final client request outcome.
 - **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.
 - **Request Evidence** drill-down lives inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
 - First-version insights are deterministic metrics and warnings, not AI-generated summaries.
 - **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.
 - CPA native quota administration remains out of scope; the supported capacity surface is the restricted **Live Capacity** probe inside **Usage Intelligence**.
-- The first **Operations Console** covers sync state, runtime state, access state, and logout.
+- The first **Operations Console** covers manual sync state, rollup backfill coverage from the existing status contract, runtime state, access state, and logout. It does not claim background-ingestion freshness.
 - Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
 - Backup inspection and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.
 - Logout should leave the user at the login surface rather than keeping them inside a protected workspace.

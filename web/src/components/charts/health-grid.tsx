@@ -60,7 +60,7 @@ export function HealthGrid({ data }: HealthGridProps) {
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <span className="text-muted-foreground">
-            {(data.total_success + data.total_failure).toLocaleString("en")} requests
+            {(data.total_success + data.total_failure).toLocaleString("en")} attempts
           </span>
           {data.total_failure > 0 && (
             <span className="text-red-400">{data.total_failure} failed</span>
@@ -105,7 +105,7 @@ export function HealthGrid({ data }: HealthGridProps) {
                     title={
                       block.rate < 0 || (block.success + block.failure) === 0
                         ? `${formatTimeLabel(block.start_time)} - no data`
-                        : `${formatTimeLabel(block.start_time)} - ${(block.rate * 100).toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} requests)`
+                        : `${formatTimeLabel(block.start_time)} - ${(block.rate * 100).toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} attempts)`
                     }
                   >
                     {hasData && block.failure > 0 && (

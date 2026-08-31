@@ -114,6 +114,36 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("Alpha Codex")).toBeInTheDocument()
   })
 
+  it("shows probe freshness, subscription window, and additional quota rows", () => {
+    const identities = [identity({
+      identity: "codex-pro",
+      displayName: "Codex Pro",
+      provider: "Codex",
+      type: "codex",
+      active_start: "2026-08-01T00:00:00Z",
+      active_until: "2026-09-01T00:00:00Z",
+    })]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [{
+        id: "codex-pro",
+        cachedAt: "2026-08-31T01:00:00Z",
+        expiresAt: "2026-08-31T01:05:00Z",
+        quota: [
+          { key: "primary", label: "5h", usedPercent: 10 },
+          { key: "secondary", label: "Weekly", usedPercent: 20 },
+          { key: "review", label: "Code review", remaining: 15 },
+        ],
+      }],
+    }
+    setupMock({ identities, cachedQuota })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(screen.getByText("Code review")).toBeInTheDocument()
+    expect(screen.getByText(/Observed /)).toBeInTheDocument()
+    expect(screen.getByText(/Cache expires /)).toBeInTheDocument()
+    expect(screen.getByText(/Account active /)).toBeInTheDocument()
+  })
+
   it("separates priority accounts from regular accounts with a divider", () => {
     const identities = [
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),

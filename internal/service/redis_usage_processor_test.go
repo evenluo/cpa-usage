@@ -44,12 +44,136 @@ func TestRedisUsageProcessorBatchMarksProcessedRows(t *testing.T) {
 	if err := db.Order("id asc").Find(&stored).Error; err != nil {
 		t.Fatalf("load inbox rows: %v", err)
 	}
-	expectedKeys := []string{"processor-batch-1", "processor-batch-2"}
+	expectedKeys := []string{redisUsageAttemptEventKey(rows[0].ID), redisUsageAttemptEventKey(rows[1].ID)}
 	for index, row := range stored {
 		if row.ID != rows[index].ID || row.Status != repository.RedisUsageInboxStatusProcessed || row.UsageEventKey != expectedKeys[index] || row.ProcessedAt == nil || !row.ProcessedAt.Equal(fetchedAt) || !row.UpdatedAt.Equal(fetchedAt) {
 			t.Fatalf("unexpected processed row %d: %+v", index, row)
 		}
 	}
+}
+
+func TestRedisUsageProcessorPreservesAttemptsAndDedupesOnlyInboxReplay(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	poppedAt := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
+	requestID := "shared-request"
+	failedAttempt := `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","executor_type":"claude","model":"sonnet","request_id":"shared-request","reasoning_effort":"high","service_tier":"priority","failed":true,"fail":{"status_code":429,"body":"do not persist"},"tokens":{"input_tokens":1,"cached_tokens":5,"cache_read_tokens":3,"cache_creation_tokens":2}}`
+	successAttempt := `{"timestamp":"2026-08-31T08:00:01Z","provider":"openai","model":"gpt-5","request_id":"shared-request","failed":false,"fail":{"status_code":200},"tokens":{"input_tokens":2,"output_tokens":3}}`
+	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{
+		{QueueKey: cpa.ManagementUsageQueueKey, RawMessage: failedAttempt, PoppedAt: poppedAt},
+		{QueueKey: cpa.ManagementUsageQueueKey, RawMessage: successAttempt, PoppedAt: poppedAt.Add(time.Second)},
+		// Byte-identical queue records still represent two destructive pops and therefore two attempts.
+		{QueueKey: cpa.ManagementUsageQueueKey, RawMessage: successAttempt, PoppedAt: poppedAt.Add(2 * time.Second)},
+	})
+	if err != nil {
+		t.Fatalf("seed inbox attempts: %v", err)
+	}
+
+	result, err := newRedisUsageProcessor(db).process(context.Background(), poppedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("process attempts: %v", err)
+	}
+	if result.InsertedEvents != 3 || result.DedupedEvents != 0 {
+		t.Fatalf("expected every popped record to persist as an attempt, got %+v", result)
+	}
+	var attempts []entities.UsageEvent
+	if err := db.Where("request_id = ?", requestID).Order("id asc").Find(&attempts).Error; err != nil {
+		t.Fatalf("load request attempts: %v", err)
+	}
+	if len(attempts) != 3 {
+		t.Fatalf("expected three attempts grouped by request_id, got %+v", attempts)
+	}
+	for index, attempt := range attempts {
+		if attempt.EventKey != redisUsageAttemptEventKey(rows[index].ID) || attempt.RequestID != requestID {
+			t.Fatalf("attempt %d lost inbox identity or request grouping: %+v", index, attempt)
+		}
+	}
+	if attempts[0].StatusCode != 429 || attempts[0].ExecutorType != "claude" || attempts[0].ReasoningEffort != "high" || attempts[0].ServiceTier != "priority" {
+		t.Fatalf("expected safe attempt metadata to persist, got %+v", attempts[0])
+	}
+	if attempts[0].CachedTokens != 5 || attempts[0].CacheReadTokens == nil || *attempts[0].CacheReadTokens != 3 || attempts[0].CacheCreationTokens == nil || *attempts[0].CacheCreationTokens != 2 {
+		t.Fatalf("expected exact cache fields and generic compatibility projection to persist, got %+v", attempts[0])
+	}
+
+	// Reprocessing the same persisted inbox row is a replay, not a fourth attempt.
+	if err := db.Model(&entities.RedisUsageInbox{}).Where("id = ?", rows[0].ID).Updates(map[string]any{
+		"status":          repository.RedisUsageInboxStatusPending,
+		"usage_event_key": "",
+		"processed_at":    nil,
+	}).Error; err != nil {
+		t.Fatalf("reset inbox row for replay: %v", err)
+	}
+	result, err = newRedisUsageProcessor(db).process(context.Background(), poppedAt.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("replay inbox attempt: %v", err)
+	}
+	if result.InsertedEvents != 0 || result.DedupedEvents != 1 {
+		t.Fatalf("expected same inbox replay to dedupe, got %+v", result)
+	}
+	assertUsageEventCount(t, db, 3)
+}
+
+func TestRedisUsageProcessorUpgradeRetryKeepsLegacyRequestIDIdentity(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	poppedAt := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
+	rawMessage := `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"legacy-partial-write","tokens":{"input_tokens":1,"output_tokens":2}}`
+	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
+		QueueKey:   legacyManagementUsageQueueKey,
+		RawMessage: rawMessage,
+		PoppedAt:   poppedAt,
+	}})
+	if err != nil {
+		t.Fatalf("seed legacy inbox row: %v", err)
+	}
+	legacyEvent, _, err := DecodeRedisUsageMessage(rawMessage, poppedAt)
+	if err != nil {
+		t.Fatalf("decode legacy event: %v", err)
+	}
+	inserted, deduped, err := repository.InsertUsageEvents(db, []entities.UsageEvent{legacyEvent})
+	if err != nil || inserted != 1 || deduped != 0 {
+		t.Fatalf("seed legacy partial event write: inserted=%d deduped=%d err=%v", inserted, deduped, err)
+	}
+
+	result, err := newRedisUsageProcessor(db).process(context.Background(), poppedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("retry legacy inbox row after upgrade: %v", err)
+	}
+	if result.InsertedEvents != 0 || result.DedupedEvents != 1 {
+		t.Fatalf("expected legacy partial write to dedupe, got %+v", result)
+	}
+	assertUsageEventCount(t, db, 1)
+	assertProcessedRedisInboxRow(t, db, rows[0].ID, legacyEvent.EventKey, poppedAt.Add(time.Minute))
+}
+
+func TestRedisUsageProcessorUpgradeRetryKeepsLegacyBuiltIdentity(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	poppedAt := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
+	rawMessage := `{"provider":"claude","model":"sonnet","tokens":{"input_tokens":1,"output_tokens":2}}`
+	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
+		QueueKey:   legacyManagementUsageQueueKey,
+		RawMessage: rawMessage,
+		PoppedAt:   poppedAt,
+	}})
+	if err != nil {
+		t.Fatalf("seed legacy inbox row: %v", err)
+	}
+	legacyEvent, _, err := DecodeRedisUsageMessage(rawMessage, poppedAt)
+	if err != nil {
+		t.Fatalf("decode legacy event: %v", err)
+	}
+	inserted, deduped, err := repository.InsertUsageEvents(db, []entities.UsageEvent{legacyEvent})
+	if err != nil || inserted != 1 || deduped != 0 {
+		t.Fatalf("seed legacy partial event write: inserted=%d deduped=%d err=%v", inserted, deduped, err)
+	}
+
+	result, err := newRedisUsageProcessor(db).process(context.Background(), poppedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("retry legacy inbox row after upgrade: %v", err)
+	}
+	if result.InsertedEvents != 0 || result.DedupedEvents != 1 {
+		t.Fatalf("expected legacy built identity to dedupe, got %+v", result)
+	}
+	assertUsageEventCount(t, db, 1)
+	assertProcessedRedisInboxRow(t, db, rows[0].ID, legacyEvent.EventKey, poppedAt.Add(time.Minute))
 }
 
 func TestRedisUsageProcessorRetriesOnlyProcessableRows(t *testing.T) {
@@ -222,7 +346,7 @@ func seedFallbackRedisInboxRow(t *testing.T, db *gorm.DB) (entities.RedisUsageIn
 	if err != nil {
 		t.Fatalf("seed inbox row: %v", err)
 	}
-	expectedKey := BuildEventKey("claude", "sonnet", poppedAt, "", "", false, dto.TokenStats{InputTokens: 1, OutputTokens: 2})
+	expectedKey := redisUsageAttemptEventKey(rows[0].ID)
 	return rows[0], poppedAt, expectedKey
 }
 

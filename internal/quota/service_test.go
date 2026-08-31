@@ -424,6 +424,9 @@ func assertCachedUsagePercent(t *testing.T, service *Service, authIndex string, 
 	if got := *cache.Items[0].Quota[0].UsedPercent; got != want {
 		t.Fatalf("expected cached usage percent %.0f, got %.0f", want, got)
 	}
+	if cache.Items[0].CachedAt.IsZero() || cache.Items[0].ExpiresAt.IsZero() || !cache.Items[0].ExpiresAt.After(cache.Items[0].CachedAt) {
+		t.Fatalf("expected cache observation and expiry metadata, got %+v", cache.Items[0])
+	}
 }
 
 func waitForRefreshTask(t *testing.T, service *Service, taskID string, status RefreshTaskStatus) RefreshTaskResponse {

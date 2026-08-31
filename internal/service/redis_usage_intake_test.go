@@ -2,10 +2,13 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"strings"
 	"testing"
 
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/repository"
 )
 
 type countingRedisQueue struct {
@@ -50,3 +53,61 @@ func TestRedisUsageIntakeReportsLossWithoutRetryWhenInboxWriteFails(t *testing.T
 }
 
 var _ RedisQueue = (*countingRedisQueue)(nil)
+
+func TestRedisUsageIntakePersistsOnlyReplaySafePayload(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	invalidMessage := `{invalid PRIVATE_INVALID_BODY`
+	queue := &countingRedisQueue{messages: []string{
+		`{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"safe-attempt","failed":true,"fail":{"status_code":429,"body":"PRIVATE_FAIL_BODY"},"response_headers":{"Set-Cookie":"PRIVATE_COOKIE"},"tokens":{"input_tokens":1,"output_tokens":2},"unknown":"PRIVATE_UNKNOWN"}`,
+		invalidMessage,
+	}}
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL:    "https://cpa.example.com",
+		RedisQueue: queue,
+	})
+
+	pullResult, err := service.PullRedisUsageInbox(context.Background())
+	if err != nil {
+		t.Fatalf("pull replay-safe inbox: %v", err)
+	}
+	if pullResult == nil || pullResult.InsertedRows != 2 {
+		t.Fatalf("unexpected pull result: %+v", pullResult)
+	}
+	var rows []entities.RedisUsageInbox
+	if err := db.Order("id asc").Find(&rows).Error; err != nil {
+		t.Fatalf("load replay-safe inbox rows: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected two inbox rows, got %d", len(rows))
+	}
+	for _, forbidden := range []string{"PRIVATE_FAIL_BODY", "PRIVATE_COOKIE", "PRIVATE_UNKNOWN", "response_headers", `"body"`} {
+		if strings.Contains(rows[0].RawMessage, forbidden) {
+			t.Fatalf("replay-safe payload retained %q: %s", forbidden, rows[0].RawMessage)
+		}
+	}
+	if !strings.Contains(rows[0].RawMessage, `"status_code":429`) || !strings.Contains(rows[0].RawMessage, `"request_id":"safe-attempt"`) {
+		t.Fatalf("replay-safe payload lost required fields: %s", rows[0].RawMessage)
+	}
+	invalidDigest := fmt.Sprintf("%x", sha256.Sum256([]byte(invalidMessage)))
+	if strings.Contains(rows[1].RawMessage, "PRIVATE_INVALID_BODY") || !strings.Contains(rows[1].RawMessage, invalidDigest) || !strings.Contains(rows[1].RawMessage, fmt.Sprintf("bytes=%d", len(invalidMessage))) {
+		t.Fatalf("invalid payload marker is not safe and observable: %s", rows[1].RawMessage)
+	}
+
+	processResult, err := service.ProcessRedisUsageInbox(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "decode redis usage message") {
+		t.Fatalf("expected redacted invalid row to use decode_failed path, result=%+v err=%v", processResult, err)
+	}
+	if err := db.Order("id asc").Find(&rows).Error; err != nil {
+		t.Fatalf("reload replay-safe inbox rows: %v", err)
+	}
+	if rows[0].Status != repository.RedisUsageInboxStatusProcessed || rows[1].Status != repository.RedisUsageInboxStatusDecodeFailed {
+		t.Fatalf("unexpected replay-safe row lifecycle: %+v", rows)
+	}
+	var event entities.UsageEvent
+	if err := db.First(&event).Error; err != nil {
+		t.Fatalf("load replay-safe event: %v", err)
+	}
+	if event.RequestID != "safe-attempt" || event.StatusCode != 429 {
+		t.Fatalf("replay-safe projection lost event evidence: %+v", event)
+	}
+}

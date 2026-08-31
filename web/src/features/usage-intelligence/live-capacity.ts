@@ -27,6 +27,10 @@ export interface LiveCapacityRow {
   priorityLabel?: string
   isPriorityAccount: boolean
   isConstrained: boolean
+  observedAt?: string
+  expiresAt?: string
+  activeStart?: string | null
+  activeUntil?: string | null
 }
 
 export interface LiveCapacityMetric {
@@ -67,13 +71,13 @@ export function buildLiveCapacityRows(input: {
       const taskState = taskStates[identity.identity]
       const providerKind = providerKindFromIdentity(identity)
       const supported = providerKind !== "unsupported"
-      const activeQuota = taskState?.status === "completed" ? taskState.quota : cachedByAuthIndex.get(identity.identity)
+      const cachedQuota = cachedByAuthIndex.get(identity.identity)
+      const activeQuota = taskState?.status === "completed" ? taskState.quota : cachedQuota
       const quotaRows = activeQuota?.quota ?? []
       const fiveHour = findQuotaWindow(quotaRows, "5h")
       const weekly = findQuotaWindow(quotaRows, "weekly")
       const additionalMetrics = quotaRows
         .filter((row) => row !== fiveHour && row !== weekly)
-        .slice(0, 3)
         .map(metricFromQuotaRow)
       const isConstrained = quotaRows.some(isConstrainedQuotaRow)
       const resolvedPlanType = planType(quotaRows, identity.plan_type)
@@ -117,6 +121,10 @@ export function buildLiveCapacityRows(input: {
         priorityLabel,
         isPriorityAccount: Boolean(priorityLabel),
         isConstrained,
+        observedAt: taskState?.status === "completed" ? taskState.cachedAt : cachedQuota?.cachedAt,
+        expiresAt: taskState?.status === "completed" ? taskState.expiresAt : cachedQuota?.expiresAt,
+        activeStart: identity.active_start,
+        activeUntil: identity.active_until,
       }
     })
     .sort(compareLiveCapacityRows)

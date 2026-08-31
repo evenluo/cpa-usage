@@ -44,7 +44,7 @@ export function HealthTimeline({ data, granularity }: HealthTimelineProps) {
       {/* Overall stats */}
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center gap-3">
-          <span className="text-muted-foreground">{totalRequests.toLocaleString("en")} requests</span>
+          <span className="text-muted-foreground">{totalRequests.toLocaleString("en")} attempts</span>
           {totalFailures > 0 && (
             <span className="text-red-400">{totalFailures} failed</span>
           )}
@@ -99,7 +99,7 @@ export function HealthTimeline({ data, granularity }: HealthTimelineProps) {
                         }`}
                         title={
                           block
-                            ? `${block.label} ${h}:00 — ${block.rate.toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} requests)`
+                            ? `${block.label} ${h}:00 — ${block.rate.toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} attempts)`
                             : `${date} ${h}:00 — no data`
                         }
                       />
@@ -120,7 +120,7 @@ export function HealthTimeline({ data, granularity }: HealthTimelineProps) {
                 <div
                   key={date}
                   className={`h-6 flex-1 rounded-[3px] ${cellColor(block.rate, hasFailure)} transition-all hover:scale-110 hover:shadow-sm`}
-                  title={`${block.label} — ${block.rate.toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} requests)`}
+                  title={`${block.label} — ${block.rate.toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} attempts)`}
                 />
               )
             })}

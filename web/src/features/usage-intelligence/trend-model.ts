@@ -15,11 +15,11 @@ export interface TrendSeriesConfig {
 export function buildTrendSeriesConfig(mode: TrendChartMode): TrendSeriesConfig {
   return {
     primaryKey: mode === "cost-token" ? "cost" : mode === "requests-token" ? "requests" : "tokens",
-    primaryName: mode === "cost-token" ? "Cost" : mode === "requests-token" ? "Requests" : "Tokens",
+    primaryName: mode === "cost-token" ? "Cost" : mode === "requests-token" ? "Attempts" : "Tokens",
     primaryColor: mode === "cost-token" ? "#d97757" : mode === "requests-token" ? "#7c3aed" : "#2563eb",
     gradientId: mode === "cost-token" ? "costGradient" : mode === "requests-token" ? "requestGradient" : "tokenGradient",
     overlayKey: mode === "tokens" ? "requests" : "tokens",
-    overlayName: mode === "tokens" ? "Requests" : "Tokens",
+    overlayName: mode === "tokens" ? "Attempts" : "Tokens",
     tokenSeries: [
       { key: "inputTokens", name: "Input", color: "#059669" },
       { key: "outputTokens", name: "Output", color: "#d97706" },

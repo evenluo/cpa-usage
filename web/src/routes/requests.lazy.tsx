@@ -22,18 +22,55 @@ export const Route = createLazyFileRoute("/requests")({
 })
 
 function RequestsRoute() {
-  const { provider } = Route.useSearch()
-  return <RequestsPage provider={provider} />
+  const { provider, model, result } = Route.useSearch()
+  const navigate = Route.useNavigate()
+  return (
+    <RequestsPage
+      provider={provider}
+      model={model}
+      result={result}
+      onFiltersChange={(filters) => void navigate({ search: (current) => ({ ...current, ...filters }) })}
+    />
+  )
 }
 
-export function RequestsPage({ provider }: { provider: string }) {
-  return <ProviderScopedRequestsPage key={provider} provider={provider} />
+export function RequestsPage({
+  provider,
+  model = "",
+  result = "",
+  onFiltersChange,
+}: {
+  provider: string
+  model?: string
+  result?: "" | "success" | "failed"
+  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed" }) => void
+}) {
+  return (
+    <ProviderScopedRequestsPage
+      key={`${provider}:${model}:${result}`}
+      provider={provider}
+      model={model}
+      result={result}
+      onFiltersChange={onFiltersChange}
+    />
+  )
 }
 
-function ProviderScopedRequestsPage({ provider }: { provider: string }) {
+function ProviderScopedRequestsPage({
+  provider,
+  model,
+  result,
+  onFiltersChange,
+}: {
+  provider: string
+  model: string
+  result: "" | "success" | "failed"
+  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed" }) => void
+}) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
-  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page)
+  const [modelDraft, setModelDraft] = useState(model)
+  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, { model, result })
   const hasCompleteData = data !== undefined
   const events = data?.events ?? []
   const selectedEvent = events.find((event) => requestEventKey(event) === selectedEventKey) ?? events[0]
@@ -59,7 +96,7 @@ function ProviderScopedRequestsPage({ provider }: { provider: string }) {
             Usage Intelligence
           </p>
           <h1 className="mt-1 font-serif text-3xl font-semibold tracking-tight">Request Evidence</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Recent request-level evidence behind service health.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Recent upstream-attempt evidence behind service health.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">Last 24h</Badge>
@@ -68,6 +105,37 @@ function ProviderScopedRequestsPage({ provider }: { provider: string }) {
           </Badge>
         </div>
       </header>
+
+      <form
+        className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onFiltersChange?.({ model: modelDraft.trim(), result })
+        }}
+      >
+        <label className="grid gap-1 text-xs text-muted-foreground">
+          Actual model
+          <input
+            value={modelDraft}
+            onChange={(event) => setModelDraft(event.target.value)}
+            placeholder="All models"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500"
+          />
+        </label>
+        <label className="grid gap-1 text-xs text-muted-foreground">
+          Attempt result
+          <select
+            value={result}
+            onChange={(event) => onFiltersChange?.({ model: modelDraft.trim(), result: event.target.value as "" | "success" | "failed" })}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500"
+          >
+            <option value="">All attempts</option>
+            <option value="success">Successful attempts</option>
+            <option value="failed">Failed attempts</option>
+          </select>
+        </label>
+        <Button type="submit" variant="outline">Apply model</Button>
+      </form>
 
       {hasCompleteData && error ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
@@ -99,11 +167,11 @@ function ProviderScopedRequestsPage({ provider }: { provider: string }) {
           <Card className="min-w-0 overflow-hidden">
             <CardHeader className="flex flex-row items-start justify-between gap-4 p-4">
               <div className="min-w-0">
-                <CardTitle>Recent requests</CardTitle>
-                <CardDescription>Select a request to inspect its evidence.</CardDescription>
+                <CardTitle>Recent attempts</CardTitle>
+                <CardDescription>Select an upstream attempt to inspect its evidence.</CardDescription>
               </div>
               <Badge variant="outline" className="shrink-0">
-                {formatCompact(data?.total_count ?? events.length)} total
+                {formatCompact(data?.total_count ?? events.length)} attempts
               </Badge>
             </CardHeader>
             <CardContent className="space-y-3 p-4 pt-0">
@@ -147,11 +215,11 @@ function ProviderScopedRequestsPage({ provider }: { provider: string }) {
 
           <Card className="min-w-0">
             <CardHeader className="p-4">
-              <CardTitle>Request detail</CardTitle>
-              <CardDescription>Performance, volume, identity, and status for the selected request.</CardDescription>
+              <CardTitle>Attempt detail</CardTitle>
+              <CardDescription>Performance, volume, identity, and status for the selected upstream attempt.</CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <RequestEvidenceEvent event={selectedEvent} label="Selected request" />
+              <RequestEvidenceEvent event={selectedEvent} label="Selected upstream attempt" detail />
             </CardContent>
           </Card>
         </div>
@@ -176,7 +244,7 @@ function RequestListItem({
   return (
     <button
       type="button"
-      aria-label={`Select request ${number}`}
+      aria-label={`Select attempt ${number}`}
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(

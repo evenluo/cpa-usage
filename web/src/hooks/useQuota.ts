@@ -16,7 +16,13 @@ export const QUOTA_REFRESH_LIMIT = 20
 export type LiveCapacityTaskState =
   | { status: "starting" }
   | { status: "queued" | "running"; taskId: string }
-  | { status: "completed"; taskId: string; quota: QuotaRefreshTaskResponse["quota"] }
+  | {
+      status: "completed"
+      taskId: string
+      quota: QuotaRefreshTaskResponse["quota"]
+      cachedAt?: string
+      expiresAt?: string
+    }
   | { status: "failed"; taskId?: string; error: string }
 
 interface QuotaRefreshBatchResult {
@@ -151,7 +157,13 @@ export async function resolveRefreshTaskUpdates(
     }
     const { authIndex, task } = result
     if (task.status === "completed") {
-      updates[authIndex] = { status: "completed", taskId: task.taskId, quota: task.quota }
+      updates[authIndex] = {
+        status: "completed",
+        taskId: task.taskId,
+        quota: task.quota,
+        cachedAt: task.cachedAt,
+        expiresAt: task.expiresAt,
+      }
       hasCompleted = true
     } else if (task.status === "failed") {
       updates[authIndex] = { status: "failed", taskId: task.taskId, error: task.error || "failed" }

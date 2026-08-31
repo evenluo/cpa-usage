@@ -84,16 +84,16 @@ export function DashboardFixedOverview({
         </CardContent>
       </Card>
 
-      {/* Request Health + Evidence — 24h fixed */}
+      {/* Attempt Health + Evidence — 24h fixed */}
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
         <Card className="flex h-full min-w-0 flex-col overflow-hidden xl:h-[300px]">
           <CardHeader className="flex flex-col items-start justify-between gap-4 pb-2 sm:flex-row">
             <div>
               <CardTitle className="flex items-center gap-2">
-                Request Health
+                Attempt Health
                 <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
               </CardTitle>
-              <CardDescription>Success rate per 3-minute bucket</CardDescription>
+              <CardDescription>Attempt success rate per 3-minute bucket</CardDescription>
             </div>
             <div className="flex items-center gap-2">
               {surfaces.requestHealth.status !== "error" && surfaces.requestHealth.refreshError ? (
@@ -107,8 +107,8 @@ export function DashboardFixedOverview({
               <Skeleton className="h-[180px] w-full" />
             ) : surfaces.requestHealth.status === "error" ? (
               <div className="flex h-[180px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-                <span>Failed to load request health</span>
-                <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry request health</Button>
+                <span>Failed to load attempt health</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry attempt health</Button>
               </div>
             ) : surfaces.requestHealth.status === "ready" ? (
               <HealthGrid data={surfaces.requestHealth.data} />

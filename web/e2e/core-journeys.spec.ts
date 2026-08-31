@@ -126,7 +126,7 @@ test("dashboard renders KPIs, trend, leaderboard, and fixed overview surfaces", 
   await page.goto("/")
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
 
-  for (const kpi of ["Cost", "Tokens", "Requests", "Success", "Cache"]) {
+  for (const kpi of ["Cost", "Tokens", "Attempts", "Success", "Cache"]) {
     // 首次冷启动时 3 个视口 project 并行加载，KPI 渲染可能慢于默认 5s 超时。
     await expect(page.getByText(kpi, { exact: true }).first()).toBeVisible({ timeout: 10_000 })
   }
@@ -134,7 +134,7 @@ test("dashboard renders KPIs, trend, leaderboard, and fixed overview surfaces", 
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("sk-live Agent")).toBeVisible()
   await expect(page.getByText("Activity Heatmap")).toBeVisible()
-  await expect(page.getByText("Request Health")).toBeVisible()
+  await expect(page.getByText("Attempt Health")).toBeVisible()
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
@@ -164,11 +164,11 @@ test("switching time range and granularity changes the analytics request and the
   await expect.poll(lastRange).toBe("30d")
   await expect.poll(lastGranularity).toBe("day")
   await expect(page.getByTestId("kpi-value-cost")).toHaveText("$1.25")
-  await expect(page.getByTestId("kpi-value-requests")).toHaveText("3")
+  await expect(page.getByTestId("kpi-value-attempts")).toHaveText("3")
 
   await page.getByRole("button", { name: "Hour", exact: true }).click()
   await expect.poll(lastGranularity).toBe("hour")
-  await expect(page.getByTestId("kpi-value-requests")).toHaveText("7")
+  await expect(page.getByTestId("kpi-value-attempts")).toHaveText("7")
 })
 
 test("provider filter scopes the analytics request and manual sync reports completion", async ({ page }) => {
@@ -192,8 +192,13 @@ test("provider filter scopes the analytics request and manual sync reports compl
   await expect(page.getByText("claude-model")).toBeVisible()
   await expect(page.getByText("claude metrics complete")).toBeVisible()
 
-  await page.getByRole("link", { name: "View all requests" }).click()
-  await expect(page).toHaveURL(/\/requests\?provider=claude$/)
+  await page.getByRole("link", { name: "View all attempts" }).click()
+  await expect(page).toHaveURL(/\/requests\?/)
+  const requestsURL = new URL(page.url())
+  expect(requestsURL.pathname).toBe("/requests")
+  expect(requestsURL.searchParams.get("provider")).toBe("claude")
+  expect(requestsURL.searchParams.get("model")).toBe("")
+  expect(requestsURL.searchParams.get("result")).toBe("")
   await expect(page.getByTestId("request-provider-scope")).toHaveText("Provider: claude")
   await expect.poll(() => evidenceRequests.at(-1)?.searchParams.get("provider")).toBe("claude")
   await expect(page.getByText("claude-evidence-model").first()).toBeVisible()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"cpa-usage/internal/entities"
@@ -13,15 +14,11 @@ import (
 )
 
 type redisUsageProcessor struct {
-	db               *gorm.DB
-	eventKeyAssigner CanonicalEventKeyAssigner
+	db *gorm.DB
 }
 
 func newRedisUsageProcessor(db *gorm.DB) redisUsageProcessor {
-	return redisUsageProcessor{
-		db:               db,
-		eventKeyAssigner: NewCanonicalEventKeyAssigner(NewRepositoryCanonicalEventLookup(db)),
-	}
+	return redisUsageProcessor{db: db}
 }
 
 func (p redisUsageProcessor) process(ctx context.Context, now time.Time) (*servicedto.RedisBatchSyncResult, error) {
@@ -51,6 +48,7 @@ func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entiti
 			decodeErrs = append(decodeErrs, decodeErr)
 			continue
 		}
+		event.EventKey = redisUsageInboxEventKey(row, event.EventKey)
 		validRows = append(validRows, row)
 		events = append(events, event)
 	}
@@ -120,16 +118,38 @@ func decodeRedisUsageInboxRow(row entities.RedisUsageInbox) (entities.UsageEvent
 }
 
 func (p redisUsageProcessor) persistEvents(ctx context.Context, events []entities.UsageEvent) (*servicedto.SyncResult, error) {
-	if err := p.eventKeyAssigner.Assign(ctx, events); err != nil {
-		return &servicedto.SyncResult{Status: "failed"}, fmt.Errorf("assign canonical event keys: %w", err)
-	}
 	slog.Debug("usage events insert started", "event_count", len(events))
-	inserted, deduped, err := repository.InsertUsageEvents(p.db, events)
+	inserted, deduped, err := repository.InsertUsageEvents(p.db.WithContext(ctx), events)
 	if err != nil {
 		return &servicedto.SyncResult{Status: "failed"}, fmt.Errorf("insert usage events: %w", err)
 	}
 	slog.Debug("usage events insert finished", "inserted_events", inserted, "deduped_events", deduped)
 	return &servicedto.SyncResult{Status: "completed", InsertedEvents: inserted, DedupedEvents: deduped}, nil
+}
+
+// redisUsageAttemptEventKey binds one usage event to the persisted result of one
+// destructive CPA queue pop. The inbox row ID stays stable across local replay,
+// while separate rows preserve byte-identical provider attempts independently.
+func redisUsageAttemptEventKey(inboxID uint) string {
+	return "redis-inbox:" + strconv.FormatUint(uint64(inboxID), 10)
+}
+
+const legacyManagementUsageQueueKey = "queue"
+
+// redisUsageInboxEventKey keeps the old event identity only for processable
+// inbox rows created before CPA's queue key changed from "queue" to "usage".
+// Such a row may already have committed its legacy-keyed event before a crash
+// prevented the separate processed mark. New "usage" rows always use inbox
+// identity so separate upstream attempts remain distinct.
+//
+// Remove this adapter only when every supported upgrade path proves that its
+// database cannot contain a processable legacy "queue" row. Pending rows have
+// no time-based cleanup boundary.
+func redisUsageInboxEventKey(row entities.RedisUsageInbox, decodedEventKey string) string {
+	if row.QueueKey == legacyManagementUsageQueueKey {
+		return decodedEventKey
+	}
+	return redisUsageAttemptEventKey(row.ID)
 }
 
 func markRedisInboxRowsProcessFailed(db *gorm.DB, rows []entities.RedisUsageInbox, err error) {

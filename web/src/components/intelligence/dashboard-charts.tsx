@@ -52,14 +52,14 @@ export function DashboardCharts({
             </CardTitle>
             <CardDescription>
               {trendView === "cost-token" && "Cost as filled area, tokens as dotted overlay"}
-              {trendView === "requests-token" && "Requests as filled area, tokens as dotted overlay"}
+              {trendView === "requests-token" && "Attempts as filled area, tokens as dotted overlay"}
               {trendView === "tokens" && "Total, input, output, reasoning, and cached tokens"}
             </CardDescription>
           </div>
           <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
             {[
               { value: "cost-token", label: "Cost" },
-              { value: "requests-token", label: "Requests" },
+              { value: "requests-token", label: "Attempts" },
               { value: "tokens", label: "Tokens" },
             ].map((item) => (
               <button

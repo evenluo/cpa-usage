@@ -157,6 +157,8 @@ export interface KeyIdentity {
   type: string
   provider: string
   plan_type?: string | null
+  active_start?: string | null
+  active_until?: string | null
   total_tokens: number
   total_cost: number
   cost_available: boolean
@@ -223,8 +225,13 @@ export interface QuotaCheckResponse {
   quota: QuotaRow[]
 }
 
+export interface QuotaCacheItem extends QuotaCheckResponse {
+  cachedAt?: string
+  expiresAt?: string
+}
+
 export interface QuotaCacheResponse {
-  items: QuotaCheckResponse[]
+  items: QuotaCacheItem[]
 }
 
 export interface QuotaRefreshTaskID {
@@ -269,6 +276,13 @@ export interface UsageEvent {
   id?: number
   timestamp: string
   model: string
+  model_alias?: string
+  endpoint?: string
+  request_id?: string
+  status_code?: number
+  executor_type?: string
+  reasoning_effort?: string
+  service_tier?: string
   source: string
   auth_index?: string
   api_key_alias?: string
@@ -277,7 +291,15 @@ export interface UsageEvent {
   latency_ms: number
   ttft_ms: number | null
   output_tps: number | null
-  tokens: { output_tokens: number; total_tokens: number }
+  tokens: {
+    input_tokens?: number
+    output_tokens: number
+    reasoning_tokens?: number
+    cached_tokens?: number
+    cache_read_tokens?: number
+    cache_creation_tokens?: number
+    total_tokens: number
+  }
 }
 
 export interface UsageEventsPage {
@@ -312,6 +334,15 @@ export interface StatusPayload {
   last_warning?: string
   timezone?: string
   version?: string
+  rollup_backfill?: {
+    status: string
+    target_bucket_start?: string
+    covered_bucket_start?: string
+    started_at?: string
+    completed_at?: string
+    failed_at?: string
+    last_error?: string
+  }
 }
 
 export interface AuthSessionPayload {

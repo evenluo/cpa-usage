@@ -56,23 +56,35 @@ func (s *usageEventsStub) GetUsageAnalysis(context.Context, dto.UsageTimeScope) 
 func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	ttftMS := int64(1052)
 	outputTPS := 48.33358094488189
+	statusCode := 200
+	cacheReadTokens := int64(1)
+	cacheCreationTokens := int64(3)
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
-		ID:              42,
-		Timestamp:       time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
-		Model:           "claude-sonnet",
-		AuthType:        "apikey",
-		Provider:        "OpenAI Mirror",
-		Source:          "sk-provider-key",
-		AuthIndex:       "2",
-		Failed:          false,
-		LatencyMS:       21245,
-		TTFTMS:          &ttftMS,
-		OutputTPS:       &outputTPS,
-		InputTokens:     10,
-		OutputTokens:    976,
-		ReasoningTokens: 2,
-		CachedTokens:    1,
-		TotalTokens:     105091,
+		ID:                  42,
+		Timestamp:           time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
+		Model:               "claude-sonnet",
+		ModelAlias:          "claude-sonnet-requested",
+		Endpoint:            "/v1/messages?api_key=secret",
+		RequestID:           "request-42",
+		StatusCode:          &statusCode,
+		ExecutorType:        "openai",
+		ReasoningEffort:     "high",
+		ServiceTier:         "priority",
+		AuthType:            "apikey",
+		Provider:            "OpenAI Mirror",
+		Source:              "sk-provider-key",
+		AuthIndex:           "2",
+		Failed:              false,
+		LatencyMS:           21245,
+		TTFTMS:              &ttftMS,
+		OutputTPS:           &outputTPS,
+		InputTokens:         10,
+		OutputTokens:        976,
+		ReasoningTokens:     2,
+		CachedTokens:        1,
+		CacheReadTokens:     &cacheReadTokens,
+		CacheCreationTokens: &cacheCreationTokens,
+		TotalTokens:         105091,
 	}}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h", nil)
@@ -104,6 +116,22 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	}
 	if !contains(body, `"ttft_ms":1052`) || !contains(body, `"output_tps":48.33358094488189`) {
 		t.Fatalf("expected TTFT and Output TPS in response body: %s", body)
+	}
+	if !contains(body, `"model_alias":"claude-sonnet-requested"`) || !contains(body, `"endpoint":"/v1/messages"`) || !contains(body, `"request_id":"request-42"`) {
+		t.Fatalf("expected requested model, endpoint, and request trace in response body: %s", body)
+	}
+	if contains(body, "api_key=secret") {
+		t.Fatalf("expected endpoint query to stay hidden: %s", body)
+	}
+	for _, token := range []string{`"input_tokens":10`, `"output_tokens":976`, `"reasoning_tokens":2`, `"cached_tokens":1`, `"total_tokens":105091`} {
+		if !contains(body, token) {
+			t.Fatalf("expected complete token evidence %s in response body: %s", token, body)
+		}
+	}
+	for _, evidence := range []string{`"status_code":200`, `"executor_type":"openai"`, `"reasoning_effort":"high"`, `"service_tier":"priority"`, `"cache_read_tokens":1`, `"cache_creation_tokens":3`} {
+		if !contains(body, evidence) {
+			t.Fatalf("expected attempt evidence %s in response body: %s", evidence, body)
+		}
 	}
 	if provider.filterCalls != 1 {
 		t.Fatalf("expected ListUsageEvents to be called once, got %d", provider.filterCalls)
@@ -138,6 +166,9 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 	body := resp.Body.String()
 	if !contains(body, `"ttft_ms":null`) || !contains(body, `"output_tps":null`) {
 		t.Fatalf("expected missing TTFT and Output TPS to remain null: %s", body)
+	}
+	if contains(body, `"cache_read_tokens"`) || contains(body, `"cache_creation_tokens"`) {
+		t.Fatalf("expected missing exact cache facts to stay omitted: %s", body)
 	}
 }
 

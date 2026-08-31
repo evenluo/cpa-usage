@@ -83,6 +83,8 @@ describe("Live Capacity view model", () => {
     const cache: QuotaCacheResponse = {
       items: [{
         id: "codex-auth",
+        cachedAt: "2026-08-31T01:00:00Z",
+        expiresAt: "2026-08-31T01:05:00Z",
         quota: [
           { key: "rate_limit.primary_window", label: "5h", usedPercent: 25, resetAfterSeconds: 3600, planType: "plus" },
           { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 80, resetAfterSeconds: 7200, planType: "plus" },
@@ -91,7 +93,11 @@ describe("Live Capacity view model", () => {
     }
 
     const rows = buildLiveCapacityRows({
-      identities: [identity({ identity: "codex-auth" })],
+      identities: [identity({
+        identity: "codex-auth",
+        active_start: "2026-08-01T00:00:00Z",
+        active_until: "2026-09-01T00:00:00Z",
+      })],
       cachedQuota: cache,
     })
 
@@ -104,7 +110,37 @@ describe("Live Capacity view model", () => {
       resetLabel: "1h",
       fiveHour: { valueLabel: "25% used", resetLabel: "1h", progress: 25, tone: "green" },
       weekly: { valueLabel: "80% used", resetLabel: "2h", progress: 80, tone: "amber" },
+      observedAt: "2026-08-31T01:00:00Z",
+      expiresAt: "2026-08-31T01:05:00Z",
+      activeStart: "2026-08-01T00:00:00Z",
+      activeUntil: "2026-09-01T00:00:00Z",
     })
+  })
+
+  it("retains every additional quota row returned by the probe", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [
+            { key: "primary", label: "5h", usedPercent: 25 },
+            { key: "secondary", label: "Weekly", usedPercent: 50 },
+            { key: "extra-1", label: "Extra 1", usedPercent: 1 },
+            { key: "extra-2", label: "Extra 2", usedPercent: 2 },
+            { key: "extra-3", label: "Extra 3", usedPercent: 3 },
+            { key: "extra-4", label: "Extra 4", usedPercent: 4 },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].additionalMetrics.map((metric) => metric.label)).toEqual([
+      "Extra 1",
+      "Extra 2",
+      "Extra 3",
+      "Extra 4",
+    ])
   })
 
   it("keeps empty cache explicit without starting a probe", () => {
