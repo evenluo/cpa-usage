@@ -38,14 +38,14 @@ func addUsageRollupCacheReadFieldsMigration(tx *gorm.DB) error {
 		return nil
 	}
 
-	earliest, latest, hasExactFacts, err := usageEventCacheReadBucketBounds(tx)
+	earliest, latest, hasValidFacts, err := validUsageEventCacheReadBucketBounds(tx)
 	if err != nil {
 		return err
 	}
-	if !hasExactFacts {
+	if !hasValidFacts {
 		// A same-release upgrade adds nullable event facts before these rollup
-		// columns. When all historical facts are NULL, the new zero defaults are
-		// already exact and the existing completed owner state must stay intact.
+		// columns. When no historical facts are valid analytics observations, the
+		// new zero defaults are already exact and owner state must stay intact.
 		return nil
 	}
 
@@ -110,13 +110,16 @@ func completedRollupBackfillStateCoversTarget(state entities.UsageRollupBackfill
 		!state.CoveredBucketStart.UTC().Truncate(time.Hour).Before(state.TargetBucketStart.UTC().Truncate(time.Hour))
 }
 
-func usageEventCacheReadBucketBounds(tx *gorm.DB) (time.Time, time.Time, bool, error) {
+func validUsageEventCacheReadBucketBounds(tx *gorm.DB) (time.Time, time.Time, bool, error) {
 	var earliest, latest sql.NullString
 	row := tx.Raw(`SELECT
 		strftime('%Y-%m-%dT%H:00:00Z', MIN(timestamp)),
 		strftime('%Y-%m-%dT%H:00:00Z', MAX(timestamp))
 		FROM usage_events
-		WHERE cache_read_tokens IS NOT NULL`).Row()
+		WHERE input_tokens > 0
+			AND cache_read_tokens IS NOT NULL
+			AND cache_read_tokens >= 0
+			AND cache_read_tokens <= input_tokens`).Row()
 	if err := row.Scan(&earliest, &latest); err != nil {
 		return time.Time{}, time.Time{}, false, fmt.Errorf("load usage event cache-read bucket bounds: %w", err)
 	}

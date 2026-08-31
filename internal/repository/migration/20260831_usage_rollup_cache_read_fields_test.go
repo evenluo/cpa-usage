@@ -23,14 +23,19 @@ func TestAddUsageRollupCacheReadFieldsMigrationSchedulesOnlyExactFactBuckets(t *
 	if err := db.Exec(`INSERT INTO usage_rollups_hourly (id, input_tokens, cached_tokens) VALUES (1, 100, 20)`).Error; err != nil {
 		t.Fatalf("seed legacy rollup: %v", err)
 	}
-	if err := db.Exec(`CREATE TABLE usage_events (id integer PRIMARY KEY, timestamp datetime NOT NULL, cache_read_tokens integer)`).Error; err != nil {
+	if err := db.Exec(`CREATE TABLE usage_events (id integer PRIMARY KEY, timestamp datetime NOT NULL, input_tokens integer NOT NULL, cache_read_tokens integer)`).Error; err != nil {
 		t.Fatalf("create usage events table: %v", err)
 	}
 	old := time.Date(2020, 1, 2, 3, 15, 0, 0, time.UTC)
 	earliestExact := time.Date(2026, 8, 31, 8, 45, 0, 0, time.UTC)
 	latestExact := time.Date(2026, 8, 31, 10, 5, 0, 0, time.UTC)
-	if err := db.Exec(`INSERT INTO usage_events (id, timestamp, cache_read_tokens) VALUES (?, ?, NULL), (?, ?, ?), (?, ?, ?)`,
-		1, old, 2, earliestExact, 0, 3, latestExact, 25).Error; err != nil {
+	if err := db.Exec(`INSERT INTO usage_events (id, timestamp, input_tokens, cache_read_tokens) VALUES
+		(?, ?, ?, ?), (?, ?, ?, NULL), (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?)`,
+		1, old.Add(-time.Hour), 0, 1,
+		2, old, 100,
+		3, earliestExact, 100, 0,
+		4, latestExact, 100, 25,
+		5, latestExact.Add(time.Hour), 100, 101).Error; err != nil {
 		t.Fatalf("seed usage events: %v", err)
 	}
 	if err := db.AutoMigrate(&entities.UsageRollupBackfillState{}); err != nil {
@@ -85,15 +90,15 @@ func TestAddUsageRollupCacheReadFieldsMigrationUnionsIncompleteBackfillRange(t *
 			if err := db.Exec(`CREATE TABLE usage_rollups_hourly (id integer PRIMARY KEY, input_tokens integer NOT NULL, cached_tokens integer NOT NULL)`).Error; err != nil {
 				t.Fatalf("create legacy rollup table: %v", err)
 			}
-			if err := db.Exec(`CREATE TABLE usage_events (id integer PRIMARY KEY, timestamp datetime NOT NULL, cache_read_tokens integer)`).Error; err != nil {
+			if err := db.Exec(`CREATE TABLE usage_events (id integer PRIMARY KEY, timestamp datetime NOT NULL, input_tokens integer NOT NULL, cache_read_tokens integer)`).Error; err != nil {
 				t.Fatalf("create usage events table: %v", err)
 			}
 			existingCovered := time.Date(2026, 8, 30, 5, 0, 0, 0, time.UTC)
 			earliestExact := time.Date(2026, 8, 30, 3, 45, 0, 0, time.UTC)
 			existingTarget := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
 			latestExact := time.Date(2026, 8, 31, 14, 5, 0, 0, time.UTC)
-			if err := db.Exec(`INSERT INTO usage_events (id, timestamp, cache_read_tokens) VALUES (?, ?, NULL), (?, ?, ?), (?, ?, ?)`,
-				1, existingCovered.Add(time.Minute), 2, earliestExact, 0, 3, latestExact, 25).Error; err != nil {
+			if err := db.Exec(`INSERT INTO usage_events (id, timestamp, input_tokens, cache_read_tokens) VALUES (?, ?, ?, NULL), (?, ?, ?, ?), (?, ?, ?, ?)`,
+				1, existingCovered.Add(time.Minute), 100, 2, earliestExact, 100, 0, 3, latestExact, 100, 25).Error; err != nil {
 				t.Fatalf("seed usage events: %v", err)
 			}
 			if err := db.AutoMigrate(&entities.UsageRollupBackfillState{}); err != nil {
@@ -131,7 +136,7 @@ func TestAddUsageRollupCacheReadFieldsMigrationUnionsIncompleteBackfillRange(t *
 	}
 }
 
-func TestAddUsageRollupCacheReadFieldsMigrationPreservesCompletedStateWithoutExactFacts(t *testing.T) {
+func TestAddUsageRollupCacheReadFieldsMigrationPreservesCompletedStateWithoutValidFacts(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(testSQLiteDSN(filepath.Join(t.TempDir(), "legacy-rollup.db"))), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
@@ -141,11 +146,16 @@ func TestAddUsageRollupCacheReadFieldsMigrationPreservesCompletedStateWithoutExa
 	if err := db.Exec(`CREATE TABLE usage_rollups_hourly (id integer PRIMARY KEY, input_tokens integer NOT NULL, cached_tokens integer NOT NULL)`).Error; err != nil {
 		t.Fatalf("create legacy rollup table: %v", err)
 	}
-	if err := db.Exec(`CREATE TABLE usage_events (id integer PRIMARY KEY, timestamp datetime NOT NULL, cache_read_tokens integer)`).Error; err != nil {
+	if err := db.Exec(`CREATE TABLE usage_events (id integer PRIMARY KEY, timestamp datetime NOT NULL, input_tokens integer NOT NULL, cache_read_tokens integer)`).Error; err != nil {
 		t.Fatalf("create usage events table: %v", err)
 	}
-	if err := db.Exec(`INSERT INTO usage_events (id, timestamp, cache_read_tokens) VALUES (?, ?, NULL)`, 1, time.Date(2020, 1, 2, 3, 15, 0, 0, time.UTC)).Error; err != nil {
-		t.Fatalf("seed usage event without exact cache fact: %v", err)
+	invalidAt := time.Date(2020, 1, 2, 3, 15, 0, 0, time.UTC)
+	if err := db.Exec(`INSERT INTO usage_events (id, timestamp, input_tokens, cache_read_tokens) VALUES (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, ?), (?, ?, ?, NULL)`,
+		1, invalidAt, 0, 1,
+		2, invalidAt.Add(time.Hour), 100, 101,
+		3, invalidAt.Add(2*time.Hour), 100, -1,
+		4, invalidAt.Add(3*time.Hour), 100).Error; err != nil {
+		t.Fatalf("seed usage events without valid cache facts: %v", err)
 	}
 	if err := db.AutoMigrate(&entities.UsageRollupBackfillState{}); err != nil {
 		t.Fatalf("create backfill state: %v", err)
