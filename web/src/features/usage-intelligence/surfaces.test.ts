@@ -19,7 +19,7 @@ function viewModel(overrides: Partial<UsageDashboardViewModel> = {}): UsageDashb
     hasModelDistribution: false,
     hasInsights: false,
     modelMixMeasure: "tokens",
-    modelMixCostStateLabel: "Cost state: unavailable · Token share",
+    modelMixCostStateLabel: "Cost unavailable, by tokens",
     hasLeaderboardBreakdown: false,
     leaderboardSortLabel: "Sort: Cost",
     kpiData: null,

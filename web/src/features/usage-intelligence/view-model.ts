@@ -122,12 +122,12 @@ export function getModelMixPresentation(costStatus?: CostStatus): {
   costStateLabel: string
 } {
   if (costStatus === "available") {
-    return { measure: "cost", costStateLabel: "Cost state: available · Cost share" }
+    return { measure: "cost", costStateLabel: "By cost" }
   }
   if (costStatus === "partial") {
-    return { measure: "tokens", costStateLabel: "Cost state: partial · Token share" }
+    return { measure: "tokens", costStateLabel: "Cost partial, by tokens" }
   }
-  return { measure: "tokens", costStateLabel: "Cost state: unavailable · Token share" }
+  return { measure: "tokens", costStateLabel: "Cost unavailable, by tokens" }
 }
 
 export function buildUsageDashboardViewModel(input: {
@@ -143,9 +143,11 @@ export function buildUsageDashboardViewModel(input: {
     ? Array.isArray(input.analytics?.api_key_breakdown)
     : Array.isArray(input.analytics?.key_alias_breakdown)
   const modelDistribution = input.analytics?.model_distribution ?? []
-  // The Cache KPI is the current compact presentation owner; keep the parallel
-  // cache insight hidden so partial/exact state is not duplicated on the page.
-  const insights = (input.analytics?.insights ?? []).filter((insight) => insight.type !== "cache_efficiency")
+  // The Cache KPI is the compact cache presentation owner; keep its parallel
+  // insight hidden and reserve the Attention rail for warning-level signals.
+  const insights = (input.analytics?.insights ?? []).filter(
+    (insight) => insight.type !== "cache_efficiency" && insight.severity === "amber",
+  )
   const modelMix = getModelMixPresentation(input.analytics?.summary?.cost_status)
   return {
     trend,

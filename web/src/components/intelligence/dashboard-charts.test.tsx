@@ -34,10 +34,10 @@ function surfaces(overrides: Partial<UsageDashboardSurfaces> = {}): UsageDashboa
 }
 
 const model = { model: "provider-scoped-model" } as ModelDistribution
-const insight = { title: "Pricing incomplete" } as Insight
+const insight = { title: "Pricing incomplete", severity: "amber" } as Insight
 
 describe("DashboardCharts Usage Intelligence fields", () => {
-  it("renders the unique Model Mix and Insight owners with token fallback labeling", () => {
+  it("renders the Model Mix owner and conditional attention signals with token fallback labeling", () => {
     render(
       <DashboardCharts
         surfaces={surfaces({
@@ -51,17 +51,17 @@ describe("DashboardCharts Usage Intelligence fields", () => {
         onSelectLeaderboardScope={vi.fn()}
         leaderboardSortLabel="Sort: Tokens"
         modelMixMeasure="tokens"
-        modelMixCostStateLabel="Cost state: partial · Token share"
+        modelMixCostStateLabel="Cost partial, by tokens"
         onRetryCore={vi.fn()}
       />,
     )
 
-    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Cost state: partial · Token share")
+    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Cost partial, by tokens")
     expect(screen.getByTestId("model-distribution-owner")).toHaveTextContent("tokens:provider-scoped-model")
     expect(screen.getByTestId("insight-rail-owner")).toHaveTextContent("Pricing incomplete")
   })
 
-  it("inherits the core error retry for Model Mix and Insights", async () => {
+  it("inherits the core error retry for Model Mix and attention signals", async () => {
     const user = userEvent.setup()
     const onRetryCore = vi.fn()
     render(
@@ -77,13 +77,13 @@ describe("DashboardCharts Usage Intelligence fields", () => {
         onSelectLeaderboardScope={vi.fn()}
         leaderboardSortLabel="Sort: Cost"
         modelMixMeasure="cost"
-        modelMixCostStateLabel="Cost state: available · Cost share"
+        modelMixCostStateLabel="By cost"
         onRetryCore={onRetryCore}
       />,
     )
 
     await user.click(screen.getByRole("button", { name: "Retry model mix" }))
-    await user.click(screen.getByRole("button", { name: "Retry insights" }))
+    await user.click(screen.getByRole("button", { name: "Retry attention signals" }))
     expect(onRetryCore).toHaveBeenCalledTimes(2)
   })
 })

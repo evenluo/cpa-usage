@@ -114,14 +114,14 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
 - Leaderboards default to **Cost** ordering when cost metrics are complete; partial **Cost** may still order by the priced cost portion when labeled as partial; token volume becomes the ordering measure when cost is unavailable.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
-- **Model Mix** and deterministic **Insights** are current visible **Selected Analysis Window** readings, not dormant response fields.
+- **Model Mix** is a current visible **Selected Analysis Window** reading of the returned model breakdown; rankings and shares are scoped to that returned set. Deterministic **Insights** appear only when a warning affects how the selected window should be interpreted; informational maxima remain in their owning trend, ranking, or metric surface.
 - Attempt health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent attempt samples; it is not the complete request event inspection surface.
 - **Request Evidence** status and failure metadata describe the selected upstream attempt, not the final client request outcome.
 - **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.
 - **Request Evidence** drill-down lives inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
-- First-version insights are deterministic metrics and warnings, not AI-generated summaries.
-- **Usage Intelligence** insights prioritize metric completeness and health risks before cost, token, and contributor movements.
+- First-version insights are conditional deterministic warnings, not AI-generated summaries and not a duplicate summary of visible metrics.
+- **Usage Intelligence** insights prioritize metric completeness and health risks; cost, token, and contributor movements remain in their owning analysis surfaces.
 - CPA native quota administration remains out of scope; the supported capacity surface is the restricted **Live Capacity** probe inside **Usage Intelligence**.
 - The first **Operations Console** covers manual sync state, rollup backfill coverage from the existing status contract, runtime state, access state, and logout. It does not claim background-ingestion freshness.
 - Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
