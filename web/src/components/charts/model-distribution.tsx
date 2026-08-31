@@ -49,8 +49,8 @@ function buildRows(data: ModelDistribution[], measure: ModelDistributionProps["m
 
   visible.push({
     key: "other-models",
-    model: "Other models",
-    provider: `${remaining.length} additional ${remaining.length === 1 ? "model" : "models"}`,
+    model: "Other shown models",
+    provider: `${remaining.length} additional shown ${remaining.length === 1 ? "model" : "models"}`,
     value: remaining.reduce((sum, row) => sum + measureValue(row, measure), 0),
     totalCost: remaining.reduce((sum, row) => sum + row.total_cost, 0),
     totalTokens: remaining.reduce((sum, row) => sum + row.total_tokens, 0),
@@ -111,8 +111,8 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="font-serif text-3xl font-semibold tracking-tight">{data.length}</span>
-          <span className="mt-0.5 text-xs text-muted-foreground">{data.length === 1 ? "model" : "models"}</span>
-          <span className="mt-2 text-[11px] font-medium text-muted-foreground">{measure === "cost" ? "Cost mix" : "Token mix"}</span>
+          <span className="mt-0.5 text-xs text-muted-foreground">{data.length === 1 ? "model shown" : "models shown"}</span>
+          <span className="mt-2 text-[11px] font-medium text-muted-foreground">{measure === "cost" ? "Shown cost mix" : "Shown token mix"}</span>
         </div>
       </div>
 
@@ -120,7 +120,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
         <div className="border-b border-border pb-5">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <span className="h-5 w-1 rounded-full" style={{ backgroundColor: leading.color }} aria-hidden="true" />
-            Leading model
+            Leading shown model
           </div>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <p className="min-w-0 truncate font-serif text-2xl font-semibold tracking-tight sm:text-3xl">{leading.model}</p>

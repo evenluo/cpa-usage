@@ -114,7 +114,7 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
 - Leaderboards default to **Cost** ordering when cost metrics are complete; partial **Cost** may still order by the priced cost portion when labeled as partial; token volume becomes the ordering measure when cost is unavailable.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
-- **Model Mix** is a current visible **Selected Analysis Window** reading. Deterministic **Insights** appear only when a warning affects how the selected window should be interpreted; informational maxima remain in their owning trend, ranking, or metric surface.
+- **Model Mix** is a current visible **Selected Analysis Window** reading of the returned model breakdown; rankings and shares are scoped to that returned set. Deterministic **Insights** appear only when a warning affects how the selected window should be interpreted; informational maxima remain in their owning trend, ranking, or metric surface.
 - Attempt health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent attempt samples; it is not the complete request event inspection surface.
 - **Request Evidence** status and failure metadata describe the selected upstream attempt, not the final client request outcome.

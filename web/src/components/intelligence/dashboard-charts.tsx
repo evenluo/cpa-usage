@@ -170,7 +170,7 @@ export function DashboardCharts({
         <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <div>
             <CardTitle>Model Mix</CardTitle>
-            <CardDescription>Usage composition across models in the selected window</CardDescription>
+            <CardDescription>Share within the model breakdown returned for the selected window</CardDescription>
           </div>
           <Badge
             variant={modelMixMeasure === "cost" ? "terracotta" : "outline"}

@@ -38,22 +38,24 @@ function model(index: number): ModelDistribution {
 }
 
 describe("ModelDistributionChart", () => {
-  it("uses a leading-model composition and groups the long tail on wide data sets", () => {
+  it("scopes composition and long-tail labels to the returned model set", () => {
     render(<ModelDistributionChart data={[1, 2, 3, 4, 5, 6, 7].map(model)} measure="cost" />)
 
     expect(screen.getByText("7", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("models", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("models shown", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Shown cost mix", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Leading shown model", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("model-7", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("25.0%", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("Other models", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("2 additional models", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Other shown models", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("2 additional shown models", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("model-1", { exact: true })).not.toBeInTheDocument()
   })
 
-  it("keeps token share authoritative while showing cost as supporting context", () => {
+  it("labels token share as scoped to the returned models while showing cost context", () => {
     render(<ModelDistributionChart data={[model(1), model(2)]} measure="tokens" />)
 
-    expect(screen.getByText("Token mix", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Shown token mix", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("model-2", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("66.7%", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("$2.00", { exact: true })).toBeInTheDocument()
