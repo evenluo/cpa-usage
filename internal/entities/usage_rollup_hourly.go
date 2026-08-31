@@ -21,7 +21,7 @@ type UsageRollupHourly struct {
 	CachedTokens         int64     `gorm:"not null"`
 	CacheReadTokens      int64     `gorm:"not null"`
 	// CacheReadObservedInputTokens is the prompt-input denominator from attempts
-	// that carried an explicit cache_read_tokens fact, including explicit zero.
+	// that carried a valid explicit cache_read_tokens fact, including explicit zero.
 	CacheReadObservedInputTokens int64     `gorm:"not null"`
 	TotalTokens                  int64     `gorm:"not null"`
 	TotalLatencyMS               int64     `gorm:"not null"`

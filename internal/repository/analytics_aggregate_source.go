@@ -45,6 +45,7 @@ type analyticsAggregateSource struct {
 func analyticsEventsAggregateSource() analyticsAggregateSource {
 	inputTokens := analyticsPositiveTokenSQLExpression("usage_events.input_tokens")
 	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
+	cacheReadTokens, cacheReadObservedInputTokens := analyticsCacheReadObservationSQLExpressions("usage_events.input_tokens", "usage_events.cache_read_tokens")
 	return analyticsAggregateSource{
 		name:                             "events",
 		requestCountExpr:                 "1",
@@ -54,8 +55,8 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		outputTokensExpr:                 "usage_events.output_tokens",
 		reasoningTokensExpr:              "usage_events.reasoning_tokens",
 		cachedTokensExpr:                 "usage_events.cached_tokens",
-		cacheReadTokensExpr:              "usage_events.cache_read_tokens",
-		cacheReadObservedInputTokensExpr: "CASE WHEN usage_events.cache_read_tokens IS NOT NULL THEN usage_events.input_tokens ELSE 0 END",
+		cacheReadTokensExpr:              cacheReadTokens,
+		cacheReadObservedInputTokensExpr: cacheReadObservedInputTokens,
 		totalTokensExpr:                  "usage_events.total_tokens",
 		promptTokensExpr:                 "(CASE WHEN " + inputTokens + " - " + cachedTokens + " > 0 THEN " + inputTokens + " - " + cachedTokens + " ELSE 0 END)",
 		providerExpr:                     "TRIM(usage_events.provider)",
@@ -72,6 +73,18 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		identityQuery:                    analyticsIdentityEventsWithPricingQuery,
 		apiKeyQuery:                      apiKeyEventsWithPricingQuery,
 	}
+}
+
+// analyticsCacheReadObservationSQLExpressions admits only internally consistent
+// provider cache-read facts. Invalid facts remain available as raw Request Evidence,
+// but contribute neither the cache-read numerator nor its observed-input denominator.
+func analyticsCacheReadObservationSQLExpressions(inputTokensExpr string, cacheReadTokensExpr string) (string, string) {
+	valid := inputTokensExpr + " > 0" +
+		" AND " + cacheReadTokensExpr + " IS NOT NULL" +
+		" AND " + cacheReadTokensExpr + " >= 0" +
+		" AND " + cacheReadTokensExpr + " <= " + inputTokensExpr
+	return "CASE WHEN " + valid + " THEN " + cacheReadTokensExpr + " ELSE 0 END",
+		"CASE WHEN " + valid + " THEN " + inputTokensExpr + " ELSE 0 END"
 }
 
 func analyticsRollupsAggregateSource() analyticsAggregateSource {
