@@ -92,6 +92,41 @@ describe("ModelDistributionChart", () => {
     expect(screen.queryByText("$0.00", { exact: true })).not.toBeInTheDocument()
   })
 
+  it("excludes models with unavailable cost from the cost mix instead of fabricating a zero share", () => {
+    render(
+      <ModelDistributionChart
+        data={[
+          model(2),
+          { ...model(1), total_cost: 0, cost_available: false, cost_status: "unavailable" },
+        ]}
+        measure="cost"
+      />,
+    )
+
+    expect(screen.getByText("100.0%", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("marks the Other row cost share unavailable when any aggregated model lacks cost", () => {
+    render(
+      <ModelDistributionChart
+        data={[
+          ...[3, 4, 5, 6, 7].map(model),
+          model(2),
+          { ...model(1), total_cost: 0, cost_available: false, cost_status: "unavailable" },
+        ]}
+        measure="cost"
+      />,
+    )
+
+    expect(screen.getByText("Other shown models", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    // The unavailable Other row is excluded from the mix total: 7 / (7+6+5+4+3).
+    expect(screen.getByText("28.0%", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
+
   it("shows an explicit zero-value state instead of naming a leading model", () => {
     render(
       <ModelDistributionChart
@@ -103,5 +138,39 @@ describe("ModelDistributionChart", () => {
     expect(screen.getByText("No cost recorded for shown models", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("Leading shown model", { exact: true })).not.toBeInTheDocument()
     expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("reports cost as unavailable when no shown model has an available cost", () => {
+    render(
+      <ModelDistributionChart
+        data={[model(1), model(2)].map((row) => ({
+          ...row,
+          total_cost: 0,
+          cost_available: false,
+          cost_status: "unavailable",
+        }))}
+        measure="cost"
+      />,
+    )
+
+    expect(screen.getByText("Cost unavailable for shown models", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("No cost recorded for shown models", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("sorts by available value so an unavailable row with residual cost never leads", () => {
+    const { container } = render(
+      <ModelDistributionChart
+        data={[
+          { ...model(1), total_cost: 100, cost_available: false, cost_status: "unavailable" },
+          { ...model(2), total_cost: 5 },
+        ]}
+        measure="cost"
+      />,
+    )
+
+    // The leading block's model name is the only serif paragraph.
+    expect(container.querySelector("p.font-serif")?.textContent).toBe("model-2")
+    expect(screen.getByText("100.0%", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
   })
 })

@@ -252,7 +252,7 @@ function AccountTiming({
     <div
       className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5"
       role="group"
-      aria-label="Account timing"
+      aria-label="Account and cache timing"
     >
       {hasProbeWindow ? (
         <div
@@ -338,7 +338,7 @@ function TimingEndpoint({
         <span>{label}</span>
       </div>
       <div className={cn("mt-0.5 truncate font-medium text-foreground/90", compact ? "text-[10px]" : "text-[11px]")}>
-        <time dateTime={value} title={formatDate(value)}>{formatDate(value)}</time>
+        <time dateTime={value} title={value}>{formatDate(value)}</time>
       </div>
     </div>
   )
