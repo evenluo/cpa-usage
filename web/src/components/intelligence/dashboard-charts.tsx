@@ -158,7 +158,7 @@ export function DashboardCharts({
       {surfaces.insights.status === "loading" ? (
         <Skeleton className="h-24 w-full" />
       ) : surfaces.insights.status === "error" ? (
-        <div className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+        <div className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-red-500">
           <span>Failed to load attention signals</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry attention signals</Button>
         </div>

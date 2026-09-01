@@ -1,6 +1,6 @@
 import { act } from "react"
-import { render, screen, within } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { cleanup, render, screen, within } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
@@ -84,6 +84,8 @@ function readGridAuthIndexes(grid: Element): string[] {
 }
 
 describe("LiveCapacityCard", () => {
+  afterEach(cleanup)
+
   it("shows skeleton while loading", () => {
     setupMock({ isLoading: true })
     const { container } = render(<LiveCapacityCard provider="" />)
@@ -139,7 +141,7 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
-    const timing = screen.getByRole("group", { name: "Account timing" })
+    const timing = screen.getByRole("group", { name: "Account and cache timing" })
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
     expect(within(timing).getByText("Account active")).toBeInTheDocument()
@@ -148,6 +150,57 @@ describe("LiveCapacityCard", () => {
     expect(timing.querySelectorAll("time")).toHaveLength(4)
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
+  })
+
+  it("renders a single cache-expiry endpoint without a connector when observedAt is missing", () => {
+    const identities = [identity({
+      identity: "codex-pro",
+      displayName: "Codex Pro",
+      provider: "Codex",
+      type: "codex",
+    })]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [{
+        id: "codex-pro",
+        expiresAt: "2026-08-31T01:05:00Z",
+        quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
+      }],
+    }
+    setupMock({ identities, cachedQuota })
+    const { container } = render(<LiveCapacityCard provider="" />)
+
+    const timing = within(container).getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
+    expect(within(timing).queryByText("Observed")).not.toBeInTheDocument()
+    expect(timing.querySelectorAll("time")).toHaveLength(1)
+    expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
+    expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
+  })
+
+  it("renders a single account-active endpoint without a connector when active start is missing", () => {
+    const identities = [identity({
+      identity: "codex-pro",
+      displayName: "Codex Pro",
+      provider: "Codex",
+      type: "codex",
+      active_until: "2026-09-01T00:00:00Z",
+    })]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [{
+        id: "codex-pro",
+        quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
+      }],
+    }
+    setupMock({ identities, cachedQuota })
+    const { container } = render(<LiveCapacityCard provider="" />)
+
+    const timing = within(container).getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).getByText("Account active")).toBeInTheDocument()
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
+    expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
+    expect(timing.querySelectorAll("time")).toHaveLength(1)
+    expect(timing.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
+    expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
   })
 
   it("separates priority accounts from regular accounts with a divider", () => {

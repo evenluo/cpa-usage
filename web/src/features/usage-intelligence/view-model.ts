@@ -109,7 +109,8 @@ export function getCacheReadShareCaption(state?: CacheReadShareState, coverage?:
   if (state === "no_prompt_input") return "No prompt input"
   if (state === "no_cache_data") return "No exact cache data"
   const label = state === "available" ? "Exact" : "Partial"
-  return `${label} · covers ${(coverage ?? 0).toFixed(1)}% of prompt input`
+  if (coverage === undefined) return label
+  return `${label} · covers ${coverage.toFixed(1)}% of prompt input`
 }
 
 export function getCacheReadShareValue(value?: number, state?: CacheReadShareState): number | undefined {
@@ -130,6 +131,13 @@ export function getModelMixPresentation(costStatus?: CostStatus): {
   return { measure: "tokens", costStateLabel: "Cost unavailable, by tokens" }
 }
 
+// The Attention rail surfaces warning-level signals only; "amber" is the
+// warning tier in the backend insight severity taxonomy
+// (green/blue/violet/amber, see internal/repository/analytics_insights.go).
+function isAttentionSignal(insight: Insight): boolean {
+  return insight.severity === "amber"
+}
+
 export function buildUsageDashboardViewModel(input: {
   analytics?: AnalyticsCoreResponse
   fixedHeatmap?: HeatmapData
@@ -146,7 +154,7 @@ export function buildUsageDashboardViewModel(input: {
   // The Cache KPI is the compact cache presentation owner; keep its parallel
   // insight hidden and reserve the Attention rail for warning-level signals.
   const insights = (input.analytics?.insights ?? []).filter(
-    (insight) => insight.type !== "cache_efficiency" && insight.severity === "amber",
+    (insight) => insight.type !== "cache_efficiency" && isAttentionSignal(insight),
   )
   const modelMix = getModelMixPresentation(input.analytics?.summary?.cost_status)
   return {

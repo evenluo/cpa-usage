@@ -12,6 +12,7 @@ interface ModelMixRow {
   model: string
   provider: string
   value: number
+  valueAvailable: boolean
   totalCost: number
   costAvailable: boolean
   totalTokens: number
@@ -22,28 +23,58 @@ interface ModelMixRow {
 const MAX_VISIBLE_MODELS = 5
 const PALETTE = ["#d97757", "#7f8f96", "#8d806f", "#6f8a7b", "#8b7f9c", "#a39b92"]
 
-function measureValue(row: ModelDistribution, measure: ModelDistributionProps["measure"]): number {
-  return measure === "cost" ? row.total_cost : row.total_tokens
+type Measure = ModelDistributionProps["measure"]
+
+interface MeasureConfig {
+  value: (row: ModelDistribution) => number
+  format: (value: number) => string
+  emptyMessage: string
+  // Shown when every visible row's value is unavailable rather than genuinely zero.
+  unavailableMessage?: string
+  centerLabel: string
+  supportingMetric: (row: ModelMixRow) => string
+}
+
+const MEASURE_CONFIG: Record<Measure, MeasureConfig> = {
+  cost: {
+    value: (row) => row.total_cost,
+    format: formatCost,
+    emptyMessage: "No cost recorded for shown models",
+    unavailableMessage: "Cost unavailable for shown models",
+    centerLabel: "Shown cost mix",
+    supportingMetric: (row) => `${formatCompact(row.totalTokens, 1)} tokens`,
+  },
+  tokens: {
+    value: (row) => row.total_tokens,
+    format: (value) => `${formatCompact(value, 1)} tokens`,
+    emptyMessage: "No token usage recorded for shown models",
+    centerLabel: "Shown token mix",
+    supportingMetric: (row) => (row.costAvailable ? formatCost(row.totalCost) : "Cost n/a"),
+  },
 }
 
 function hasAvailableCost(row: Pick<ModelDistribution, "cost_available" | "cost_status">): boolean {
   return row.cost_available && row.cost_status === "available"
 }
 
-function formatMeasure(value: number, measure: ModelDistributionProps["measure"]): string {
-  return measure === "cost" ? formatCost(value) : `${formatCompact(value, 1)} tokens`
+// An unavailable cost must render as unavailable, never as a fabricated zero
+// share, so such rows carry value 0 and are excluded from the mix total.
+function measureRow(row: ModelDistribution, measure: Measure): Pick<ModelMixRow, "value" | "valueAvailable"> {
+  const valueAvailable = measure === "tokens" || hasAvailableCost(row)
+  return { value: valueAvailable ? MEASURE_CONFIG[measure].value(row) : 0, valueAvailable }
 }
 
-function buildRows(data: ModelDistribution[], measure: ModelDistributionProps["measure"]): ModelMixRow[] {
+function buildRows(data: ModelDistribution[], measure: Measure): ModelMixRow[] {
+  const config = MEASURE_CONFIG[measure]
   const sorted = [...data].sort((a, b) => {
-    const difference = measureValue(b, measure) - measureValue(a, measure)
+    const difference = measureRow(b, measure).value - measureRow(a, measure).value
     return difference !== 0 ? difference : a.model.localeCompare(b.model)
   })
   const visible = sorted.slice(0, MAX_VISIBLE_MODELS).map((row, index) => ({
     key: `${row.provider}:${row.model}`,
     model: row.model,
     provider: row.provider || "Unknown provider",
-    value: measureValue(row, measure),
+    ...measureRow(row, measure),
     totalCost: row.total_cost,
     costAvailable: hasAvailableCost(row),
     totalTokens: row.total_tokens,
@@ -53,13 +84,16 @@ function buildRows(data: ModelDistribution[], measure: ModelDistributionProps["m
   const remaining = sorted.slice(MAX_VISIBLE_MODELS)
   if (remaining.length === 0) return visible
 
+  const otherCostAvailable = remaining.every(hasAvailableCost)
+  const otherValueAvailable = measure === "tokens" || otherCostAvailable
   visible.push({
     key: "other-models",
     model: "Other shown models",
     provider: `${remaining.length} additional shown ${remaining.length === 1 ? "model" : "models"}`,
-    value: remaining.reduce((sum, row) => sum + measureValue(row, measure), 0),
+    value: otherValueAvailable ? remaining.reduce((sum, row) => sum + config.value(row), 0) : 0,
+    valueAvailable: otherValueAvailable,
     totalCost: remaining.reduce((sum, row) => sum + row.total_cost, 0),
-    costAvailable: remaining.every(hasAvailableCost),
+    costAvailable: otherCostAvailable,
     totalTokens: remaining.reduce((sum, row) => sum + row.total_tokens, 0),
     requestCount: remaining.reduce((sum, row) => sum + row.request_count, 0),
     color: PALETTE[PALETTE.length - 1],
@@ -67,17 +101,18 @@ function buildRows(data: ModelDistribution[], measure: ModelDistributionProps["m
   return visible
 }
 
-function SupportingMetrics({ row, measure }: { row: ModelMixRow; measure: ModelDistributionProps["measure"] }) {
+function SupportingMetrics({ row, measure }: { row: ModelMixRow; measure: Measure }) {
   return (
     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
       <span>{row.provider}</span>
-      {measure === "cost" ? <span>{formatCompact(row.totalTokens, 1)} tokens</span> : <span>{row.costAvailable ? formatCost(row.totalCost) : "Cost n/a"}</span>}
+      <span>{MEASURE_CONFIG[measure].supportingMetric(row)}</span>
       <span>{formatCompact(row.requestCount, 0)} attempts</span>
     </div>
   )
 }
 
 export function ModelDistributionChart({ data, measure }: ModelDistributionProps) {
+  const config = MEASURE_CONFIG[measure]
   const rows = buildRows(data, measure)
   const total = rows.reduce((sum, row) => sum + row.value, 0)
   const leading = rows[0]
@@ -90,9 +125,12 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
     )
   }
   if (total <= 0) {
+    const message = config.unavailableMessage && rows.every((row) => !row.valueAvailable)
+      ? config.unavailableMessage
+      : config.emptyMessage
     return (
       <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
-        {measure === "cost" ? "No cost recorded for shown models" : "No token usage recorded for shown models"}
+        {message}
       </div>
     )
   }
@@ -126,7 +164,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
           <span className="font-serif text-3xl font-semibold tracking-tight">{data.length}</span>
           <span className="mt-0.5 text-xs text-muted-foreground">{data.length === 1 ? "model shown" : "models shown"}</span>
-          <span className="mt-2 text-[11px] font-medium text-muted-foreground">{measure === "cost" ? "Shown cost mix" : "Shown token mix"}</span>
+          <span className="mt-2 text-[11px] font-medium text-muted-foreground">{config.centerLabel}</span>
         </div>
       </div>
 
@@ -139,10 +177,16 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <p className="min-w-0 truncate font-serif text-2xl font-semibold tracking-tight sm:text-3xl">{leading.model}</p>
             <div className="shrink-0 sm:text-right">
-              <p className="font-serif text-3xl font-semibold tracking-tight text-terracotta-700 dark:text-terracotta-400">
-                {shareOf(leading).toFixed(1)}%
-              </p>
-              <p className="text-xs font-medium text-muted-foreground">{formatMeasure(leading.value, measure)}</p>
+              {leading.valueAvailable ? (
+                <>
+                  <p className="font-serif text-3xl font-semibold tracking-tight text-terracotta-700 dark:text-terracotta-400">
+                    {shareOf(leading).toFixed(1)}%
+                  </p>
+                  <p className="text-xs font-medium text-muted-foreground">{config.format(leading.value)}</p>
+                </>
+              ) : (
+                <p className="font-serif text-3xl font-semibold tracking-tight text-muted-foreground">Cost n/a</p>
+              )}
             </div>
           </div>
           <SupportingMetrics row={leading} measure={measure} />
@@ -161,8 +205,14 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
                 </div>
               </div>
               <div className="pl-3.5 sm:min-w-[120px] sm:pl-0 sm:text-right">
-                <p className="text-sm font-semibold">{shareOf(row).toFixed(1)}%</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{formatMeasure(row.value, measure)}</p>
+                {row.valueAvailable ? (
+                  <>
+                    <p className="text-sm font-semibold">{shareOf(row).toFixed(1)}%</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{config.format(row.value)}</p>
+                  </>
+                ) : (
+                  <p className="text-sm font-semibold text-muted-foreground">Cost n/a</p>
+                )}
               </div>
             </div>
           ))}

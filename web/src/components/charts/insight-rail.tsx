@@ -1,39 +1,30 @@
 import type { Insight } from "@/types/api"
 import { AlertTriangle } from "lucide-react"
-import { formatCost, formatCompact } from "@/lib/format"
+import { formatCompact } from "@/lib/format"
 
 interface InsightRailProps {
   insights: Insight[]
 }
 
+// Only warning-level (amber) insights reach this rail; today the backend emits
+// exactly two (see internal/repository/analytics_insights.go).
 function insightPriority(type: string): number {
   switch (type) {
     case "metric_completeness": return 0
     case "failure_concentration": return 1
-    case "cache_efficiency": return 2
-    case "top_cost_key": return 3
-    case "token_spike": return 4
-    default: return 5
+    default: return 2
   }
 }
 
 function formatMetric(insight: Insight): string {
   switch (insight.metric_label) {
-    case "Cost": return formatCost(insight.metric_value)
-    case "Tokens": return `${formatCompact(insight.metric_value, 2)} tokens`
     case "Failures": return `${insight.count.toLocaleString("en")} failures`
-    case "Share": return `${insight.metric_value.toFixed(1)}% token share`
-    case "Cache Read Share": return `${insight.metric_value.toFixed(1)}%`
     case "Metric Completeness": return insight.subject
-    case "Cache state": return insight.subject
-    case "Cost status": return `Cost ${insight.cost_status}`
     default: return `${insight.metric_label}: ${formatCompact(insight.metric_value, 2)}`
   }
 }
 
 export function InsightRail({ insights }: InsightRailProps) {
-  if (insights.length === 0) return null
-
   const ordered = [...insights].sort(
     (a, b) => insightPriority(a.type) - insightPriority(b.type)
   )
