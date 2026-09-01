@@ -57,10 +57,10 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   const accountTiming = page.getByRole("group", { name: "Account and cache timing" })
   await expect(accountTiming.getByText("Observed", { exact: true })).toBeVisible()
   await expect(accountTiming.getByText("Cache expires", { exact: true })).toBeVisible()
-  await expect(accountTiming.getByText("Account active", { exact: true })).toBeVisible()
-  await expect(accountTiming.locator("time")).toHaveCount(4)
+  await expect(accountTiming.getByText("Active until", { exact: true })).toBeVisible()
+  await expect(accountTiming.locator("time")).toHaveCount(3)
   await expect(page.getByText("Unsupported OpenAI")).toBeVisible()
-  await expect(page.getByText("OA", { exact: true })).toBeVisible()
+  await expect(page.getByLabel("OpenAI", { exact: true }).getByText("OA", { exact: true })).toBeVisible()
   const codexLogoWell = page.locator('[aria-label="Codex"]')
   await expect(codexLogoWell).toHaveCount(1)
   await expect

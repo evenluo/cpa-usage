@@ -29,6 +29,7 @@ export interface LiveCapacityRow {
   isConstrained: boolean
   observedAt?: string
   expiresAt?: string
+  /** Subscription start, exposed only while still in the future. */
   activeStart?: string | null
   activeUntil?: string | null
 }
@@ -123,11 +124,19 @@ export function buildLiveCapacityRows(input: {
         isConstrained,
         observedAt: taskState?.status === "completed" ? taskState.cachedAt : cachedQuota?.cachedAt,
         expiresAt: taskState?.status === "completed" ? taskState.expiresAt : cachedQuota?.expiresAt,
-        activeStart: identity.active_start,
+        // active_start only carries signal while still in the future (the
+        // subscription is not yet effective); past starts are display noise.
+        activeStart: isFutureTimestamp(identity.active_start) ? identity.active_start : null,
         activeUntil: identity.active_until,
       }
     })
     .sort(compareLiveCapacityRows)
+}
+
+function isFutureTimestamp(value: string | null | undefined): boolean {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) && time > Date.now()
 }
 
 export function mergeLiveCapacityRowOrder(currentOrder: string[], rows: LiveCapacityRow[]): string[] {

@@ -236,12 +236,16 @@ export function useLiveCapacity(provider: string) {
     },
   })
 
-  const refresh = useCallback((authIndex?: string) => {
-    const requestedAuthIndexes = authIndex ? [authIndex] : visibleAuthIndexes
+  const refresh = useCallback((target?: string | string[]) => {
+    const requestedAuthIndexes = target === undefined
+      ? visibleAuthIndexes
+      : Array.isArray(target)
+        ? target
+        : [target]
     const authIndexes = selectRefreshAuthIndexes({
       requestedAuthIndexes,
       taskStates,
-      limit: authIndex ? 1 : QUOTA_REFRESH_LIMIT,
+      limit: typeof target === "string" ? 1 : QUOTA_REFRESH_LIMIT,
     })
     if (authIndexes.length === 0) return
     refreshMutation.mutate(authIndexes)

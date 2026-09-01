@@ -22,6 +22,7 @@ import {
   orderLiveCapacityRows,
   type LiveCapacityMetric,
   type LiveCapacityPlanTone,
+  type ProviderKind,
 } from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
 import { useFlipReorder } from "@/hooks/useFlipReorder"
@@ -36,7 +37,26 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
     [identities, cachedQuota, taskStates],
   )
 
-  const [priorityRows, regularDerivedRows] = useMemo(() => {
+  const providerGroups = useMemo(() => {
+    const groups = new Map<ProviderKind, { kind: ProviderKind; label: string; count: number }>()
+    for (const row of derivedRows) {
+      const group = groups.get(row.providerKind)
+      if (group) group.count += 1
+      else groups.set(row.providerKind, { kind: row.providerKind, label: row.providerLabel, count: 1 })
+    }
+    return [...groups.values()].sort(
+      (a, b) => b.count - a.count || a.label.localeCompare(b.label),
+    )
+  }, [derivedRows])
+
+  const [selectedKind, setSelectedKind] = useState<ProviderKind | "all">("all")
+  const effectiveKind = selectedKind !== "all" && providerGroups.some((group) => group.kind === selectedKind)
+    ? selectedKind
+    : "all"
+
+  // Split and ordering run on the unfiltered set so that switching provider
+  // chips never rewrites the remembered regular-section order (rowOrder).
+  const [allPriorityRows, allRegularRows] = useMemo(() => {
     const priority: typeof derivedRows = []
     const regular: typeof derivedRows = []
     for (const row of derivedRows) {
@@ -50,18 +70,33 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   useLayoutEffect(() => {
     if (isLoading || error) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- useLayoutEffect blocks paint, so no flash
-    setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, regularDerivedRows))
-  }, [regularDerivedRows, error, isLoading])
-  const regularRows = useMemo(
-    () => orderLiveCapacityRows(regularDerivedRows, rowOrder),
-    [regularDerivedRows, rowOrder],
+    setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, allRegularRows))
+  }, [allRegularRows, error, isLoading])
+  const orderedRegularRows = useMemo(
+    () => orderLiveCapacityRows(allRegularRows, rowOrder),
+    [allRegularRows, rowOrder],
   )
+
+  const priorityRows = useMemo(
+    () => effectiveKind === "all" ? allPriorityRows : allPriorityRows.filter((row) => row.providerKind === effectiveKind),
+    [allPriorityRows, effectiveKind],
+  )
+  const regularRows = useMemo(
+    () => effectiveKind === "all" ? orderedRegularRows : orderedRegularRows.filter((row) => row.providerKind === effectiveKind),
+    [orderedRegularRows, effectiveKind],
+  )
+  const displayedRows = useMemo(() => [...priorityRows, ...regularRows], [priorityRows, regularRows])
 
   const regularRowKeys = useMemo(() => regularRows.map((r) => r.authIndex), [regularRows])
   const flipEnabled = !isLoading && !error && regularRows.length > 0
   const { containerRef, registerItem } = useFlipReorder(regularRowKeys, { enabled: flipEnabled })
 
-  const refreshLabel = identities.length > refreshLimit ? `Refresh first ${refreshLimit}` : "Refresh"
+  const displayedCount = displayedRows.length
+  const refreshLabel = displayedCount > refreshLimit ? `Refresh first ${refreshLimit}` : "Refresh"
+  const refreshDisplayed = () => {
+    if (effectiveKind === "all") refresh()
+    else refresh(displayedRows.map((row) => row.authIndex))
+  }
 
   return (
     <Card>
@@ -76,8 +111,8 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="blue">live probe</Badge>
           <Badge variant="outline">fixed</Badge>
-          {identities.length > refreshLimit ? <Badge variant="amber">max {refreshLimit}</Badge> : null}
-          <Button type="button" variant="outline" size="sm" onClick={() => refresh()} disabled={identities.length === 0}>
+          {displayedCount > refreshLimit ? <Badge variant="amber">max {refreshLimit}</Badge> : null}
+          <Button type="button" variant="outline" size="sm" onClick={refreshDisplayed} disabled={displayedCount === 0}>
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isRefreshing && "animate-spin")} />
             {refreshLabel}
           </Button>
@@ -99,42 +134,105 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
             No auth-file accounts
           </div>
         ) : (
-          <div className="flex max-h-[560px] flex-col gap-3 overflow-y-auto pr-1">
-            {priorityRows.length > 0 ? (
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {priorityRows.map((row) => (
-                  <LiveCapacityAccountTile
-                    key={row.authIndex}
-                    row={row}
-                    onRefresh={() => refresh(row.authIndex)}
+          <div className="flex flex-col gap-3">
+            {providerGroups.length > 1 ? (
+              <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter accounts by provider">
+                <ProviderFilterChip
+                  label="All"
+                  count={derivedRows.length}
+                  active={effectiveKind === "all"}
+                  onClick={() => setSelectedKind("all")}
+                />
+                {providerGroups.map((group) => (
+                  <ProviderFilterChip
+                    key={group.kind}
+                    label={group.label}
+                    count={group.count}
+                    providerKind={group.kind}
+                    active={effectiveKind === group.kind}
+                    onClick={() => setSelectedKind(group.kind)}
                   />
                 ))}
               </div>
             ) : null}
-
-            {priorityRows.length > 0 && regularRows.length > 0 ? (
-              <div className="border-t border-border/50" role="separator" />
-            ) : null}
-
-            {regularRows.length > 0 ? (
-              <div
-                ref={containerRef}
-                className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
-              >
-                {regularRows.map((row) => (
-                  <div key={row.authIndex} ref={registerItem(row.authIndex)}>
+            <div className="flex max-h-[560px] flex-col gap-3 overflow-y-auto pr-1">
+              {priorityRows.length > 0 ? (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {priorityRows.map((row) => (
                     <LiveCapacityAccountTile
+                      key={row.authIndex}
                       row={row}
                       onRefresh={() => refresh(row.authIndex)}
                     />
-                  </div>
-                ))}
-              </div>
-            ) : null}
+                  ))}
+                </div>
+              ) : null}
+
+              {priorityRows.length > 0 && regularRows.length > 0 ? (
+                <div className="border-t border-border/50" role="separator" />
+              ) : null}
+
+              {regularRows.length > 0 ? (
+                <div
+                  ref={containerRef}
+                  className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
+                >
+                  {regularRows.map((row) => (
+                    <div key={row.authIndex} ref={registerItem(row.authIndex)}>
+                      <LiveCapacityAccountTile
+                        row={row}
+                        onRefresh={() => refresh(row.authIndex)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </CardContent>
     </Card>
+  )
+}
+
+function ProviderFilterChip({
+  label,
+  count,
+  providerKind,
+  active,
+  onClick,
+}: {
+  label: string
+  count: number
+  providerKind?: ProviderKind
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-[background-color,border-color,color] duration-200",
+        active
+          ? "border-terracotta-500/40 bg-terracotta-500/10 text-terracotta-700 dark:text-terracotta-300"
+          : "border-border bg-background/60 text-muted-foreground hover:border-terracotta-500/25 hover:text-foreground",
+      )}
+    >
+      {providerKind ? (
+        <ProviderBrandIcon providerKind={providerKind} label={label} className="h-3.5 w-3.5" />
+      ) : null}
+      <span>{label}</span>
+      <span
+        className={cn(
+          "rounded-full px-1.5 text-[10px] leading-4 tabular-nums",
+          active ? "bg-terracotta-500/15 text-terracotta-700 dark:text-terracotta-300" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {count}
+      </span>
+    </button>
   )
 }
 
@@ -244,9 +342,12 @@ function AccountTiming({
   activeUntil?: string | null
 }) {
   const hasProbeWindow = Boolean(observedAt || expiresAt)
-  const hasActiveWindow = Boolean(activeStart || activeUntil)
   const hasBothProbeEndpoints = Boolean(observedAt && expiresAt)
-  const hasBothActiveEndpoints = Boolean(activeStart && activeUntil)
+  // activeStart arrives pre-filtered by buildLiveCapacityRows: it is only set
+  // while the subscription start is still in the future.
+  const activeRange = activeStart && activeUntil ? { start: activeStart, until: activeUntil } : null
+  const singleActiveEndpoint = activeRange ? null : (activeUntil ?? activeStart ?? null)
+  const hasActiveWindow = Boolean(activeRange || singleActiveEndpoint)
 
   return (
     <div
@@ -280,31 +381,31 @@ function AccountTiming({
 
       {hasActiveWindow ? (
         <div className={cn(hasProbeWindow && "mt-2 border-t border-border/60 pt-2")}>
-          <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
-            <CalendarRange className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
-            <span>Account active</span>
-          </div>
-          <div
-            className={cn(
-              "mt-1.5 grid items-center gap-2",
-              hasBothActiveEndpoints
-                ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
-                : "grid-cols-1",
-            )}
-          >
-            {activeStart ? (
-              <TimingEndpoint label="Starts" value={activeStart} compact />
-            ) : null}
-            {hasBothActiveEndpoints ? <TimingConnector /> : null}
-            {activeUntil ? (
-              <TimingEndpoint
-                label="Ends"
-                value={activeUntil}
-                align={activeStart ? "end" : "start"}
-                compact
-              />
-            ) : null}
-          </div>
+          {activeRange ? (
+            <>
+              <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
+                <CalendarRange className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+                <span>Account active</span>
+              </div>
+              <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                <TimingEndpoint label="Starts" value={activeRange.start} compact />
+                <TimingConnector />
+                <TimingEndpoint label="Ends" value={activeRange.until} align="end" compact />
+              </div>
+            </>
+          ) : singleActiveEndpoint ? (
+            <div className="flex items-center gap-1.5 text-[10px] text-foreground/70">
+              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+              <span className="font-medium">{activeUntil ? "Active until" : "Starts"}</span>
+              <time
+                className="ml-auto truncate font-medium text-foreground/90"
+                dateTime={singleActiveEndpoint}
+                title={singleActiveEndpoint}
+              >
+                {formatDate(singleActiveEndpoint)}
+              </time>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

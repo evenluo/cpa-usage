@@ -1,3 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, renderHook, waitFor } from "@testing-library/react"
+import { createElement, type ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { KeyIdentity } from "@/types/api"
 import { apiFetch } from "@/lib/api"
@@ -7,6 +10,7 @@ import {
   quotaCacheQueryKey,
   resolveRefreshTaskUpdates,
   selectRefreshAuthIndexes,
+  useLiveCapacity,
   type LiveCapacityTaskState,
 } from "./useQuota"
 
@@ -135,5 +139,71 @@ describe("quota hooks", () => {
     expect(selected).not.toContain("auth-1")
     expect(selected).not.toContain("auth-2")
     expect(selected[selected.length - 1]).toBe(`auth-${QUOTA_REFRESH_LIMIT + 2}`)
+  })
+})
+
+describe("useLiveCapacity refresh targeting", () => {
+  const identities = [
+    identity("a-auth", "Codex"),
+    identity("b-auth", "Claude"),
+    identity("c-auth", "Codex"),
+  ]
+
+  beforeEach(() => {
+    mockedApiFetch.mockReset()
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (String(path).startsWith("/usage/identities/page")) {
+        return { identities, total_count: identities.length, page: 1, page_size: 100, total_pages: 1 }
+      }
+      if (path === "/quota/cache") return { items: [] }
+      if (path === "/quota/refresh") {
+        return { tasks: [], rejected: [], accepted: 0, skipped: 0, limit: QUOTA_REFRESH_LIMIT }
+      }
+      throw new Error(`unexpected path: ${String(path)}`)
+    })
+  })
+
+  function renderLiveCapacity() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    return renderHook(() => useLiveCapacity(""), {
+      wrapper: ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client }, children),
+    })
+  }
+
+  async function dispatchedRefreshIndexes(): Promise<string[][]> {
+    await waitFor(() => {
+      expect(mockedApiFetch.mock.calls.some(([path]) => path === "/quota/refresh")).toBe(true)
+    })
+    return mockedApiFetch.mock.calls
+      .filter(([path]) => path === "/quota/refresh")
+      .map(([, init]) => JSON.parse(String(init?.body)).auth_indexes as string[])
+  }
+
+  it("refreshes every visible identity when no target is given", async () => {
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.identities).toHaveLength(3))
+
+    act(() => { result.current.refresh() })
+
+    expect(await dispatchedRefreshIndexes()).toEqual([["a-auth", "b-auth", "c-auth"]])
+  })
+
+  it("limits a single-string target to that one account", async () => {
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.identities).toHaveLength(3))
+
+    act(() => { result.current.refresh("b-auth") })
+
+    expect(await dispatchedRefreshIndexes()).toEqual([["b-auth"]])
+  })
+
+  it("refreshes exactly the given auth-index list", async () => {
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.identities).toHaveLength(3))
+
+    act(() => { result.current.refresh(["a-auth", "c-auth"]) })
+
+    expect(await dispatchedRefreshIndexes()).toEqual([["a-auth", "c-auth"]])
   })
 })

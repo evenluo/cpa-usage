@@ -112,9 +112,22 @@ describe("Live Capacity view model", () => {
       weekly: { valueLabel: "80% used", resetLabel: "2h", progress: 80, tone: "amber" },
       observedAt: "2026-08-31T01:00:00Z",
       expiresAt: "2026-08-31T01:05:00Z",
-      activeStart: "2026-08-01T00:00:00Z",
+      // Past subscription starts are suppressed; only the end date survives.
+      activeStart: null,
       activeUntil: "2026-09-01T00:00:00Z",
     })
+  })
+
+  it("keeps the subscription start when it is still in the future", () => {
+    const futureStart = new Date(Date.now() + 7 * 86_400_000).toISOString()
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        identity: "codex-auth",
+        active_start: futureStart,
+      })],
+    })
+
+    expect(rows[0].activeStart).toBe(futureStart)
   })
 
   it("retains every additional quota row returned by the probe", () => {

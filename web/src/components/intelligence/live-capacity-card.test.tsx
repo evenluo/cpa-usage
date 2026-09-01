@@ -1,5 +1,6 @@
 import { act } from "react"
 import { cleanup, render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
@@ -47,7 +48,7 @@ interface LiveCapacityReturn {
   identities: KeyIdentity[]
   cachedQuota: QuotaCacheResponse | undefined
   taskStates: Record<string, LiveCapacityTaskState>
-  refresh: (authIndex?: string) => void
+  refresh: (target?: string | string[]) => void
   refreshLimit: number
   isLoading: boolean
   isRefreshing: boolean
@@ -144,12 +145,14 @@ describe("LiveCapacityCard", () => {
     const timing = screen.getByRole("group", { name: "Account and cache timing" })
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
-    expect(within(timing).getByText("Account active")).toBeInTheDocument()
-    expect(within(timing).getByText("Starts")).toBeInTheDocument()
-    expect(within(timing).getByText("Ends")).toBeInTheDocument()
-    expect(timing.querySelectorAll("time")).toHaveLength(4)
+    // Past subscription starts are hidden; only the end date remains.
+    expect(within(timing).getByText("Active until")).toBeInTheDocument()
+    expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
+    expect(within(timing).queryByText("Account active")).not.toBeInTheDocument()
+    expect(timing.querySelectorAll("time")).toHaveLength(3)
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
+    expect(timing.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
   })
 
   it("renders a single cache-expiry endpoint without a connector when observedAt is missing", () => {
@@ -195,12 +198,42 @@ describe("LiveCapacityCard", () => {
     const { container } = render(<LiveCapacityCard provider="" />)
 
     const timing = within(container).getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).getByText("Account active")).toBeInTheDocument()
-    expect(within(timing).getByText("Ends")).toBeInTheDocument()
+    expect(within(timing).getByText("Active until")).toBeInTheDocument()
+    expect(within(timing).queryByText("Account active")).not.toBeInTheDocument()
+    expect(within(timing).queryByText("Ends")).not.toBeInTheDocument()
     expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
     expect(timing.querySelectorAll("time")).toHaveLength(1)
     expect(timing.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
+  })
+
+  it("shows both subscription endpoints when the active start is still in the future", () => {
+    const futureStart = new Date(Date.now() + 7 * 86_400_000).toISOString()
+    const futureUntil = new Date(Date.now() + 37 * 86_400_000).toISOString()
+    const identities = [identity({
+      identity: "codex-pro",
+      displayName: "Codex Pro",
+      provider: "Codex",
+      type: "codex",
+      active_start: futureStart,
+      active_until: futureUntil,
+    })]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [{
+        id: "codex-pro",
+        quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
+      }],
+    }
+    setupMock({ identities, cachedQuota })
+    const { container } = render(<LiveCapacityCard provider="" />)
+
+    const timing = within(container).getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).getByText("Account active")).toBeInTheDocument()
+    expect(within(timing).getByText("Starts")).toBeInTheDocument()
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
+    expect(timing.querySelector(`time[datetime='${futureStart}']`)).toBeInTheDocument()
+    expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
+    expect(timing.querySelector("svg.lucide-arrow-right")).toBeInTheDocument()
   })
 
   it("separates priority accounts from regular accounts with a divider", () => {
@@ -333,5 +366,97 @@ describe("LiveCapacityCard", () => {
 
     const gridsAfter = getSectionGrids(container)
     expect(readGridAuthIndexes(gridsAfter[0])).toEqual(initialOrder)
+  })
+
+  it("filters tiles via provider chips and restores the full list on All", async () => {
+    const user = userEvent.setup()
+    const identities = [
+      identity({ identity: "codex-a", displayName: "Codex A", provider: "Codex", type: "codex" }),
+      identity({ identity: "codex-b", displayName: "Codex B", provider: "Codex", type: "codex" }),
+      identity({ identity: "claude-a", displayName: "Claude A", provider: "Claude", type: "claude" }),
+    ]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [
+        { id: "codex-a", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-b", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "claude-a", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+      ],
+    }
+    setupMock({ identities, cachedQuota })
+    render(<LiveCapacityCard provider="" />)
+
+    const chipGroup = screen.getByRole("group", { name: "Filter accounts by provider" })
+    const allChip = within(chipGroup).getByRole("button", { name: /^All/ })
+    const codexChip = within(chipGroup).getByRole("button", { name: /Codex/ })
+    const claudeChip = within(chipGroup).getByRole("button", { name: /Claude/ })
+    expect(within(codexChip).getByText("2")).toBeInTheDocument()
+    expect(within(claudeChip).getByText("1")).toBeInTheDocument()
+    expect(allChip).toHaveAttribute("aria-pressed", "true")
+
+    await user.click(claudeChip)
+    expect(screen.queryByText("Codex A")).not.toBeInTheDocument()
+    expect(screen.getByText("Claude A")).toBeInTheDocument()
+    expect(claudeChip).toHaveAttribute("aria-pressed", "true")
+
+    await user.click(allChip)
+    expect(screen.getByText("Codex A")).toBeInTheDocument()
+    expect(screen.getByText("Claude A")).toBeInTheDocument()
+  })
+
+  it("hides provider chips when only one provider is present", () => {
+    const identities = [
+      identity({ identity: "codex-a", displayName: "Codex A", provider: "Codex", type: "codex" }),
+    ]
+    setupMock({ identities })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(screen.queryByRole("group", { name: "Filter accounts by provider" })).not.toBeInTheDocument()
+  })
+
+  it("scopes the header refresh to the selected provider chip", async () => {
+    const user = userEvent.setup()
+    const identities = [
+      identity({ identity: "codex-a", displayName: "Codex A", provider: "Codex", type: "codex" }),
+      identity({ identity: "claude-a", displayName: "Claude A", provider: "Claude", type: "claude" }),
+    ]
+    const mock = setupMock({ identities })
+    render(<LiveCapacityCard provider="" />)
+
+    const chipGroup = screen.getByRole("group", { name: "Filter accounts by provider" })
+    await user.click(within(chipGroup).getByRole("button", { name: /Claude/ }))
+    await user.click(screen.getByRole("button", { name: "Refresh" }))
+    expect(mock.refresh).toHaveBeenCalledWith(["claude-a"])
+
+    await user.click(within(chipGroup).getByRole("button", { name: /^All/ }))
+    await user.click(screen.getByRole("button", { name: "Refresh" }))
+    expect(mock.refresh).toHaveBeenLastCalledWith()
+  })
+
+  it("preserves the regular section order after switching provider chips", async () => {
+    const user = userEvent.setup()
+    const identities = [
+      identity({ identity: "alpha", displayName: "Alpha", provider: "Codex", type: "codex" }),
+      identity({ identity: "beta", displayName: "Beta", provider: "Claude", type: "claude" }),
+      identity({ identity: "gamma", displayName: "Gamma", provider: "Codex", type: "codex" }),
+    ]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [
+        { id: "alpha", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "beta", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "gamma", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+      ],
+    }
+    setupMock({ identities, cachedQuota })
+    const { container } = render(<LiveCapacityCard provider="" />)
+
+    const initialOrder = readGridAuthIndexes(getSectionGrids(container)[0])
+    expect(initialOrder).toEqual(["alpha", "beta", "gamma"])
+
+    const chipGroup = screen.getByRole("group", { name: "Filter accounts by provider" })
+    await user.click(within(chipGroup).getByRole("button", { name: /Claude/ }))
+    expect(readGridAuthIndexes(getSectionGrids(container)[0])).toEqual(["beta"])
+
+    await user.click(within(chipGroup).getByRole("button", { name: /^All/ }))
+    expect(readGridAuthIndexes(getSectionGrids(container)[0])).toEqual(initialOrder)
   })
 })
