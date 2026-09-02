@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"cpa-usage/internal/cpa/dto/apicall"
+	"cpa-usage/internal/cpa/dto/authfiles"
 	"cpa-usage/internal/cpa/dto/providerconfig"
 	"cpa-usage/internal/cpa/dto/response"
 )
@@ -77,6 +78,10 @@ func (c *Client) doManagementJSONRequest(ctx context.Context, path string, targe
 }
 
 func (c *Client) doManagementJSONPostRequest(ctx context.Context, path string, requestBody any, target any, kind string) (int, []byte, error) {
+	return c.doManagementJSONBodyRequest(ctx, http.MethodPost, path, requestBody, target, kind)
+}
+
+func (c *Client) doManagementJSONBodyRequest(ctx context.Context, method string, path string, requestBody any, target any, kind string) (int, []byte, error) {
 	if c == nil {
 		return 0, nil, fmt.Errorf("cpa client is nil")
 	}
@@ -87,7 +92,7 @@ func (c *Client) doManagementJSONPostRequest(ctx context.Context, path string, r
 	if err != nil {
 		return 0, nil, fmt.Errorf("encode management %s json: %w", kind, err)
 	}
-	return c.doJSONRequestWithBody(ctx, http.MethodPost, path, body, target, "management "+kind, func(req *http.Request) {
+	return c.doJSONRequestWithBody(ctx, method, path, body, target, "management "+kind, func(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+c.managementKey)
 		req.Header.Set("Content-Type", "application/json")
 	})
@@ -166,6 +171,30 @@ func (c *Client) FetchAuthFiles(ctx context.Context) (*response.AuthFilesResult,
 		return result, err
 	}
 	return result, nil
+}
+
+// FetchAuthFileByAuthIndex 按 auth_index 过滤查询单个 auth file，用于把账户开关请求
+// 解析到 CPA 要求的 name（文件名或 auth ID）；found=false 表示 CPA 侧不存在该凭据。
+func (c *Client) FetchAuthFileByAuthIndex(ctx context.Context, authIndex string) (authfiles.AuthFile, bool, error) {
+	result := &response.AuthFilesResult{}
+	queryPath := cpaManagementAuthFilesEndpoint + "?auth_index=" + url.QueryEscape(strings.TrimSpace(authIndex))
+	statusCode, body, err := c.doManagementJSONRequest(ctx, queryPath, &result.Payload, "auth files by auth index")
+	result.StatusCode = statusCode
+	result.Body = body
+	if err != nil {
+		return authfiles.AuthFile{}, false, err
+	}
+	if len(result.Payload.Files) == 0 {
+		return authfiles.AuthFile{}, false, nil
+	}
+	return result.Payload.Files[0], true, nil
+}
+
+// SetAuthFileDisabled 通过 CPA management API 启用或禁用指定 auth file。
+func (c *Client) SetAuthFileDisabled(ctx context.Context, name string, disabled bool) error {
+	request := authfiles.AuthFileStatusRequest{Name: strings.TrimSpace(name), Disabled: disabled}
+	_, _, err := c.doManagementJSONBodyRequest(ctx, http.MethodPatch, cpaManagementAuthFilesStatusEndpoint, request, &struct{}{}, "auth file status")
+	return err
 }
 
 func (c *Client) CallManagementAPI(ctx context.Context, request apicall.Request) (*apicall.Response, error) {

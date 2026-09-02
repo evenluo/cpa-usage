@@ -7,6 +7,13 @@ type AuthFilesResponse struct {
 	Files []AuthFile `json:"files"`
 }
 
+// AuthFileStatusRequest 是 CPA PATCH /management/auth-files/status 的请求 DTO。
+// Name 匹配 CPA 侧的 auth ID 或文件名，不是 auth_index。
+type AuthFileStatusRequest struct {
+	Name     string `json:"name"`
+	Disabled bool   `json:"disabled"`
+}
+
 // AuthFile 是 CPA /management/auth-files 中单个 auth file 的原始响应 DTO。
 type AuthFile struct {
 	AuthIndex      string           `json:"auth_index"`

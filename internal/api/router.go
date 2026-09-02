@@ -79,6 +79,7 @@ type OptionalProviders struct {
 	UsageIdentity  UsageIdentityProvider
 	KeyAlias       service.KeyAliasProvider
 	Quota          QuotaProvider
+	AccountStatus  AccountStatusProvider
 	RollupBackfill RollupBackfillStatusProvider
 	Metrics        MetricsProvider
 }
@@ -127,7 +128,7 @@ func NewRouter(
 	registerUsageAnalysisRoute(protected, usageProvider)
 	registerAnalyticsRoutes(protected, optionalProviders.Analytics)
 	registerUsageEventsRoute(protected, usageProvider, optionalProviders.UsageIdentity, optionalProviders.KeyAlias)
-	registerUsageIdentityRoutes(protected, optionalProviders.UsageIdentity, optionalProviders.KeyAlias)
+	registerUsageIdentityRoutes(protected, optionalProviders.UsageIdentity, optionalProviders.KeyAlias, optionalProviders.AccountStatus)
 	registerPricingRoutes(protected, pricingProvider)
 	registerQuotaRoutes(protected, optionalProviders.Quota)
 

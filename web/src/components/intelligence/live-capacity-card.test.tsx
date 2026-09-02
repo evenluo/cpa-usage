@@ -1,5 +1,5 @@
 import { act } from "react"
-import { cleanup, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
@@ -23,6 +23,17 @@ vi.mock("@/hooks/useFlipReorder", () => ({
   }),
 }))
 
+// Mock the identity disabled mutation; tiles call it directly.
+const mockSetIdentityDisabled = { mutate: vi.fn(), isPending: false }
+vi.mock("@/hooks/useKeys", () => ({
+  useSetIdentityDisabled: () => mockSetIdentityDisabled,
+}))
+
+const mockToast = { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() }
+vi.mock("@/components/providers/toast-provider", () => ({
+  useToast: () => mockToast,
+}))
+
 import { LiveCapacityCard } from "./live-capacity-card"
 
 function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
@@ -36,6 +47,7 @@ function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
     identity: "codex-auth",
     type: "codex",
     provider: "Codex",
+    disabled: false,
     total_tokens: 0,
     total_cost: 0,
     cost_available: false,
@@ -458,5 +470,96 @@ describe("LiveCapacityCard", () => {
 
     await user.click(within(chipGroup).getByRole("button", { name: /^All/ }))
     expect(readGridAuthIndexes(getSectionGrids(container)[0])).toEqual(initialOrder)
+  })
+
+  it("asks for inline confirmation before disabling an account", async () => {
+    const user = userEvent.setup()
+    const identities = [identity({ id: 7, identity: "codex-auth", displayName: "Codex Auth" })]
+    setupMock({ identities })
+    render(<LiveCapacityCard provider="" />)
+    mockSetIdentityDisabled.mutate.mockClear()
+    mockToast.success.mockClear()
+
+    await user.click(screen.getByRole("button", { name: "Disable Codex Auth" }))
+    expect(mockSetIdentityDisabled.mutate).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "Confirm disabling Codex Auth" }))
+    expect(mockSetIdentityDisabled.mutate).toHaveBeenCalledWith(
+      { id: 7, disabled: true },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    )
+
+    const [, options] = mockSetIdentityDisabled.mutate.mock.calls[0]
+    options.onSuccess()
+    expect(mockToast.success).toHaveBeenCalledWith("Account disabled")
+    options.onError()
+    expect(mockToast.error).toHaveBeenCalledWith("Failed to update account")
+  })
+
+  it("abandons the disable confirmation when the second click never comes", () => {
+    vi.useFakeTimers()
+    try {
+      const identities = [identity({ id: 7, identity: "codex-auth", displayName: "Codex Auth" })]
+      setupMock({ identities })
+      render(<LiveCapacityCard provider="" />)
+      mockSetIdentityDisabled.mutate.mockClear()
+
+      fireEvent.click(screen.getByRole("button", { name: "Disable Codex Auth" }))
+      expect(screen.getByRole("button", { name: "Confirm disabling Codex Auth" })).toBeInTheDocument()
+
+      act(() => { vi.advanceTimersByTime(3_100) })
+      expect(screen.queryByRole("button", { name: "Confirm disabling Codex Auth" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Disable Codex Auth" })).toBeInTheDocument()
+      expect(mockSetIdentityDisabled.mutate).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("enables a disabled account with a single click and no confirmation", async () => {
+    const user = userEvent.setup()
+    const identities = [identity({ id: 9, identity: "codex-auth", displayName: "Codex Auth", disabled: true })]
+    setupMock({ identities })
+    render(<LiveCapacityCard provider="" />)
+    mockSetIdentityDisabled.mutate.mockClear()
+    mockToast.success.mockClear()
+
+    await user.click(screen.getByRole("button", { name: "Enable Codex Auth" }))
+    expect(mockSetIdentityDisabled.mutate).toHaveBeenCalledWith(
+      { id: 9, disabled: false },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+
+    const [, options] = mockSetIdentityDisabled.mutate.mock.calls[0]
+    options.onSuccess()
+    expect(mockToast.success).toHaveBeenCalledWith("Account enabled")
+  })
+
+  it("renders a disabled account dimmed with an amber badge, a muted notice, and no refresh action", () => {
+    const identities = [identity({ identity: "codex-auth", displayName: "Codex Auth", disabled: true })]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [{ id: "codex-auth", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] }],
+    }
+    setupMock({ identities, cachedQuota })
+    const { container } = render(<LiveCapacityCard provider="" />)
+
+    expect(container.querySelector(".group.opacity-60")).not.toBeNull()
+    const amberBadge = screen.getAllByText("Disabled").find((el) => el.className.includes("bg-amber-500/10"))
+    expect(amberBadge).toBeDefined()
+    expect(screen.getByText("Disabled in CPA — not routing requests")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Refresh Codex Auth" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Enable Codex Auth" })).toBeInTheDocument()
+  })
+
+  it("sinks disabled accounts to the end of the regular section", () => {
+    const identities = [
+      identity({ identity: "beta-codex", displayName: "Beta", provider: "Codex", type: "codex" }),
+      identity({ identity: "gamma-codex", displayName: "Gamma", provider: "Codex", type: "codex" }),
+      identity({ identity: "alpha-codex", displayName: "Alpha", provider: "Codex", type: "codex", disabled: true }),
+    ]
+    setupMock({ identities })
+    const { container } = render(<LiveCapacityCard provider="" />)
+
+    expect(readGridAuthIndexes(getSectionGrids(container)[0])).toEqual(["beta-codex", "gamma-codex", "alpha-codex"])
   })
 })

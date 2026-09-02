@@ -19,6 +19,7 @@ function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
     identity: "codex-auth",
     type: "codex",
     provider: "Codex",
+    disabled: false,
     total_tokens: 0,
     total_cost: 0,
     cost_available: false,
@@ -165,6 +166,55 @@ describe("Live Capacity view model", () => {
     expect(rows[0].status).toBe("no_cache")
     expect(rows[0].statusLabel).toBe("No cached probe")
     expect(rows[0].fiveHour).toBeUndefined()
+  })
+
+  it("builds a disabled row whose status wins over cached quota and task state", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ id: 42, identity: "codex-auth", disabled: true })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 25 }],
+        }],
+      },
+      taskStates: {
+        "codex-auth": { status: "running", taskId: "task-1" },
+      },
+    })
+
+    expect(rows[0]).toMatchObject({
+      id: 42,
+      disabled: true,
+      status: "disabled",
+      statusLabel: "Disabled",
+    })
+    expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
+  })
+
+  it("maps the disabled refresh rejection to a Disabled label", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      taskStates: {
+        "codex-auth": { status: "failed", error: "disabled" },
+      },
+    })
+
+    expect(rows[0].status).toBe("failed")
+    expect(rows[0].statusLabel).toBe("Disabled")
+  })
+
+  it("keeps disabled rows in base business order so the card can sink them at render time", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "beta-codex", displayName: "Beta" }),
+        identity({ identity: "alpha-codex", displayName: "Alpha", disabled: true }),
+      ],
+    })
+
+    expect(rows.map((row) => [row.authIndex, row.status])).toEqual([
+      ["alpha-codex", "disabled"],
+      ["beta-codex", "no_cache"],
+    ])
   })
 
   it("uses identity plan type for initial priority before quota cache exists", () => {

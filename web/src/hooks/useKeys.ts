@@ -65,6 +65,23 @@ export function useUpdateAlias() {
   })
 }
 
+export function useSetIdentityDisabled() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, disabled }: { id: number; disabled: boolean }) => {
+      const res = await apiFetch<{ disabled: boolean }>(`/usage/identities/${id}/disabled`, {
+        method: "PUT",
+        body: JSON.stringify({ disabled }),
+      })
+      return res
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["quota", "auth-file-identities"] })
+      qc.invalidateQueries({ queryKey: ["keys", "identities"] })
+    },
+  })
+}
+
 export function useUpdateAPIKeyAlias() {
   const qc = useQueryClient()
   return useMutation({

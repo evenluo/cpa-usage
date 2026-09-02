@@ -545,3 +545,78 @@ func TestNewClientTLSSkipVerify(t *testing.T) {
 		}
 	})
 }
+
+func TestFetchAuthFileByAuthIndexFiltersByAuthIndex(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != cpaManagementAuthFilesEndpoint {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("auth_index"); got != "codex-auth" {
+			t.Fatalf("expected auth_index query codex-auth, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
+			t.Fatalf("expected management Authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"files":[{"auth_index":"codex-auth","name":"codex-user.json","type":"codex","disabled":true}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	file, found, err := client.FetchAuthFileByAuthIndex(context.Background(), "codex-auth")
+	if err != nil {
+		t.Fatalf("FetchAuthFileByAuthIndex returned error: %v", err)
+	}
+	if !found || file.Name != "codex-user.json" || !file.Disabled {
+		t.Fatalf("unexpected auth file: %+v found=%v", file, found)
+	}
+}
+
+func TestFetchAuthFileByAuthIndexReturnsNotFoundWhenEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"files":[]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	_, found, err := client.FetchAuthFileByAuthIndex(context.Background(), "missing-auth")
+	if err != nil {
+		t.Fatalf("FetchAuthFileByAuthIndex returned error: %v", err)
+	}
+	if found {
+		t.Fatal("expected found=false for empty auth files response")
+	}
+}
+
+func TestSetAuthFileDisabledPatchesStatusEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH method, got %s", r.Method)
+		}
+		if r.URL.Path != cpaManagementAuthFilesStatusEndpoint {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
+			t.Fatalf("expected management Authorization header, got %q", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("expected JSON content type, got %q", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["name"] != "codex-user.json" || body["disabled"] != true {
+			t.Fatalf("unexpected auth file status body: %#v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","disabled":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	if err := client.SetAuthFileDisabled(context.Background(), "codex-user.json", true); err != nil {
+		t.Fatalf("SetAuthFileDisabled returned error: %v", err)
+	}
+}

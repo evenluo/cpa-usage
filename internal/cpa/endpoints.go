@@ -11,6 +11,7 @@ const (
 	cpaManagementOpenAICompatibilityEndpoint = "/v0/management/openai-compatibility"
 	cpaManagementUsageQueueEndpoint          = "/v0/management/usage-queue"
 	cpaManagementAPICallEndpoint             = "/v0/management/api-call"
+	cpaManagementAuthFilesStatusEndpoint     = "/v0/management/auth-files/status"
 	cpaModelsEndpoint                        = "/v1/models"
 
 	cpaManagementRedisNetwork     = "tcp"

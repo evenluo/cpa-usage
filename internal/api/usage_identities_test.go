@@ -670,3 +670,77 @@ func TestUsageIdentityReplacesLegacyMetadataRoutes(t *testing.T) {
 		}
 	}
 }
+
+type accountStatusStub struct {
+	gotID       uint
+	gotDisabled bool
+	err         error
+}
+
+func (s *accountStatusStub) SetIdentityDisabled(_ context.Context, id uint, disabled bool) error {
+	s.gotID = id
+	s.gotDisabled = disabled
+	return s.err
+}
+
+func TestSetUsageIdentityDisabledRouteTogglesAccount(t *testing.T) {
+	stub := &accountStatusStub{}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{AccountStatus: stub})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/7/disabled", strings.NewReader(`{"disabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if stub.gotID != 7 || !stub.gotDisabled {
+		t.Fatalf("expected provider to receive id=7 disabled=true, got id=%d disabled=%v", stub.gotID, stub.gotDisabled)
+	}
+	if !contains(resp.Body.String(), `"disabled":true`) {
+		t.Fatalf("expected disabled in response body: %s", resp.Body.String())
+	}
+}
+
+func TestSetUsageIdentityDisabledRouteValidatesPayload(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{AccountStatus: &accountStatusStub{}})
+	for _, body := range []string{`{}`, `{"disabled":"yes"}`, `not-json`} {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/7/disabled", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		if resp.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400 for body %s, got %d: %s", body, resp.Code, resp.Body.String())
+		}
+	}
+}
+
+func TestSetUsageIdentityDisabledRouteMapsServiceErrors(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		statusCode int
+	}{
+		{name: "identity missing", err: service.ErrUsageIdentityMissing, statusCode: http.StatusNotFound},
+		{name: "not auth file", err: service.ErrIdentityNotAuthFile, statusCode: http.StatusUnprocessableEntity},
+		{name: "missing in cpa", err: service.ErrAuthFileNotFoundInCPA, statusCode: http.StatusNotFound},
+		{name: "cpa failure", err: errors.New("cpa unavailable"), statusCode: http.StatusInternalServerError},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{AccountStatus: &accountStatusStub{err: testCase.err}})
+			req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/7/disabled", strings.NewReader(`{"disabled":true}`))
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+
+			router.ServeHTTP(resp, req)
+
+			if resp.Code != testCase.statusCode {
+				t.Fatalf("expected status %d, got %d: %s", testCase.statusCode, resp.Code, resp.Body.String())
+			}
+		})
+	}
+}

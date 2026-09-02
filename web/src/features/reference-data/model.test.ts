@@ -56,6 +56,7 @@ const accountKey: KeyIdentity = {
   identity: "acct-trace",
   type: "claude",
   provider: "Anthropic",
+  disabled: false,
   total_tokens: 25,
   total_cost: 2,
   cost_available: false,

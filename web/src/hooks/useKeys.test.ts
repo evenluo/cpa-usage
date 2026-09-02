@@ -23,6 +23,7 @@ function identity(id: number): KeyIdentity {
     identity: `id-${id}`,
     type: sample.type,
     provider: sample.provider,
+    disabled: false,
     total_tokens: sample.total_tokens,
     total_cost: sample.total_cost,
     cost_available: sample.cost_available,

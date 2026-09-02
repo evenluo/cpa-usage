@@ -35,6 +35,7 @@ const (
 	migrationAddUsageEventTTFT                      = "20260714_add_usage_event_ttft"
 	migrationAddUsageAttemptFields                  = "20260831_add_usage_attempt_fields"
 	migrationAddUsageRollupCacheReadFields          = "20260831_add_usage_rollup_cache_read_fields"
+	migrationAddUsageIdentityDisabled               = "20260902_add_usage_identity_disabled"
 )
 
 type schemaMigration struct {
@@ -114,6 +115,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationAddUsageEventTTFT, run: addUsageEventTTFTMigration},
 		{version: migrationAddUsageAttemptFields, run: addUsageAttemptFieldsMigration},
 		{version: migrationAddUsageRollupCacheReadFields, run: addUsageRollupCacheReadFieldsMigration},
+		{version: migrationAddUsageIdentityDisabled, run: addUsageIdentityDisabledMigration},
 	}
 }
 

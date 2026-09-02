@@ -24,6 +24,14 @@ vi.mock("@/hooks/useFlipReorder", () => ({
   }),
 }))
 
+vi.mock("@/hooks/useKeys", () => ({
+  useSetIdentityDisabled: () => ({ mutate: () => {}, isPending: false }),
+}))
+
+vi.mock("@/components/providers/toast-provider", () => ({
+  useToast: () => ({ success: () => {}, error: () => {}, warning: () => {}, info: () => {} }),
+}))
+
 import { LiveCapacityCard } from "./live-capacity-card"
 
 interface LiveCapacityFixture {
@@ -67,6 +75,7 @@ function createFixture(accountCount: number, quotaRowsPerAccount: number): LiveC
     identity: `capacity-account-${index + 1}`,
     type: "codex",
     provider: "Codex",
+    disabled: false,
     plan_type: index % 10 === 0 ? "pro" : "team",
     total_tokens: 0,
     total_cost: 0,

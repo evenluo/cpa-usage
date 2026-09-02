@@ -1,11 +1,12 @@
 import type { KeyIdentity, QuotaCacheResponse, QuotaRow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
-export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported"
+export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported" | "disabled"
 export type ProviderKind = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unsupported"
 export type LiveCapacityPlanTone = "priority" | "ordinary" | "none"
 
 export interface LiveCapacityRow {
+  id: number
   authIndex: string
   provider: string
   providerKind: ProviderKind
@@ -14,6 +15,7 @@ export interface LiveCapacityRow {
   name: string
   alias: string
   displayName: string
+  disabled: boolean
   status: LiveCapacityStatus
   statusLabel: string
   error?: string
@@ -88,7 +90,10 @@ export function buildLiveCapacityRows(input: {
       let status: LiveCapacityStatus = activeQuota ? "cached" : "no_cache"
       let statusLabel = activeQuota ? "cached" : "No cached probe"
       let error: string | undefined
-      if (!supported) {
+      if (identity.disabled) {
+        status = "disabled"
+        statusLabel = "Disabled"
+      } else if (!supported) {
         status = "unsupported"
         statusLabel = "Unsupported"
       } else if (taskState?.status === "starting" || taskState?.status === "queued" || taskState?.status === "running") {
@@ -101,6 +106,7 @@ export function buildLiveCapacityRows(input: {
       }
 
       return {
+        id: identity.id,
         authIndex: identity.identity,
         provider: identity.provider,
         providerKind,
@@ -109,6 +115,7 @@ export function buildLiveCapacityRows(input: {
         name: identity.name,
         alias: identity.alias,
         displayName: identity.displayName,
+        disabled: identity.disabled === true,
         status,
         statusLabel,
         error,
@@ -324,6 +331,8 @@ function rejectionLabel(code: string): string {
       return "Not auth-file"
     case "not_found":
       return "Not found"
+    case "disabled":
+      return "Disabled"
     case "duplicate":
       return "Already refreshing"
     case "invalid":

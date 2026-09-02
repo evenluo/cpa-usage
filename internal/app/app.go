@@ -138,6 +138,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 	}
 	pricingService := service.NewPricingService(db, cpaClient)
 	quotaService := quota.NewService(quota.NewRepositoryAuthFileIdentityLookup(db), cpaClient)
+	accountStatusService := service.NewAccountStatusService(db, cpaClient)
 	sessionManager := auth.NewSessionManager(cfg.AuthSessionTTL)
 	if cfg.AuthSessionSecret != "" {
 		sessionManager = auth.NewSignedSessionManager(cfg.AuthSessionTTL, cfg.AuthSessionSecret)
@@ -179,7 +180,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		authConfig,
 		authHandler,
 		cfg.AppBasePath,
-		api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, RollupBackfill: rollupBackfillReader, Metrics: appInstance},
+		api.OptionalProviders{Analytics: analyticsReader, UsageIdentity: usageIdentityReader, KeyAlias: keyAliasService, Quota: quotaService, AccountStatus: accountStatusService, RollupBackfill: rollupBackfillReader, Metrics: appInstance},
 	)
 	appInstance.Server = &http.Server{
 		Addr:    ":" + cfg.AppPort,

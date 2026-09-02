@@ -147,6 +147,24 @@ func GetUsageIdentityByID(ctx context.Context, db *gorm.DB, id uint) (entities.U
 	return identity, nil
 }
 
+// SetUsageIdentityDisabled 在 CPA 侧启停成功后同步本地身份的禁用标记，
+// 让看板立即反映最新状态而不必等待下一轮 metadata sync。
+func SetUsageIdentityDisabled(ctx context.Context, db *gorm.DB, id uint, disabled bool, now time.Time) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	result := db.WithContext(ctx).Model(&entities.UsageIdentity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"disabled": disabled, "updated_at": now})
+	if result.Error != nil {
+		return fmt.Errorf("set usage identity disabled: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("set usage identity disabled: identity %d not found", id)
+	}
+	return nil
+}
+
 func activeUsageIdentitiesQuery(db *gorm.DB, authType *entities.UsageIdentityAuthType) *gorm.DB {
 	// 把活跃条件和可选 auth_type 条件集中到一个查询构造器，避免 count/list 条件漂移。
 	query := db.Where("is_deleted = ?", false).
@@ -505,6 +523,7 @@ func upsertUsageIdentities(tx *gorm.DB, identities []entities.UsageIdentity) err
 			"active_start":   gorm.Expr("excluded.active_start"),
 			"active_until":   gorm.Expr("excluded.active_until"),
 			"plan_type":      gorm.Expr("excluded.plan_type"),
+			"disabled":       gorm.Expr("excluded.disabled"),
 			"is_deleted":     false,
 			"deleted_at":     nil,
 			"updated_at":     gorm.Expr("excluded.updated_at"),

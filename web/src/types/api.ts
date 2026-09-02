@@ -160,6 +160,7 @@ export interface KeyIdentity {
   identity: string
   type: string
   provider: string
+  disabled: boolean
   plan_type?: string | null
   active_start?: string | null
   active_until?: string | null

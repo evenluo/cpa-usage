@@ -7,11 +7,13 @@ import {
   Eye,
   Gauge,
   Hourglass,
+  Loader2,
+  Power,
   RefreshCw,
   Timer,
   type LucideIcon,
 } from "lucide-react"
-import { useLayoutEffect, useMemo, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,10 +24,13 @@ import {
   orderLiveCapacityRows,
   type LiveCapacityMetric,
   type LiveCapacityPlanTone,
+  type LiveCapacityRow,
   type ProviderKind,
 } from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
+import { useSetIdentityDisabled } from "@/hooks/useKeys"
 import { useFlipReorder } from "@/hooks/useFlipReorder"
+import { useToast } from "@/components/providers/toast-provider"
 import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { ProviderBrandIcon } from "./provider-brand-icon"
@@ -81,10 +86,12 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
     () => effectiveKind === "all" ? allPriorityRows : allPriorityRows.filter((row) => row.providerKind === effectiveKind),
     [allPriorityRows, effectiveKind],
   )
-  const regularRows = useMemo(
-    () => effectiveKind === "all" ? orderedRegularRows : orderedRegularRows.filter((row) => row.providerKind === effectiveKind),
-    [orderedRegularRows, effectiveKind],
-  )
+  const regularRows = useMemo(() => {
+    const visible = effectiveKind === "all" ? orderedRegularRows : orderedRegularRows.filter((row) => row.providerKind === effectiveKind)
+    // Disabled accounts sink to the end of the regular section; the relative
+    // order of enabled rows (and the remembered rowOrder) is left untouched.
+    return [...visible].sort((a, b) => Number(a.disabled) - Number(b.disabled))
+  }, [orderedRegularRows, effectiveKind])
   const displayedRows = useMemo(() => [...priorityRows, ...regularRows], [priorityRows, regularRows])
 
   const regularRowKeys = useMemo(() => regularRows.map((r) => r.authIndex), [regularRows])
@@ -240,9 +247,54 @@ function LiveCapacityAccountTile({
   row,
   onRefresh,
 }: {
-  row: ReturnType<typeof buildLiveCapacityRows>[number]
+  row: LiveCapacityRow
   onRefresh: () => void
 }) {
+  const toast = useToast()
+  const setIdentityDisabled = useSetIdentityDisabled()
+  const [confirmingDisable, setConfirmingDisable] = useState(false)
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+  }, [])
+
+  const clearConfirmTimer = () => {
+    if (confirmTimerRef.current) {
+      clearTimeout(confirmTimerRef.current)
+      confirmTimerRef.current = null
+    }
+  }
+  const handlePowerClick = () => {
+    if (setIdentityDisabled.isPending) return
+    if (row.disabled) {
+      setIdentityDisabled.mutate(
+        { id: row.id, disabled: false },
+        {
+          onSuccess: () => toast.success("Account enabled"),
+          onError: () => toast.error("Failed to update account"),
+        },
+      )
+      return
+    }
+    if (!confirmingDisable) {
+      setConfirmingDisable(true)
+      confirmTimerRef.current = setTimeout(() => {
+        confirmTimerRef.current = null
+        setConfirmingDisable(false)
+      }, 3_000)
+      return
+    }
+    clearConfirmTimer()
+    setConfirmingDisable(false)
+    setIdentityDisabled.mutate(
+      { id: row.id, disabled: true },
+      {
+        onSuccess: () => toast.success("Account disabled"),
+        onError: () => toast.error("Failed to update account"),
+      },
+    )
+  }
+
   const primaryMetric = row.fiveHour ?? row.additionalMetrics[0]
   const secondaryMetric = row.weekly ?? row.additionalMetrics.find((metric) => metric !== primaryMetric)
   const remainingMetrics = row.additionalMetrics.filter((metric) => metric !== primaryMetric && metric !== secondaryMetric)
@@ -259,6 +311,7 @@ function LiveCapacityAccountTile({
     <div
       className={cn(
         "group flex min-h-[190px] min-w-0 flex-col rounded-lg border border-border bg-background/70 p-3 text-sm transition-[background-color,border-color,box-shadow] duration-300 hover:border-terracotta-500/25 hover:shadow-sm",
+        row.disabled && "opacity-60",
         row.status === "failed" && "border-red-500/25 bg-red-500/[0.025]",
         row.status !== "failed" && row.isConstrained && "border-amber-500/30 bg-amber-500/[0.03]",
         row.status !== "failed" && !row.isConstrained && row.isPriorityAccount && "border-terracotta-500/30 shadow-[inset_2px_0_0_rgba(192,80,62,0.45)]",
@@ -280,6 +333,9 @@ function LiveCapacityAccountTile({
               {row.planLabel ? (
                 <PlanBadge label={row.planLabel} tone={row.planTone} rawPlanType={row.planType} />
               ) : null}
+              {row.disabled ? (
+                <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Disabled</Badge>
+              ) : null}
             </div>
             <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
           </div>
@@ -296,28 +352,67 @@ function LiveCapacityAccountTile({
               />
             </span>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 opacity-70 transition-opacity group-hover:opacity-100"
-            onClick={onRefresh}
-            disabled={isRowRefreshing}
-            aria-label={`Refresh ${accountTitle}`}
-            title="Refresh this account"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
-          </Button>
+          {confirmingDisable && !row.disabled ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs font-medium text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+              onClick={handlePowerClick}
+              disabled={setIdentityDisabled.isPending}
+              aria-label={`Confirm disabling ${accountTitle}`}
+            >
+              Confirm?
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={cn(
+                "h-7 w-7 transition-opacity",
+                row.disabled ? "text-red-600 hover:text-red-700" : "opacity-70 group-hover:opacity-100",
+              )}
+              onClick={handlePowerClick}
+              disabled={setIdentityDisabled.isPending}
+              aria-label={row.disabled ? `Enable ${accountTitle}` : `Disable ${accountTitle}`}
+              title={row.disabled ? "Enable this account" : "Disable this account"}
+            >
+              {setIdentityDisabled.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Power className="h-3.5 w-3.5" />
+              )}
+            </Button>
+          )}
+          {!row.disabled ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 opacity-70 transition-opacity group-hover:opacity-100"
+              onClick={onRefresh}
+              disabled={isRowRefreshing || setIdentityDisabled.isPending}
+              aria-label={`Refresh ${accountTitle}`}
+              title="Refresh this account"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      <div className="mt-3 grid gap-2">
-        <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} iconKind={primaryMetric === row.fiveHour ? "5h" : undefined} />
-        <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} iconKind={secondaryMetric === row.weekly ? "weekly" : undefined} />
-        {remainingMetrics.map((metric, index) => (
-          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} />
-        ))}
-      </div>
+      {row.disabled ? (
+        <p className="mt-3 text-xs text-muted-foreground">Disabled in CPA — not routing requests</p>
+      ) : (
+        <div className="mt-3 grid gap-2">
+          <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} iconKind={primaryMetric === row.fiveHour ? "5h" : undefined} />
+          <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} iconKind={secondaryMetric === row.weekly ? "weekly" : undefined} />
+          {remainingMetrics.map((metric, index) => (
+            <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} />
+          ))}
+        </div>
+      )}
       {row.observedAt || row.expiresAt || row.activeStart || row.activeUntil ? (
         <AccountTiming
           observedAt={row.observedAt}

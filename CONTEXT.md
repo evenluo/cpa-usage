@@ -94,6 +94,8 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, attempt health, recent request evidence, and **Live Capacity**.
 - **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility; it is powered by CPA generic `api-call` quota probes and cached refresh tasks, not by a CPA native quota datasource.
 - **Live Capacity** displays active auth-file accounts that can be probed for capacity. Unsupported auth-file accounts are shown explicitly instead of blocking supported accounts.
+- **Live Capacity** can disable or re-enable an auth-file account in CPA via the account power action; disabling requires an inline confirmation, enabling applies immediately. Disabled accounts stay visible with a Disabled badge, sink to the end of the account grid, and are excluded from capacity probes until re-enabled.
+- Disabled auth-file accounts remain active identities in the local read model with a disabled marker instead of being dropped during metadata sync, so their historical usage and re-enable action stay available.
 - **Live Capacity** is cache-first. Loading **Usage Intelligence** reads cached quota probe results only; manual refresh is the user action that may trigger provider calls.
 - **Live Capacity** shows the probe observation and cache-expiry times, the auth-file active window, and every provider quota row returned by the existing probe contract. These timestamps and rows are operational evidence, not billing renewal or account-history claims.
 - A manual **Live Capacity** refresh is rejected as unavailable once its worker lifecycle starts shutting down; it must not return a task that cannot run.

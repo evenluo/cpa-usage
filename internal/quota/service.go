@@ -67,6 +67,10 @@ func (s *Service) Check(ctx context.Context, request CheckRequest) (CheckRespons
 	if !found {
 		return CheckResponse{}, fmt.Errorf("%w: %s", ErrNotFound, authIndex)
 	}
+	// 禁用账户不参与配额探测，避免对 CPA 已停用的凭据发起 provider 调用。
+	if identity.Disabled {
+		return CheckResponse{}, fmt.Errorf("%w: %s", ErrIdentityDisabled, authIndex)
+	}
 	// 按相邻项目规则先匹配 provider 再匹配 type，解析出实际要调用的 quota handler。
 	_, handler, ok := s.resolveQuotaHandler(identity.Provider, identity.Type)
 	if !ok {

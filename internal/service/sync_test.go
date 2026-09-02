@@ -736,15 +736,20 @@ func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
 		t.Fatalf("list usage identities: %v", err)
 	}
 	byIdentity := usageIdentitiesByIdentity(items)
-	for _, authIndex := range []string{"auth-deleted", "auth-disabled", "auth-unavailable"} {
+	for _, authIndex := range []string{"auth-deleted", "auth-unavailable"} {
 		row := byIdentity[authIndex]
 		if !row.IsDeleted || row.DeletedAt == nil || !row.DeletedAt.Equal(now) {
 			t.Fatalf("expected inactive auth file %q to be deleted at %s, got %+v", authIndex, now, row)
 		}
 	}
+	// disabled 账户不再丢弃：保留为活跃身份并带 Disabled 标记，供看板展示与重新启用。
+	disabled := byIdentity["auth-disabled"]
+	if disabled.IsDeleted || disabled.DeletedAt != nil || !disabled.Disabled {
+		t.Fatalf("expected disabled auth file to remain active with disabled flag, got %+v", disabled)
+	}
 	active := byIdentity["auth-active"]
-	if active.IsDeleted || active.DeletedAt != nil {
-		t.Fatalf("expected returned active auth file to remain active, got %+v", active)
+	if active.IsDeleted || active.DeletedAt != nil || active.Disabled {
+		t.Fatalf("expected returned active auth file to remain active and enabled, got %+v", active)
 	}
 
 	authType := entities.UsageIdentityAuthTypeAuthFile
@@ -752,8 +757,8 @@ func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active auth identities: %v", err)
 	}
-	if total != 1 || len(activeItems) != 1 || activeItems[0].Identity != "auth-active" {
-		t.Fatalf("expected only active auth file in active page, total=%d items=%+v", total, activeItems)
+	if total != 2 || len(activeItems) != 2 {
+		t.Fatalf("expected active and disabled auth files in active page, total=%d items=%+v", total, activeItems)
 	}
 }
 

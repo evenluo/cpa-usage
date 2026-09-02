@@ -29,6 +29,7 @@ function identity(authIndex: string, provider: string): KeyIdentity {
     identity: authIndex,
     type: provider.toLowerCase(),
     provider,
+    disabled: false,
     total_tokens: 0,
     total_cost: 0,
     cost_available: false,
@@ -205,5 +206,27 @@ describe("useLiveCapacity refresh targeting", () => {
     act(() => { result.current.refresh(["a-auth", "c-auth"]) })
 
     expect(await dispatchedRefreshIndexes()).toEqual([["a-auth", "c-auth"]])
+  })
+
+  it("excludes disabled accounts from refresh-all and single-target refreshes", async () => {
+    const disabledIdentity: KeyIdentity = { ...identity("d-auth", "Codex"), disabled: true }
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (String(path).startsWith("/usage/identities/page")) {
+        return { identities: [...identities, disabledIdentity], total_count: 4, page: 1, page_size: 100, total_pages: 1 }
+      }
+      if (path === "/quota/cache") return { items: [] }
+      if (path === "/quota/refresh") {
+        return { tasks: [], rejected: [], accepted: 0, skipped: 0, limit: QUOTA_REFRESH_LIMIT }
+      }
+      throw new Error(`unexpected path: ${String(path)}`)
+    })
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.identities).toHaveLength(4))
+
+    act(() => { result.current.refresh() })
+    expect(await dispatchedRefreshIndexes()).toEqual([["a-auth", "b-auth", "c-auth"]])
+
+    await act(async () => { result.current.refresh("d-auth") })
+    expect(mockedApiFetch.mock.calls.filter(([path]) => path === "/quota/refresh")).toHaveLength(1)
   })
 })

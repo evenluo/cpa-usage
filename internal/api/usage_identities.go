@@ -63,6 +63,7 @@ type usageIdentityResponse struct {
 	LastUsedAt                 *time.Time                     `json:"last_used_at,omitempty"`
 	StatsUpdatedAt             *time.Time                     `json:"stats_updated_at,omitempty"`
 	IsDeleted                  bool                           `json:"is_deleted"`
+	Disabled                   bool                           `json:"disabled"`
 	CreatedAt                  time.Time                      `json:"created_at"`
 	UpdatedAt                  time.Time                      `json:"updated_at"`
 	DeletedAt                  *time.Time                     `json:"deleted_at,omitempty"`
@@ -102,7 +103,12 @@ type UsageIdentityProvider interface {
 	ListActiveUsageIdentitiesPage(context.Context, repository.ListUsageIdentitiesPageRequest) ([]entities.UsageIdentity, int64, error)
 }
 
-func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider UsageIdentityProvider, keyAliasProvider service.KeyAliasProvider) {
+// AccountStatusProvider 是账户启停写路径的 HTTP 层入口 seam；实现由 service 的 AccountStatusService 提供。
+type AccountStatusProvider interface {
+	SetIdentityDisabled(context.Context, uint, bool) error
+}
+
+func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider UsageIdentityProvider, keyAliasProvider service.KeyAliasProvider, accountStatusProvider AccountStatusProvider) {
 	router.GET("/usage/api-keys/page", func(c *gin.Context) {
 		page := positiveQueryInt(c, "page", 1)
 		pageSize := positiveQueryInt(c, "page_size", 100)
@@ -296,6 +302,48 @@ func registerUsageIdentityRoutes(router gin.IRoutes, usageIdentityProvider Usage
 		}
 		c.Status(http.StatusNoContent)
 	})
+
+	router.PUT("/usage/identities/:id/disabled", func(c *gin.Context) {
+		if accountStatusProvider == nil {
+			writeInternalError(c, "account status provider is not configured", nil)
+			return
+		}
+		id, ok := parseUsageIdentityID(c)
+		if !ok {
+			return
+		}
+		var request usageIdentityDisabledRequest
+		if err := c.ShouldBindJSON(&request); err != nil || request.Disabled == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "disabled is required"})
+			return
+		}
+		if err := accountStatusProvider.SetIdentityDisabled(c.Request.Context(), id, *request.Disabled); err != nil {
+			writeAccountStatusError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, usageIdentityDisabledResponse{Disabled: *request.Disabled})
+	})
+}
+
+type usageIdentityDisabledRequest struct {
+	Disabled *bool `json:"disabled"`
+}
+
+type usageIdentityDisabledResponse struct {
+	Disabled bool `json:"disabled"`
+}
+
+func writeAccountStatusError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrUsageIdentityMissing):
+		c.JSON(http.StatusNotFound, gin.H{"error": "usage identity not found"})
+	case errors.Is(err, service.ErrIdentityNotAuthFile):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "only auth-file accounts can be toggled"})
+	case errors.Is(err, service.ErrAuthFileNotFoundInCPA):
+		c.JSON(http.StatusNotFound, gin.H{"error": "auth file not found in CPA"})
+	default:
+		writeInternalError(c, "set account disabled failed", err)
+	}
 }
 
 func parseUsageIdentitiesPageRequest(c *gin.Context) (repository.ListUsageIdentitiesPageRequest, bool) {
@@ -394,6 +442,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		LastUsedAt:                 item.LastUsedAt,
 		StatsUpdatedAt:             item.StatsUpdatedAt,
 		IsDeleted:                  item.IsDeleted,
+		Disabled:                   item.Disabled,
 		CreatedAt:                  item.CreatedAt,
 		UpdatedAt:                  item.UpdatedAt,
 		DeletedAt:                  item.DeletedAt,

@@ -204,12 +204,14 @@ func syncAuthFiles(ctx context.Context, db *gorm.DB, result *response.AuthFilesR
 	return nil
 }
 
+// authFileInactive 只丢弃 CPA 侧已不可恢复的凭据；disabled 账户仍同步为带 Disabled 标记的身份，
+// 保证看板可以展示禁用状态并支持重新启用。
 func authFileInactive(file authfiles.AuthFile) bool {
-	if file.Disabled || file.Unavailable {
+	if file.Unavailable {
 		return true
 	}
 	switch strings.ToLower(strings.TrimSpace(file.Status)) {
-	case "deleted", "removed", "disabled", "unavailable", "inactive", "revoked":
+	case "deleted", "removed", "unavailable", "inactive", "revoked":
 		return true
 	default:
 		return false
@@ -241,6 +243,7 @@ func baseAuthFileUsageIdentity(file authfiles.AuthFile) entities.UsageIdentity {
 		Identity:     file.AuthIndex,
 		Type:         file.Type,
 		Provider:     file.Provider,
+		Disabled:     file.Disabled,
 	}
 }
 

@@ -85,6 +85,7 @@ type UsageIdentity struct {
 	CostAvailable bool    `gorm:"-"`
 
 	IsDeleted bool
+	Disabled  bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
