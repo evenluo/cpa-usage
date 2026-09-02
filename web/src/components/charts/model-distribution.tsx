@@ -22,8 +22,9 @@ interface ModelMixRow {
 
 const MAX_VISIBLE_MODELS = 5
 const PALETTE = ["#d97757", "#7f8f96", "#8d806f", "#6f8a7b", "#8b7f9c", "#a39b92"]
-// Shorter than the recharts default so measure and time-window switches don't replay a slow sweep.
-const MIX_ANIMATION_DURATION_MS = 500
+// Shorter than the recharts default so time-window switches don't replay a slow sweep,
+// but long enough to stay visible through the dashboard's entrance fade.
+const MIX_ANIMATION_DURATION_MS = 800
 
 type Measure = ModelDistributionProps["measure"]
 
