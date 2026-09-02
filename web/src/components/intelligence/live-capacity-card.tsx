@@ -302,7 +302,7 @@ function LiveCapacityAccountTile({
   const hasAttention = row.isConstrained || row.status === "failed"
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
   const attentionLabel = row.status === "failed"
-    ? `Refresh failed: ${row.error || row.statusLabel}`
+    ? `Refresh failed: ${row.errorLabel ?? "Failed"}`
     : row.isConstrained
       ? "Capacity constrained"
       : undefined

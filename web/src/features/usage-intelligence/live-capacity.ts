@@ -17,7 +17,8 @@ export interface LiveCapacityRow {
   displayName: string
   disabled: boolean
   status: LiveCapacityStatus
-  statusLabel: string
+  /** Humanized refresh-failure label for the attention tooltip; only set for failed rows. */
+  errorLabel?: string
   error?: string
   fiveHour?: LiveCapacityMetric
   weekly?: LiveCapacityMetric
@@ -88,20 +89,17 @@ export function buildLiveCapacityRows(input: {
       const priorityLabel = planDisplay.tone === "priority" ? planDisplay.label : undefined
 
       let status: LiveCapacityStatus = activeQuota ? "cached" : "no_cache"
-      let statusLabel = activeQuota ? "cached" : "No cached probe"
       let error: string | undefined
+      let errorLabel: string | undefined
       if (identity.disabled) {
         status = "disabled"
-        statusLabel = "Disabled"
       } else if (!supported) {
         status = "unsupported"
-        statusLabel = "Unsupported"
       } else if (taskState?.status === "starting" || taskState?.status === "queued" || taskState?.status === "running") {
         status = "refreshing"
-        statusLabel = taskState.status === "starting" ? "Starting" : taskState.status === "queued" ? "Queued" : "Refreshing"
       } else if (taskState?.status === "failed") {
         status = "failed"
-        statusLabel = rejectionLabel(taskState.error)
+        errorLabel = rejectionLabel(taskState.error)
         error = taskState.error
       }
 
@@ -117,7 +115,7 @@ export function buildLiveCapacityRows(input: {
         displayName: identity.displayName,
         disabled: identity.disabled === true,
         status,
-        statusLabel,
+        errorLabel,
         error,
         fiveHour: fiveHour ? metricFromQuotaRow(fiveHour) : undefined,
         weekly: weekly ? metricFromQuotaRow(weekly) : undefined,

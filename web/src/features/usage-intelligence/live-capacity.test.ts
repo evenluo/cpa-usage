@@ -164,7 +164,7 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows[0].status).toBe("no_cache")
-    expect(rows[0].statusLabel).toBe("No cached probe")
+    expect(rows[0].errorLabel).toBeUndefined()
     expect(rows[0].fiveHour).toBeUndefined()
   })
 
@@ -186,7 +186,6 @@ describe("Live Capacity view model", () => {
       id: 42,
       disabled: true,
       status: "disabled",
-      statusLabel: "Disabled",
     })
     expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
   })
@@ -200,7 +199,7 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows[0].status).toBe("failed")
-    expect(rows[0].statusLabel).toBe("Disabled")
+    expect(rows[0].errorLabel).toBe("Disabled")
   })
 
   it("keeps disabled rows in base business order so the card can sink them at render time", () => {
@@ -296,7 +295,7 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows[0].status).toBe("failed")
-    expect(rows[0].statusLabel).toBe("Refresh unavailable")
+    expect(rows[0].errorLabel).toBe("Refresh unavailable")
   })
 
   it("marks a row refreshing immediately while refresh request is starting", () => {
@@ -314,7 +313,7 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows[0].status).toBe("refreshing")
-    expect(rows[0].statusLabel).toBe("Starting")
+    expect(rows[0].errorLabel).toBeUndefined()
     expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
   })
 
