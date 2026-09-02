@@ -318,88 +318,86 @@ function LiveCapacityAccountTile({
         isRowRefreshing && "border-amber-500/25 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-1 items-start gap-2">
-          <div
-            className="flex h-[42px] w-9 shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/20 dark:border-white/10 dark:bg-white/90"
-            title={row.providerLabel}
-            aria-label={row.providerLabel}
-          >
-            <ProviderBrandIcon providerKind={row.providerKind} label={row.providerLabel} className="h-5 w-5" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <p className="truncate font-medium leading-5" title={accountTitle}>{accountTitle}</p>
-              {row.planLabel ? (
-                <PlanBadge label={row.planLabel} tone={row.planTone} rawPlanType={row.planType} />
-              ) : null}
-              {row.disabled ? (
-                <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Disabled</Badge>
-              ) : null}
-            </div>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
-          </div>
+      <div className="flex items-start gap-2">
+        <div
+          className="flex h-[42px] w-9 shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/20 dark:border-white/10 dark:bg-white/90"
+          title={row.providerLabel}
+          aria-label={row.providerLabel}
+        >
+          <ProviderBrandIcon providerKind={row.providerKind} label={row.providerLabel} className="h-5 w-5" />
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span className="max-w-[92px] truncate rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium leading-4 text-muted-foreground" title={row.statusLabel}>
-            {row.statusLabel}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <p className="truncate font-medium leading-5" title={accountTitle}>{accountTitle}</p>
+            {row.planLabel ? (
+              <PlanBadge label={row.planLabel} tone={row.planTone} rawPlanType={row.planType} />
+            ) : null}
+            {row.disabled ? (
+              <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Disabled</Badge>
+            ) : null}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
+        </div>
+      </div>
+      {/* 状态与操作独立成行右对齐，避免挤压账户名称。
+          不再渲染状态 chip：cached 由配额数据和 Cache expires 表达，refreshing 由刷新按钮动画表达，
+          failed 由 ⚠️ 与红色边框表达，disabled 由标题旁徽章表达。 */}
+      <div className="mt-1 flex items-center justify-end gap-1.5">
+        {hasAttention ? (
+          <span title={attentionLabel}>
+            <AlertTriangle
+              className={cn("h-4 w-4", row.status === "failed" ? "text-red-600" : "text-amber-600")}
+              aria-label={attentionLabel}
+            />
           </span>
-          {hasAttention ? (
-            <span title={attentionLabel}>
-              <AlertTriangle
-                className={cn("h-4 w-4", row.status === "failed" ? "text-red-600" : "text-amber-600")}
-                aria-label={attentionLabel}
-              />
-            </span>
-          ) : null}
-          {confirmingDisable && !row.disabled ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs font-medium text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
-              onClick={handlePowerClick}
-              disabled={setIdentityDisabled.isPending}
-              aria-label={`Confirm disabling ${accountTitle}`}
-            >
-              Confirm?
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={cn(
-                "h-7 w-7 transition-opacity",
-                row.disabled ? "text-red-600 hover:text-red-700" : "opacity-70 group-hover:opacity-100",
-              )}
-              onClick={handlePowerClick}
-              disabled={setIdentityDisabled.isPending}
-              aria-label={row.disabled ? `Enable ${accountTitle}` : `Disable ${accountTitle}`}
-              title={row.disabled ? "Enable this account" : "Disable this account"}
-            >
-              {setIdentityDisabled.isPending ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Power className="h-3.5 w-3.5" />
-              )}
-            </Button>
-          )}
-          {!row.disabled ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 opacity-70 transition-opacity group-hover:opacity-100"
-              onClick={onRefresh}
-              disabled={isRowRefreshing || setIdentityDisabled.isPending}
-              aria-label={`Refresh ${accountTitle}`}
-              title="Refresh this account"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
-            </Button>
-          ) : null}
-        </div>
+        ) : null}
+        {confirmingDisable && !row.disabled ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs font-medium text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+            onClick={handlePowerClick}
+            disabled={setIdentityDisabled.isPending}
+            aria-label={`Confirm disabling ${accountTitle}`}
+          >
+            Confirm?
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(
+              "h-7 w-7 transition-opacity",
+              row.disabled ? "text-red-600 hover:text-red-700" : "opacity-70 group-hover:opacity-100",
+            )}
+            onClick={handlePowerClick}
+            disabled={setIdentityDisabled.isPending}
+            aria-label={row.disabled ? `Enable ${accountTitle}` : `Disable ${accountTitle}`}
+            title={row.disabled ? "Enable this account" : "Disable this account"}
+          >
+            {setIdentityDisabled.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Power className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        )}
+        {!row.disabled ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 opacity-70 transition-opacity group-hover:opacity-100"
+            onClick={onRefresh}
+            disabled={isRowRefreshing || setIdentityDisabled.isPending}
+            aria-label={`Refresh ${accountTitle}`}
+            title="Refresh this account"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
+          </Button>
+        ) : null}
       </div>
 
       {row.disabled ? (

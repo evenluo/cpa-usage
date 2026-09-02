@@ -544,6 +544,8 @@ describe("LiveCapacityCard", () => {
     const { container } = render(<LiveCapacityCard provider="" />)
 
     expect(container.querySelector(".group.opacity-60")).not.toBeNull()
+    // 状态 chip 不再重复渲染 Disabled，标题旁的琥珀徽章是唯一状态标识
+    expect(screen.getAllByText("Disabled")).toHaveLength(1)
     const amberBadge = screen.getAllByText("Disabled").find((el) => el.className.includes("bg-amber-500/10"))
     expect(amberBadge).toBeDefined()
     expect(screen.getByText("Disabled in CPA — not routing requests")).toBeInTheDocument()
