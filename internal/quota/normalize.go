@@ -74,6 +74,11 @@ func (result CodexResult) QuotaRows() []QuotaRow {
 	rows = appendCodexWindowQuotaRows(rows, "code_review_rate_limit", "Code Review 5h", "Code Review Weekly", "code_review", "", result.Usage.CodeReviewRateLimit)
 	for _, additional := range result.Usage.AdditionalRateLimits {
 		// 主限额之外的 code review / spark 等窗口也保留为 extra quota，避免丢失上游数据。
+		// 但 gpt-reserve（metered_feature=base_model_inference）是 OpenAI 的 banked-reset 预留池：
+		// 它的窗口 reset 每次都是 captured_at + 604800 的合成值，不度量任何真实消耗，直接丢弃。
+		if isCodexReservePool(additional) {
+			continue
+		}
 		metric := additional.MeteredFeature
 		if metric == "" {
 			metric = additional.LimitName
@@ -88,6 +93,12 @@ func (result CodexResult) QuotaRows() []QuotaRow {
 		}
 	}
 	return rows
+}
+
+// isCodexReservePool 识别 OpenAI banked-reset 预留池：上游 HTTP 路径给 limit_name=gpt-reserve，
+// websocket 路径等价数据的 metered_feature=base_model_inference，两种拼写都按同一池处理。
+func isCodexReservePool(additional CodexAdditionalRateLimit) bool {
+	return additional.LimitName == "gpt-reserve" || additional.MeteredFeature == "base_model_inference"
 }
 
 func appendCodexWindowQuotaRows(rows []QuotaRow, keyPrefix string, primaryLabel string, secondaryLabel string, scope string, metric string, info *CodexRateLimitInfo) []QuotaRow {

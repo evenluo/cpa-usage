@@ -1,6 +1,7 @@
 package test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -119,6 +120,39 @@ func TestNormalizeCodexPrimaryWindowUsesWindowSecondsForWeeklyLabel(t *testing.T
 	primary := findQuotaRow(t, rows, "rate_limit.primary_window")
 	assertQuotaText(t, primary, "Weekly", "window", "")
 	assertIntField(t, primary.Window.Seconds, 604800, "primary weekly window seconds")
+}
+
+func TestNormalizeCodexDropsReservePool(t *testing.T) {
+	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "codex", Result: quota.CodexResult{Usage: &quota.CodexUsagePayload{
+		RateLimit: &quota.CodexRateLimitInfo{
+			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 10, LimitWindowSeconds: 18000},
+		},
+		AdditionalRateLimits: []quota.CodexAdditionalRateLimit{
+			{
+				LimitName:      "gpt-reserve",
+				MeteredFeature: "base_model_inference",
+				RateLimit: &quota.CodexRateLimitInfo{
+					SecondaryWindow: &quota.CodexUsageWindow{UsedPercent: 0, LimitWindowSeconds: 604800},
+				},
+			},
+			{
+				LimitName:      "codex-spark",
+				MeteredFeature: "spark",
+				RateLimit: &quota.CodexRateLimitInfo{
+					PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 12, LimitWindowSeconds: 18000},
+				},
+			},
+		},
+	}}})
+
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 quota rows (reserve pool dropped), got %#v", rows)
+	}
+	for _, row := range rows {
+		if strings.Contains(row.Key, "gpt-reserve") {
+			t.Fatalf("expected gpt-reserve rows to be dropped, got %#v", row)
+		}
+	}
 }
 
 func TestNormalizeCodexUnknownWindowDoesNotGuessFiveHourOrWeekly(t *testing.T) {
