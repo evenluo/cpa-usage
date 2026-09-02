@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ModelDistribution } from "@/types/api"
 import { ModelDistributionChart } from "./model-distribution"
@@ -9,6 +9,7 @@ vi.mock("recharts", () => ({
   PieChart: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Pie: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Cell: () => null,
+  Sector: () => null,
 }))
 
 afterEach(cleanup)
@@ -125,6 +126,25 @@ describe("ModelDistributionChart", () => {
     // The unavailable Other row is excluded from the mix total: 7 / (7+6+5+4+3).
     expect(screen.getByText("28.0%", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("moves the hovered row's share and name into the donut center", () => {
+    const { container } = render(<ModelDistributionChart data={[1, 2, 3].map(model)} measure="cost" />)
+
+    const center = () => container.querySelector(".pointer-events-none")?.textContent
+    expect(center()).toContain("3")
+    expect(center()).not.toContain("model-2")
+
+    const row = screen.getByText("model-2", { exact: true }).closest("div[class*='grid']")
+    expect(row).not.toBeNull()
+    fireEvent.mouseEnter(row!)
+    expect(center()).toContain("model-2")
+    // model-2 share: 2 / (3+2+1).
+    expect(center()).toContain("33.3%")
+
+    fireEvent.mouseLeave(row!)
+    expect(center()).toContain("3")
+    expect(center()).not.toContain("model-2")
   })
 
   it("shows an explicit zero-value state instead of naming a leading model", () => {

@@ -1,4 +1,6 @@
-import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts"
+import { useState } from "react"
+import type { ComponentProps } from "react"
+import { Cell, Pie, PieChart, ResponsiveContainer, Sector } from "recharts"
 import type { ModelDistribution } from "@/types/api"
 import { formatCost, formatCompact } from "@/lib/format"
 
@@ -114,7 +116,15 @@ function SupportingMetrics({ row, measure }: { row: ModelMixRow; measure: Measur
   )
 }
 
+// Hovered slice grows slightly past the ring so the donut responds to pointer
+// interaction; recharts morphs the sector shape with the same animation.
+function ActiveSlice(props: ComponentProps<typeof Sector>) {
+  const { outerRadius = 0, ...rest } = props
+  return <Sector {...rest} outerRadius={outerRadius + 6} />
+}
+
 export function ModelDistributionChart({ data, measure }: ModelDistributionProps) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null)
   const config = MEASURE_CONFIG[measure]
   const rows = buildRows(data, measure)
   const total = rows.reduce((sum, row) => sum + row.value, 0)
@@ -139,6 +149,12 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
   }
 
   const shareOf = (row: ModelMixRow) => (row.value / total) * 100
+  // Hover is keyed by row identity, not position: buildRows re-sorts by value on
+  // every data refresh, so a positional index could end up pointing at a different model.
+  const hoveredIndex = hoveredKey === null ? -1 : rows.findIndex((row) => row.key === hoveredKey)
+  const hovered = hoveredIndex >= 0 ? rows[hoveredIndex] : undefined
+  const hoverRow = (key: string) => () => setHoveredKey(key)
+  const clearHover = () => setHoveredKey(null)
   const trailing = rows.slice(1)
   const twoColumnTrailing = trailing.length > 1
   // divide-y never underlines the final row; mirror that in grid mode by
@@ -169,22 +185,49 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
               startAngle={90}
               endAngle={-270}
               animationDuration={MIX_ANIMATION_DURATION_MS}
+              activeIndex={hoveredIndex >= 0 ? hoveredIndex : undefined}
+              activeShape={ActiveSlice}
+              onMouseEnter={(_, index) => setHoveredKey(rows[index]?.key ?? null)}
+              onMouseLeave={clearHover}
             >
-              {rows.map((row) => (
-                <Cell key={row.key} fill={row.color} strokeWidth={0} />
+              {rows.map((row, index) => (
+                <Cell
+                  key={row.key}
+                  fill={row.color}
+                  strokeWidth={0}
+                  fillOpacity={hoveredIndex === -1 || hoveredIndex === index ? 1 : 0.3}
+                />
               ))}
             </Pie>
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="font-serif text-3xl font-semibold tracking-tight">{data.length}</span>
-          <span className="mt-0.5 text-xs text-muted-foreground">{data.length === 1 ? "model shown" : "models shown"}</span>
-          <span className="mt-2 text-[11px] font-medium text-muted-foreground">{config.centerLabel}</span>
+          {hovered ? (
+            <>
+              <span className="font-serif text-3xl font-semibold tracking-tight">
+                {hovered.valueAvailable ? `${shareOf(hovered).toFixed(1)}%` : "n/a"}
+              </span>
+              <span className="mt-0.5 max-w-[140px] truncate text-xs text-muted-foreground">{hovered.model}</span>
+              <span className="mt-2 text-[11px] font-medium text-muted-foreground">
+                {hovered.valueAvailable ? config.format(hovered.value) : "Cost n/a"}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="font-serif text-3xl font-semibold tracking-tight">{data.length}</span>
+              <span className="mt-0.5 text-xs text-muted-foreground">{data.length === 1 ? "model shown" : "models shown"}</span>
+              <span className="mt-2 text-[11px] font-medium text-muted-foreground">{config.centerLabel}</span>
+            </>
+          )}
         </div>
       </div>
 
       <div className="min-w-0">
-        <div className="border-b border-border pb-5">
+        <div
+          className={`-mx-2 rounded-md border-b border-border px-2 pb-5 transition-colors ${hoveredKey === leading.key ? "bg-muted/60" : ""}`}
+          onMouseEnter={hoverRow(leading.key)}
+          onMouseLeave={clearHover}
+        >
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <span className="h-5 w-1 rounded-full" style={{ backgroundColor: leading.color }} aria-hidden="true" />
             Leading shown model
@@ -209,7 +252,12 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
 
         <div className={twoColumnTrailing ? "grid sm:grid-cols-2 sm:gap-x-8" : undefined}>
           {trailing.map((row, index) => (
-            <div key={row.key} className={`grid gap-2 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 ${trailingRuleClass(index)}`}>
+            <div
+              key={row.key}
+              className={`-mx-2 grid gap-2 rounded-md px-2 py-3.5 transition-colors sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 ${trailingRuleClass(index)} ${hoveredKey === row.key ? "bg-muted/60" : ""}`}
+              onMouseEnter={hoverRow(row.key)}
+              onMouseLeave={clearHover}
+            >
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5">
                   <span className="h-7 w-1 shrink-0 rounded-full" style={{ backgroundColor: row.color }} aria-hidden="true" />
