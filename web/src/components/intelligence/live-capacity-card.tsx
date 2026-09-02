@@ -318,7 +318,9 @@ function LiveCapacityAccountTile({
         isRowRefreshing && "border-amber-500/25 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]",
       )}
     >
-      <div className="flex items-start gap-2">
+      {/* 不再渲染状态 chip：cached 由配额数据和 Cache expires 表达，refreshing 由刷新按钮动画表达，
+          failed 由 ⚠️ 与红色边框表达，disabled 由标题旁徽章表达。 */}
+      <div className="flex items-center gap-2">
         <div
           className="flex h-[42px] w-9 shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/20 dark:border-white/10 dark:bg-white/90"
           title={row.providerLabel}
@@ -338,11 +340,7 @@ function LiveCapacityAccountTile({
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
         </div>
-      </div>
-      {/* 状态与操作独立成行右对齐，避免挤压账户名称。
-          不再渲染状态 chip：cached 由配额数据和 Cache expires 表达，refreshing 由刷新按钮动画表达，
-          failed 由 ⚠️ 与红色边框表达，disabled 由标题旁徽章表达。 */}
-      <div className="mt-1 flex items-center justify-end gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
         {hasAttention ? (
           <span title={attentionLabel}>
             <AlertTriangle
@@ -398,6 +396,7 @@ function LiveCapacityAccountTile({
             <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
           </Button>
         ) : null}
+        </div>
       </div>
 
       {row.disabled ? (
