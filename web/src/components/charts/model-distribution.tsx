@@ -22,6 +22,8 @@ interface ModelMixRow {
 
 const MAX_VISIBLE_MODELS = 5
 const PALETTE = ["#d97757", "#7f8f96", "#8d806f", "#6f8a7b", "#8b7f9c", "#a39b92"]
+// Shorter than the recharts default so measure and time-window switches don't replay a slow sweep.
+const MIX_ANIMATION_DURATION_MS = 500
 
 type Measure = ModelDistributionProps["measure"]
 
@@ -136,6 +138,18 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
   }
 
   const shareOf = (row: ModelMixRow) => (row.value / total) * 100
+  const trailing = rows.slice(1)
+  const twoColumnTrailing = trailing.length > 1
+  // divide-y never underlines the final row; mirror that in grid mode by
+  // dropping the bottom rule on the last visual row (the last item on mobile,
+  // plus the second-to-last at sm+ when the count is even).
+  const trailingRuleClass = (index: number) => {
+    if (index === trailing.length - 1) return ""
+    if (twoColumnTrailing && trailing.length % 2 === 0 && index === trailing.length - 2) {
+      return "border-b border-border sm:border-b-0"
+    }
+    return "border-b border-border"
+  }
 
   return (
     <div className="grid gap-8 py-1 lg:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.55fr)] lg:items-center xl:gap-12">
@@ -153,7 +167,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
               nameKey="model"
               startAngle={90}
               endAngle={-270}
-              isAnimationActive={false}
+              animationDuration={MIX_ANIMATION_DURATION_MS}
             >
               {rows.map((row) => (
                 <Cell key={row.key} fill={row.color} strokeWidth={0} />
@@ -192,9 +206,9 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
           <SupportingMetrics row={leading} measure={measure} />
         </div>
 
-        <div className="divide-y divide-border">
-          {rows.slice(1).map((row) => (
-            <div key={row.key} className="grid gap-2 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6">
+        <div className={twoColumnTrailing ? "grid sm:grid-cols-2 sm:gap-x-8" : undefined}>
+          {trailing.map((row, index) => (
+            <div key={row.key} className={`grid gap-2 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 ${trailingRuleClass(index)}`}>
               <div className="min-w-0">
                 <div className="flex items-center gap-2.5">
                   <span className="h-7 w-1 shrink-0 rounded-full" style={{ backgroundColor: row.color }} aria-hidden="true" />
