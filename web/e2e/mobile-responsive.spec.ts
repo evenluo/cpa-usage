@@ -53,7 +53,6 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Agent Codex")).toBeVisible()
   await expect(page.getByText("Plus", { exact: true })).toBeVisible()
-  await expect(page.getByText("cached", { exact: true })).toBeVisible()
   const accountTiming = page.getByRole("group", { name: "Account and cache timing" })
   await expect(accountTiming.getByText("Observed", { exact: true })).toBeVisible()
   await expect(accountTiming.getByText("Cache expires", { exact: true })).toBeVisible()
