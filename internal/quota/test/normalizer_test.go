@@ -220,14 +220,14 @@ func TestNormalizeAntigravityQuotaRows(t *testing.T) {
 
 func TestNormalizeKimiQuotaRows(t *testing.T) {
 	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "kimi", Result: quota.KimiResult{Usage: &quota.KimiUsagePayload{
-		Usage: &quota.KimiUsageDetail{Used: 3, Limit: 10, Remaining: 7, Name: "monthly", Title: "Monthly", ResetAt: "2026-05-09T12:00:00Z", ResetIn: 3600},
+		Usage: &quota.KimiUsageDetail{Used: floatPtr(3), Limit: floatPtr(10), Remaining: floatPtr(7), Name: "monthly", Title: "Monthly", ResetAt: "2026-05-09T12:00:00Z", ResetIn: 3600},
 		Limits: []quota.KimiLimitItem{{
 			Name:      "daily",
 			Title:     "Daily",
 			Scope:     "request",
-			Used:      4,
-			Limit:     20,
-			Remaining: 16,
+			Used:      floatPtr(4),
+			Limit:     floatPtr(20),
+			Remaining: floatPtr(16),
 			Window:    &quota.KimiLimitWindow{Duration: 1, TimeUnit: "day"},
 			Detail:    &quota.KimiUsageDetail{ResetAt: "2026-05-10T12:00:00Z", ResetIn: 7200},
 		}},
@@ -243,6 +243,7 @@ func TestNormalizeKimiQuotaRows(t *testing.T) {
 	assertFloatField(t, usage.Remaining, 7, "usage remaining")
 	assertFloatField(t, usage.UsedPercent, 30, "usage usedPercent")
 	assertIntField(t, usage.ResetAfterSeconds, 3600, "usage resetAfterSeconds")
+	assertIntField(t, usage.Window.Seconds, 604_800, "usage window seconds")
 
 	limit := findQuotaRow(t, rows, "limits.daily")
 	assertQuotaText(t, limit, "Daily", "request", "daily")
@@ -251,6 +252,7 @@ func TestNormalizeKimiQuotaRows(t *testing.T) {
 	assertFloatField(t, limit.Remaining, 16, "limit remaining")
 	assertFloatField(t, limit.UsedPercent, 20, "limit usedPercent")
 	assertFloatField(t, limit.Window.Duration, 1, "limit window duration")
+	assertIntField(t, limit.Window.Seconds, 86_400, "limit window seconds")
 	if limit.Window.Unit != "day" {
 		t.Fatalf("unexpected limit window unit: %#v", limit.Window)
 	}
@@ -258,6 +260,35 @@ func TestNormalizeKimiQuotaRows(t *testing.T) {
 		t.Fatalf("unexpected limit resetAt: %#v", limit)
 	}
 	assertIntField(t, limit.ResetAfterSeconds, 7200, "limit resetAfterSeconds")
+}
+
+func TestNormalizeKimiQuotaRowsDerivesUsedPercentFromRemaining(t *testing.T) {
+	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "kimi", Result: quota.KimiResult{Usage: &quota.KimiUsagePayload{
+		Usage: &quota.KimiUsageDetail{Limit: floatPtr(100), Remaining: floatPtr(40)},
+	}}})
+
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 quota row, got %#v", rows)
+	}
+	assertFloatField(t, rows[0].UsedPercent, 60, "usage usedPercent derived from remaining")
+}
+
+func TestNormalizeKimiQuotaRowsKeepsMissingNumbersAbsent(t *testing.T) {
+	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "kimi", Result: quota.KimiResult{Usage: &quota.KimiUsagePayload{
+		Limits: []quota.KimiLimitItem{{Name: "mystery", Title: "Mystery"}},
+	}}})
+
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 quota row, got %#v", rows)
+	}
+	row := rows[0]
+	if row.Used != nil || row.Limit != nil || row.Remaining != nil || row.UsedPercent != nil {
+		t.Fatalf("expected absent numbers to stay nil, got %#v", row)
+	}
+}
+
+func floatPtr(value float64) *float64 {
+	return &value
 }
 
 func findQuotaRow(t *testing.T, rows []quota.QuotaRow, key string) quota.QuotaRow {

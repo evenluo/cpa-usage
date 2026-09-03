@@ -162,15 +162,17 @@ type ClaudeProfileResponse struct {
 	Organization *ClaudeProfileOrganization `json:"organization,omitempty"`
 }
 
+// KimiUsageDetail 的数值字段用指针保留字段存在性：上游真实 payload 里数字是字符串且可能缺失，
+// 缺失与 0 必须可区分（remaining 缺失被读成 0 会让前端误报 "0 left" 耗尽告警）。
 type KimiUsageDetail struct {
-	Used      float64 `json:"used,omitempty"`
-	Limit     float64 `json:"limit,omitempty"`
-	Remaining float64 `json:"remaining,omitempty"`
-	Name      string  `json:"name,omitempty"`
-	Title     string  `json:"title,omitempty"`
-	ResetAt   string  `json:"resetAt,omitempty"`
-	ResetIn   float64 `json:"resetIn,omitempty"`
-	TTL       float64 `json:"ttl,omitempty"`
+	Used      *float64 `json:"used,omitempty"`
+	Limit     *float64 `json:"limit,omitempty"`
+	Remaining *float64 `json:"remaining,omitempty"`
+	Name      string   `json:"name,omitempty"`
+	Title     string   `json:"title,omitempty"`
+	ResetAt   string   `json:"resetAt,omitempty"`
+	ResetIn   float64  `json:"resetIn,omitempty"`
+	TTL       float64  `json:"ttl,omitempty"`
 }
 
 type KimiLimitWindow struct {
@@ -184,9 +186,9 @@ type KimiLimitItem struct {
 	Scope     string           `json:"scope,omitempty"`
 	Detail    *KimiUsageDetail `json:"detail,omitempty"`
 	Window    *KimiLimitWindow `json:"window,omitempty"`
-	Used      float64          `json:"used,omitempty"`
-	Limit     float64          `json:"limit,omitempty"`
-	Remaining float64          `json:"remaining,omitempty"`
+	Used      *float64         `json:"used,omitempty"`
+	Limit     *float64         `json:"limit,omitempty"`
+	Remaining *float64         `json:"remaining,omitempty"`
 	Duration  int64            `json:"duration,omitempty"`
 	TimeUnit  string           `json:"timeUnit,omitempty"`
 	ResetAt   string           `json:"resetAt,omitempty"`

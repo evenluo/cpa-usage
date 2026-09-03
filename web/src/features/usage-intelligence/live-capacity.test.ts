@@ -158,6 +158,25 @@ describe("Live Capacity view model", () => {
     expect(rows[0].additionalMetrics.map((metric) => metric.windowSeconds)).toEqual([18_000, undefined])
   })
 
+  it("slots normalized Kimi summary and limits rows into Weekly and 5h", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "kimi-auth", provider: "Kimi", type: "kimi" })],
+      cachedQuota: {
+        items: [{
+          id: "kimi-auth",
+          quota: [
+            { key: "usage", label: "Weekly", scope: "summary", usedPercent: 10.4, window: { seconds: 604_800 } },
+            { key: "limits.0", label: "5h", usedPercent: 69.5, window: { duration: 300, unit: "minute", seconds: 18_000 } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].fiveHour).toMatchObject({ label: "5h", valueLabel: "70% used", windowSeconds: 18_000 })
+    expect(rows[0].weekly).toMatchObject({ label: "Weekly", valueLabel: "10% used", windowSeconds: 604_800 })
+    expect(rows[0].additionalMetrics).toEqual([])
+  })
+
   it("keeps the subscription start when it is still in the future", () => {
     const futureStart = new Date(Date.now() + 7 * 86_400_000).toISOString()
     const rows = buildLiveCapacityRows({
