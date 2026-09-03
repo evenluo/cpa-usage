@@ -1,5 +1,5 @@
 import { act } from "react"
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
@@ -88,11 +88,10 @@ function getSectionGrids(container: Element): Element[] {
   return Array.from(container.querySelectorAll(".grid.grid-cols-1"))
 }
 
-/** Read authIndex list from a grid element's children. */
+/** Read authIndex list from a grid element's children (full value lives on data-auth-index). */
 function readGridAuthIndexes(grid: Element): string[] {
   return Array.from(grid.children).map((child) => {
-    const authIndexEl = child.querySelector("p.truncate.text-xs")
-    return authIndexEl?.textContent ?? ""
+    return child.querySelector("[data-auth-index]")?.getAttribute("data-auth-index") ?? ""
   })
 }
 
@@ -190,6 +189,66 @@ describe("LiveCapacityCard", () => {
     expect(timing.querySelectorAll("time")).toHaveLength(1)
     expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
+  })
+
+  it("marks an expired cache as stale", () => {
+    const identities = [identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" })]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [{
+        id: "codex-pro",
+        cachedAt: "2020-01-01T00:00:00Z",
+        expiresAt: "2020-01-01T00:20:00Z",
+        quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
+      }],
+    }
+    setupMock({ identities, cachedQuota })
+    render(<LiveCapacityCard provider="" />)
+
+    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).getByText("Stale")).toBeInTheDocument()
+  })
+
+  it("does not mark a cache whose expiry is still ahead as stale", () => {
+    const identities = [identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" })]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [{
+        id: "codex-pro",
+        cachedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 20 * 60_000).toISOString(),
+        quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
+      }],
+    }
+    setupMock({ identities, cachedQuota })
+    render(<LiveCapacityCard provider="" />)
+
+    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).queryByText("Stale")).not.toBeInTheDocument()
+  })
+
+  it("truncates long auth indexes and copies the full value on click", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true })
+    const longId = "9fa4210cc85a897c"
+    const identities = [
+      identity({ identity: longId, displayName: "Codex Pro", provider: "Codex", type: "codex" }),
+      identity({ identity: "short-id", displayName: "Short Id", provider: "Codex", type: "codex" }),
+    ]
+    const cachedQuota: QuotaCacheResponse = {
+      items: [
+        { id: longId, quota: [{ key: "quota", label: "5h", usedPercent: 10 }] },
+        { id: "short-id", quota: [{ key: "quota", label: "5h", usedPercent: 10 }] },
+      ],
+    }
+    setupMock({ identities, cachedQuota })
+    render(<LiveCapacityCard provider="" />)
+
+    const copyButton = screen.getByRole("button", { name: `Copy auth index ${longId}` })
+    expect(copyButton).toHaveTextContent("9fa4210c…")
+    expect(screen.getByRole("button", { name: "Copy auth index short-id" })).toHaveTextContent("short-id")
+
+    fireEvent.click(copyButton)
+    expect(writeText).toHaveBeenCalledWith(longId)
+    await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Auth index copied"))
   })
 
   it("renders a single account-active endpoint without a connector when active start is missing", () => {

@@ -119,6 +119,45 @@ describe("Live Capacity view model", () => {
     })
   })
 
+  it("prefers window.seconds over label-only rows regardless of array position", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [
+            { key: "legacy_5h", label: "5h", usedPercent: 10 },
+            { key: "rate_limit.primary_window", label: "Codex 5h", usedPercent: 25, window: { seconds: 18_000 } },
+            { key: "legacy_weekly", label: "Weekly", usedPercent: 20 },
+            { key: "rate_limit.secondary_window", label: "Spark Weekly", usedPercent: 80, window: { seconds: 604_800 } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].fiveHour).toMatchObject({ label: "Codex 5h", valueLabel: "25% used", windowSeconds: 18_000 })
+    expect(rows[0].weekly).toMatchObject({ label: "Spark Weekly", valueLabel: "80% used", windowSeconds: 604_800 })
+  })
+
+  it("derives metric window seconds from Kimi duration+unit windows", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "kimi-auth", provider: "Kimi", type: "kimi" })],
+      cachedQuota: {
+        items: [{
+          id: "kimi-auth",
+          quota: [
+            { key: "limits.hourly", label: "Hourly quota", usedPercent: 10, window: { duration: 5, unit: "hour" } },
+            { key: "limits.weekly", label: "Weekly quota", usedPercent: 20, window: { duration: 7, unit: "day" } },
+            { key: "limits.custom", label: "Custom quota", usedPercent: 30, window: { duration: 2, unit: "fortnight" } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].weekly).toMatchObject({ label: "Weekly quota", windowSeconds: 604_800 })
+    expect(rows[0].additionalMetrics.map((metric) => metric.windowSeconds)).toEqual([18_000, undefined])
+  })
+
   it("keeps the subscription start when it is still in the future", () => {
     const futureStart = new Date(Date.now() + 7 * 86_400_000).toISOString()
     const rows = buildLiveCapacityRows({
@@ -347,7 +386,7 @@ describe("Live Capacity view model", () => {
     expect(rows[0].status).toBe("cached")
     expect(rows[0].additionalMetrics[0]).toMatchObject({
       label: "gemini-2.5-pro_vertex",
-      valueLabel: "2% left",
+      valueLabel: "98% used",
       progress: 98,
       tone: "red",
     })
@@ -356,7 +395,7 @@ describe("Live Capacity view model", () => {
       valueLabel: "10 left",
     })
     expect(rows[0].isConstrained).toBe(true)
-    expect(rows[0].resetLabel).toContain("May 9")
+    expect(rows[0].resetLabel).toMatch(/^\d{1,2}\/\d{1,2} \d{2}:\d{2}$/)
   })
 
   it("treats remaining-only zero quota as constrained", () => {

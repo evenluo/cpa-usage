@@ -1,4 +1,5 @@
-import type { KeyIdentity, QuotaCacheResponse, QuotaRow } from "@/types/api"
+import { formatDate } from "@/lib/format"
+import type { KeyIdentity, QuotaCacheResponse, QuotaRow, QuotaWindow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
 export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported" | "disabled"
@@ -30,6 +31,8 @@ export interface LiveCapacityRow {
   priorityLabel?: string
   isPriorityAccount: boolean
   isConstrained: boolean
+  /** True while cached quota is shown past its expiresAt — the reading is stale. */
+  isCacheStale: boolean
   observedAt?: string
   expiresAt?: string
   /** Subscription start, exposed only while still in the future. */
@@ -43,6 +46,8 @@ export interface LiveCapacityMetric {
   resetLabel: string
   progress: number | null
   tone: "green" | "amber" | "red" | "muted"
+  /** Window length in seconds; derived from window.seconds (Codex) or duration+unit (Kimi). */
+  windowSeconds?: number
 }
 
 const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
@@ -103,6 +108,9 @@ export function buildLiveCapacityRows(input: {
         error = taskState.error
       }
 
+      const observedAt = taskState?.status === "completed" ? taskState.cachedAt : cachedQuota?.cachedAt
+      const expiresAt = taskState?.status === "completed" ? taskState.expiresAt : cachedQuota?.expiresAt
+
       return {
         id: identity.id,
         authIndex: identity.identity,
@@ -127,8 +135,9 @@ export function buildLiveCapacityRows(input: {
         priorityLabel,
         isPriorityAccount: Boolean(priorityLabel),
         isConstrained,
-        observedAt: taskState?.status === "completed" ? taskState.cachedAt : cachedQuota?.cachedAt,
-        expiresAt: taskState?.status === "completed" ? taskState.expiresAt : cachedQuota?.expiresAt,
+        observedAt,
+        expiresAt,
+        isCacheStale: status === "cached" && isPastTimestamp(expiresAt),
         // active_start only carries signal while still in the future (the
         // subscription is not yet effective); past starts are display noise.
         activeStart: isFutureTimestamp(identity.active_start) ? identity.active_start : null,
@@ -142,6 +151,12 @@ function isFutureTimestamp(value: string | null | undefined): boolean {
   if (!value) return false
   const time = new Date(value).getTime()
   return Number.isFinite(time) && time > Date.now()
+}
+
+function isPastTimestamp(value: string | null | undefined): boolean {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) && time <= Date.now()
 }
 
 export function mergeLiveCapacityRowOrder(currentOrder: string[], rows: LiveCapacityRow[]): string[] {
@@ -214,13 +229,42 @@ function formatPlanType(planTypeValue: string): string {
     .join(" ")
 }
 
+export const FIVE_HOUR_WINDOW_SECONDS = 18_000
+export const WEEKLY_WINDOW_SECONDS = 604_800
+
 function findQuotaWindow(rows: QuotaRow[], kind: "5h" | "weekly"): QuotaRow | undefined {
-  return rows.find((row) => {
-    const label = (row.label ?? "").toLowerCase()
-    const seconds = row.window?.seconds
-    if (kind === "5h") return seconds === 18_000 || label === "5h" || label.includes("5h")
-    return seconds === 604_800 || label === "weekly" || label.includes("weekly") || label.includes("7d")
-  })
+  const seconds = kind === "5h" ? FIVE_HOUR_WINDOW_SECONDS : WEEKLY_WINDOW_SECONDS
+  // window.seconds is authoritative (the backend derives labels from it), so
+  // rows that carry it win over label-only rows regardless of array position;
+  // label matching is the fallback for providers that omit window entirely.
+  return (
+    rows.find((row) => row.window?.seconds === seconds) ??
+    rows.find((row) => {
+      const label = (row.label ?? "").toLowerCase()
+      if (kind === "5h") return label === "5h" || label.includes("5h")
+      return label === "weekly" || label.includes("weekly") || label.includes("7d")
+    })
+  )
+}
+
+const WINDOW_UNIT_SECONDS: Record<string, number> = {
+  second: 1,
+  minute: 60,
+  hour: 3_600,
+  day: 86_400,
+  week: 604_800,
+}
+
+/** Codex reports window.seconds directly; Kimi reports duration+unit. */
+function quotaWindowSeconds(window: QuotaWindow | undefined): number | undefined {
+  if (!window) return undefined
+  if (typeof window.seconds === "number" && window.seconds > 0) return window.seconds
+  if (typeof window.duration === "number" && window.duration > 0 && window.unit) {
+    const unit = window.unit.trim().toLowerCase().replace(/s$/, "")
+    const unitSeconds = WINDOW_UNIT_SECONDS[unit]
+    if (unitSeconds) return window.duration * unitSeconds
+  }
+  return undefined
 }
 
 function metricFromQuotaRow(row: QuotaRow): LiveCapacityMetric {
@@ -231,6 +275,7 @@ function metricFromQuotaRow(row: QuotaRow): LiveCapacityMetric {
     resetLabel: resetLabel(row),
     progress,
     tone: toneFromProgress(row, progress),
+    windowSeconds: quotaWindowSeconds(row.window),
   }
 }
 
@@ -255,9 +300,11 @@ function progressFromQuotaRow(row: QuotaRow): number | null {
 }
 
 function valueLabel(row: QuotaRow): string {
-  if (typeof row.remainingFraction === "number") return `${Math.round(row.remainingFraction * 100)}% left`
   if (typeof row.usedPercent === "number") return `${Math.round(row.usedPercent)}% used`
-  if (typeof row.remaining === "number" && typeof row.limit === "number") return `${formatQuotaNumber(row.remaining)} / ${formatQuotaNumber(row.limit)} left`
+  if (typeof row.remainingFraction === "number") return `${Math.round((1 - row.remainingFraction) * 100)}% used`
+  if (typeof row.remaining === "number" && typeof row.limit === "number" && row.limit > 0) {
+    return `${formatQuotaNumber(Math.max(0, row.limit - row.remaining))} / ${formatQuotaNumber(row.limit)} used`
+  }
   if (typeof row.remaining === "number") return `${formatQuotaNumber(row.remaining)} left`
   if (typeof row.used === "number" && typeof row.limit === "number") return `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
   if (typeof row.allowed === "boolean") return row.allowed ? "Allowed" : "Blocked"
@@ -296,12 +343,7 @@ function resetLabel(...rows: Array<QuotaRow | undefined>): string {
 function formatResetDate(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date)
+  return formatDate(value)
 }
 
 function formatResetDuration(seconds: number): string {

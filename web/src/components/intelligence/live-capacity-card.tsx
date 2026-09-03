@@ -20,8 +20,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   buildLiveCapacityRows,
+  FIVE_HOUR_WINDOW_SECONDS,
   mergeLiveCapacityRowOrder,
   orderLiveCapacityRows,
+  WEEKLY_WINDOW_SECONDS,
   type LiveCapacityMetric,
   type LiveCapacityPlanTone,
   type LiveCapacityRow,
@@ -295,6 +297,15 @@ function LiveCapacityAccountTile({
     )
   }
 
+  const copyAuthIndex = async () => {
+    try {
+      await navigator.clipboard.writeText(row.authIndex)
+      toast.success("Auth index copied")
+    } catch {
+      toast.error("Failed to copy auth index")
+    }
+  }
+
   const primaryMetric = row.fiveHour ?? row.additionalMetrics[0]
   const secondaryMetric = row.weekly ?? row.additionalMetrics.find((metric) => metric !== primaryMetric)
   const remainingMetrics = row.additionalMetrics.filter((metric) => metric !== primaryMetric && metric !== secondaryMetric)
@@ -338,7 +349,16 @@ function LiveCapacityAccountTile({
               <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Disabled</Badge>
             ) : null}
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={row.authIndex}>{row.authIndex}</p>
+          <button
+            type="button"
+            className="mt-0.5 block max-w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+            title={`${row.authIndex} — click to copy`}
+            aria-label={`Copy auth index ${row.authIndex}`}
+            data-auth-index={row.authIndex}
+            onClick={copyAuthIndex}
+          >
+            {formatAuthIndex(row.authIndex)}
+          </button>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
         {hasAttention ? (
@@ -403,8 +423,8 @@ function LiveCapacityAccountTile({
         <p className="mt-3 text-xs text-muted-foreground">Disabled in CPA — not routing requests</p>
       ) : (
         <div className="mt-3 grid gap-2">
-          <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} iconKind={primaryMetric === row.fiveHour ? "5h" : undefined} />
-          <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} iconKind={secondaryMetric === row.weekly ? "weekly" : undefined} />
+          <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} />
+          <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} />
           {remainingMetrics.map((metric, index) => (
             <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} />
           ))}
@@ -416,6 +436,7 @@ function LiveCapacityAccountTile({
           expiresAt={row.expiresAt}
           activeStart={row.activeStart}
           activeUntil={row.activeUntil}
+          cacheStale={row.isCacheStale}
         />
       ) : null}
     </div>
@@ -427,11 +448,13 @@ function AccountTiming({
   expiresAt,
   activeStart,
   activeUntil,
+  cacheStale = false,
 }: {
   observedAt?: string | null
   expiresAt?: string | null
   activeStart?: string | null
   activeUntil?: string | null
+  cacheStale?: boolean
 }) {
   const hasProbeWindow = Boolean(observedAt || expiresAt)
   const hasBothProbeEndpoints = Boolean(observedAt && expiresAt)
@@ -466,6 +489,7 @@ function AccountTiming({
               label="Cache expires"
               value={expiresAt}
               align={observedAt ? "end" : "start"}
+              stale={cacheStale}
             />
           ) : null}
         </div>
@@ -510,12 +534,14 @@ function TimingEndpoint({
   value,
   align = "start",
   compact = false,
+  stale = false,
 }: {
   icon?: LucideIcon
   label: string
   value: string
   align?: "start" | "end"
   compact?: boolean
+  stale?: boolean
 }) {
   return (
     <div className={cn("min-w-0", align === "end" && "text-right")}>
@@ -526,11 +552,25 @@ function TimingEndpoint({
         )}
       >
         {Icon ? (
-          <Icon className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+          <Icon
+            className={cn("h-3.5 w-3.5", stale ? "text-amber-600 dark:text-amber-400" : "text-terracotta-600 dark:text-terracotta-300")}
+            aria-hidden="true"
+          />
         ) : null}
         <span>{label}</span>
+        {stale ? (
+          <span className="rounded-full bg-amber-500/15 px-1.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+            Stale
+          </span>
+        ) : null}
       </div>
-      <div className={cn("mt-0.5 truncate font-medium text-foreground/90", compact ? "text-[10px]" : "text-[11px]")}>
+      <div
+        className={cn(
+          "mt-0.5 truncate font-medium",
+          compact ? "text-[10px]" : "text-[11px]",
+          stale ? "text-amber-700 dark:text-amber-300" : "text-foreground/90",
+        )}
+      >
         <time dateTime={value} title={value}>{formatDate(value)}</time>
       </div>
     </div>
@@ -544,6 +584,11 @@ function TimingConnector() {
       <ArrowRight className="h-3 w-3 shrink-0 -ml-px" />
     </div>
   )
+}
+
+/** Long auth indexes truncate to an 8-char prefix; the full value stays on title/copy. */
+function formatAuthIndex(authIndex: string): string {
+  return authIndex.length > 12 ? `${authIndex.slice(0, 8)}…` : authIndex
 }
 
 function PlanBadge({
@@ -572,16 +617,18 @@ function PlanBadge({
 function MetricMeter({
   title,
   metric,
-  iconKind,
 }: {
   title: string
   metric?: LiveCapacityMetric
-  iconKind?: "5h" | "weekly"
 }) {
   const progress = metric?.progress ?? null
   const resetLabel = metric?.resetLabel ?? "-"
   const resetText = resetLabel === "-" ? "-" : `reset ${resetLabel}`
-  const WindowIcon = iconKind === "5h" ? Timer : iconKind === "weekly" ? CalendarDays : null
+  const WindowIcon = metric?.windowSeconds === FIVE_HOUR_WINDOW_SECONDS
+    ? Timer
+    : metric?.windowSeconds === WEEKLY_WINDOW_SECONDS
+      ? CalendarDays
+      : null
 
   return (
     <div className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2">
@@ -598,12 +645,15 @@ function MetricMeter({
       >
         {progress !== null ? (
           <div
-            className={cn("h-full rounded-full transition-[width,background-color] duration-500", metricToneClass(metric?.tone))}
+            className={cn("h-full rounded-full transition-[width,background-color] duration-500", metricToneClasses(metric?.tone).bar)}
             style={{ width: `${progress}%` }}
           />
         ) : null}
       </div>
-      <div className="mt-1.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground" title={resetText}>
+      <div
+        className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-[11px]", metricToneClasses(metric?.tone).reset)}
+        title={resetText}
+      >
         <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
         <span className="truncate">{resetText}</span>
       </div>
@@ -611,17 +661,13 @@ function MetricMeter({
   )
 }
 
-function metricToneClass(tone: LiveCapacityMetric["tone"] | undefined): string {
-  switch (tone) {
-    case "red":
-      return "bg-red-500"
-    case "amber":
-      return "bg-amber-500"
-    case "green":
-      return "bg-emerald-500"
-    case "muted":
-      return "bg-muted-foreground/40"
-    default:
-      return "bg-muted-foreground/30"
-  }
+const METRIC_TONE_CLASSES: Record<LiveCapacityMetric["tone"], { bar: string; reset: string }> = {
+  red: { bar: "bg-red-500", reset: "text-red-600 dark:text-red-400" },
+  amber: { bar: "bg-amber-500", reset: "text-amber-600 dark:text-amber-400" },
+  green: { bar: "bg-emerald-500", reset: "text-muted-foreground" },
+  muted: { bar: "bg-muted-foreground/40", reset: "text-muted-foreground" },
+}
+
+function metricToneClasses(tone: LiveCapacityMetric["tone"] | undefined): { bar: string; reset: string } {
+  return (tone ? METRIC_TONE_CLASSES[tone] : undefined) ?? { bar: "bg-muted-foreground/30", reset: "text-muted-foreground" }
 }
