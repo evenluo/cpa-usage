@@ -262,6 +262,7 @@ export interface QuotaRow {
   remainingFraction?: number
   allowed?: boolean
   limitReached?: boolean
+  hasCredits?: boolean
   unlimited?: boolean
   window?: QuotaWindow
   resetAt?: string

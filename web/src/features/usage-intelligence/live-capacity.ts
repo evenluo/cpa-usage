@@ -384,17 +384,23 @@ function progressFromQuotaRow(row: QuotaRow): number | null {
 }
 
 function valueLabel(row: QuotaRow): string {
-  if (row.unlimited === true) return "Unlimited"
-  if (typeof row.usedPercent === "number") return `${Math.round(row.usedPercent)}% used`
-  if (typeof row.remainingFraction === "number") return `${Math.round((1 - row.remainingFraction) * 100)}% used`
+  let measurement = ""
+  if (row.unlimited === true) measurement = "Unlimited"
+  else if (typeof row.usedPercent === "number") measurement = `${Math.round(row.usedPercent)}% used`
+  else if (typeof row.remainingFraction === "number") measurement = `${Math.round((1 - row.remainingFraction) * 100)}% used`
   if (typeof row.remaining === "number" && typeof row.limit === "number" && row.limit > 0) {
-    return `${formatQuotaNumber(Math.max(0, row.limit - row.remaining))} / ${formatQuotaNumber(row.limit)} used`
+    measurement ||= `${formatQuotaNumber(Math.max(0, row.limit - row.remaining))} / ${formatQuotaNumber(row.limit)} used`
   }
-  if (typeof row.remaining === "number") return `${formatQuotaNumber(row.remaining)}${row.unit ? ` ${row.unit}` : ""} left`
-  if (typeof row.used === "number" && typeof row.limit === "number") return `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
-  if (typeof row.allowed === "boolean") return row.allowed ? "Allowed" : "Blocked"
-  if (typeof row.limitReached === "boolean") return row.limitReached ? "Limit reached" : "Limit not reached"
-  return "Measured"
+  if (!measurement && typeof row.remaining === "number") measurement = `${formatQuotaNumber(row.remaining)}${row.unit ? ` ${row.unit}` : ""} left`
+  if (!measurement && typeof row.used === "number" && typeof row.limit === "number") measurement = `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
+
+  let state = ""
+  if (typeof row.allowed === "boolean") state = row.allowed ? "Allowed" : "Blocked"
+  else if (typeof row.limitReached === "boolean") state = row.limitReached ? "Limit reached" : "Limit not reached"
+  else if (typeof row.hasCredits === "boolean") state = row.hasCredits ? "Credits available" : "No credits"
+
+  if (measurement && state) return `${measurement} · ${state}`
+  return measurement || state || "Measured"
 }
 
 function toneFromProgress(row: QuotaRow, progress: number | null): LiveCapacityMetric["tone"] {
@@ -415,7 +421,7 @@ function isConstrainedQuotaRow(row: QuotaRow | undefined): boolean {
 }
 
 function isRemainingExhausted(row: QuotaRow): boolean {
-  return typeof row.remaining === "number" && row.remaining <= 0
+  return row.unlimited !== true && typeof row.remaining === "number" && row.remaining <= 0
 }
 
 function resetLabel(...rows: Array<QuotaRow | undefined>): string {

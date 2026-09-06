@@ -369,6 +369,27 @@ describe("Live Capacity view model", () => {
     }])
   })
 
+  it("keeps numeric limit state visible and does not mark unlimited credits exhausted", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [
+            { key: "window", label: "Weekly", usedPercent: 53, allowed: false, limitReached: true },
+            { key: "credits", label: "Credits", remaining: 0, unit: "credits", hasCredits: false, unlimited: true },
+          ],
+        },
+      })],
+    })
+
+    expect(rows[0].passiveQuota?.metrics).toEqual([
+      expect.objectContaining({ valueLabel: "53% used · Blocked", tone: "red" }),
+      expect.objectContaining({ valueLabel: "Unlimited · No credits", tone: "muted" }),
+    ])
+  })
+
   it("keeps missing account state and availability explicit", () => {
     const rows = buildLiveCapacityRows({ identities: [identity({ status: undefined, unavailable: undefined })] })
 

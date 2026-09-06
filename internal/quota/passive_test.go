@@ -99,7 +99,7 @@ func TestNormalizePassiveQuotaSnapshotCodexPreservesAllRelevantWindowsAndModels(
 		t.Fatalf("unexpected named limit row: %+v", named)
 	}
 	credits := got.Account.Quota[3]
-	if credits.Remaining == nil || *credits.Remaining != 4.5 || credits.Unit != "credits" || credits.Allowed == nil || *credits.Allowed || credits.Unlimited == nil || *credits.Unlimited {
+	if credits.Remaining == nil || *credits.Remaining != 4.5 || credits.Unit != "credits" || credits.HasCredits == nil || *credits.HasCredits || credits.Allowed != nil || credits.Unlimited == nil || *credits.Unlimited {
 		t.Fatalf("unexpected credits row: %+v", credits)
 	}
 	if len(got.Models) != 1 || got.Models[0].Model != "gpt-5.3-codex" || len(got.Models[0].Quota) != 1 || got.Models[0].Quota[0].Scope != "model" {
@@ -123,6 +123,19 @@ func TestNormalizePassiveQuotaSnapshotTreatsConflictingLimitStateAsUnknown(t *te
 	}
 	if got.Account.Quota[0].Allowed != nil || got.Account.Quota[0].LimitReached != nil {
 		t.Fatalf("conflicting booleans must remain unknown, got %+v", got.Account.Quota[0])
+	}
+}
+
+func TestNormalizePassiveQuotaSnapshotKeepsGroupStateWhenWindowFieldIsMalformed(t *testing.T) {
+	got := NormalizePassiveQuotaSnapshot("codex", &authfiles.QuotaObservation{
+		ObservedAt: "2026-09-07T08:00:00Z",
+		Signals: map[string]any{
+			"X-Codex-Allowed":              "true",
+			"X-Codex-Primary-Used-Percent": "not-a-number",
+		},
+	}, nil)
+	if got.Account == nil || len(got.Account.Quota) != 1 || got.Account.Quota[0].Allowed == nil || !*got.Account.Quota[0].Allowed || got.Account.Quota[0].Key != "codex.rate_limit.state" {
+		t.Fatalf("expected independent base limit state, got %+v", got.Account)
 	}
 }
 
@@ -160,6 +173,16 @@ func TestNormalizePassiveQuotaSnapshotAcceptsAbsoluteRetryAfterWithoutSchedulerI
 	}, nil)
 	if got.Account == nil || len(got.Account.Quota) != 1 || got.Account.Quota[0].ResetAt != "2026-09-07T09:00:00Z" || got.Account.Quota[0].ResetAfterSeconds != nil {
 		t.Fatalf("unexpected absolute retry hint: %+v", got.Account)
+	}
+}
+
+func TestNormalizePassiveQuotaSnapshotAcceptsFractionalRetryAfterSeconds(t *testing.T) {
+	got := NormalizePassiveQuotaSnapshot("claude", &authfiles.QuotaObservation{
+		ObservedAt: "2026-09-07T08:00:00Z",
+		Signals:    map[string]any{"Retry-After": "0.5"},
+	}, nil)
+	if got.Account == nil || len(got.Account.Quota) != 1 || got.Account.Quota[0].ResetAfterSeconds == nil || *got.Account.Quota[0].ResetAfterSeconds != 0.5 {
+		t.Fatalf("expected fractional Retry-After seconds, got %+v", got.Account)
 	}
 }
 

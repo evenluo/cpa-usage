@@ -177,7 +177,7 @@ type codexPassiveGroup struct {
 type codexPassiveWindow struct {
 	usedPercent *float64
 	seconds     *int64
-	resetAfter  *int64
+	resetAfter  *float64
 	resetAt     string
 }
 
@@ -238,7 +238,7 @@ func normalizeCodexPassiveRows(scope string, signals map[string]string) []entiti
 				window.seconds = &seconds
 			}
 		case "reset-after-seconds":
-			if parsed, valid := parseNonNegativeInt(value); valid {
+			if parsed, valid := parseNonNegativeFloat(value); valid {
 				window.resetAfter = &parsed
 			}
 		case "reset-at":
@@ -256,6 +256,11 @@ func normalizeCodexPassiveRows(scope string, signals map[string]string) []entiti
 	rows := make([]entities.PassiveQuotaMetric, 0, len(names)*2+2)
 	for _, name := range names {
 		entry := groups[name]
+		for windowName, window := range entry.windowData {
+			if window.usedPercent == nil && window.seconds == nil && window.resetAfter == nil && window.resetAt == "" {
+				delete(entry.windowData, windowName)
+			}
+		}
 		if entry.allowed != nil && entry.limit != nil && *entry.allowed == *entry.limit {
 			entry.allowed = nil
 			entry.limit = nil
@@ -330,7 +335,7 @@ func normalizeCodexCredits(scope, planType string, signals map[string]string) *e
 	row := entities.PassiveQuotaMetric{Key: "codex.credits", Label: "Credits", Scope: scope, Metric: "credits", Unit: "credits", PlanType: planType}
 	hasFact := false
 	if value, ok := parseBool(signals["x-codex-credits-has-credits"]); ok {
-		row.Allowed = &value
+		row.HasCredits = &value
 		hasFact = true
 	}
 	if value, ok := parseBool(signals["x-codex-credits-unlimited"]); ok {
@@ -446,9 +451,8 @@ func parsePositiveInt(value string) (int64, bool) {
 	return parsed, err == nil && parsed > 0
 }
 
-func parseNonNegativeInt(value string) (int64, bool) {
-	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	return parsed, err == nil && parsed >= 0
+func parseNonNegativeFloat(value string) (float64, bool) {
+	return parseBoundedFloat(value, 0, math.MaxFloat64)
 }
 
 func parseSourceTime(value string) (string, bool) {
@@ -488,7 +492,7 @@ func parseUnixTimeValue(value string) (time.Time, bool) {
 
 func passiveRetryHint(key, scope, value string) *entities.PassiveQuotaMetric {
 	row := &entities.PassiveQuotaMetric{Key: key, Label: "Observed retry hint", Scope: scope}
-	if seconds, ok := parseNonNegativeInt(value); ok {
+	if seconds, ok := parseNonNegativeFloat(value); ok {
 		row.ResetAfterSeconds = &seconds
 		return row
 	}

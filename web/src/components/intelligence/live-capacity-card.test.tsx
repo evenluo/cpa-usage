@@ -153,7 +153,7 @@ describe("LiveCapacityCard", () => {
           observed_at: "2026-09-07T08:00:00Z",
           active_limit: "codex_bengalfox",
           quota: [
-            { key: "primary", label: "5h", usedPercent: 25, resetAfterSeconds: 120, window: { seconds: 18_000 } },
+            { key: "primary", label: "5h", usedPercent: 25, allowed: false, resetAfterSeconds: 120, window: { seconds: 18_000 } },
             { key: "credits", label: "Credits", remaining: 4.5, unit: "credits" },
           ],
         },
@@ -175,7 +175,8 @@ describe("LiveCapacityCard", () => {
     expect(within(passive).getByText("Account")).toBeInTheDocument()
     expect(within(passive).getByText("gpt-5.3-codex")).toBeInTheDocument()
     expect(within(passive).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
-    expect(within(passive).getByText("25% used")).toBeInTheDocument()
+    expect(within(passive).getByText("25% used · Blocked")).toBeInTheDocument()
+    expect(within(passive).getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
     expect(within(passive).getByText("4.5 credits left")).toBeInTheDocument()
     expect(within(passive).getByText("Blocked")).toBeInTheDocument()
     expect(within(passive).getByText("reported reset 2m")).toBeInTheDocument()

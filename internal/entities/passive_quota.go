@@ -29,10 +29,11 @@ type PassiveQuotaMetric struct {
 	Unit              string              `json:"unit,omitempty"`
 	Allowed           *bool               `json:"allowed,omitempty"`
 	LimitReached      *bool               `json:"limitReached,omitempty"`
+	HasCredits        *bool               `json:"hasCredits,omitempty"`
 	Unlimited         *bool               `json:"unlimited,omitempty"`
 	Window            *PassiveQuotaWindow `json:"window,omitempty"`
 	ResetAt           string              `json:"resetAt,omitempty"`
-	ResetAfterSeconds *int64              `json:"resetAfterSeconds,omitempty"`
+	ResetAfterSeconds *float64            `json:"resetAfterSeconds,omitempty"`
 }
 
 type PassiveQuotaWindow struct {
