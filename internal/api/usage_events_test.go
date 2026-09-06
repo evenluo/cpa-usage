@@ -2,8 +2,11 @@ package api
 
 import (
 	"context"
+	"encoding/csv"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,6 +14,163 @@ import (
 	"cpa-usage/internal/redact"
 	"cpa-usage/internal/repository/dto"
 )
+
+func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T) {
+	statusCode := 429
+	ttftMS := int64(12)
+	outputTPS := 34.5
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
+		ID: 99, Timestamp: time.Date(2026, 9, 7, 11, 59, 59, 0, time.UTC),
+		Provider: "\t=provider", Source: "sk-live-secret-value", AuthType: "apikey", AuthIndex: "auth-1",
+		APIKeyIdentity: "sk-live-secret-value", Model: "\n=model", ModelAlias: "@别名\"quoted", Endpoint: "/v1/messages?api_key=secret",
+		RequestID: "\r+request", Failed: true, StatusCode: &statusCode, LatencyMS: 80, TTFTMS: &ttftMS,
+		AttemptFacts: dto.UsageAttemptFacts{OutputTPS: &outputTPS}, InputTokens: 1, OutputTokens: 2, ReasoningTokens: 3,
+		CachedTokens: 4, TotalTokens: 10,
+	}}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{
+		UsageIdentity: usageIdentitiesStub{items: []entities.UsageIdentity{{
+			Name: "\t=account", AuthType: entities.UsageIdentityAuthTypeAIProvider, Identity: "auth-1",
+		}}},
+		KeyAlias: &keyAliasStub{apiKeyAliases: map[string]string{"sk-live-secret-value": "=alias"}},
+	})
+	windowEnd := "2026-09-07T12:00:00.123456789Z"
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/export?range=24h&provider=claude&model=sonnet&model_alias=route-a&account=auth-1&endpoint=%2Fv1%2Fmessages&status=4xx&request_id=request-42&min_latency_ms=500&window_end="+windowEnd+"&result=failed", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if contentType := resp.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/csv") {
+		t.Fatalf("expected CSV content type, got %q", contentType)
+	}
+	if disposition := resp.Header().Get("Content-Disposition"); disposition != `attachment; filename="request-evidence.csv"` {
+		t.Fatalf("unexpected disposition %q", disposition)
+	}
+	if provider.lastFilter.Page != 1 || provider.lastFilter.PageSize != usageEventsCSVExportLimit+1 || provider.lastFilter.Offset != 0 {
+		t.Fatalf("expected cap+1 export read, got %+v", provider.lastFilter)
+	}
+	if provider.lastFilter.Provider != "claude" || provider.lastFilter.Model != "sonnet" || provider.lastFilter.ModelAlias != "route-a" || provider.lastFilter.Account != "auth-1" || provider.lastFilter.Endpoint != "/v1/messages" || provider.lastFilter.Status != "4xx" || provider.lastFilter.RequestID != "request-42" || provider.lastFilter.MinLatencyMS == nil || *provider.lastFilter.MinLatencyMS != 500 || provider.lastFilter.Result != "failed" {
+		t.Fatalf("expected complete normalized selection, got %+v", provider.lastFilter)
+	}
+	if provider.lastFilter.EndTime == nil || provider.lastFilter.EndTime.Format(time.RFC3339Nano) != windowEnd {
+		t.Fatalf("expected exact RFC3339Nano window end, got %+v", provider.lastFilter.EndTime)
+	}
+
+	rows, err := csv.NewReader(strings.NewReader(resp.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("parse CSV: %v", err)
+	}
+	if len(rows) != 2 || strings.Join(rows[0], "\x00") != strings.Join(usageEventsCSVHeader, "\x00") {
+		t.Fatalf("unexpected CSV rows: %#v", rows)
+	}
+	row := rows[1]
+	if row[1] != "'=account" || row[2] != "'=alias" || row[4] != "'\n=model" || row[5] != "'@别名\"quoted" || row[7] != "'\r+request" {
+		t.Fatalf("expected formula-safe values, got %#v", row)
+	}
+	if row[6] != "/v1/messages" || strings.Contains(resp.Body.String(), "sk-live-secret-value") || strings.Contains(resp.Body.String(), "api_key=secret") || strings.Contains(resp.Body.String(), "auth-1") || strings.Contains(resp.Body.String(), "provider") {
+		t.Fatalf("expected only safe endpoint and no raw identity material, got %q", resp.Body.String())
+	}
+	if row[8] != "failed" || row[9] != "429" || row[10] != "80" || row[11] != "12" || row[12] != "34.5" || row[17] != "" || row[18] != "" {
+		t.Fatalf("unexpected CSV units or empty semantics: %#v", row)
+	}
+}
+
+func TestUsageEventsExportRejectsOversizeAndNeverWritesCSV(t *testing.T) {
+	events := make([]dto.UsageEventRecord, usageEventsCSVExportLimit+1)
+	router := NewRouter(nil, nil, &usageEventsStub{events: events}, nil, AuthConfig{}, nil, "", OptionalProviders{})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/export?range=24h&window_end=2026-09-07T12:00:00.123456789Z", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusUnprocessableEntity || !contains(resp.Body.String(), "5000-row limit") || resp.Header().Get("Content-Disposition") != "" {
+		t.Fatalf("expected explicit non-download oversize failure, got status=%d headers=%v body=%s", resp.Code, resp.Header(), resp.Body.String())
+	}
+}
+
+func TestUsageEventsExportDoesNotUseUnresolvedSourceOrProviderFallbacks(t *testing.T) {
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{
+		{ID: 1, Timestamp: time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC), Provider: "raw-provider-label", Source: "raw-provider-source", AuthType: "apikey", AuthIndex: "missing-provider", Model: "model"},
+		{ID: 2, Timestamp: time.Date(2026, 9, 7, 11, 1, 0, 0, time.UTC), Provider: "raw-authfile-provider", Source: "raw-authfile-source", AuthType: "auth_file", AuthIndex: "missing-auth-file", Model: "model"},
+		{ID: 3, Timestamp: time.Date(2026, 9, 7, 11, 2, 0, 0, time.UTC), Provider: "raw-oauth-provider", Source: "raw-oauth-source", AuthType: "oauth", AuthIndex: "missing-oauth", Model: "model"},
+	}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/export?range=24h&window_end=2026-09-07T12:00:00Z", nil))
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected export success, got %d: %s", resp.Code, resp.Body.String())
+	}
+	rows, err := csv.NewReader(strings.NewReader(resp.Body.String())).ReadAll()
+	if err != nil {
+		t.Fatalf("parse CSV: %v", err)
+	}
+	if len(rows) != 4 || rows[1][1] != "" || rows[2][1] != "" || rows[3][1] != "" {
+		t.Fatalf("expected unresolved account cells to be empty, got %#v", rows)
+	}
+	for _, raw := range []string{"raw-provider-label", "raw-provider-source", "raw-authfile-provider", "raw-authfile-source", "raw-oauth-provider", "raw-oauth-source", "missing-provider", "missing-auth-file", "missing-oauth"} {
+		if strings.Contains(resp.Body.String(), raw) {
+			t.Fatalf("expected unresolved transport data to stay out of CSV: %s", raw)
+		}
+	}
+}
+
+func TestUsageEventsExportRequiresFrozenSelectionAndRemainsProtected(t *testing.T) {
+	provider := &usageEventsStub{}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{Enabled: true}, nil, "", OptionalProviders{})
+	unauthenticated := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/export?range=24h&window_end=2026-09-07T12:00:00.123456789Z", nil)
+	unauthenticatedResponse := httptest.NewRecorder()
+	router.ServeHTTP(unauthenticatedResponse, unauthenticated)
+	if unauthenticatedResponse.Code != http.StatusUnauthorized || provider.filterCalls != 0 {
+		t.Fatalf("expected protected export before any provider call, got status=%d calls=%d", unauthenticatedResponse.Code, provider.filterCalls)
+	}
+
+	router = NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
+	for _, path := range []string{
+		"/api/v1/usage/events/export?range=24h",
+		"/api/v1/usage/events/export?range=24h&window_end=2026-09-07T12:00:00Z&page=2",
+		"/api/v1/usage/events/export?range=24h&window_end=2026-09-07T12:00:00Z&source=raw-source",
+	} {
+		resp := httptest.NewRecorder()
+		router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, path, nil))
+		if resp.Code != http.StatusBadRequest || resp.Header().Get("Content-Disposition") != "" {
+			t.Fatalf("expected non-download invalid selection for %s, got status=%d headers=%v", path, resp.Code, resp.Header())
+		}
+	}
+}
+
+func TestUsageEventsExportDoesNotDownloadARepositoryFailure(t *testing.T) {
+	router := NewRouter(nil, nil, &usageEventsStub{err: errors.New("db unavailable")}, nil, AuthConfig{}, nil, "", OptionalProviders{})
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/usage/events/export?range=24h&window_end=2026-09-07T12:00:00Z", nil))
+	if resp.Code != http.StatusInternalServerError || resp.Header().Get("Content-Disposition") != "" {
+		t.Fatalf("expected failure without a download header, got status=%d headers=%v", resp.Code, resp.Header())
+	}
+}
+
+func BenchmarkEncodeUsageEventsCSVAtLimit(b *testing.B) {
+	events := make([]usageEventPayload, usageEventsCSVExportLimit)
+	for index := range events {
+		events[index] = usageEventPayload{
+			Timestamp: "2026-09-07T12:00:00Z", Source: "Account", APIKeyAlias: "Key Alias", APIKeyDisplay: "sk-a***********z",
+			Model: "model", ModelAlias: "route", Endpoint: "/v1/messages", RequestID: "request", LatencyMS: 100,
+			Tokens: usageEventTokenPayload{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
+		}
+	}
+	b.ReportMetric(float64(len(events)), "export_rows")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		body, err := encodeUsageEventsCSV(events)
+		if err != nil {
+			b.Fatalf("encode CSV: %v", err)
+		}
+		if len(body) == 0 {
+			b.Fatal("expected CSV body")
+		}
+	}
+}
 
 type usageEventsStub struct {
 	events                []dto.UsageEventRecord

@@ -142,6 +142,44 @@ func BenchmarkListUsageEventsHighCardinalityCombinedFilters(b *testing.B) {
 	}
 }
 
+// BenchmarkListUsageEventsExportCapHighCardinality measures the repository
+// work performed by a bounded CSV export before its 5,000-row cap rejects an
+// oversized full selection. The fixture is intentionally larger than the cap,
+// and the cap+1 materialization makes the query and allocation boundary
+// observable without writing a CSV file.
+func BenchmarkListUsageEventsExportCapHighCardinality(b *testing.B) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(b, requestEvidencePerformanceEventCount)
+	filter := dto.UsageEventListFilter{
+		UsageTimeScope: dto.UsageTimeScope{
+			StartTime: &fixture.start,
+			EndTime:   &fixture.end,
+		},
+		Page:     1,
+		PageSize: 5_001,
+	}
+
+	warm, err := ListUsageEventsWithFilter(context.Background(), db, filter)
+	if err != nil {
+		b.Fatalf("warm bounded export query: %v", err)
+	}
+	if warm.TotalCount <= 5_000 || len(warm.Events) != 5_001 {
+		b.Fatalf("benchmark fixture did not exercise cap+1 export boundary: total=%d rows=%d", warm.TotalCount, len(warm.Events))
+	}
+
+	b.ReportMetric(requestEvidencePerformanceEventCount, "fixture_events")
+	b.ReportMetric(float64(warm.TotalCount), "matching_events")
+	b.ReportMetric(float64(len(warm.Events)), "bounded_rows")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for benchmarkIndex := 0; benchmarkIndex < b.N; benchmarkIndex++ {
+		result, err := ListUsageEventsWithFilter(context.Background(), db, filter)
+		if err != nil {
+			b.Fatalf("list bounded export query: %v", err)
+		}
+		requestEvidenceBenchmarkResult = result
+	}
+}
+
 // BenchmarkInsertUsageEventsAttemptAmplification measures current storage and
 // write cost as attempt rows increase. It does not attribute a baseline delta:
 // preserving retries intentionally changes upstream attempt cardinality. Each

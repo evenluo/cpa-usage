@@ -1,9 +1,13 @@
 package api
 
 import (
+	"bytes"
+	"encoding/csv"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/redact"
@@ -57,6 +61,31 @@ type usageEventPayload struct {
 	OutputTPS       *float64                 `json:"output_tps"`
 	AttemptFacts    usageAttemptFactsPayload `json:"attempt_facts"`
 	Tokens          usageEventTokenPayload   `json:"tokens"`
+}
+
+const usageEventsCSVExportLimit = 5_000
+
+var usageEventsCSVHeader = []string{
+	"timestamp_utc",
+	"account",
+	"api_key_alias",
+	"api_key_traceability",
+	"actual_model",
+	"observed_model_alias",
+	"endpoint",
+	"request_id",
+	"result",
+	"status_code",
+	"latency_ms",
+	"ttft_ms",
+	"output_tps",
+	"input_tokens",
+	"output_tokens",
+	"reasoning_tokens",
+	"cached_tokens",
+	"cache_read_tokens",
+	"cache_creation_tokens",
+	"total_tokens",
 }
 
 type usageAttemptFactsPayload struct {
@@ -175,6 +204,132 @@ func registerUsageEventsRoute(
 			TotalPages: totalPages,
 		})
 	})
+
+	router.GET("/usage/events/export", func(c *gin.Context) {
+		filter, err := parseUsageEventExportFilterQuery(c.Request, time.Now().UTC(), usageEventsCSVExportLimit)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if usageProvider == nil {
+			body, err := encodeUsageEventsCSV(nil)
+			if err != nil {
+				writeInternalError(c, "encode usage event export failed", err)
+				return
+			}
+			writeUsageEventsCSV(c, body)
+			return
+		}
+
+		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter.repositoryFilter())
+		if err != nil {
+			writeInternalError(c, "list usage event export failed", err)
+			return
+		}
+		if rows.TotalCount > usageEventsCSVExportLimit || len(rows.Events) > usageEventsCSVExportLimit {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "request evidence export exceeds the 5000-row limit; narrow the current selection"})
+			return
+		}
+
+		identities, err := loadUsageResolutionData(c, usageIdentityProvider)
+		if err != nil {
+			writeInternalError(c, "load usage resolution data for export failed", err)
+			return
+		}
+		apiKeyAliases, err := loadUsageEventAPIKeyAliases(c, keyAliasProvider, rows.Events)
+		if err != nil {
+			writeInternalError(c, "load usage event aliases for export failed", err)
+			return
+		}
+		body, err := encodeUsageEventsCSV(buildUsageEventsCSVPayload(rows.Events, newUsageIdentityResolver(identities), apiKeyAliases))
+		if err != nil {
+			writeInternalError(c, "encode usage event export failed", err)
+			return
+		}
+		writeUsageEventsCSV(c, body)
+	})
+}
+
+func writeUsageEventsCSV(c *gin.Context, body []byte) {
+	c.Header("Content-Disposition", `attachment; filename="request-evidence.csv"`)
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", body)
+}
+
+func encodeUsageEventsCSV(events []usageEventPayload) ([]byte, error) {
+	var buffer bytes.Buffer
+	writer := csv.NewWriter(&buffer)
+	if err := writer.Write(usageEventsCSVHeader); err != nil {
+		return nil, err
+	}
+	for _, event := range events {
+		statusCode := ""
+		if event.StatusCode != nil {
+			statusCode = strconv.Itoa(*event.StatusCode)
+		}
+		if err := writer.Write([]string{
+			safeUsageEventsCSVText(event.Timestamp),
+			safeUsageEventsCSVText(event.Source),
+			safeUsageEventsCSVText(event.APIKeyAlias),
+			safeUsageEventsCSVText(event.APIKeyDisplay),
+			safeUsageEventsCSVText(event.Model),
+			safeUsageEventsCSVText(event.ModelAlias),
+			safeUsageEventsCSVText(event.Endpoint),
+			safeUsageEventsCSVText(event.RequestID),
+			usageEventsCSVResult(event.Failed),
+			statusCode,
+			strconv.FormatInt(event.LatencyMS, 10),
+			formatUsageEventsCSVInt(event.TTFTMS),
+			formatUsageEventsCSVFloat(event.OutputTPS),
+			strconv.FormatInt(event.Tokens.InputTokens, 10),
+			strconv.FormatInt(event.Tokens.OutputTokens, 10),
+			strconv.FormatInt(event.Tokens.ReasoningTokens, 10),
+			strconv.FormatInt(event.Tokens.CachedTokens, 10),
+			formatUsageEventsCSVInt(event.Tokens.CacheReadTokens),
+			formatUsageEventsCSVInt(event.Tokens.CacheCreationTokens),
+			strconv.FormatInt(event.Tokens.TotalTokens, 10),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
+func usageEventsCSVResult(failed bool) string {
+	if failed {
+		return "failed"
+	}
+	return "success"
+}
+
+func formatUsageEventsCSVInt(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatInt(*value, 10)
+}
+
+func formatUsageEventsCSVFloat(value *float64) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*value, 'f', -1, 64)
+}
+
+func safeUsageEventsCSVText(value string) string {
+	for _, character := range value {
+		if unicode.IsSpace(character) || unicode.IsControl(character) {
+			continue
+		}
+		if strings.ContainsRune("=+-@", character) {
+			return "'" + value
+		}
+		break
+	}
+	return value
 }
 
 func usageEventResponseWindowEnd(filter usageEventListFilter) string {
@@ -264,6 +419,19 @@ func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIden
 				TotalTokens:         row.TotalTokens,
 			},
 		})
+	}
+	return payload
+}
+
+// buildUsageEventsCSVPayload retains the established display-safe event
+// projection, but does not carry the page-only fallback source/provider label
+// into a downloadable artifact when the account identity cannot be resolved.
+func buildUsageEventsCSVPayload(rows []repodto.UsageEventRecord, resolver usageIdentityResolver, apiKeyAliases map[string]string) []usageEventPayload {
+	payload := buildUsageEventsPayload(rows, resolver, apiKeyAliases)
+	for index, row := range rows {
+		if _, matched := resolver.resolveByAuthIndex(row.AuthIndex); !matched {
+			payload[index].Source = ""
+		}
 	}
 	return payload
 }

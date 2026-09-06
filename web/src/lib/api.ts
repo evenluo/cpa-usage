@@ -108,6 +108,20 @@ export async function apiFetch<T>(
   return response.json() as Promise<T>
 }
 
+export async function apiFetchBlob(path: string, options?: RequestInit): Promise<Blob> {
+  const response = await fetch(apiPath(path), {
+    ...options,
+    headers: apiHeaders(options),
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "Unknown error")
+    throw new ApiError(response.status, text)
+  }
+
+  return response.blob()
+}
+
 export async function metricsFetch<T>(): Promise<T> {
 	const response = await fetch(metricsPath())
 

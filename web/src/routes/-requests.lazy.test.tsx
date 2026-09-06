@@ -15,9 +15,11 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/hooks/useEvents", () => ({
   useEvents: vi.fn(),
+  buildEventsExportPath: vi.fn(() => "/usage/events/export?window_end=2026-09-07T12%3A00%3A00.123456789Z"),
+  downloadUsageEventsCSV: vi.fn(),
 }))
 
-import { useEvents } from "@/hooks/useEvents"
+import { buildEventsExportPath, downloadUsageEventsCSV, useEvents } from "@/hooks/useEvents"
 import { RequestsPage } from "./requests.lazy"
 
 afterEach(() => {
@@ -183,5 +185,23 @@ describe("RequestsPage provider scope", () => {
     vi.mocked(useEvents).mockReturnValue({ data: { ...eventsPage(1, ""), events: [], total_count: 0, total_pages: 1 }, isLoading: false, error: null, refetch: vi.fn() } as never)
     rerender(<RequestsPage provider="" />)
     expect(screen.getByText("No recent request evidence")).toBeInTheDocument()
+  })
+
+  it("states the export cap and reports an oversized selection without claiming that a file was saved", async () => {
+    vi.mocked(useEvents).mockReturnValue({ data: eventsPage(1, "claude"), isLoading: false, error: null, refetch: vi.fn() } as never)
+    vi.mocked(downloadUsageEventsCSV).mockRejectedValueOnce(new ApiError(422, "selection exceeds 5000-row limit"))
+    const user = userEvent.setup()
+    render(<RequestsPage provider="claude" modelAlias="route-a" requestId="request-42" minLatencyMS="500" result="failed" />)
+
+    await user.click(screen.getByRole("button", { name: "Download CSV" }))
+
+    expect(buildEventsExportPath).toHaveBeenCalledWith("24h", "claude", {
+      model: "", modelAlias: "route-a", account: "", endpoint: "", status: "", requestId: "request-42",
+      minLatencyMS: "500", windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
+    })
+    expect(downloadUsageEventsCSV).toHaveBeenCalledOnce()
+    expect(screen.getByText("CSV export includes the full frozen selection, up to 5,000 matching requests.")).toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("limited to 5,000 matching requests")
+    expect(screen.getByRole("alert")).toHaveTextContent("No file was saved")
   })
 })

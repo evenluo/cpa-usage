@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { apiFetch } from "@/lib/api"
+import { apiFetch, apiFetchBlob } from "@/lib/api"
 import { validatePaginatedPage } from "@/lib/pagination"
 import type { UsageDiagnosticSelection, UsageEventsPage } from "@/types/api"
 
@@ -23,6 +23,25 @@ export function buildEventsPath(
   filters: UsageDiagnosticSelection & { result?: "" | "success" | "failed" },
 ): string {
   const params = new URLSearchParams({ range, page_size: String(pageSize), page: String(page) })
+  appendEventsSelection(params, provider, filters)
+  return `/usage/events?${params.toString()}`
+}
+
+export function buildEventsExportPath(
+  range: string,
+  provider: string,
+  filters: UsageDiagnosticSelection & { result?: "" | "success" | "failed" },
+): string {
+  const params = new URLSearchParams({ range })
+  appendEventsSelection(params, provider, filters)
+  return `/usage/events/export?${params.toString()}`
+}
+
+function appendEventsSelection(
+  params: URLSearchParams,
+  provider: string,
+  filters: UsageDiagnosticSelection & { result?: "" | "success" | "failed" },
+) {
   if (provider) params.set("provider", provider)
   if (filters.model) params.set("model", filters.model)
   if (filters.modelAlias) params.set("model_alias", filters.modelAlias)
@@ -33,7 +52,16 @@ export function buildEventsPath(
   if (filters.minLatencyMS) params.set("min_latency_ms", filters.minLatencyMS)
   if (filters.windowEnd) params.set("window_end", filters.windowEnd)
   if (filters.result) params.set("result", filters.result)
-  return `/usage/events?${params.toString()}`
+}
+
+export async function downloadUsageEventsCSV(path: string): Promise<void> {
+  const blob = await apiFetchBlob(path, { headers: { Accept: "text/csv" } })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = "request-evidence.csv"
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 export function useEvents(

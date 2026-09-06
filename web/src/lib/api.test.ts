@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { apiFetch, apiPath, appBasePath, ApiError, metricsFetch, metricsPath } from "./api"
+import { apiFetch, apiFetchBlob, apiPath, appBasePath, ApiError, metricsFetch, metricsPath } from "./api"
 
 const CPA_STORAGE_PREFIX = "enc::v1::"
 const CPA_STORAGE_SEED = "cli-proxy-api-webui::secure-storage"
@@ -247,6 +247,35 @@ describe("apiFetch", () => {
     expect(error).toBeInstanceOf(TypeError)
     expect(error).not.toBeInstanceOf(ApiError)
     expect((error as Error).message).toBe("Failed to fetch")
+  })
+})
+
+describe("apiFetchBlob", () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    window.localStorage.clear()
+    vi.stubGlobal("fetch", fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.localStorage.clear()
+  })
+
+  it("uses the protected API request path and returns a successful CSV body", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("header\\n", { status: 200, headers: { "Content-Type": "text/csv" } }))
+
+    await expect(apiFetchBlob("/usage/events/export", { headers: { Accept: "text/csv" } }).then((blob) => blob.text())).resolves.toBe("header\\n")
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/usage/events/export")
+    expect(requestHeaders(fetchMock.mock.calls[0]).get("Accept")).toBe("text/csv")
+  })
+
+  it("does not turn a failed export response into a blob", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("selection too large", { status: 422 }))
+
+    await expect(apiFetchBlob("/usage/events/export")).rejects.toMatchObject({ status: 422, body: "selection too large" })
   })
 })
 

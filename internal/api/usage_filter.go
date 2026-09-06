@@ -218,6 +218,32 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 	return filter, nil
 }
 
+// parseUsageEventExportFilterQuery deliberately reuses the Request Evidence
+// selection parser. An export is the complete, fixed snapshot selection, never
+// one paginated page or a source/auth-index compatibility filter.
+func parseUsageEventExportFilterQuery(req *http.Request, anchor time.Time, limit int) (usageEventListFilter, error) {
+	if req == nil {
+		return usageEventListFilter{}, fmt.Errorf("export requires window_end")
+	}
+	query := req.URL.Query()
+	if strings.TrimSpace(query.Get("window_end")) == "" {
+		return usageEventListFilter{}, fmt.Errorf("export requires window_end from Request Evidence")
+	}
+	for _, name := range []string{"page", "page_size", "limit", "source", "auth_index"} {
+		if strings.TrimSpace(query.Get(name)) != "" {
+			return usageEventListFilter{}, fmt.Errorf("export does not accept %s", name)
+		}
+	}
+	filter, err := parseUsageEventListFilterQuery(req, anchor)
+	if err != nil {
+		return usageEventListFilter{}, err
+	}
+	filter.Page = 1
+	filter.PageSize = limit + 1
+	filter.Offset = 0
+	return filter, nil
+}
+
 func hasUsageDiagnosticSelection(query mapQuery) bool {
 	for _, name := range []string{"model_alias", "account", "endpoint", "status", "request_id", "min_latency_ms", "window_end"} {
 		if strings.TrimSpace(query.Get(name)) != "" {

@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useEvents } from "@/hooks/useEvents"
+import { buildEventsExportPath, downloadUsageEventsCSV, useEvents } from "@/hooks/useEvents"
 import { ApiError } from "@/lib/api"
 import { formatCompact, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -135,6 +135,8 @@ function ProviderScopedRequestsPage({
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
   const [modelDraft, setModelDraft] = useState(model)
+  const [exportError, setExportError] = useState("")
+  const [isExporting, setIsExporting] = useState(false)
   const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, {
     model, modelAlias, account, endpoint, status, requestId, minLatencyMS, windowEnd, result,
   })
@@ -146,6 +148,35 @@ function ProviderScopedRequestsPage({
   function changePage(nextPage: number) {
     setSelectedEventKey(null)
     setPage(nextPage)
+  }
+
+  async function downloadCSV() {
+    if (!data?.window_end) {
+      return
+    }
+    setExportError("")
+    setIsExporting(true)
+    try {
+      await downloadUsageEventsCSV(buildEventsExportPath("24h", provider, {
+        model,
+        modelAlias,
+        account,
+        endpoint,
+        status,
+        requestId,
+        minLatencyMS,
+        windowEnd: data.window_end,
+        result,
+      }))
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 422) {
+        setExportError("CSV export is limited to 5,000 matching requests. Narrow the filters and try again. No file was saved.")
+      } else {
+        setExportError("Failed to download request evidence CSV. No file was saved.")
+      }
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -170,8 +201,14 @@ function ProviderScopedRequestsPage({
           <Badge variant="terracotta" data-testid="request-provider-scope">
             Provider: {provider || "All providers"}
           </Badge>
+          <Button type="button" size="sm" variant="outline" disabled={!data?.window_end || isExporting} onClick={() => void downloadCSV()}>
+            {isExporting ? "Preparing CSV…" : "Download CSV"}
+          </Button>
         </div>
       </header>
+
+      <p className="text-xs text-muted-foreground">CSV export includes the full frozen selection, up to 5,000 matching requests.</p>
+      {exportError ? <p role="alert" className="text-sm text-red-500">{exportError}</p> : null}
 
       <form
         className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
