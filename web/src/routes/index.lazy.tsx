@@ -63,6 +63,7 @@ function DashboardPage() {
         <KpiCard
           label="Tokens"
           rawValue={summary?.total_tokens}
+          caption={viewModel.accountingCaption}
           formatter={(n) => formatCompact(n, 2)}
           sparkline={kpiData?.tokens}
           isLoading={surfaces.kpis.status === "loading"}

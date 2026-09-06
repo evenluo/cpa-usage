@@ -47,6 +47,7 @@ func TestOrderedMigrationsPreservesExecutionOrder(t *testing.T) {
 		"20260902_add_usage_identity_disabled",
 		"20260907_add_usage_accounting_fields",
 		"20260907_add_usage_identity_availability",
+		"20260907_add_usage_rollup_accounting_fields",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected ordered migrations %v, got %v", want, got)
@@ -111,6 +112,7 @@ func TestOpenDatabaseRunsSchemaMigrationsAndAddsUsageEventRedisFields(t *testing
 		"20260902_add_usage_identity_disabled",
 		"20260907_add_usage_accounting_fields",
 		"20260907_add_usage_identity_availability",
+		"20260907_add_usage_rollup_accounting_fields",
 	}
 	if len(versions) != len(expected) {
 		t.Fatalf("expected migration versions %v, got %v", expected, versions)

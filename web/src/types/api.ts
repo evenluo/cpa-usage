@@ -3,7 +3,41 @@ export type TimeRange = "today" | "yesterday" | "24h" | "7d" | "30d"
 export type CostStatus = "available" | "partial" | "unavailable"
 export type CacheReadShareState = "available" | "partial" | "no_cache_data" | "no_prompt_input"
 
+export type AccountingState = "absent" | "malformed" | "unsupported_accounting_version" | "unsupported_schema_version" | "missing" | "unknown_quality" | "invalid" | "valid"
+export type AccountingQuality = "complete" | "inconsistent" | "unclassified"
+
+export interface CanonicalComposition<T = number> {
+  total_tokens: T
+  input: { total_tokens: T; uncached_tokens: T; cache_read_tokens: T; cache_write_tokens: T }
+  output: { total_tokens: T; non_reasoning_tokens: T; reasoning_tokens: T }
+  unclassified_tokens: T
+}
+
+export interface AccountingSummary {
+  total_attempts: number
+  valid_attempts: number
+  coverage_pct: number | null
+  states: Record<AccountingState, number>
+  valid_quality: Record<AccountingQuality, number>
+  composition: CanonicalComposition
+}
+
+export interface UsageAttemptFacts {
+  generate: boolean | null
+  stream: boolean | null
+  request_service_tier: string | null
+  response_service_tier: string | null
+  output_tps: number | null
+  accounting: CanonicalComposition<number | null> & {
+    state: AccountingState
+    accounting_version: number | null
+    schema_version: number | null
+    quality: AccountingQuality | "unknown" | null
+  }
+}
+
 export interface AnalyticsSummary {
+  accounting?: AccountingSummary
   total_cost: number
   total_tokens: number
   request_count: number
@@ -283,6 +317,7 @@ export interface APIKeyAliasTargetPage {
 }
 
 export interface UsageEvent {
+  attempt_facts?: UsageAttemptFacts
   id?: number
   timestamp: string
   model: string

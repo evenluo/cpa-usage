@@ -35,11 +35,18 @@ type analyticsAggregateSource struct {
 	identityAuthTypeExpr string
 	identityExpr         string
 	apiKeyIdentityExpr   string
+	accounting           analyticsAccountingAggregateSource
 	bucketExpr           func(bucketByDay bool) string
 	query                func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	// identityQuery/apiKeyQuery 在 query 基础上附加身份/别名 join 与非空身份过滤。
 	identityQuery func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	apiKeyQuery   func(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB
+}
+
+type analyticsAccountingAggregateSource struct {
+	stateAttemptsExpr        func(string) string
+	validQualityAttemptsExpr func(string) string
+	validTokenExpr           func(string) string
 }
 
 func analyticsEventsAggregateSource() analyticsAggregateSource {
@@ -68,10 +75,25 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		identityAuthTypeExpr:             analyticsUsageIdentityAuthTypeSQLExpression(),
 		identityExpr:                     analyticsUsageIdentitySQLExpression(),
 		apiKeyIdentityExpr:               analyticsAPIKeyIdentitySQLExpression(),
+		accounting:                       analyticsEventsAccountingAggregateSource(),
 		bucketExpr:                       analyticsBucketSQLExpression,
 		query:                            analyticsEventsWithPricingQuery,
 		identityQuery:                    analyticsIdentityEventsWithPricingQuery,
 		apiKeyQuery:                      apiKeyEventsWithPricingQuery,
+	}
+}
+
+func analyticsEventsAccountingAggregateSource() analyticsAccountingAggregateSource {
+	return analyticsAccountingAggregateSource{
+		stateAttemptsExpr: func(state string) string {
+			return "CASE WHEN usage_events.accounting_state = '" + state + "' THEN 1 ELSE 0 END"
+		},
+		validQualityAttemptsExpr: func(quality string) string {
+			return "CASE WHEN usage_events.accounting_state = 'valid' AND usage_events.token_quality = '" + quality + "' THEN 1 ELSE 0 END"
+		},
+		validTokenExpr: func(column string) string {
+			return "CASE WHEN usage_events.accounting_state = 'valid' THEN COALESCE(usage_events." + column + ", 0) ELSE 0 END"
+		},
 	}
 }
 
@@ -110,10 +132,40 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 		identityAuthTypeExpr:             analyticsRollupUsageIdentityAuthTypeSQLExpression(),
 		identityExpr:                     analyticsRollupUsageIdentitySQLExpression(),
 		apiKeyIdentityExpr:               analyticsRollupAPIKeyIdentitySQLExpression(),
+		accounting:                       analyticsRollupsAccountingAggregateSource(),
 		bucketExpr:                       analyticsRollupBucketSQLExpression,
 		query:                            analyticsRollupsWithPricingQuery,
 		identityQuery:                    analyticsRollupIdentityWithPricingQuery,
 		apiKeyQuery:                      rollupAPIKeyWithPricingQuery,
+	}
+}
+
+func analyticsRollupsAccountingAggregateSource() analyticsAccountingAggregateSource {
+	return analyticsAccountingAggregateSource{
+		stateAttemptsExpr: func(state string) string {
+			columns := map[string]string{
+				AccountingAbsent:             "accounting_absent_attempts",
+				AccountingMalformed:          "accounting_malformed_attempts",
+				AccountingUnsupportedVersion: "accounting_unsupported_version_attempts",
+				AccountingUnsupportedSchema:  "accounting_unsupported_schema_attempts",
+				AccountingMissing:            "accounting_missing_attempts",
+				AccountingUnknownQuality:     "accounting_unknown_quality_attempts",
+				AccountingInvalid:            "accounting_invalid_attempts",
+				AccountingValid:              "accounting_valid_attempts",
+			}
+			return "usage_rollups_hourly." + columns[state]
+		},
+		validQualityAttemptsExpr: func(quality string) string {
+			columns := map[string]string{
+				"complete":     "accounting_valid_complete_attempts",
+				"inconsistent": "accounting_valid_inconsistent_attempts",
+				"unclassified": "accounting_valid_unclassified_attempts",
+			}
+			return "usage_rollups_hourly." + columns[quality]
+		},
+		validTokenExpr: func(column string) string {
+			return "usage_rollups_hourly." + column
+		},
 	}
 }
 
@@ -171,7 +223,35 @@ func analyticsSummarySelect(source analyticsAggregateSource) string {
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cacheReadObservedInputTokensExpr) + `), 0) AS cache_read_observed_input_tokens,
 			COALESCE(SUM(` + analyticsSourceCacheSavingsSQLExpression(source) + `), 0) AS cache_savings,
 			COALESCE(SUM(` + analyticsSourceCacheSavingsEligibleSQLExpression(source) + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsSourceCacheSavingsIneligibleSQLExpression(source) + `), 0) AS cache_savings_ineligible_rows`
+			COALESCE(SUM(` + analyticsSourceCacheSavingsIneligibleSQLExpression(source) + `), 0) AS cache_savings_ineligible_rows,` +
+		analyticsAccountingSummarySelect(source.accounting)
+}
+
+func analyticsAccountingSummarySelect(source analyticsAccountingAggregateSource) string {
+	state := source.stateAttemptsExpr
+	quality := source.validQualityAttemptsExpr
+	token := source.validTokenExpr
+	return `
+			COALESCE(SUM(` + state(AccountingAbsent) + `), 0) AS accounting_absent_attempts,
+			COALESCE(SUM(` + state(AccountingMalformed) + `), 0) AS accounting_malformed_attempts,
+			COALESCE(SUM(` + state(AccountingUnsupportedVersion) + `), 0) AS accounting_unsupported_version_attempts,
+			COALESCE(SUM(` + state(AccountingUnsupportedSchema) + `), 0) AS accounting_unsupported_schema_attempts,
+			COALESCE(SUM(` + state(AccountingMissing) + `), 0) AS accounting_missing_attempts,
+			COALESCE(SUM(` + state(AccountingUnknownQuality) + `), 0) AS accounting_unknown_quality_attempts,
+			COALESCE(SUM(` + state(AccountingInvalid) + `), 0) AS accounting_invalid_attempts,
+			COALESCE(SUM(` + state(AccountingValid) + `), 0) AS accounting_valid_attempts,
+			COALESCE(SUM(` + quality("complete") + `), 0) AS accounting_valid_complete_attempts,
+			COALESCE(SUM(` + quality("inconsistent") + `), 0) AS accounting_valid_inconsistent_attempts,
+			COALESCE(SUM(` + quality("unclassified") + `), 0) AS accounting_valid_unclassified_attempts,
+			COALESCE(SUM(` + token("canonical_total_tokens") + `), 0) AS canonical_total_tokens,
+			COALESCE(SUM(` + token("canonical_input_tokens") + `), 0) AS canonical_input_tokens,
+			COALESCE(SUM(` + token("canonical_uncached_tokens") + `), 0) AS canonical_uncached_tokens,
+			COALESCE(SUM(` + token("canonical_cache_read_tokens") + `), 0) AS canonical_cache_read_tokens,
+			COALESCE(SUM(` + token("canonical_cache_write_tokens") + `), 0) AS canonical_cache_write_tokens,
+			COALESCE(SUM(` + token("canonical_output_tokens") + `), 0) AS canonical_output_tokens,
+			COALESCE(SUM(` + token("canonical_non_reasoning_tokens") + `), 0) AS canonical_non_reasoning_tokens,
+			COALESCE(SUM(` + token("canonical_reasoning_tokens") + `), 0) AS canonical_reasoning_tokens,
+			COALESCE(SUM(` + token("canonical_unclassified_tokens") + `), 0) AS canonical_unclassified_tokens`
 }
 
 func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) (analyticsAggregateRow, error) {

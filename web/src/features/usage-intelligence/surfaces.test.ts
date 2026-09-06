@@ -22,6 +22,7 @@ function viewModel(overrides: Partial<UsageDashboardViewModel> = {}): UsageDashb
     modelMixCostStateLabel: "Cost unavailable, by tokens",
     hasLeaderboardBreakdown: false,
     leaderboardSortLabel: "Sort: Cost",
+    accountingCaption: "Canonical accounting unavailable",
     kpiData: null,
     ...overrides,
   }

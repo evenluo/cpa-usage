@@ -67,4 +67,39 @@ describe("RequestEvidenceEvent", () => {
     expect(screen.getByText("priority")).toBeInTheDocument()
     expect(screen.getByText("Generic cached tokens")).toBeInTheDocument()
   })
+
+  it("shows reported invalid canonical facts, independent tiers and explicit execution absence without estimating TPS", () => {
+    render(<RequestEvidenceEvent label="Selected attempt" detail event={{
+      ...event,
+      output_tps: null,
+      attempt_facts: {
+        generate: false, stream: null, request_service_tier: "priority", response_service_tier: "default", output_tps: null,
+        accounting: {
+          state: "invalid", accounting_version: 2, schema_version: 2, quality: "inconsistent",
+          total_tokens: 999,
+          input: { total_tokens: 100, uncached_tokens: 70, cache_read_tokens: 20, cache_write_tokens: 10 },
+          output: { total_tokens: 50, non_reasoning_tokens: 40, reasoning_tokens: 10 },
+          unclassified_tokens: 5,
+        },
+      },
+    }} />)
+    const value = (label: string) => screen.getByText(label).nextElementSibling
+    expect(value("Canonical accounting")).toHaveTextContent("Invalid bucket totals")
+    expect(value("Reported quality")).toHaveTextContent("inconsistent")
+    expect(value("Canonical total")).toHaveTextContent("999")
+    expect(value("Requested service tier")).toHaveTextContent("priority")
+    expect(value("Response service tier")).toHaveTextContent("default")
+    expect(value("Generate")).toHaveTextContent("No")
+    expect(value("Stream")).toHaveTextContent("-")
+    expect(value("Output TPS")).toHaveTextContent("-")
+  })
+
+  it("does not synthesize canonical facts or response tier for historical evidence", () => {
+    render(<RequestEvidenceEvent event={event} label="Historical attempt" detail />)
+    for (const label of ["Response service tier", "Generate", "Stream", "Canonical total", "Accounting version", "Reported quality"]) {
+      expect(screen.getByText(label).nextElementSibling).toHaveTextContent("-")
+    }
+    expect(screen.getByText("Requested service tier").nextElementSibling).toHaveTextContent("priority")
+    expect(screen.getByText("Output TPS").nextElementSibling).toHaveTextContent("42.0 tok/s")
+  })
 })

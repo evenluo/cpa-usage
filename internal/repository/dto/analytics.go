@@ -27,6 +27,53 @@ type AnalyticsSummary struct {
 	CacheReadCoverage     float64
 	CacheReadShareState   string
 	EstimatedCacheSavings *float64
+	Accounting            AnalyticsAccountingSummary
+}
+
+type AnalyticsAccountingSummary struct {
+	TotalAttempts int64
+	ValidAttempts int64
+	CoveragePct   *float64
+	States        AnalyticsAccountingStates
+	ValidQuality  AnalyticsAccountingValidQuality
+	Composition   AnalyticsAccountingComposition
+}
+
+type AnalyticsAccountingStates struct {
+	Absent                       int64
+	Malformed                    int64
+	UnsupportedAccountingVersion int64
+	UnsupportedSchemaVersion     int64
+	Missing                      int64
+	UnknownQuality               int64
+	Invalid                      int64
+	Valid                        int64
+}
+
+type AnalyticsAccountingValidQuality struct {
+	Complete     int64
+	Inconsistent int64
+	Unclassified int64
+}
+
+type AnalyticsAccountingComposition struct {
+	TotalTokens        int64
+	Input              AnalyticsAccountingInputComposition
+	Output             AnalyticsAccountingOutputComposition
+	UnclassifiedTokens int64
+}
+
+type AnalyticsAccountingInputComposition struct {
+	TotalTokens      int64
+	UncachedTokens   int64
+	CacheReadTokens  int64
+	CacheWriteTokens int64
+}
+
+type AnalyticsAccountingOutputComposition struct {
+	TotalTokens        int64
+	NonReasoningTokens int64
+	ReasoningTokens    int64
 }
 
 type AnalyticsTrendPoint struct {

@@ -68,6 +68,7 @@ func TestBuildAnalyticsSummaryResponseMatchesContractFixture(t *testing.T) {
 
 func analyticsSummaryContractSnapshot(start time.Time) *repodto.AnalyticsSummarySnapshot {
 	bucketEnd := start.Add(24 * time.Hour)
+	zeroCoverage := float64(0)
 	return &repodto.AnalyticsSummarySnapshot{
 		Summary: repodto.AnalyticsSummary{
 			TotalCost:           2.45,
@@ -86,6 +87,11 @@ func analyticsSummaryContractSnapshot(start time.Time) *repodto.AnalyticsSummary
 			CacheReadShare:      6.666222251849877,
 			CacheReadCoverage:   100,
 			CacheReadShareState: "available",
+			Accounting: repodto.AnalyticsAccountingSummary{
+				TotalAttempts: 3,
+				CoveragePct:   &zeroCoverage,
+				States:        repodto.AnalyticsAccountingStates{Absent: 3},
+			},
 		},
 		Trend: []repodto.AnalyticsTrendPoint{{
 			Label:           "2026-05-11",

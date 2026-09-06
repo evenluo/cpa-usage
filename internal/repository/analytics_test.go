@@ -121,7 +121,7 @@ func TestBuildAnalyticsCoreWithFilterUsesRollupsForSummaryAndTrend(t *testing.T)
 		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
 	}
 
-	if core.Summary != rawSummary {
+	if !reflect.DeepEqual(core.Summary, rawSummary) {
 		t.Fatalf("expected rollup summary to match raw summary\nrollup=%+v\nraw=%+v", core.Summary, rawSummary)
 	}
 	if core.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStatePartial || math.Abs(core.Summary.CacheReadShare-10) > 1e-9 || math.Abs(core.Summary.CacheReadCoverage-66.66222251849877) > 1e-9 {
@@ -533,7 +533,7 @@ func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
 	if rawSummary.RequestCount != 3 || rawSummary.TotalTokens != 60 {
 		t.Fatalf("test setup expected three in-window events, got %+v", rawSummary)
 	}
-	if core.Summary != rawSummary {
+	if !reflect.DeepEqual(core.Summary, rawSummary) {
 		t.Fatalf("expected partial-hour core summary to match raw summary\ncore=%+v\nraw=%+v", core.Summary, rawSummary)
 	}
 	if len(core.Trend) != len(rawTrend) {

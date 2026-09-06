@@ -1,6 +1,9 @@
 import type {
+  AccountingState,
+  AccountingSummary,
   AnalyticsCoreResponse,
   CacheReadShareState,
+  CanonicalComposition,
   CostStatus,
   HeatmapData,
   Insight,
@@ -54,6 +57,7 @@ export interface UsageDashboardViewModel {
   leaderboardSortLabel: string
   cacheReadShareCaption?: string
   cacheReadShareValue?: number
+  accountingCaption: string
   kpiData: UsageKpiSparklineData | null
 }
 
@@ -118,6 +122,41 @@ export function getCacheReadShareValue(value?: number, state?: CacheReadShareSta
   return value
 }
 
+export const ACCOUNTING_STATE_LABELS: Record<AccountingState, string> = {
+  absent: "Absent / historical",
+  malformed: "Malformed fields",
+  unsupported_accounting_version: "Unsupported accounting version",
+  unsupported_schema_version: "Unsupported schema version",
+  missing: "Missing required facts",
+  unknown_quality: "Unknown quality",
+  invalid: "Invalid bucket totals",
+  valid: "Valid structure",
+}
+
+export function getAccountingCaption(accounting?: AccountingSummary): string {
+  if (!accounting) return "Canonical accounting unavailable"
+  if (accounting.coverage_pct === null) return "Canonical accounting: no attempts"
+  if (accounting.valid_attempts === 0) return "Canonical accounting unavailable · 0% of attempts"
+  const quality = accounting.valid_quality.complete === accounting.valid_attempts ? "complete quality" : "qualified quality"
+  return `Canonical: ${accounting.coverage_pct.toFixed(1)}% of attempts · ${quality}`
+}
+
+// Render the repository's disjoint buckets and reported totals; never sum legacy
+// scalars or add a reasoning/cache subset back into its parent total.
+export function getCanonicalTokenFields(composition?: CanonicalComposition<number | null>): Array<[string, number | null | undefined]> {
+  return [
+    ["Canonical total", composition?.total_tokens],
+    ["Canonical input total", composition?.input.total_tokens],
+    ["Uncached input", composition?.input.uncached_tokens],
+    ["Cache read input", composition?.input.cache_read_tokens],
+    ["Cache write input", composition?.input.cache_write_tokens],
+    ["Canonical output total", composition?.output.total_tokens],
+    ["Non-reasoning output", composition?.output.non_reasoning_tokens],
+    ["Reasoning output", composition?.output.reasoning_tokens],
+    ["Unclassified tokens", composition?.unclassified_tokens],
+  ]
+}
+
 export function getModelMixPresentation(costStatus?: CostStatus): {
   measure: "cost" | "tokens"
   costStateLabel: string
@@ -175,6 +214,7 @@ export function buildUsageDashboardViewModel(input: {
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
     cacheReadShareCaption: getCacheReadShareCaption(input.analytics?.summary?.cache_read_share_state, input.analytics?.summary?.cache_read_coverage),
     cacheReadShareValue: getCacheReadShareValue(input.analytics?.summary?.cache_read_share, input.analytics?.summary?.cache_read_share_state),
+    accountingCaption: getAccountingCaption(input.analytics?.summary?.accounting),
     kpiData: deriveKpiSparklineData(trend),
   }
 }

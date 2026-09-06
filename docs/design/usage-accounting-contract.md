@@ -1,6 +1,6 @@
 # Per-attempt accounting and execution facts
 
-Status: current, slice F of Parent #140 / Issue #144 r1
+Status: current, slices F/G of Parent #140 / Issues #144 and #145 r1
 
 CPA v7.2.62 (`3554b63721aac9b4202bf2ef88ba7a82b4e5caf8`) emits legacy token
 facts. CPA v7.2.152 (`c76dfd4e0edabab9000628b1560ab8ab379eadb8`) retains the
@@ -16,7 +16,9 @@ official producer provenance and consumer examples.
 typed facts to `entities.UsageAccounting`, embedded in `UsageEvent`.
 `repository.InterpretUsageAttempt` owns per-attempt validity and throughput;
 `UsageEventRecord.AttemptFacts` exposes its result on the existing bounded read.
-API projection and presentation belong to consumers C/G.
+G projects summary accounting and attempt evidence through `internal/api` and
+the existing frontend token/evidence surfaces; C consumes execution facts for
+its distributions.
 
 G requires selected-window SQL aggregation plus the existing hourly rollup
 owner; C requires bounded raw per-attempt reads. Nullable scalar columns support
@@ -126,8 +128,77 @@ Compatibility is additive for SQLite and repository reads; legacy scalar/Cost
 semantics and routes remain compatible. The intentional Output TPS correction
 retains provider-specific numerator units and suppresses explicitly
 non-stream/non-generating or qualified canonical samples. No canonical API/UI
-surface is added by F. Main integration owns C/G's projection, whole-program
-gates, and any production upgrade decision.
+surface is added by F alone. G's additive projection is described below. Main
+integration owns whole-program gates and any production upgrade decision.
+
+## Selected-window composition and supporting evidence (G)
+
+The existing summary response adds `accounting`. `total_attempts` is the selected
+window's attempt count after provider filtering; `valid_attempts` and `states`
+count F's persisted availability states. `coverage_pct` is
+`valid_attempts / total_attempts * 100`, or null when there are no attempts.
+This measures attempt coverage, not token-volume coverage and not completeness
+of all historical usage. Each state count has all selected attempts as its
+denominator. `valid_quality` counts complete, inconsistent and unclassified
+quality **among valid attempts**, with `valid_attempts` as that denominator.
+Structural validity and quality are never merged into a single success verdict.
+
+`composition` sums only `accounting_state = 'valid'` rows. It retains the input,
+output and unclassified structure above, with no legacy scalar substitution or
+addition. Valid inconsistent and unclassified quality still contributes its
+reported canonical buckets, qualified by the independent quality counts. When
+there are no valid attempts, zero aggregate sums are an empty population; the
+UI displays canonical totals as unavailable. Reported zero tokens in a valid
+population remain real zero observations.
+
+Only the current summary needs these aggregates; trend and contributor scalar
+contracts retain their existing units. The summary reuses the existing bounded
+raw/hourly source plan, including partial-hour edges and provider filtering.
+The existing rollup owner stores state/quality counts and canonical sums and
+rebuilds affected buckets on ingestion. The additive rollup migration resets
+the existing backfill checkpoint; the same bounded backfill runner reconstructs
+rollups from persisted rows. Until coverage is complete, the existing observable
+`backfill_incomplete` read path applies. It never fills historical canonical
+columns or infers new upstream facts.
+
+The Tokens KPI and trend continue to use the existing scalar total. A compact
+caption and expandable composition inside Trend Workbench explain accounting
+Metric Completeness and the disjoint buckets. Cost completeness retains its own
+status and configured three-rate calculation, independent of accounting quality
+or tiers. No new KPI group, pricing engine, query endpoint or worker is added.
+
+Request Evidence adds `attempt_facts`, projected directly from F's repository
+read record. Canonical values remain visible even when invalid or incomplete,
+with the repository state and reported quality explaining their interpretation.
+Optional numeric facts, generate/stream and requested/response tiers serialize
+as null and display as `-`; historical records do not acquire implied flags,
+response tiers or canonical buckets. The existing `service_tier` compatibility
+field remains requested tier. Top-level `output_tps` uses the same
+`AttemptFacts.OutputTPS`, preserving provider scalar units and F's eligibility
+correction. Neither canonical output bucket is substituted into throughput.
+
+Compatibility: API fields and SQLite rollup columns are additive. Existing
+scalar metrics, Cost, cache-read share, event identity, auth/routes, and Redis
+effects retain their contracts. API evidence now honors F's intentional TPS
+qualification for invalid/incomplete canonical or non-generating/non-streaming
+attempts. Browser rendering treats an unavailable additive payload explicitly
+as unavailable; it never fabricates a canonical value from scalar fields.
+
+Local bundle evidence (2026-09-07, identical installed dependencies and Vite
+manifest reporting): compared with accepted E+F base `f536cab`, G changes total
+JavaScript from 926,312 to 931,634 bytes (gzip 270,113 to 271,756), and CSS from
+38,804 to 39,029 bytes (gzip 7,799 to 7,835). JavaScript chunk count stays 12;
+there are no added package dependencies. The pre-existing large-chunk warning
+occurs on both builds. This is a local artifact-size comparison, not runtime or
+production latency evidence.
+
+The existing deterministic analytics benchmark (65,536 attempts, 32 providers,
+512 models, 2,048 identities per kind; `GOMAXPROCS=1`, `-benchtime=1x`) measured
+the raw core snapshot at 8.460 s and the covered hourly snapshot at 0.788 s.
+Both retain existing bounded top-N output. These are single local observations
+on a shared host, not a baseline regression estimate or an SLA. Migration plan
+evidence separately verifies indexed extrema reads; focused tests cover the
+provider-scoped hybrid window and bounded backfill completion.
 
 ## Local intake performance evidence (2026-09-07)
 

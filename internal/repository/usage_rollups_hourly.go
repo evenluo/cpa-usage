@@ -185,6 +185,7 @@ func applyUsageEventToHourlyRollup(rollup *entities.UsageRollupHourly, event ent
 		rollup.CacheReadTokens += *event.CacheReadTokens
 		rollup.CacheReadObservedInputTokens += inputTokens
 	}
+	applyUsageAccountingToHourlyRollup(rollup, event)
 	// TotalTokens 保持原始净和（不钳制负值），与 raw 读侧对 usage_events.total_tokens 的直接 SUM 镜像等价；
 	// 避免只改写入规则而不重建历史 rollup 时，已覆盖小时的 rollup 与 raw 段返回不同 token 总量。
 	rollup.TotalTokens += event.TotalTokens
@@ -196,6 +197,58 @@ func applyUsageEventToHourlyRollup(rollup *entities.UsageRollupHourly, event ent
 	if rollup.LastEventAt.IsZero() || eventTime.After(rollup.LastEventAt) {
 		rollup.LastEventAt = eventTime
 	}
+}
+
+func applyUsageAccountingToHourlyRollup(rollup *entities.UsageRollupHourly, event entities.UsageEvent) {
+	switch event.AccountingState {
+	case AccountingAbsent:
+		rollup.AccountingAbsentAttempts++
+	case AccountingMalformed:
+		rollup.AccountingMalformedAttempts++
+	case AccountingUnsupportedVersion:
+		rollup.AccountingUnsupportedVersionAttempts++
+	case AccountingUnsupportedSchema:
+		rollup.AccountingUnsupportedSchemaAttempts++
+	case AccountingMissing:
+		rollup.AccountingMissingAttempts++
+	case AccountingUnknownQuality:
+		rollup.AccountingUnknownQualityAttempts++
+	case AccountingInvalid:
+		rollup.AccountingInvalidAttempts++
+	case AccountingValid:
+		rollup.AccountingValidAttempts++
+		switch optionalStringValue(event.TokenQuality) {
+		case "complete":
+			rollup.AccountingValidCompleteAttempts++
+		case "inconsistent":
+			rollup.AccountingValidInconsistentAttempts++
+		case "unclassified":
+			rollup.AccountingValidUnclassifiedAttempts++
+		}
+		rollup.CanonicalTotalTokens += optionalInt64Value(event.CanonicalTotalTokens)
+		rollup.CanonicalInputTokens += optionalInt64Value(event.CanonicalInputTokens)
+		rollup.CanonicalUncachedTokens += optionalInt64Value(event.CanonicalUncachedTokens)
+		rollup.CanonicalCacheReadTokens += optionalInt64Value(event.CanonicalCacheReadTokens)
+		rollup.CanonicalCacheWriteTokens += optionalInt64Value(event.CanonicalCacheWriteTokens)
+		rollup.CanonicalOutputTokens += optionalInt64Value(event.CanonicalOutputTokens)
+		rollup.CanonicalNonReasoningTokens += optionalInt64Value(event.CanonicalNonReasoningTokens)
+		rollup.CanonicalReasoningTokens += optionalInt64Value(event.CanonicalReasoningTokens)
+		rollup.CanonicalUnclassifiedTokens += optionalInt64Value(event.CanonicalUnclassifiedTokens)
+	}
+}
+
+func optionalInt64Value(value *int64) int64 {
+	if value == nil {
+		return 0
+	}
+	return *value
+}
+
+func optionalStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func validCacheReadObservation(inputTokens int64, cacheReadTokens *int64) bool {

@@ -21,7 +21,29 @@
     "cost_status": "partial",
     "cache_read_share": 6.666222251849877,
     "cache_read_coverage": 100,
-    "cache_read_share_state": "available"
+    "cache_read_share_state": "available",
+    "accounting": {
+      "total_attempts": 3,
+      "valid_attempts": 0,
+      "coverage_pct": 0,
+      "states": {
+        "absent": 3,
+        "malformed": 0,
+        "unsupported_accounting_version": 0,
+        "unsupported_schema_version": 0,
+        "missing": 0,
+        "unknown_quality": 0,
+        "invalid": 0,
+        "valid": 0
+      },
+      "valid_quality": { "complete": 0, "inconsistent": 0, "unclassified": 0 },
+      "composition": {
+        "total_tokens": 0,
+        "input": { "total_tokens": 0, "uncached_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+        "output": { "total_tokens": 0, "non_reasoning_tokens": 0, "reasoning_tokens": 0 },
+        "unclassified_tokens": 0
+      }
+    }
   },
   "comparison": {
     "has_previous_period": false

@@ -68,10 +68,33 @@ func (s *usageEventsStub) GetUsageAnalysis(context.Context, dto.UsageTimeScope) 
 func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	ttftMS := int64(1052)
 	outputTPS := 48.33358094488189
+	staleOutputTPS := 999.0
 	statusCode := 200
 	cacheReadTokens := int64(1)
 	cacheCreationTokens := int64(3)
+	canonicalInput := int64(10)
+	canonicalUncached := int64(6)
+	canonicalOutput := int64(4)
+	canonicalNonReasoning := int64(2)
+	canonicalReasoning := int64(2)
+	canonicalZero := int64(0)
+	canonicalTotal := int64(14)
+	accountingVersion := int64(2)
+	quality := "complete"
+	generate := true
+	stream := true
+	requestTier := "priority"
+	responseTier := "default"
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
+		AttemptFacts: dto.UsageAttemptFacts{
+			Generate: &generate, Stream: &stream, RequestServiceTier: &requestTier, ResponseServiceTier: &responseTier, OutputTPS: &outputTPS,
+			Accounting: dto.UsageAccountingRecord{
+				State: "valid", AccountingVersion: &accountingVersion, SchemaVersion: &accountingVersion, Quality: &quality, TotalTokens: &canonicalTotal,
+				Input:              dto.UsageTokenInput{TotalTokens: &canonicalInput, UncachedTokens: &canonicalUncached, CacheReadTokens: &canonicalZero, CacheWriteTokens: &canonicalOutput},
+				Output:             dto.UsageTokenOutput{TotalTokens: &canonicalOutput, NonReasoningTokens: &canonicalNonReasoning, ReasoningTokens: &canonicalReasoning},
+				UnclassifiedTokens: &canonicalZero,
+			},
+		},
 		ID:                  42,
 		Timestamp:           time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
 		Model:               "claude-sonnet",
@@ -89,7 +112,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 		Failed:              false,
 		LatencyMS:           21245,
 		TTFTMS:              &ttftMS,
-		OutputTPS:           &outputTPS,
+		OutputTPS:           &staleOutputTPS,
 		InputTokens:         10,
 		OutputTokens:        976,
 		ReasoningTokens:     2,
@@ -129,6 +152,19 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	if !contains(body, `"ttft_ms":1052`) || !contains(body, `"output_tps":48.33358094488189`) {
 		t.Fatalf("expected TTFT and Output TPS in response body: %s", body)
 	}
+	if contains(body, `"output_tps":999`) {
+		t.Fatalf("expected HTTP projection to use AttemptFacts Output TPS, got %s", body)
+	}
+	for _, fact := range []string{
+		`"attempt_facts":{`, `"generate":true`, `"stream":true`, `"request_service_tier":"priority"`, `"response_service_tier":"default"`,
+		`"accounting":{"state":"valid"`, `"accounting_version":2`, `"schema_version":2`, `"quality":"complete"`,
+		`"input":{"total_tokens":10,"uncached_tokens":6,"cache_read_tokens":0,"cache_write_tokens":4}`,
+		`"output":{"total_tokens":4,"non_reasoning_tokens":2,"reasoning_tokens":2}`, `"unclassified_tokens":0`,
+	} {
+		if !contains(body, fact) {
+			t.Fatalf("expected accounting attempt fact %s in response body: %s", fact, body)
+		}
+	}
 	if !contains(body, `"model_alias":"claude-sonnet-requested"`) || !contains(body, `"endpoint":"/v1/messages"`) || !contains(body, `"request_id":"request-42"`) {
 		t.Fatalf("expected requested model, endpoint, and request trace in response body: %s", body)
 	}
@@ -159,6 +195,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 
 func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
+		AttemptFacts: dto.UsageAttemptFacts{Accounting: dto.UsageAccountingRecord{State: "absent"}},
 		ID:           43,
 		Timestamp:    time.Date(2026, 4, 22, 11, 1, 0, 0, time.UTC),
 		Model:        "historical-model",
@@ -179,8 +216,12 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 	if !contains(body, `"ttft_ms":null`) || !contains(body, `"output_tps":null`) {
 		t.Fatalf("expected missing TTFT and Output TPS to remain null: %s", body)
 	}
-	if contains(body, `"cache_read_tokens"`) || contains(body, `"cache_creation_tokens"`) {
-		t.Fatalf("expected missing exact cache facts to stay omitted: %s", body)
+	if !contains(body, `"attempt_facts":{"generate":null,"stream":null,"request_service_tier":null,"response_service_tier":null,"output_tps":null,"accounting":{"state":"absent"`) ||
+		!contains(body, `"accounting_version":null`) || !contains(body, `"schema_version":null`) || !contains(body, `"quality":null`) || !contains(body, `"unclassified_tokens":null`) {
+		t.Fatalf("expected absent attempt facts to remain explicit nulls: %s", body)
+	}
+	if !contains(body, `"tokens":{"input_tokens":0,"output_tokens":976,"reasoning_tokens":0,"cached_tokens":0,"total_tokens":105091}`) {
+		t.Fatalf("expected missing legacy exact-cache facts to stay omitted from tokens: %s", body)
 	}
 }
 

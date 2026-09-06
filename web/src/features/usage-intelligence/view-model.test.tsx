@@ -204,6 +204,7 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.modelMixMeasure).toBe("tokens")
     expect(viewModel.modelMixCostStateLabel).toBe("Cost partial, by tokens")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
+    expect(viewModel.accountingCaption).toBe("Canonical accounting unavailable · 0% of attempts")
   })
 
   it("derives the Cache KPI caption from the cache read share state", () => {

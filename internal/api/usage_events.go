@@ -33,28 +33,62 @@ type usageEventFilterOptionsResponse struct {
 }
 
 type usageEventPayload struct {
-	ID              uint                   `json:"id,omitempty"`
-	Timestamp       string                 `json:"timestamp"`
-	Model           string                 `json:"model"`
-	ModelAlias      string                 `json:"model_alias,omitempty"`
-	Endpoint        string                 `json:"endpoint,omitempty"`
-	RequestID       string                 `json:"request_id,omitempty"`
-	Source          string                 `json:"source"`
-	SourceRaw       string                 `json:"source_raw,omitempty"`
-	SourceType      string                 `json:"source_type,omitempty"`
-	AuthIndex       string                 `json:"auth_index,omitempty"`
-	APIKeyAlias     string                 `json:"api_key_alias,omitempty"`
-	APIKeyDisplay   string                 `json:"api_key_display,omitempty"`
-	IsDelete        bool                   `json:"isDelete,omitempty"`
-	Failed          bool                   `json:"failed"`
-	StatusCode      *int                   `json:"status_code,omitempty"`
-	ExecutorType    string                 `json:"executor_type,omitempty"`
-	ReasoningEffort string                 `json:"reasoning_effort,omitempty"`
-	ServiceTier     string                 `json:"service_tier,omitempty"`
-	LatencyMS       int64                  `json:"latency_ms"`
-	TTFTMS          *int64                 `json:"ttft_ms"`
-	OutputTPS       *float64               `json:"output_tps"`
-	Tokens          usageEventTokenPayload `json:"tokens"`
+	ID              uint                     `json:"id,omitempty"`
+	Timestamp       string                   `json:"timestamp"`
+	Model           string                   `json:"model"`
+	ModelAlias      string                   `json:"model_alias,omitempty"`
+	Endpoint        string                   `json:"endpoint,omitempty"`
+	RequestID       string                   `json:"request_id,omitempty"`
+	Source          string                   `json:"source"`
+	SourceRaw       string                   `json:"source_raw,omitempty"`
+	SourceType      string                   `json:"source_type,omitempty"`
+	AuthIndex       string                   `json:"auth_index,omitempty"`
+	APIKeyAlias     string                   `json:"api_key_alias,omitempty"`
+	APIKeyDisplay   string                   `json:"api_key_display,omitempty"`
+	IsDelete        bool                     `json:"isDelete,omitempty"`
+	Failed          bool                     `json:"failed"`
+	StatusCode      *int                     `json:"status_code,omitempty"`
+	ExecutorType    string                   `json:"executor_type,omitempty"`
+	ReasoningEffort string                   `json:"reasoning_effort,omitempty"`
+	ServiceTier     string                   `json:"service_tier,omitempty"`
+	LatencyMS       int64                    `json:"latency_ms"`
+	TTFTMS          *int64                   `json:"ttft_ms"`
+	OutputTPS       *float64                 `json:"output_tps"`
+	AttemptFacts    usageAttemptFactsPayload `json:"attempt_facts"`
+	Tokens          usageEventTokenPayload   `json:"tokens"`
+}
+
+type usageAttemptFactsPayload struct {
+	Generate            *bool                         `json:"generate"`
+	Stream              *bool                         `json:"stream"`
+	RequestServiceTier  *string                       `json:"request_service_tier"`
+	ResponseServiceTier *string                       `json:"response_service_tier"`
+	OutputTPS           *float64                      `json:"output_tps"`
+	Accounting          usageAttemptAccountingPayload `json:"accounting"`
+}
+
+type usageAttemptAccountingPayload struct {
+	State              string                    `json:"state"`
+	AccountingVersion  *int64                    `json:"accounting_version"`
+	SchemaVersion      *int64                    `json:"schema_version"`
+	Quality            *string                   `json:"quality"`
+	TotalTokens        *int64                    `json:"total_tokens"`
+	Input              usageAttemptInputPayload  `json:"input"`
+	Output             usageAttemptOutputPayload `json:"output"`
+	UnclassifiedTokens *int64                    `json:"unclassified_tokens"`
+}
+
+type usageAttemptInputPayload struct {
+	TotalTokens      *int64 `json:"total_tokens"`
+	UncachedTokens   *int64 `json:"uncached_tokens"`
+	CacheReadTokens  *int64 `json:"cache_read_tokens"`
+	CacheWriteTokens *int64 `json:"cache_write_tokens"`
+}
+
+type usageAttemptOutputPayload struct {
+	TotalTokens        *int64 `json:"total_tokens"`
+	NonReasoningTokens *int64 `json:"non_reasoning_tokens"`
+	ReasoningTokens    *int64 `json:"reasoning_tokens"`
 }
 
 type usageEventTokenPayload struct {
@@ -209,7 +243,8 @@ func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIden
 			ServiceTier:     row.ServiceTier,
 			LatencyMS:       row.LatencyMS,
 			TTFTMS:          row.TTFTMS,
-			OutputTPS:       row.OutputTPS,
+			OutputTPS:       row.AttemptFacts.OutputTPS,
+			AttemptFacts:    mapUsageAttemptFactsPayload(row.AttemptFacts),
 			Tokens: usageEventTokenPayload{
 				InputTokens:         row.InputTokens,
 				OutputTokens:        row.OutputTokens,
@@ -222,6 +257,35 @@ func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIden
 		})
 	}
 	return payload
+}
+
+func mapUsageAttemptFactsPayload(facts repodto.UsageAttemptFacts) usageAttemptFactsPayload {
+	return usageAttemptFactsPayload{
+		Generate:            facts.Generate,
+		Stream:              facts.Stream,
+		RequestServiceTier:  facts.RequestServiceTier,
+		ResponseServiceTier: facts.ResponseServiceTier,
+		OutputTPS:           facts.OutputTPS,
+		Accounting: usageAttemptAccountingPayload{
+			State:             facts.Accounting.State,
+			AccountingVersion: facts.Accounting.AccountingVersion,
+			SchemaVersion:     facts.Accounting.SchemaVersion,
+			Quality:           facts.Accounting.Quality,
+			TotalTokens:       facts.Accounting.TotalTokens,
+			Input: usageAttemptInputPayload{
+				TotalTokens:      facts.Accounting.Input.TotalTokens,
+				UncachedTokens:   facts.Accounting.Input.UncachedTokens,
+				CacheReadTokens:  facts.Accounting.Input.CacheReadTokens,
+				CacheWriteTokens: facts.Accounting.Input.CacheWriteTokens,
+			},
+			Output: usageAttemptOutputPayload{
+				TotalTokens:        facts.Accounting.Output.TotalTokens,
+				NonReasoningTokens: facts.Accounting.Output.NonReasoningTokens,
+				ReasoningTokens:    facts.Accounting.Output.ReasoningTokens,
+			},
+			UnclassifiedTokens: facts.Accounting.UnclassifiedTokens,
+		},
+	}
 }
 
 func usageEventPublicEndpoint(endpoint string) string {

@@ -55,23 +55,70 @@ type analyticsHeatmapResponse struct {
 }
 
 type analyticsSummaryPayload struct {
-	TotalCost             float64  `json:"total_cost"`
-	TotalTokens           int64    `json:"total_tokens"`
-	RequestCount          int64    `json:"request_count"`
-	SuccessCount          int64    `json:"success_count"`
-	FailureCount          int64    `json:"failure_count"`
-	InputTokens           int64    `json:"input_tokens"`
-	OutputTokens          int64    `json:"output_tokens"`
-	ReasoningTokens       int64    `json:"reasoning_tokens"`
-	CachedTokens          int64    `json:"cached_tokens"`
-	CacheReadTokens       int64    `json:"cache_read_tokens"`
-	SuccessRate           float64  `json:"success_rate"`
-	CostAvailable         bool     `json:"cost_available"`
-	CostStatus            string   `json:"cost_status"`
-	CacheReadShare        float64  `json:"cache_read_share"`
-	CacheReadCoverage     float64  `json:"cache_read_coverage"`
-	CacheReadShareState   string   `json:"cache_read_share_state"`
-	EstimatedCacheSavings *float64 `json:"estimated_cache_savings,omitempty"`
+	TotalCost             float64                           `json:"total_cost"`
+	TotalTokens           int64                             `json:"total_tokens"`
+	RequestCount          int64                             `json:"request_count"`
+	SuccessCount          int64                             `json:"success_count"`
+	FailureCount          int64                             `json:"failure_count"`
+	InputTokens           int64                             `json:"input_tokens"`
+	OutputTokens          int64                             `json:"output_tokens"`
+	ReasoningTokens       int64                             `json:"reasoning_tokens"`
+	CachedTokens          int64                             `json:"cached_tokens"`
+	CacheReadTokens       int64                             `json:"cache_read_tokens"`
+	SuccessRate           float64                           `json:"success_rate"`
+	CostAvailable         bool                              `json:"cost_available"`
+	CostStatus            string                            `json:"cost_status"`
+	CacheReadShare        float64                           `json:"cache_read_share"`
+	CacheReadCoverage     float64                           `json:"cache_read_coverage"`
+	CacheReadShareState   string                            `json:"cache_read_share_state"`
+	EstimatedCacheSavings *float64                          `json:"estimated_cache_savings,omitempty"`
+	Accounting            analyticsAccountingSummaryPayload `json:"accounting"`
+}
+
+type analyticsAccountingSummaryPayload struct {
+	TotalAttempts int64                                  `json:"total_attempts"`
+	ValidAttempts int64                                  `json:"valid_attempts"`
+	CoveragePct   *float64                               `json:"coverage_pct"`
+	States        analyticsAccountingStatesPayload       `json:"states"`
+	ValidQuality  analyticsAccountingValidQualityPayload `json:"valid_quality"`
+	Composition   analyticsAccountingCompositionPayload  `json:"composition"`
+}
+
+type analyticsAccountingStatesPayload struct {
+	Absent                       int64 `json:"absent"`
+	Malformed                    int64 `json:"malformed"`
+	UnsupportedAccountingVersion int64 `json:"unsupported_accounting_version"`
+	UnsupportedSchemaVersion     int64 `json:"unsupported_schema_version"`
+	Missing                      int64 `json:"missing"`
+	UnknownQuality               int64 `json:"unknown_quality"`
+	Invalid                      int64 `json:"invalid"`
+	Valid                        int64 `json:"valid"`
+}
+
+type analyticsAccountingValidQualityPayload struct {
+	Complete     int64 `json:"complete"`
+	Inconsistent int64 `json:"inconsistent"`
+	Unclassified int64 `json:"unclassified"`
+}
+
+type analyticsAccountingCompositionPayload struct {
+	TotalTokens        int64                            `json:"total_tokens"`
+	Input              analyticsAccountingInputPayload  `json:"input"`
+	Output             analyticsAccountingOutputPayload `json:"output"`
+	UnclassifiedTokens int64                            `json:"unclassified_tokens"`
+}
+
+type analyticsAccountingInputPayload struct {
+	TotalTokens      int64 `json:"total_tokens"`
+	UncachedTokens   int64 `json:"uncached_tokens"`
+	CacheReadTokens  int64 `json:"cache_read_tokens"`
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
+}
+
+type analyticsAccountingOutputPayload struct {
+	TotalTokens        int64 `json:"total_tokens"`
+	NonReasoningTokens int64 `json:"non_reasoning_tokens"`
+	ReasoningTokens    int64 `json:"reasoning_tokens"`
 }
 
 type analyticsTrendPoint struct {
@@ -280,6 +327,7 @@ func emptyAnalyticsSummaryPayload() analyticsSummaryPayload {
 		CostAvailable:       true,
 		CostStatus:          dto.CostStatusAvailable,
 		CacheReadShareState: dto.AnalyticsCacheReadShareStateNoPromptInput,
+		Accounting:          mapAnalyticsAccountingSummaryPayload(dto.AnalyticsAccountingSummary{}),
 	}
 }
 
@@ -302,6 +350,45 @@ func mapAnalyticsSummaryPayload(summary dto.AnalyticsSummary) analyticsSummaryPa
 		CacheReadCoverage:     summary.CacheReadCoverage,
 		CacheReadShareState:   summary.CacheReadShareState,
 		EstimatedCacheSavings: summary.EstimatedCacheSavings,
+		Accounting:            mapAnalyticsAccountingSummaryPayload(summary.Accounting),
+	}
+}
+
+func mapAnalyticsAccountingSummaryPayload(accounting dto.AnalyticsAccountingSummary) analyticsAccountingSummaryPayload {
+	return analyticsAccountingSummaryPayload{
+		TotalAttempts: accounting.TotalAttempts,
+		ValidAttempts: accounting.ValidAttempts,
+		CoveragePct:   accounting.CoveragePct,
+		States: analyticsAccountingStatesPayload{
+			Absent:                       accounting.States.Absent,
+			Malformed:                    accounting.States.Malformed,
+			UnsupportedAccountingVersion: accounting.States.UnsupportedAccountingVersion,
+			UnsupportedSchemaVersion:     accounting.States.UnsupportedSchemaVersion,
+			Missing:                      accounting.States.Missing,
+			UnknownQuality:               accounting.States.UnknownQuality,
+			Invalid:                      accounting.States.Invalid,
+			Valid:                        accounting.States.Valid,
+		},
+		ValidQuality: analyticsAccountingValidQualityPayload{
+			Complete:     accounting.ValidQuality.Complete,
+			Inconsistent: accounting.ValidQuality.Inconsistent,
+			Unclassified: accounting.ValidQuality.Unclassified,
+		},
+		Composition: analyticsAccountingCompositionPayload{
+			TotalTokens: accounting.Composition.TotalTokens,
+			Input: analyticsAccountingInputPayload{
+				TotalTokens:      accounting.Composition.Input.TotalTokens,
+				UncachedTokens:   accounting.Composition.Input.UncachedTokens,
+				CacheReadTokens:  accounting.Composition.Input.CacheReadTokens,
+				CacheWriteTokens: accounting.Composition.Input.CacheWriteTokens,
+			},
+			Output: analyticsAccountingOutputPayload{
+				TotalTokens:        accounting.Composition.Output.TotalTokens,
+				NonReasoningTokens: accounting.Composition.Output.NonReasoningTokens,
+				ReasoningTokens:    accounting.Composition.Output.ReasoningTokens,
+			},
+			UnclassifiedTokens: accounting.Composition.UnclassifiedTokens,
+		},
 	}
 }
 
