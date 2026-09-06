@@ -17,14 +17,17 @@ The selection is one exact 24-hour snapshot:
 - `provider`, `model`, and `account` are trimmed exact values with a 128-byte maximum.
 - `endpoint` is a trimmed exact public path with a 256-byte maximum. Query strings, fragments, and control characters are rejected. Stored endpoint queries/fragments are removed before grouping and matching so they cannot enter the response.
 - `status` is absent, `unknown`, `other`, one family from `1xx` through `5xx`, or one canonical decimal HTTP code from 100 through 599. `unknown` selects missing status (`status_code = 0`); `other` selects observed nonzero values outside the HTTP range.
+- `request_id` is an optional trimmed exact value with a 256-byte maximum and no control characters. Its presence makes the event-list query diagnostic, so both inclusive 24-hour bounds are always concrete. It correlates rows; it never deduplicates them or establishes retry order or a final client outcome.
 
 Failure distribution always adds `failed = true`. Request Evidence applies the same selection and separately carries its existing pagination and `result` selection. A breakdown link uses `result=failed`, page one, and the returned `window_end`.
+
+The event-list response publishes its normalized `window_end` when the query has an upper time bound. The correlated-attempt action constructs a complete new selection from exactly that returned anchor, the current provider scope, and the selected nonempty `request_id`; the API derives and enforces the inclusive 24-hour lower bound. The action explicitly clears model, account, endpoint, status, result, source, and auth-index restrictions so siblings are not hidden. Consumers adding another event-list filter must add it to the complete frontend search type and explicitly decide whether correlation clears it; spreading the prior selection is not the contract.
 
 ## Response and boundedness
 
 `GET /api/v1/usage/failures` returns `total_failures` plus independent breakdowns for status categories, exact statuses, providers, accounts, models, and endpoints. Each breakdown contains at most eight stable rows ordered by count descending and value ascending. `other_count` makes every breakdown sum back to `total_failures`, including blank dimensions, unsupported exact statuses, and rows beyond the limit.
 
-Repository aggregation requires concrete start and end times and forces the existing `idx_usage_events_timestamp_id` search path before grouping. It performs SQL aggregation over the selected 24-hour attempts; it does not load raw lifetime rows, collapse attempts by request ID, create Cartesian grids, or add caches/workers.
+Repository aggregation and request-ID correlation require concrete start and end times and force the existing `idx_usage_events_timestamp_id` search path. Correlated rows retain deterministic `timestamp DESC, id DESC` ordering. The bounded reads do not load lifetime rows, collapse attempts by request ID, infer missing historical attempts, create Cartesian grids, or add caches/workers.
 
 The reusable cross-stack fixture is `web/src/test/contracts/usage_failure_distribution.json`. It is the response-shape fixture for dependent slices; repository DTOs remain the code-level consumer contract.
 
@@ -32,4 +35,4 @@ The reusable cross-stack fixture is `web/src/test/contracts/usage_failure_distri
 
 Invalid selection returns HTTP 400 without running a repository query. A successful zero count returns HTTP 200 with empty breakdowns. Repository/API failure remains a distinct HTTP 500 and the frontend preserves stale complete data when available.
 
-This is a compatible additive route and additive Request Evidence filtering contract. Existing event routes, pagination, selected-window analytics, storage, ingestion, auth/session, and deployment behavior remain unchanged. Status labels describe observations only and never infer a provider root cause or final client-visible outcome.
+This is an additive Request Evidence filtering and response-metadata contract. Existing event routes, pagination, non-diagnostic model/provider/source/auth-index/result behavior, selected-window analytics, storage, ingestion, endpoint redaction, auth/session, and deployment behavior remain unchanged. Provider scope remains visible during correlation; matching attempts under another provider are omitted when a provider is selected. Historical request-ID-collapsed rows are retained and qualified rather than reconstructed. Status labels describe observations only and never infer a provider root cause or final client-visible outcome.

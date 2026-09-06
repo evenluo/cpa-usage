@@ -35,10 +35,11 @@ type usageEventListFilter struct {
 
 type usageDiagnosticFilter struct {
 	usageTimeFilter
-	Model    string
-	Account  string
-	Endpoint string
-	Status   string
+	Model     string
+	Account   string
+	Endpoint  string
+	Status    string
+	RequestID string
 }
 
 type analyticsFilter struct {
@@ -71,6 +72,7 @@ func (f usageEventListFilter) repositoryFilter() repodto.UsageEventListFilter {
 		Account:        f.Account,
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,
+		RequestID:      f.RequestID,
 		Source:         f.Source,
 		AuthIndex:      f.AuthIndex,
 		Result:         f.Result,
@@ -84,6 +86,7 @@ func (f usageDiagnosticFilter) repositoryFilter() repodto.UsageDiagnosticFilter 
 		Account:        f.Account,
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,
+		RequestID:      f.RequestID,
 	}
 }
 
@@ -191,6 +194,7 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		filter.Account = selection.Account
 		filter.Endpoint = selection.Endpoint
 		filter.Status = selection.Status
+		filter.RequestID = selection.RequestID
 	} else {
 		// Preserve the existing event-list contract when no diagnostic-only
 		// selection is present; model/provider historically only trim whitespace.
@@ -207,7 +211,7 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 }
 
 func hasUsageDiagnosticSelection(query mapQuery) bool {
-	for _, name := range []string{"account", "endpoint", "status", "window_end"} {
+	for _, name := range []string{"account", "endpoint", "status", "request_id", "window_end"} {
 		if strings.TrimSpace(query.Get(name)) != "" {
 			return true
 		}
@@ -279,9 +283,13 @@ func parseUsageDiagnosticSelection(query mapQuery) (usageDiagnosticFilter, error
 	if err != nil {
 		return usageDiagnosticFilter{}, err
 	}
+	requestID, err := normalizeDiagnosticValue("request_id", query.Get("request_id"), 256)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
 	return usageDiagnosticFilter{
 		usageTimeFilter: usageTimeFilter{Provider: provider},
-		Model:           model, Account: account, Endpoint: endpoint, Status: status,
+		Model:           model, Account: account, Endpoint: endpoint, Status: status, RequestID: requestID,
 	}, nil
 }
 

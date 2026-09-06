@@ -15,6 +15,9 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	if strings.TrimSpace(filter.RequestID) != "" && (filter.StartTime == nil || filter.EndTime == nil) {
+		return nil, fmt.Errorf("request ID correlation requires bounded start and end times")
+	}
 	db = db.WithContext(ctx)
 
 	// 第一步：应用列表筛选，统计分页总数。
@@ -166,7 +169,7 @@ func queryUsageEvents(db *gorm.DB) *gorm.DB {
 
 func queryUsageEventsForList(db *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
 	if filter.StartTime != nil && filter.EndTime != nil &&
-		(strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "") {
+		(strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "" || strings.TrimSpace(filter.RequestID) != "") {
 		return db.Table("usage_events INDEXED BY idx_usage_events_timestamp_id")
 	}
 	return queryUsageEvents(db)
@@ -215,6 +218,9 @@ func applyUsageDiagnosticQuery(query *gorm.DB, filter dto.UsageDiagnosticFilter)
 	}
 	if endpoint := strings.TrimSpace(filter.Endpoint); endpoint != "" {
 		query = query.Where(publicUsageEndpointSQL+" = ?", endpoint)
+	}
+	if requestID := strings.TrimSpace(filter.RequestID); requestID != "" {
+		query = query.Where("TRIM(request_id) = ?", requestID)
 	}
 	return applyUsageStatusFilter(query, filter.Status)
 }

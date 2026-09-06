@@ -193,6 +193,28 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	}
 }
 
+func TestUsageEventsReturnsExactCorrelationWindowAndNormalizedRequestIDFilter(t *testing.T) {
+	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
+		ID: 7, Timestamp: time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC), RequestID: "request-42",
+	}}}
+	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
+	windowEnd := "2026-09-07T12:00:00.123456789Z"
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h&provider=claude&request_id=%20request-42%20&window_end="+windowEnd, nil)
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if provider.lastFilter.RequestID != "request-42" || provider.lastFilter.Provider != "claude" || provider.lastFilter.StartTime == nil || provider.lastFilter.EndTime == nil {
+		t.Fatalf("expected normalized bounded correlation filter, got %+v", provider.lastFilter)
+	}
+	fragment := `"window_end":"2026-09-07T12:00:00.123456789Z"`
+	if !contains(resp.Body.String(), fragment) {
+		t.Fatalf("expected exact correlation window end %s in response: %s", fragment, resp.Body.String())
+	}
+}
+
 func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		AttemptFacts: dto.UsageAttemptFacts{Accounting: dto.UsageAccountingRecord{State: "absent"}},

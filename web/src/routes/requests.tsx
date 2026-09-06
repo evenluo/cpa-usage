@@ -6,6 +6,7 @@ export interface RequestsSearch {
   account: string
   endpoint: string
   status: string
+  requestId: string
   windowEnd: string
   result: "" | "success" | "failed"
 }
@@ -18,6 +19,7 @@ export function normalizeRequestsSearch(search: Record<string, unknown>): Reques
     account: typeof search.account === "string" ? search.account.trim() : "",
     endpoint: typeof search.endpoint === "string" ? search.endpoint.trim() : "",
     status: typeof search.status === "string" ? search.status.trim().toLowerCase() : "",
+    requestId: typeof search.requestId === "string" ? search.requestId.trim() : "",
     windowEnd: typeof search.windowEnd === "string" ? search.windowEnd.trim() : "",
     result,
   }

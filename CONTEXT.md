@@ -127,6 +127,7 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - Attempt health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent attempt samples; it is not the complete request event inspection surface.
 - **Request Evidence** status and failure metadata describe the selected upstream attempt, not the final client request outcome.
+- **Correlated attempts** are distinct Request Evidence rows sharing one nonempty request ID inside the same fixed 24-hour window and visible provider scope. Entering correlation clears filters that could hide sibling attempts; it does not infer retries, ordering, missing historical attempts, or a final client outcome.
 - **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.
 - **Request Evidence** drill-down lives inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
 - First-version insights are conditional deterministic warnings, not AI-generated summaries and not a duplicate summary of visible metrics.

@@ -15,6 +15,7 @@ import (
 
 type usageEventsResponse struct {
 	Events     []usageEventPayload `json:"events"`
+	WindowEnd  string              `json:"window_end,omitempty"`
 	TotalCount int64               `json:"total_count"`
 	Page       int                 `json:"page"`
 	PageSize   int                 `json:"page_size"`
@@ -131,15 +132,15 @@ func registerUsageEventsRoute(
 	})
 
 	router.GET("/usage/events", func(c *gin.Context) {
-		if usageProvider == nil {
-			page, totalPages := paginationMetadata(0, 1, repodto.DefaultUsageEventsLimit)
-			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: page, PageSize: repodto.DefaultUsageEventsLimit, TotalPages: totalPages})
-			return
-		}
-
 		filter, err := parseUsageEventListFilterQuery(c.Request, time.Now().UTC())
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		windowEnd := usageEventResponseWindowEnd(filter)
+		if usageProvider == nil {
+			page, totalPages := paginationMetadata(0, 1, repodto.DefaultUsageEventsLimit)
+			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, WindowEnd: windowEnd, Page: page, PageSize: repodto.DefaultUsageEventsLimit, TotalPages: totalPages})
 			return
 		}
 		if err := applyUsageEventsSourceFilter(&filter); err != nil {
@@ -167,12 +168,20 @@ func registerUsageEventsRoute(
 		page, totalPages := paginationMetadata(rows.TotalCount, rows.Page, rows.PageSize)
 		c.JSON(http.StatusOK, usageEventsResponse{
 			Events:     buildUsageEventsPayload(rows.Events, resolver, apiKeyAliases),
+			WindowEnd:  windowEnd,
 			TotalCount: rows.TotalCount,
 			Page:       page,
 			PageSize:   rows.PageSize,
 			TotalPages: totalPages,
 		})
 	})
+}
+
+func usageEventResponseWindowEnd(filter usageEventListFilter) string {
+	if filter.EndTime == nil {
+		return ""
+	}
+	return filter.EndTime.UTC().Format(time.RFC3339Nano)
 }
 
 func loadUsageEventAPIKeyAliases(c *gin.Context, keyAliasProvider service.KeyAliasProvider, rows []repodto.UsageEventRecord) (map[string]string, error) {

@@ -55,7 +55,7 @@ export function RequestEvidence({ provider, data, isLoading, isRefreshing, error
             />
             <Link
               to="/requests"
-              search={{ provider, model: "", account: "", endpoint: "", status: "", windowEnd: "", result: "" }}
+              search={{ provider, model: "", account: "", endpoint: "", status: "", requestId: "", windowEnd: "", result: "" }}
               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-medium text-terracotta-700 transition-colors hover:bg-terracotta-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
             >
               View all attempts

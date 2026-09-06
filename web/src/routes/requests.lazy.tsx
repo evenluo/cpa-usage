@@ -15,15 +15,29 @@ import { ApiError } from "@/lib/api"
 import { formatCompact, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { UsageEvent } from "@/types/api"
+import type { RequestsSearch } from "./requests"
 
 const PAGE_SIZE = 10
+
+function buildCorrelatedAttemptsSearch(provider: string, requestId: string, windowEnd: string): RequestsSearch {
+  return {
+    provider: provider.trim(),
+    model: "",
+    account: "",
+    endpoint: "",
+    status: "",
+    requestId: requestId.trim(),
+    windowEnd: windowEnd.trim(),
+    result: "",
+  }
+}
 
 export const Route = createLazyFileRoute("/requests")({
   component: RequestsRoute,
 })
 
 function RequestsRoute() {
-  const { provider, model, account, endpoint, status, windowEnd, result } = Route.useSearch()
+  const { provider, model, account, endpoint, status, requestId, windowEnd, result } = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
     <RequestsPage
@@ -32,9 +46,11 @@ function RequestsRoute() {
       account={account}
       endpoint={endpoint}
       status={status}
+      requestId={requestId}
       windowEnd={windowEnd}
       result={result}
       onFiltersChange={(filters) => void navigate({ search: (current) => ({ ...current, ...filters }) })}
+      onCorrelatedAttempts={(search) => void navigate({ search })}
     />
   )
 }
@@ -45,30 +61,36 @@ export function RequestsPage({
   account = "",
   endpoint = "",
   status = "",
+  requestId = "",
   windowEnd = "",
   result = "",
   onFiltersChange,
+  onCorrelatedAttempts,
 }: {
   provider: string
   model?: string
   account?: string
   endpoint?: string
   status?: string
+  requestId?: string
   windowEnd?: string
   result?: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; windowEnd?: string }) => void
+  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; windowEnd?: string }) => void
+  onCorrelatedAttempts?: (search: RequestsSearch) => void
 }) {
   return (
     <ProviderScopedRequestsPage
-      key={`${provider}:${model}:${account}:${endpoint}:${status}:${windowEnd}:${result}`}
+      key={`${provider}:${model}:${account}:${endpoint}:${status}:${requestId}:${windowEnd}:${result}`}
       provider={provider}
       model={model}
       account={account}
       endpoint={endpoint}
       status={status}
+      requestId={requestId}
       windowEnd={windowEnd}
       result={result}
       onFiltersChange={onFiltersChange}
+      onCorrelatedAttempts={onCorrelatedAttempts}
     />
   )
 }
@@ -79,24 +101,28 @@ function ProviderScopedRequestsPage({
   account,
   endpoint,
   status,
+  requestId,
   windowEnd,
   result,
   onFiltersChange,
+  onCorrelatedAttempts,
 }: {
   provider: string
   model: string
   account: string
   endpoint: string
   status: string
+  requestId: string
   windowEnd: string
   result: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; windowEnd?: string }) => void
+  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; windowEnd?: string }) => void
+  onCorrelatedAttempts?: (search: RequestsSearch) => void
 }) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
   const [modelDraft, setModelDraft] = useState(model)
   const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, {
-    model, account, endpoint, status, windowEnd, result,
+    model, account, endpoint, status, requestId, windowEnd, result,
   })
   const hasCompleteData = data !== undefined
   const events = data?.events ?? []
@@ -172,6 +198,22 @@ function ProviderScopedRequestsPage({
           <Button type="button" size="sm" variant="ghost" onClick={() => onFiltersChange?.({ model, result, account: "", endpoint: "", status: "", windowEnd: "" })}>
             Clear diagnostic filters
           </Button>
+        </div>
+      ) : null}
+
+      {requestId ? (
+        <div className="space-y-2 rounded-lg border border-terracotta-200 bg-terracotta-50/70 p-3 text-xs text-terracotta-950 dark:border-terracotta-900/60 dark:bg-terracotta-950/20 dark:text-terracotta-100" aria-label="Correlation scope">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="max-w-full truncate">Request ID: {requestId}</Badge>
+            <Button type="button" size="sm" variant="ghost" onClick={() => onFiltersChange?.({ model, result, requestId: "", windowEnd: "" })}>
+              Clear correlation
+            </Button>
+          </div>
+          <p>
+            Correlated attempts are distinct observed rows in this fixed 24-hour window and the visible provider scope.
+            {provider ? " Attempts for the same request ID under other providers are not included." : " All observed providers in the window are included."}{" "}
+            Historical data may omit attempts that were collapsed before attempt-grain persistence.
+          </p>
         </div>
       ) : null}
 
@@ -258,6 +300,16 @@ function ProviderScopedRequestsPage({
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <RequestEvidenceEvent event={selectedEvent} label="Selected upstream attempt" detail />
+              {selectedEvent.request_id && data?.window_end ? (
+                <Button
+                  type="button"
+                  className="mt-3 w-full"
+                  variant="outline"
+                  onClick={() => onCorrelatedAttempts?.(buildCorrelatedAttemptsSearch(provider, selectedEvent.request_id || "", data.window_end || ""))}
+                >
+                  View correlated attempts
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         </div>

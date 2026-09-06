@@ -349,6 +349,7 @@ export interface UsageEvent {
 
 export interface UsageEventsPage {
   events: UsageEvent[]
+  window_end?: string
   total_count: number
   page: number
   page_size: number
@@ -361,6 +362,7 @@ export interface UsageDiagnosticSelection {
   account?: string
   endpoint?: string
   status?: string
+  requestId?: string
   windowEnd?: string
 }
 

@@ -302,7 +302,7 @@ func TestParseFixedUsageDiagnosticFilterQueryBuildsBoundedSelection(t *testing.T
 
 func TestDiagnosticSelectionIsSharedWithRequestEvidence(t *testing.T) {
 	anchor := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
-	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&page=3&page_size=10&provider=claude&model=sonnet&account=auth-1&endpoint=/v1/messages&status=429&result=failed", nil)
+	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&page=3&page_size=10&provider=claude&model=sonnet&account=auth-1&endpoint=/v1/messages&status=429&request_id=request-42&result=failed", nil)
 
 	filter, err := parseUsageEventListFilterQuery(req, anchor)
 	if err != nil {
@@ -312,7 +312,7 @@ func TestDiagnosticSelectionIsSharedWithRequestEvidence(t *testing.T) {
 	if got.Page != 3 || got.Offset != 20 || got.Result != "failed" {
 		t.Fatalf("unexpected evidence pagination/result: %+v", got)
 	}
-	if got.Provider != "claude" || got.Model != "sonnet" || got.Account != "auth-1" || got.Endpoint != "/v1/messages" || got.Status != "429" {
+	if got.Provider != "claude" || got.Model != "sonnet" || got.Account != "auth-1" || got.Endpoint != "/v1/messages" || got.Status != "429" || got.RequestID != "request-42" {
 		t.Fatalf("expected shared diagnostic selection, got %+v", got)
 	}
 }
@@ -322,6 +322,7 @@ func TestRequestEvidenceRejectsDiagnosticSelectionOutsideFixedWindow(t *testing.
 		"/api/v1/usage/events?range=all&status=4xx",
 		"/api/v1/usage/events?range=7d&account=auth-1",
 		"/api/v1/usage/events?range=custom&start=2026-09-01&end=2026-09-07&endpoint=/v1/messages",
+		"/api/v1/usage/events?range=all&request_id=request-42",
 	} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)
@@ -329,6 +330,28 @@ func TestRequestEvidenceRejectsDiagnosticSelectionOutsideFixedWindow(t *testing.
 				t.Fatalf("expected diagnostic evidence outside fixed 24h window to be rejected: %s", path)
 			}
 		})
+	}
+}
+
+func TestRequestIDEvidenceSelectionHasExactBoundsAndParameterValidation(t *testing.T) {
+	anchor := time.Date(2026, 9, 7, 12, 0, 0, 123456789, time.UTC)
+	requestID := strings.Repeat("r", 256)
+	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&request_id="+requestID, nil)
+	filter, err := parseUsageEventListFilterQuery(req, anchor)
+	if err != nil {
+		t.Fatalf("parse request-id evidence selection: %v", err)
+	}
+	if filter.RequestID != requestID || filter.StartTime == nil || filter.EndTime == nil || !filter.StartTime.Equal(anchor.Add(-24*time.Hour)) || !filter.EndTime.Equal(anchor) {
+		t.Fatalf("expected normalized request ID with complete fixed bounds, got %+v", filter)
+	}
+
+	for _, path := range []string{
+		"/api/v1/usage/events?range=24h&request_id=" + strings.Repeat("r", 257),
+		"/api/v1/usage/events?range=24h&request_id=request%0Aid",
+	} {
+		if _, err := parseUsageEventListFilterQuery(httptest.NewRequest("GET", path, nil), anchor); err == nil {
+			t.Fatalf("expected invalid request ID to be rejected: %s", path)
+		}
 	}
 }
 

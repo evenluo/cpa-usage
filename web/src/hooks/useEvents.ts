@@ -28,6 +28,7 @@ export function buildEventsPath(
   if (filters.account) params.set("account", filters.account)
   if (filters.endpoint) params.set("endpoint", filters.endpoint)
   if (filters.status) params.set("status", filters.status)
+  if (filters.requestId) params.set("request_id", filters.requestId)
   if (filters.windowEnd) params.set("window_end", filters.windowEnd)
   if (filters.result) params.set("result", filters.result)
   return `/usage/events?${params.toString()}`
@@ -44,7 +45,7 @@ export function useEvents(
   const path = buildEventsPath(range, pageSize, provider, page, filters)
 
   return useQuery({
-    queryKey: ["events", range, pageSize, provider, page, filters.model || "", filters.account || "", filters.endpoint || "", filters.status || "", filters.windowEnd || "", filters.result || ""],
+    queryKey: ["events", range, pageSize, provider, page, filters.model || "", filters.account || "", filters.endpoint || "", filters.status || "", filters.requestId || "", filters.windowEnd || "", filters.result || ""],
     queryFn: () => fetchEvents(path, page, pageSize),
     staleTime: 30_000,
     refetchInterval: () => {

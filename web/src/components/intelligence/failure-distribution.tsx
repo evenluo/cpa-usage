@@ -109,6 +109,7 @@ function FailureBreakdownSection({
             account: "",
             endpoint: "",
             status: "",
+            requestId: "",
             windowEnd,
             result: "failed" as const,
             [selectionKey]: item.value,

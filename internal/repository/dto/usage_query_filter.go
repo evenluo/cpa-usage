@@ -24,14 +24,15 @@ type AnalyticsFilter struct {
 }
 
 // UsageDiagnosticFilter is the shared fixed-window selection consumed by
-// failure aggregation and Request Evidence. Status is canonicalized by the API
-// layer to an exact HTTP code, an HTTP family (1xx-5xx), "unknown", or empty.
+// failure aggregation and Request Evidence. Status and request-ID correlation
+// are canonicalized and bounded by the API layer before repository projection.
 type UsageDiagnosticFilter struct {
 	UsageTimeScope
-	Model    string
-	Account  string
-	Endpoint string
-	Status   string
+	Model     string
+	Account   string
+	Endpoint  string
+	Status    string
+	RequestID string
 }
 
 // UsageEventListFilter 是 Request Evidence 列表的查询条件。
@@ -44,6 +45,7 @@ type UsageEventListFilter struct {
 	Account   string
 	Endpoint  string
 	Status    string
+	RequestID string
 	Source    string
 	AuthIndex string
 	Result    string
@@ -56,6 +58,7 @@ func (f UsageEventListFilter) DiagnosticFilter() UsageDiagnosticFilter {
 		Account:        f.Account,
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,
+		RequestID:      f.RequestID,
 	}
 }
 

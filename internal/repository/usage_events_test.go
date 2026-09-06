@@ -95,6 +95,67 @@ func TestListUsageEventsWithFilterPagesByTimestampAndID(t *testing.T) {
 	}
 }
 
+func TestListUsageEventsWithFilterKeepsDistinctCorrelatedAttemptsWithinProviderAndBounds(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-correlated.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+	start := time.Date(2026, 9, 6, 12, 0, 0, 123456789, time.UTC)
+	end := start.Add(24 * time.Hour)
+	events := []entities.UsageEvent{
+		{EventKey: "attempt-a1", RequestID: " request-42 ", Provider: "claude", Model: "sonnet-a", Timestamp: start, Failed: true},
+		{EventKey: "attempt-a2", RequestID: "request-42", Provider: "claude", Model: "sonnet-b", Timestamp: end, Failed: false},
+		{EventKey: "attempt-b1", RequestID: "request-42", Provider: "openai", Model: "gpt-5", Timestamp: end, Failed: true},
+		{EventKey: "outside-lower", RequestID: "request-42", Provider: "claude", Timestamp: start.Add(-time.Nanosecond)},
+		{EventKey: "missing-request", RequestID: "", Provider: "claude", Timestamp: end},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("InsertUsageEvents returned error: %v", err)
+	}
+
+	page, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{
+		UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end, Provider: "claude"},
+		RequestID:      "request-42",
+		Page:           1,
+		PageSize:       20,
+	})
+	if err != nil {
+		t.Fatalf("ListUsageEventsWithFilter returned error: %v", err)
+	}
+	if page.TotalCount != 2 || len(page.Events) != 2 {
+		t.Fatalf("expected both distinct in-scope attempts, got %+v", page)
+	}
+	if page.Events[0].Timestamp.Before(page.Events[1].Timestamp) || (page.Events[0].Timestamp.Equal(page.Events[1].Timestamp) && page.Events[0].ID <= page.Events[1].ID) {
+		t.Fatalf("expected deterministic timestamp/id descending order, got %+v", page.Events)
+	}
+	if page.Events[0].RequestID != "request-42" || page.Events[1].RequestID != "request-42" || page.Events[0].ID == page.Events[1].ID {
+		t.Fatalf("request ID must correlate rather than deduplicate attempts, got %+v", page.Events)
+	}
+
+	allProviders, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{
+		UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end}, RequestID: "request-42", Page: 1, PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListUsageEventsWithFilter across providers returned error: %v", err)
+	}
+	if allProviders.TotalCount != 3 {
+		t.Fatalf("expected provider scope to be the only cross-provider limiter, got %+v", allProviders)
+	}
+}
+
+func TestListUsageEventsWithFilterRejectsUnboundedRequestIDCorrelation(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-unbounded-correlation.db")})
+	if err != nil {
+		t.Fatalf("OpenDatabase returned error: %v", err)
+	}
+	closeTestDatabase(t, db)
+
+	if _, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{RequestID: "request-42", Page: 1, PageSize: 20}); err == nil {
+		t.Fatal("expected unbounded request ID correlation to be rejected")
+	}
+}
+
 func TestListUsageEventsWithFilterAppliesModelSourceAndResultFilters(t *testing.T) {
 	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "usage-events-filtered.db")})
 	if err != nil {

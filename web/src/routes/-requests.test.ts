@@ -9,7 +9,7 @@ describe("requests search validation", () => {
     [{ provider: 42 }, ""],
     [{ provider: ["claude"] }, ""],
   ])("normalizes missing and malformed provider state", (search, expected) => {
-    expect(normalizeRequestsSearch(search)).toEqual({ provider: expected, model: "", account: "", endpoint: "", status: "", windowEnd: "", result: "" })
+    expect(normalizeRequestsSearch(search)).toEqual({ provider: expected, model: "", account: "", endpoint: "", status: "", requestId: "", windowEnd: "", result: "" })
   })
 
   it("trims and preserves unknown non-empty providers", () => {
@@ -19,6 +19,7 @@ describe("requests search validation", () => {
       account: "",
       endpoint: "",
       status: "",
+      requestId: "",
       windowEnd: "",
       result: "",
     })
@@ -31,6 +32,7 @@ describe("requests search validation", () => {
       account: "",
       endpoint: "",
       status: "",
+      requestId: "",
       windowEnd: "",
       result: "failed",
     })
@@ -40,6 +42,7 @@ describe("requests search validation", () => {
       account: "",
       endpoint: "",
       status: "",
+      requestId: "",
       windowEnd: "",
       result: "",
     })
@@ -47,7 +50,7 @@ describe("requests search validation", () => {
 
   it("preserves diagnostic values for server-owned validation", () => {
     expect(normalizeRequestsSearch({ account: " auth-1 ", endpoint: " /v1/messages ", status: " 4XX " })).toEqual({
-      provider: "", model: "", account: "auth-1", endpoint: "/v1/messages", status: "4xx", windowEnd: "", result: "",
+      provider: "", model: "", account: "auth-1", endpoint: "/v1/messages", status: "4xx", requestId: "", windowEnd: "", result: "",
     })
   })
 })
