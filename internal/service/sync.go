@@ -193,29 +193,12 @@ func syncAuthFiles(ctx context.Context, db *gorm.DB, result *response.AuthFilesR
 
 	identities := make([]entities.UsageIdentity, 0, len(result.Payload.Files))
 	for _, file := range result.Payload.Files {
-		if authFileInactive(file) {
-			continue
-		}
-		identities = append(identities, authFileUsageIdentity(file))
+		identities = append(identities, authFileUsageIdentity(file, now))
 	}
 	if err := repository.ReplaceUsageIdentitiesForAuthType(ctx, db, identities, entities.UsageIdentityAuthTypeAuthFile, now); err != nil {
 		return fmt.Errorf("sync auth file usage identities: %w", err)
 	}
 	return nil
-}
-
-// authFileInactive 只丢弃 CPA 侧已不可恢复的凭据；disabled 账户仍同步为带 Disabled 标记的身份，
-// 保证看板可以展示禁用状态并支持重新启用。
-func authFileInactive(file authfiles.AuthFile) bool {
-	if file.Unavailable {
-		return true
-	}
-	switch strings.ToLower(strings.TrimSpace(file.Status)) {
-	case "deleted", "removed", "unavailable", "inactive", "revoked":
-		return true
-	default:
-		return false
-	}
 }
 
 type authFileUsageIdentityExtension func(authfiles.AuthFile, *entities.UsageIdentity)
@@ -225,8 +208,8 @@ var authFileUsageIdentityExtensions = map[string]authFileUsageIdentityExtension{
 }
 
 // auth_files 先走通用身份映射，再按 type 追加各来源特有字段，方便后续扩展新类型。
-func authFileUsageIdentity(file authfiles.AuthFile) entities.UsageIdentity {
-	identity := baseAuthFileUsageIdentity(file)
+func authFileUsageIdentity(file authfiles.AuthFile, observedAt time.Time) entities.UsageIdentity {
+	identity := baseAuthFileUsageIdentity(file, observedAt)
 	if extend, ok := authFileUsageIdentityExtensions[strings.ToLower(strings.TrimSpace(file.Type))]; ok {
 		extend(file, &identity)
 	}
@@ -234,17 +217,55 @@ func authFileUsageIdentity(file authfiles.AuthFile) entities.UsageIdentity {
 	return identity
 }
 
-func baseAuthFileUsageIdentity(file authfiles.AuthFile) entities.UsageIdentity {
+func baseAuthFileUsageIdentity(file authfiles.AuthFile, observedAt time.Time) entities.UsageIdentity {
 	authTypeName, _ := entities.UsageIdentityAuthTypeAuthFile.CanonicalName()
+	observedAt = observedAt.UTC()
 	return entities.UsageIdentity{
-		Name:         firstNonEmpty(file.Email, file.Label, file.Name, file.AuthIndex),
-		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
-		AuthTypeName: authTypeName,
-		Identity:     file.AuthIndex,
-		Type:         file.Type,
-		Provider:     file.Provider,
-		Disabled:     file.Disabled,
+		Name:               firstNonEmpty(file.Email, file.Label, file.Name, file.AuthIndex),
+		AuthType:           entities.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName:       authTypeName,
+		Identity:           file.AuthIndex,
+		Type:               file.Type,
+		Provider:           file.Provider,
+		Disabled:           file.Disabled,
+		AuthFileStatus:     boundedAuthFileStatus(file.Status),
+		Unavailable:        copyOptionalBool(file.Unavailable),
+		LastRefresh:        copyOptionalTime(file.LastRefresh),
+		NextRetryAfter:     copyOptionalTime(file.NextRetryAfter),
+		MetadataObservedAt: &observedAt,
 	}
+}
+
+func boundedAuthFileStatus(status *string) *string {
+	if status == nil {
+		return nil
+	}
+	normalized := strings.ToLower(strings.TrimSpace(*status))
+	if normalized == "" {
+		return nil
+	}
+	switch normalized {
+	case "active", "pending", "refreshing", "error", "disabled", "unknown":
+	default:
+		normalized = "other"
+	}
+	return &normalized
+}
+
+func copyOptionalBool(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	return &result
+}
+
+func copyOptionalTime(value *time.Time) *time.Time {
+	if value == nil || value.IsZero() {
+		return nil
+	}
+	result := value.UTC()
+	return &result
 }
 
 // Codex 的 ChatGPT id_token 字段只在 type=codex 且字段存在时写入；缺失字段保持 nil，入库后就是 NULL。

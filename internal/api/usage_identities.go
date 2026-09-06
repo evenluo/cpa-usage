@@ -48,6 +48,11 @@ type usageIdentityResponse struct {
 	PlanType                   *string                        `json:"plan_type,omitempty"`
 	ActiveStart                *time.Time                     `json:"active_start,omitempty"`
 	ActiveUntil                *time.Time                     `json:"active_until,omitempty"`
+	AuthFileStatus             *string                        `json:"status,omitempty"`
+	Unavailable                *bool                          `json:"unavailable,omitempty"`
+	LastRefresh                *time.Time                     `json:"last_refresh,omitempty"`
+	NextRetryAfter             *time.Time                     `json:"next_retry_after,omitempty"`
+	MetadataObservedAt         *time.Time                     `json:"metadata_observed_at,omitempty"`
 	TotalRequests              int64                          `json:"total_requests"`
 	SuccessCount               int64                          `json:"success_count"`
 	FailureCount               int64                          `json:"failure_count"`
@@ -427,6 +432,11 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		PlanType:                   item.PlanType,
 		ActiveStart:                item.ActiveStart,
 		ActiveUntil:                item.ActiveUntil,
+		AuthFileStatus:             item.AuthFileStatus,
+		Unavailable:                item.Unavailable,
+		LastRefresh:                item.LastRefresh,
+		NextRetryAfter:             item.NextRetryAfter,
+		MetadataObservedAt:         item.MetadataObservedAt,
 		TotalRequests:              item.TotalRequests,
 		SuccessCount:               item.SuccessCount,
 		FailureCount:               item.FailureCount,

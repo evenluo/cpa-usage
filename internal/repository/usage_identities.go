@@ -429,6 +429,7 @@ func normalizeUsageIdentities(identities []entities.UsageIdentity, authType enti
 		identity.AccountID = trimOptionalString(identity.AccountID)
 		identity.ProjectID = trimOptionalString(identity.ProjectID)
 		identity.PlanType = trimOptionalString(identity.PlanType)
+		identity.AuthFileStatus = trimOptionalString(identity.AuthFileStatus)
 		identity.IsDeleted = false
 		identity.DeletedAt = nil
 		normalized = append(normalized, identity)
@@ -511,22 +512,27 @@ func upsertUsageIdentities(tx *gorm.DB, identities []entities.UsageIdentity) err
 	if err := tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "auth_type"}, {Name: "identity"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"name":           gorm.Expr("excluded.name"),
-			"auth_type_name": gorm.Expr("excluded.auth_type_name"),
-			"type":           gorm.Expr("excluded.type"),
-			"provider":       gorm.Expr("excluded.provider"),
-			"lookup_key":     gorm.Expr("excluded.lookup_key"),
-			"prefix":         gorm.Expr("excluded.prefix"),
-			"base_url":       gorm.Expr("excluded.base_url"),
-			"account_id":     gorm.Expr("excluded.account_id"),
-			"project_id":     gorm.Expr("excluded.project_id"),
-			"active_start":   gorm.Expr("excluded.active_start"),
-			"active_until":   gorm.Expr("excluded.active_until"),
-			"plan_type":      gorm.Expr("excluded.plan_type"),
-			"disabled":       gorm.Expr("excluded.disabled"),
-			"is_deleted":     false,
-			"deleted_at":     nil,
-			"updated_at":     gorm.Expr("excluded.updated_at"),
+			"name":                 gorm.Expr("excluded.name"),
+			"auth_type_name":       gorm.Expr("excluded.auth_type_name"),
+			"type":                 gorm.Expr("excluded.type"),
+			"provider":             gorm.Expr("excluded.provider"),
+			"lookup_key":           gorm.Expr("excluded.lookup_key"),
+			"prefix":               gorm.Expr("excluded.prefix"),
+			"base_url":             gorm.Expr("excluded.base_url"),
+			"account_id":           gorm.Expr("excluded.account_id"),
+			"project_id":           gorm.Expr("excluded.project_id"),
+			"active_start":         gorm.Expr("excluded.active_start"),
+			"active_until":         gorm.Expr("excluded.active_until"),
+			"plan_type":            gorm.Expr("excluded.plan_type"),
+			"auth_file_status":     gorm.Expr("excluded.auth_file_status"),
+			"unavailable":          gorm.Expr("excluded.unavailable"),
+			"last_refresh":         gorm.Expr("excluded.last_refresh"),
+			"next_retry_after":     gorm.Expr("excluded.next_retry_after"),
+			"metadata_observed_at": gorm.Expr("excluded.metadata_observed_at"),
+			"disabled":             gorm.Expr("excluded.disabled"),
+			"is_deleted":           false,
+			"deleted_at":           nil,
+			"updated_at":           gorm.Expr("excluded.updated_at"),
 		}),
 	}).CreateInBatches(&identities, insertBatchSize(entities.UsageIdentity{})).Error; err != nil {
 		return fmt.Errorf("upsert usage identities: %w", err)

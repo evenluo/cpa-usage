@@ -22,10 +22,12 @@ type AuthFile struct {
 	Type           string           `json:"type"`
 	Provider       string           `json:"provider"`
 	Label          string           `json:"label"`
-	Status         string           `json:"status"`
+	Status         *string          `json:"status"`
 	Source         string           `json:"source"`
 	Disabled       bool             `json:"disabled"`
-	Unavailable    bool             `json:"unavailable"`
+	Unavailable    *bool            `json:"unavailable"`
+	LastRefresh    *time.Time       `json:"last_refresh"`
+	NextRetryAfter *time.Time       `json:"next_retry_after"`
 	RuntimeOnly    bool             `json:"runtime_only"`
 	Account        string           `json:"account,omitempty"`
 	Metadata       map[string]any   `json:"metadata,omitempty"`

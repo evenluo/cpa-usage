@@ -24,6 +24,7 @@ import {
   mergeLiveCapacityRowOrder,
   orderLiveCapacityRows,
   WEEKLY_WINDOW_SECONDS,
+  type LiveCapacityAccountStateTone,
   type LiveCapacityMetric,
   type LiveCapacityPlanTone,
   type LiveCapacityRow,
@@ -310,13 +311,17 @@ function LiveCapacityAccountTile({
   const secondaryMetric = row.weekly ?? row.additionalMetrics.find((metric) => metric !== primaryMetric)
   const remainingMetrics = row.additionalMetrics.filter((metric) => metric !== primaryMetric && metric !== secondaryMetric)
   const isRowRefreshing = row.status === "refreshing"
-  const hasAttention = row.isConstrained || row.status === "failed"
+  const hasAttention = row.isConstrained || row.status === "failed" || row.unavailable === true || row.accountState.kind === "error"
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
   const attentionLabel = row.status === "failed"
     ? `Refresh failed: ${row.errorLabel ?? "Failed"}`
-    : row.isConstrained
-      ? "Capacity constrained"
-      : undefined
+    : row.unavailable === true
+      ? "Temporarily unavailable in CPA"
+      : row.accountState.kind === "error"
+        ? "CPA observed an account error state"
+        : row.isConstrained
+          ? "Capacity constrained"
+          : undefined
 
   return (
     <div
@@ -419,9 +424,9 @@ function LiveCapacityAccountTile({
         </div>
       </div>
 
-      {row.disabled ? (
-        <p className="mt-3 text-xs text-muted-foreground">Disabled in CPA — not routing requests</p>
-      ) : (
+      <AccountAvailabilitySummary row={row} />
+
+      {!row.disabled ? (
         <div className="mt-3 grid gap-2">
           <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} />
           <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} />
@@ -429,9 +434,12 @@ function LiveCapacityAccountTile({
             <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} />
           ))}
         </div>
-      )}
-      {row.observedAt || row.expiresAt || row.activeStart || row.activeUntil ? (
+      ) : null}
+      {row.metadataObservedAt || row.lastRefresh || row.nextRetryAfter || row.observedAt || row.expiresAt || row.activeStart || row.activeUntil ? (
         <AccountTiming
+          metadataObservedAt={row.metadataObservedAt}
+          lastRefresh={row.lastRefresh}
+          nextRetryAfter={row.nextRetryAfter}
           observedAt={row.observedAt}
           expiresAt={row.expiresAt}
           activeStart={row.activeStart}
@@ -443,19 +451,49 @@ function LiveCapacityAccountTile({
   )
 }
 
+function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
+  return (
+    <div className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5" role="group" aria-label="Account availability">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {row.disabled ? <Badge variant="amber" className="px-1.5 py-0 text-[10px] leading-4">Operator disabled</Badge> : null}
+        {row.unavailable === true ? <Badge variant="red" className="px-1.5 py-0 text-[10px] leading-4">Temporarily unavailable</Badge> : null}
+        <Badge variant={accountStateBadgeVariant(row.accountState.tone)} className="px-1.5 py-0 text-[10px] leading-4">
+          CPA status: {row.accountState.label}
+        </Badge>
+      </div>
+      <div className="mt-1.5 space-y-1 text-[11px] leading-4 text-muted-foreground">
+        {row.disabled ? <p>Operator disabled in CPA; capacity probes stay excluded until re-enabled.</p> : null}
+        {row.unavailable === true ? <p>CPA marked this account temporarily unavailable. Retry eligibility is not a recovery guarantee.</p> : null}
+        <p>{row.accountState.explanation}</p>
+      </div>
+    </div>
+  )
+}
+
+function accountStateBadgeVariant(tone: LiveCapacityAccountStateTone): "green" | "amber" | "red" | "secondary" {
+  return tone === "muted" ? "secondary" : tone
+}
+
 function AccountTiming({
+  metadataObservedAt,
+  lastRefresh,
+  nextRetryAfter,
   observedAt,
   expiresAt,
   activeStart,
   activeUntil,
   cacheStale = false,
 }: {
+  metadataObservedAt?: string | null
+  lastRefresh?: string | null
+  nextRetryAfter?: string | null
   observedAt?: string | null
   expiresAt?: string | null
   activeStart?: string | null
   activeUntil?: string | null
   cacheStale?: boolean
 }) {
+  const hasAuthFileEvidence = Boolean(metadataObservedAt || lastRefresh || nextRetryAfter)
   const hasProbeWindow = Boolean(observedAt || expiresAt)
   const hasBothProbeEndpoints = Boolean(observedAt && expiresAt)
   // activeStart arrives pre-filtered by buildLiveCapacityRows: it is only set
@@ -470,33 +508,37 @@ function AccountTiming({
       role="group"
       aria-label="Account and cache timing"
     >
+      {hasAuthFileEvidence ? (
+        <div>
+          <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
+            <Eye className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+            <span>CPA auth-file evidence</span>
+          </div>
+          <div className="mt-1.5 grid gap-1.5">
+            {metadataObservedAt ? <TimingLine label="Metadata observed" value={metadataObservedAt} /> : null}
+            {lastRefresh ? <TimingLine label="Token refreshed" value={lastRefresh} /> : null}
+            {nextRetryAfter ? <TimingLine label="Retry eligible" value={nextRetryAfter} /> : null}
+          </div>
+          {nextRetryAfter ? <p className="mt-1.5 text-[9px] leading-3 text-muted-foreground">Eligibility time only, not a recovery guarantee.</p> : null}
+        </div>
+      ) : null}
+
       {hasProbeWindow ? (
-        <div
-          className={cn(
-            "grid items-center gap-2",
-            hasBothProbeEndpoints
-              ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]"
-              : "grid-cols-1",
-          )}
-        >
-          {observedAt ? (
-            <TimingEndpoint icon={Eye} label="Observed" value={observedAt} />
-          ) : null}
-          {hasBothProbeEndpoints ? <TimingConnector /> : null}
-          {expiresAt ? (
-            <TimingEndpoint
-              icon={Hourglass}
-              label="Cache expires"
-              value={expiresAt}
-              align={observedAt ? "end" : "start"}
-              stale={cacheStale}
-            />
-          ) : null}
+        <div className={cn(hasAuthFileEvidence && "mt-2 border-t border-border/60 pt-2")}>
+          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
+            <Gauge className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+            <span>Capacity probe evidence</span>
+          </div>
+          <div className={cn("grid items-center gap-2", hasBothProbeEndpoints ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]" : "grid-cols-1")}>
+            {observedAt ? <TimingEndpoint icon={Eye} label="Observed" value={observedAt} /> : null}
+            {hasBothProbeEndpoints ? <TimingConnector /> : null}
+            {expiresAt ? <TimingEndpoint icon={Hourglass} label="Cache expires" value={expiresAt} align={observedAt ? "end" : "start"} stale={cacheStale} /> : null}
+          </div>
         </div>
       ) : null}
 
       {hasActiveWindow ? (
-        <div className={cn(hasProbeWindow && "mt-2 border-t border-border/60 pt-2")}>
+        <div className={cn((hasAuthFileEvidence || hasProbeWindow) && "mt-2 border-t border-border/60 pt-2")}>
           {activeRange ? (
             <>
               <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
@@ -524,6 +566,15 @@ function AccountTiming({
           ) : null}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+function TimingLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-[10px] text-foreground/70">
+      <span className="font-medium">{label}</span>
+      <time className="ml-auto truncate font-medium text-foreground/90" dateTime={value} title={value}>{formatDate(value)}</time>
     </div>
   )
 }

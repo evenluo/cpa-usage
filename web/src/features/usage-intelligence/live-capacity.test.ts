@@ -226,9 +226,52 @@ describe("Live Capacity view model", () => {
     expect(rows[0].fiveHour).toBeUndefined()
   })
 
+  it("keeps account availability evidence separate from quota-probe state", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        status: "error",
+        unavailable: true,
+        metadata_observed_at: "2026-09-07T08:00:00Z",
+        last_refresh: "2026-09-07T07:45:00Z",
+        next_retry_after: "2026-09-07T08:30:00Z",
+      })],
+      cachedQuota: { items: [] },
+    })
+
+    expect(rows[0]).toMatchObject({
+      status: "no_cache",
+      unavailable: true,
+      accountState: { kind: "error", label: "Error", tone: "red" },
+      metadataObservedAt: "2026-09-07T08:00:00Z",
+      lastRefresh: "2026-09-07T07:45:00Z",
+      nextRetryAfter: "2026-09-07T08:30:00Z",
+    })
+  })
+
+  it("keeps missing account state and availability explicit", () => {
+    const rows = buildLiveCapacityRows({ identities: [identity({ status: undefined, unavailable: undefined })] })
+
+    expect(rows[0].unavailable).toBeNull()
+    expect(rows[0].accountState).toMatchObject({ kind: "not_reported", label: "State not reported", tone: "muted" })
+    expect(rows[0].accountState.kind).not.toBe("active")
+  })
+
+  it.each([
+    ["active", "Active", "green"],
+    ["pending", "Pending", "amber"],
+    ["refreshing", "Refreshing", "amber"],
+    ["error", "Error", "red"],
+    ["disabled", "Disabled state", "amber"],
+    ["unknown", "Unknown", "muted"],
+    ["other", "Other state", "muted"],
+  ] as const)("maps the bounded %s account status without provider text", (status, label, tone) => {
+    const rows = buildLiveCapacityRows({ identities: [identity({ status })] })
+    expect(rows[0].accountState).toMatchObject({ kind: status, label, tone })
+  })
+
   it("builds a disabled row whose status wins over cached quota and task state", () => {
     const rows = buildLiveCapacityRows({
-      identities: [identity({ id: 42, identity: "codex-auth", disabled: true })],
+      identities: [identity({ id: 42, identity: "codex-auth", disabled: true, unavailable: true, status: "error" })],
       cachedQuota: {
         items: [{
           id: "codex-auth",
@@ -243,6 +286,8 @@ describe("Live Capacity view model", () => {
     expect(rows[0]).toMatchObject({
       id: 42,
       disabled: true,
+      unavailable: true,
+      accountState: { kind: "error" },
       status: "disabled",
     })
     expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })

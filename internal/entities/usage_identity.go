@@ -66,6 +66,13 @@ type UsageIdentity struct {
 	ActiveStart *time.Time
 	ActiveUntil *time.Time
 	PlanType    *string
+	// AuthFileStatus is the bounded CPA auth lifecycle category observed by metadata sync.
+	// Nil means the source did not report a status; arbitrary status_message text is never stored.
+	AuthFileStatus     *string
+	Unavailable        *bool
+	LastRefresh        *time.Time
+	NextRetryAfter     *time.Time
+	MetadataObservedAt *time.Time
 
 	TotalRequests   int64
 	SuccessCount    int64

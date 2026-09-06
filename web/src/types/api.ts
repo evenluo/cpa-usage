@@ -161,6 +161,11 @@ export interface KeyIdentity {
   type: string
   provider: string
   disabled: boolean
+  status?: "active" | "pending" | "refreshing" | "error" | "disabled" | "unknown" | "other" | null
+  unavailable?: boolean | null
+  last_refresh?: string | null
+  next_retry_after?: string | null
+  metadata_observed_at?: string | null
   plan_type?: string | null
   active_start?: string | null
   active_until?: string | null

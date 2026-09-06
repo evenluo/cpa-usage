@@ -126,9 +126,14 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 	firstUsedAt := time.Date(2026, 5, 4, 8, 0, 0, 0, time.UTC)
 	lastUsedAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	statsUpdatedAt := time.Date(2026, 5, 4, 10, 0, 0, 0, time.UTC)
+	lastRefresh := time.Date(2026, 5, 4, 9, 30, 0, 0, time.UTC)
+	nextRetryAfter := time.Date(2026, 5, 4, 10, 45, 0, 0, time.UTC)
+	metadataObservedAt := time.Date(2026, 5, 4, 10, 30, 0, 0, time.UTC)
 	createdAt := time.Date(2026, 5, 3, 8, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, 5, 4, 10, 30, 0, 0, time.UTC)
 	deletedAt := time.Date(2026, 5, 4, 11, 0, 0, 0, time.UTC)
+	status := "error"
+	unavailable := true
 
 	activeIdentity := entities.UsageIdentity{
 		ID:                         1,
@@ -150,6 +155,11 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		FirstUsedAt:                &firstUsedAt,
 		LastUsedAt:                 &lastUsedAt,
 		StatsUpdatedAt:             &statsUpdatedAt,
+		AuthFileStatus:             &status,
+		Unavailable:                &unavailable,
+		LastRefresh:                &lastRefresh,
+		NextRetryAfter:             &nextRetryAfter,
+		MetadataObservedAt:         &metadataObservedAt,
 		CreatedAt:                  createdAt,
 		UpdatedAt:                  updatedAt,
 	}
@@ -203,10 +213,35 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		`"first_used_at":"2026-05-04T08:00:00Z"`,
 		`"last_used_at":"2026-05-04T09:00:00Z"`,
 		`"stats_updated_at":"2026-05-04T10:00:00Z"`,
+		`"status":"error"`,
+		`"unavailable":true`,
+		`"last_refresh":"2026-05-04T09:30:00Z"`,
+		`"next_retry_after":"2026-05-04T10:45:00Z"`,
+		`"metadata_observed_at":"2026-05-04T10:30:00Z"`,
 		`"is_deleted":false`,
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected %s in response body: %s", expected, body)
+		}
+	}
+}
+
+func TestUsageIdentitiesRoutePreservesMissingAvailabilityEvidence(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{UsageIdentity: usageIdentitiesStub{activeItems: []entities.UsageIdentity{{
+		ID: 1, Name: "Disk-only auth file", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-disk", Type: "codex", Provider: "Codex",
+	}}}})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/identities", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	for _, absent := range []string{`"status"`, `"unavailable"`, `"last_refresh"`, `"next_retry_after"`, `"metadata_observed_at"`} {
+		if contains(body, absent) {
+			t.Fatalf("expected missing availability field %s to remain absent, got %s", absent, body)
 		}
 	}
 }

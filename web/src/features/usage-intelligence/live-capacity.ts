@@ -5,6 +5,14 @@ import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported" | "disabled"
 export type ProviderKind = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unsupported"
 export type LiveCapacityPlanTone = "priority" | "ordinary" | "none"
+export type LiveCapacityAccountStateTone = "green" | "amber" | "red" | "muted"
+
+export interface LiveCapacityAccountState {
+  kind: NonNullable<KeyIdentity["status"]> | "not_reported"
+  label: string
+  explanation: string
+  tone: LiveCapacityAccountStateTone
+}
 
 export interface LiveCapacityRow {
   id: number
@@ -17,6 +25,8 @@ export interface LiveCapacityRow {
   alias: string
   displayName: string
   disabled: boolean
+  unavailable: boolean | null
+  accountState: LiveCapacityAccountState
   status: LiveCapacityStatus
   /** Humanized refresh-failure label for the attention tooltip; only set for failed rows. */
   errorLabel?: string
@@ -35,6 +45,9 @@ export interface LiveCapacityRow {
   isCacheStale: boolean
   observedAt?: string
   expiresAt?: string
+  metadataObservedAt?: string | null
+  lastRefresh?: string | null
+  nextRetryAfter?: string | null
   /** Subscription start, exposed only while still in the future. */
   activeStart?: string | null
   activeUntil?: string | null
@@ -122,6 +135,8 @@ export function buildLiveCapacityRows(input: {
         alias: identity.alias,
         displayName: identity.displayName,
         disabled: identity.disabled === true,
+        unavailable: identity.unavailable ?? null,
+        accountState: accountStateFromIdentity(identity.status),
         status,
         errorLabel,
         error,
@@ -137,6 +152,9 @@ export function buildLiveCapacityRows(input: {
         isConstrained,
         observedAt,
         expiresAt,
+        metadataObservedAt: identity.metadata_observed_at,
+        lastRefresh: identity.last_refresh,
+        nextRetryAfter: identity.next_retry_after,
         isCacheStale: status === "cached" && isPastTimestamp(expiresAt),
         // active_start only carries signal while still in the future (the
         // subscription is not yet effective); past starts are display noise.
@@ -145,6 +163,27 @@ export function buildLiveCapacityRows(input: {
       }
     })
     .sort(compareLiveCapacityRows)
+}
+
+export function accountStateFromIdentity(status: KeyIdentity["status"]): LiveCapacityAccountState {
+  switch (status) {
+    case "active":
+      return { kind: status, label: "Active", explanation: "CPA observed this auth file as active.", tone: "green" }
+    case "pending":
+      return { kind: status, label: "Pending", explanation: "CPA observed this auth file waiting for an external action.", tone: "amber" }
+    case "refreshing":
+      return { kind: status, label: "Refreshing", explanation: "CPA observed this auth file refreshing its authentication state.", tone: "amber" }
+    case "error":
+      return { kind: status, label: "Error", explanation: "CPA observed an error state for this auth file.", tone: "red" }
+    case "disabled":
+      return { kind: status, label: "Disabled state", explanation: "CPA reported a disabled lifecycle state for this auth file.", tone: "amber" }
+    case "unknown":
+      return { kind: status, label: "Unknown", explanation: "CPA reported that this auth-file state is unknown.", tone: "muted" }
+    case "other":
+      return { kind: status, label: "Other state", explanation: "CPA reported another bounded auth-file state.", tone: "muted" }
+    default:
+      return { kind: "not_reported", label: "State not reported", explanation: "CPA did not report an auth-file state in this observation.", tone: "muted" }
+  }
 }
 
 function isFutureTimestamp(value: string | null | undefined): boolean {

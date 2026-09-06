@@ -110,6 +110,47 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("No auth-file accounts")).toBeInTheDocument()
   })
 
+  it("keeps a read error distinct from an empty account list", () => {
+    setupMock({ error: new Error("state read failed") })
+    render(<LiveCapacityCard provider="" />)
+    expect(screen.getByText("Failed to load live capacity")).toBeInTheDocument()
+    expect(screen.queryByText("No auth-file accounts")).not.toBeInTheDocument()
+  })
+
+  it("shows independent account states and source timing", () => {
+    setupMock({ identities: [identity({
+      disabled: true,
+      unavailable: true,
+      status: "error",
+      metadata_observed_at: "2026-09-07T08:00:00Z",
+      last_refresh: "2026-09-07T07:45:00Z",
+      next_retry_after: "2026-09-07T08:30:00Z",
+    })] })
+    render(<LiveCapacityCard provider="" />)
+
+    const availability = screen.getByRole("group", { name: "Account availability" })
+    expect(within(availability).getByText("Operator disabled")).toBeInTheDocument()
+    expect(within(availability).getByText("Temporarily unavailable")).toBeInTheDocument()
+    expect(within(availability).getByText("CPA status: Error")).toBeInTheDocument()
+    expect(within(availability).getByText(/Retry eligibility is not a recovery guarantee/)).toBeInTheDocument()
+
+    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    for (const label of ["CPA auth-file evidence", "Metadata observed", "Token refreshed", "Retry eligible", "Eligibility time only, not a recovery guarantee."]) {
+      expect(within(timing).getByText(label)).toBeInTheDocument()
+    }
+    for (const timestamp of ["2026-09-07T08:00:00Z", "2026-09-07T07:45:00Z", "2026-09-07T08:30:00Z"]) {
+      expect(timing.querySelector(`time[datetime='${timestamp}']`)).toBeInTheDocument()
+    }
+  })
+
+  it("does not present missing account state as active", () => {
+    setupMock({ identities: [identity({ status: undefined, unavailable: undefined })] })
+    render(<LiveCapacityCard provider="" />)
+    const availability = screen.getByRole("group", { name: "Account availability" })
+    expect(within(availability).getByText("CPA status: State not reported")).toBeInTheDocument()
+    expect(within(availability).queryByText("CPA status: Active")).not.toBeInTheDocument()
+  })
+
   it("renders tiles for each identity", () => {
     const identities = [
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
@@ -154,6 +195,7 @@ describe("LiveCapacityCard", () => {
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
     const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).getByText("Capacity probe evidence")).toBeInTheDocument()
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
     // Past subscription starts are hidden; only the end date remains.
@@ -607,7 +649,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.getAllByText("Disabled")).toHaveLength(1)
     const amberBadge = screen.getAllByText("Disabled").find((el) => el.className.includes("bg-amber-500/10"))
     expect(amberBadge).toBeDefined()
-    expect(screen.getByText("Disabled in CPA — not routing requests")).toBeInTheDocument()
+    expect(screen.getByText("Operator disabled in CPA; capacity probes stay excluded until re-enabled.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Refresh Codex Auth" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Enable Codex Auth" })).toBeInTheDocument()
   })
