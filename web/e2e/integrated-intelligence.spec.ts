@@ -46,6 +46,12 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await expect(page.getByText(/complete 1, inconsistent 1, unclassified 1/)).toBeVisible()
   await expect(page.getByText(/Absent \/ historical 1; Malformed fields 1/)).toContainText("Invalid bucket totals 1")
   await expect(page.getByText(/Cost completeness: partial/)).toBeVisible()
+  const mapping = page.getByRole("link", { name: "Inspect route-a to actual-a attempts" })
+  for (const text of ["route-a", "Observed remap → actual-a", "provider-a"]) {
+    const label = mapping.getByText(text, { exact: true })
+    await expect(label).toBeVisible()
+    expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
   await page.screenshot({ path: testInfo.outputPath("dashboard-diagnostics.png"), fullPage: true })
 
   await page.getByRole("link", { name: "Inspect HTTP 429 failures" }).click()

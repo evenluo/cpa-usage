@@ -66,18 +66,18 @@ export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappings
 function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: string }) {
   const content = (
     <>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold">{row.model_alias}</p>
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+      <div className="min-w-0 sm:flex-1">
+        <p className="break-words text-sm font-semibold">{row.model_alias}</p>
+        <p className="mt-0.5 break-words text-xs text-muted-foreground">
           {!row.model
             ? "Actual model unavailable"
             : row.model_alias === row.model
               ? "No distinct alias observed · Direct or canonicalized"
               : `Observed remap → ${row.model}`}
         </p>
-        <p className="mt-1 truncate text-xs text-muted-foreground">{row.provider || "Provider unavailable"}</p>
+        <p className="mt-1 break-words text-xs text-muted-foreground">{row.provider || "Provider unavailable"}</p>
       </div>
-      <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-1 text-right text-xs">
+      <div className="grid w-full grid-cols-2 gap-x-4 gap-y-1 text-xs sm:w-auto sm:shrink-0 sm:text-right">
         <Metric label="Attempts" value={formatCompact(row.attempt_count)} />
         <Metric label="Failures" value={formatPercent(row.failure_share)} />
         <Metric label="Mean latency" value={row.latency_sample_count > 0 ? `${row.mean_latency_ms.toLocaleString("en", { maximumFractionDigits: 1 })} ms · ${row.latency_sample_count.toLocaleString("en")} ${row.latency_sample_count === 1 ? "sample" : "samples"}` : "No samples"} />
@@ -85,7 +85,7 @@ function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: str
       </div>
     </>
   )
-  const className = "flex min-w-0 items-start justify-between gap-4 rounded-lg border border-border p-3"
+  const className = "relative flex min-w-0 flex-col gap-3 rounded-lg border border-border p-3 pr-8 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
   if (!row.model || !row.provider) return <div className={className}>{content}</div>
   return (
     <Link
@@ -94,13 +94,13 @@ function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: str
       aria-label={`Inspect ${row.model_alias} to ${row.model} attempts`}
       className={`${className} transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500`}
     >
-      {content}<ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      {content}<ArrowUpRight className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
     </Link>
   )
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <span><span className="block text-[10px] text-muted-foreground">{label}</span><span className="whitespace-nowrap font-medium">{value}</span></span>
+  return <span><span className="block text-[10px] text-muted-foreground">{label}</span><span className="font-medium sm:whitespace-nowrap">{value}</span></span>
 }
 
 function formatObservedCost(value: number, status: CostStatus) {
