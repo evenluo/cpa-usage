@@ -78,7 +78,10 @@ export function IngestionObservations({ metrics, isLoading, isError }: {
   const observations = deriveIngestionObservations(metrics)
   const rows = [
     ["Local inbox pending", observations.backlog],
-    ["Last observed nonempty processing", observations.lastProcessed],
+    ["Last observed nonempty processing", {
+      ...observations.lastProcessed,
+      label: observations.lastProcessed.observedAt ? formatDate(observations.lastProcessed.observedAt) : observations.lastProcessed.label,
+    }],
     ["Observed processing rate", observations.processingRate],
     ["Observed runtime state", observations.runtime],
   ] as const

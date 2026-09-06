@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { formatDate } from "@/lib/format"
 
 vi.mock("@tanstack/react-router", () => ({
   createLazyFileRoute: () => (options: object) => options,
@@ -37,13 +38,17 @@ describe("Operations ingestion observations", () => {
         redis_inbox_pending: 2,
         redis_events_last_processed_at: "2026-09-07T01:02:03Z",
         redis_events_processing_rate_per_minute: 0,
+        redis_events_processed_total: 0,
+        redis_events_processed_batches_total: 0,
         poller_running: false,
       }}
     />)
 
     expect(screen.getByText("Ingestion observations")).toBeInTheDocument()
     expect(screen.getByText("0 events/min")).toBeInTheDocument()
+    expect(screen.getByText(/0 events in 0 nonempty batches processed in this process/i)).toBeInTheDocument()
     expect(screen.getByText("Runner idle")).toBeInTheDocument()
+    expect(screen.getByText(formatDate("2026-09-07T01:02:03Z"))).toBeInTheDocument()
     expect(screen.getByText(/do not establish upstream freshness/i)).toBeInTheDocument()
     expect(screen.queryByText(/last manual sync/i)).not.toBeInTheDocument()
   })
