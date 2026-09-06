@@ -26,6 +26,8 @@ vi.mock("@/components/charts/heatmap", () => ({ Heatmap: () => null }))
 vi.mock("@/components/charts/health-grid", () => ({ HealthGrid: () => null }))
 vi.mock("@/components/intelligence/request-evidence", () => ({ RequestEvidence: () => null }))
 vi.mock("@/components/intelligence/failure-distribution", () => ({ FailureDistribution: () => null }))
+vi.mock("@/components/intelligence/model-mappings", () => ({ ModelMappings: () => null }))
+vi.mock("@/components/intelligence/attempt-performance", () => ({ AttemptPerformance: () => null }))
 
 import { DashboardFixedOverview } from "./dashboard-fixed-overview"
 
@@ -51,10 +53,16 @@ function overview(provider: string) {
       requestEvidenceError={null}
       isFailureDistributionLoading={false}
       failureDistributionError={null}
+      isModelMappingsLoading={false}
+      modelMappingsError={null}
+      isAttemptPerformanceLoading={false}
+      attemptPerformanceError={null}
       onRetryHeatmap={vi.fn()}
       onRetryRequestHealth={vi.fn()}
       onRetryRequestEvidence={vi.fn()}
       onRetryFailureDistribution={vi.fn()}
+      onRetryModelMappings={vi.fn()}
+      onRetryAttemptPerformance={vi.fn()}
     />
   )
 }
