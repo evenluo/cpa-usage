@@ -10,6 +10,7 @@ import (
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository/dto"
+	"gorm.io/gorm"
 )
 
 func TestUsageFailureDistributionCountsAttemptsAndPreservesBreakdownParity(t *testing.T) {
@@ -115,6 +116,58 @@ func TestUsageFailureDistributionRequiresBoundedWindow(t *testing.T) {
 	if _, err := BuildUsageFailureDistributionWithFilter(context.Background(), db, dto.UsageDiagnosticFilter{}); err == nil {
 		t.Fatal("expected unbounded failure distribution to be rejected")
 	}
+}
+
+func TestUsageFailureDistributionUsesSingleReadSnapshot(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "failure-snapshot.db")
+	db, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("open reader database: %v", err)
+	}
+	closeTestDatabase(t, db)
+	writer, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("open writer database: %v", err)
+	}
+	closeTestDatabase(t, writer)
+
+	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "before-snapshot", Timestamp: start.Add(time.Hour), Provider: "claude", Model: "sonnet", Failed: true, StatusCode: 429,
+	}}); err != nil {
+		t.Fatalf("seed usage event: %v", err)
+	}
+
+	queryCount := 0
+	callbackName := "test:insert_failure_after_summary"
+	if err := db.Callback().Query().After("gorm:query").Register(callbackName, func(*gorm.DB) {
+		queryCount++
+		if queryCount != 1 {
+			return
+		}
+		if _, _, insertErr := InsertUsageEvents(writer, []entities.UsageEvent{{
+			EventKey: "during-snapshot", Timestamp: start.Add(2 * time.Hour), Provider: "openai", Model: "gpt-5", Failed: true, StatusCode: 500,
+		}}); insertErr != nil {
+			t.Errorf("insert concurrent usage event: %v", insertErr)
+		}
+	}); err != nil {
+		t.Fatalf("register query callback: %v", err)
+	}
+
+	result, err := BuildUsageFailureDistributionWithFilter(context.Background(), db, dto.UsageDiagnosticFilter{
+		UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end},
+	})
+	if err != nil {
+		t.Fatalf("build failure distribution: %v", err)
+	}
+	if result.TotalFailures != 1 {
+		t.Fatalf("expected the initial snapshot total, got %+v", result)
+	}
+	assertFailureBreakdownParity(t, result.TotalFailures, result.Categories)
+	assertFailureBreakdownParity(t, result.TotalFailures, result.Statuses)
+	assertFailureBreakdownParity(t, result.TotalFailures, result.Providers)
+	assertFailureBreakdownParity(t, result.TotalFailures, result.Models)
 }
 
 func assertFailureBreakdownParity(t *testing.T, total int64, breakdown dto.UsageFailureBreakdownRecord) {

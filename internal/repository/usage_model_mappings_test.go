@@ -3,12 +3,33 @@ package repository
 import (
 	"context"
 	"math"
+	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository/dto"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
+
+type afterSQLTestLogger struct {
+	logger.Interface
+	match string
+	once  sync.Once
+	after func()
+}
+
+func (l *afterSQLTestLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	sql, rows := fc()
+	l.Interface.Trace(ctx, begin, func() (string, int64) { return sql, rows }, err)
+	if strings.Contains(sql, l.match) {
+		l.once.Do(l.after)
+	}
+}
 
 func TestUsageModelMappingsPreserveObservedPopulationSplitsAndEvidenceParity(t *testing.T) {
 	db := openTestDatabase(t)
@@ -73,6 +94,58 @@ func TestUsageModelMappingsRequiresBoundedWindow(t *testing.T) {
 	db := openTestDatabase(t)
 	if _, err := BuildUsageModelMappingsWithFilter(context.Background(), db, dto.UsageDiagnosticFilter{}); err == nil {
 		t.Fatal("expected unbounded model mapping query to be rejected")
+	}
+}
+
+func TestUsageModelMappingsUsesSingleReadSnapshot(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "model-mapping-snapshot.db")
+	db, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("open reader database: %v", err)
+	}
+	closeTestDatabase(t, db)
+	writer, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("open writer database: %v", err)
+	}
+	closeTestDatabase(t, writer)
+
+	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	alias := "route-a"
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+		EventKey: "before-snapshot", Timestamp: start.Add(time.Hour), ModelAlias: &alias, Model: "actual-a", Provider: "provider-a",
+	}}); err != nil {
+		t.Fatalf("seed usage event: %v", err)
+	}
+
+	reader := db.Session(&gorm.Session{Logger: &afterSQLTestLogger{
+		Interface: db.Logger,
+		match:     "AS observed_alias_attempts",
+		after: func() {
+			if _, _, insertErr := InsertUsageEvents(writer, []entities.UsageEvent{{
+				EventKey: "during-snapshot", Timestamp: start.Add(2 * time.Hour), ModelAlias: &alias, Model: "actual-b", Provider: "provider-b",
+			}}); insertErr != nil {
+				t.Errorf("insert concurrent usage event: %v", insertErr)
+			}
+		},
+	}})
+
+	result, err := BuildUsageModelMappingsWithFilter(context.Background(), reader, dto.UsageDiagnosticFilter{
+		UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end},
+	})
+	if err != nil {
+		t.Fatalf("build usage model mappings: %v", err)
+	}
+	if result.TotalAttempts != 1 || result.ObservedAliasAttempts != 1 {
+		t.Fatalf("expected the initial snapshot summary, got %+v", result)
+	}
+	visibleAttempts := result.OtherAttempts
+	for _, mapping := range result.Mappings {
+		visibleAttempts += mapping.AttemptCount
+	}
+	if visibleAttempts != result.ObservedAliasAttempts {
+		t.Fatalf("mapping rows do not preserve observed attempts %d: %+v", result.ObservedAliasAttempts, result)
 	}
 }
 

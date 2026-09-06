@@ -27,52 +27,60 @@ func BuildUsageFailureDistributionWithFilter(ctx context.Context, db *gorm.DB, f
 	if filter.StartTime == nil || filter.EndTime == nil {
 		return nil, fmt.Errorf("failure distribution requires bounded start and end times")
 	}
-	base := func() *gorm.DB {
-		return applyUsageDiagnosticQuery(
-			db.WithContext(ctx).Table("usage_events INDEXED BY idx_usage_events_timestamp_id"),
-			filter,
-		).Where("failed = ?", true)
-	}
+	var result *dto.UsageFailureDistributionRecord
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		base := func() *gorm.DB {
+			return applyUsageDiagnosticQuery(
+				tx.WithContext(ctx).Table("usage_events INDEXED BY idx_usage_events_timestamp_id"),
+				filter,
+			).Where("failed = ?", true)
+		}
 
-	var total int64
-	if err := base().Count(&total).Error; err != nil {
-		return nil, fmt.Errorf("count failed usage attempts: %w", err)
-	}
+		var total int64
+		if err := base().Count(&total).Error; err != nil {
+			return fmt.Errorf("count failed usage attempts: %w", err)
+		}
 
-	categories, err := loadUsageFailureBreakdown(base(), failureStatusCategorySQL, "")
-	if err != nil {
-		return nil, fmt.Errorf("load failure categories: %w", err)
-	}
-	statuses, err := loadUsageFailureBreakdown(base(), "CAST(status_code AS TEXT)", "status_code = 0 OR status_code BETWEEN 100 AND 599")
-	if err != nil {
-		return nil, fmt.Errorf("load failure statuses: %w", err)
-	}
-	providers, err := loadUsageFailureBreakdown(base(), "TRIM(provider)", "TRIM(provider) <> ''")
-	if err != nil {
-		return nil, fmt.Errorf("load failure providers: %w", err)
-	}
-	accounts, err := loadUsageFailureBreakdown(base(), "TRIM(auth_index)", "TRIM(auth_index) <> ''")
-	if err != nil {
-		return nil, fmt.Errorf("load failure accounts: %w", err)
-	}
-	models, err := loadUsageFailureBreakdown(base(), "TRIM(model)", "TRIM(model) <> ''")
-	if err != nil {
-		return nil, fmt.Errorf("load failure models: %w", err)
-	}
-	endpoints, err := loadUsageFailureBreakdown(base(), publicUsageEndpointSQL, publicUsageEndpointSQL+" <> ''")
-	if err != nil {
-		return nil, fmt.Errorf("load failure endpoints: %w", err)
-	}
+		categories, err := loadUsageFailureBreakdown(base(), failureStatusCategorySQL, "")
+		if err != nil {
+			return fmt.Errorf("load failure categories: %w", err)
+		}
+		statuses, err := loadUsageFailureBreakdown(base(), "CAST(status_code AS TEXT)", "status_code = 0 OR status_code BETWEEN 100 AND 599")
+		if err != nil {
+			return fmt.Errorf("load failure statuses: %w", err)
+		}
+		providers, err := loadUsageFailureBreakdown(base(), "TRIM(provider)", "TRIM(provider) <> ''")
+		if err != nil {
+			return fmt.Errorf("load failure providers: %w", err)
+		}
+		accounts, err := loadUsageFailureBreakdown(base(), "TRIM(auth_index)", "TRIM(auth_index) <> ''")
+		if err != nil {
+			return fmt.Errorf("load failure accounts: %w", err)
+		}
+		models, err := loadUsageFailureBreakdown(base(), "TRIM(model)", "TRIM(model) <> ''")
+		if err != nil {
+			return fmt.Errorf("load failure models: %w", err)
+		}
+		endpoints, err := loadUsageFailureBreakdown(base(), publicUsageEndpointSQL, publicUsageEndpointSQL+" <> ''")
+		if err != nil {
+			return fmt.Errorf("load failure endpoints: %w", err)
+		}
 
-	return &dto.UsageFailureDistributionRecord{
-		TotalFailures: total,
-		Categories:    withUsageFailureOtherCount(categories, total),
-		Statuses:      withUsageFailureOtherCount(statuses, total),
-		Providers:     withUsageFailureOtherCount(providers, total),
-		Accounts:      withUsageFailureOtherCount(accounts, total),
-		Models:        withUsageFailureOtherCount(models, total),
-		Endpoints:     withUsageFailureOtherCount(endpoints, total),
-	}, nil
+		result = &dto.UsageFailureDistributionRecord{
+			TotalFailures: total,
+			Categories:    withUsageFailureOtherCount(categories, total),
+			Statuses:      withUsageFailureOtherCount(statuses, total),
+			Providers:     withUsageFailureOtherCount(providers, total),
+			Accounts:      withUsageFailureOtherCount(accounts, total),
+			Models:        withUsageFailureOtherCount(models, total),
+			Endpoints:     withUsageFailureOtherCount(endpoints, total),
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func loadUsageFailureBreakdown(base *gorm.DB, expression, predicate string) ([]dto.UsageFailureBreakdownItemRecord, error) {
