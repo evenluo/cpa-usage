@@ -45,7 +45,7 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await expect(page.getByText(/3 \/ 10 attempts have valid canonical structure/)).toBeVisible()
   await expect(page.getByText(/complete 1, inconsistent 1, unclassified 1/)).toBeVisible()
   await expect(page.getByText(/Absent \/ historical 1; Malformed fields 1/)).toContainText("Invalid bucket totals 1")
-  await expect(page.getByText(/Cost completeness: available/)).toBeVisible()
+  await expect(page.getByText(/Cost completeness: partial/)).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath("dashboard-diagnostics.png"), fullPage: true })
 
   await page.getByRole("link", { name: "Inspect HTTP 429 failures" }).click()
@@ -82,9 +82,10 @@ test("correlated attempts keep the fixed scope and clear filters that hide sibli
   await expect(page.getByRole("heading", { name: "Request Evidence" })).toBeVisible()
   await page.getByRole("button", { name: "View correlated attempts" }).click()
 
-  await expect(page.getByRole("group", { name: "Correlation scope" })).toContainText("Correlated attempts are distinct observed rows")
-  await expect(page.getByRole("group", { name: "Correlation scope" })).toContainText("other providers are not included")
-  await expect(page.getByRole("group", { name: "Correlation scope" }).getByText(/retry count|final outcome/i)).toHaveCount(0)
+  const correlationScope = page.locator('[aria-label="Correlation scope"]')
+  await expect(correlationScope).toContainText("Correlated attempts are distinct observed rows")
+  await expect(correlationScope).toContainText("other providers are not included")
+  await expect(correlationScope.getByText(/retry count|final outcome/i)).toHaveCount(0)
 
   await expect.poll(() => {
     const url = new URL(page.url())
