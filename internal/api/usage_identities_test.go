@@ -265,6 +265,22 @@ func TestUsageIdentitiesRoutePreservesMissingAvailabilityEvidence(t *testing.T) 
 	}
 }
 
+func TestMapUsageIdentityResponsePreservesActiveLimitOnlyPassiveObservation(t *testing.T) {
+	observedAt := time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC)
+	got := mapUsageIdentityResponse(entities.UsageIdentity{
+		AuthType: entities.UsageIdentityAuthTypeAuthFile,
+		PassiveQuota: &entities.PassiveQuotaObservation{
+			ObservedAt: observedAt, ActiveLimit: "codex_bengalfox",
+		},
+	}, nil)
+	if got.PassiveQuota == nil || got.PassiveQuota.ActiveLimit != "codex_bengalfox" || !got.PassiveQuota.ObservedAt.Equal(observedAt) {
+		t.Fatalf("expected active-limit-only passive observation, got %+v", got.PassiveQuota)
+	}
+	if got.PassiveQuota.Quota == nil || len(got.PassiveQuota.Quota) != 0 {
+		t.Fatalf("expected stable empty quota array, got %+v", got.PassiveQuota.Quota)
+	}
+}
+
 func TestUsageIdentitiesPageRouteIncludesLocalAlias(t *testing.T) {
 	identity := entities.UsageIdentity{
 		ID:            42,

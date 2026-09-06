@@ -486,20 +486,28 @@ func mapPassiveQuotaObservations(item entities.UsageIdentity) (*passiveQuotaObse
 		return nil, nil
 	}
 	var account *passiveQuotaObservationResponse
-	if item.PassiveQuota != nil && !item.PassiveQuota.ObservedAt.IsZero() && len(item.PassiveQuota.Quota) > 0 {
+	if item.PassiveQuota != nil && !item.PassiveQuota.ObservedAt.IsZero() && (len(item.PassiveQuota.Quota) > 0 || item.PassiveQuota.ActiveLimit != "") {
+		quota := item.PassiveQuota.Quota
+		if quota == nil {
+			quota = []entities.PassiveQuotaMetric{}
+		}
 		account = &passiveQuotaObservationResponse{
 			Source: "cpa_passive", Scope: "account", ObservedAt: item.PassiveQuota.ObservedAt,
-			ActiveLimit: item.PassiveQuota.ActiveLimit, Quota: item.PassiveQuota.Quota,
+			ActiveLimit: item.PassiveQuota.ActiveLimit, Quota: quota,
 		}
 	}
 	models := make([]passiveModelQuotaObservationResponse, 0, len(item.PassiveModelQuotas))
 	for _, observation := range item.PassiveModelQuotas {
-		if strings.TrimSpace(observation.Model) == "" || observation.ObservedAt.IsZero() || len(observation.Quota) == 0 {
+		if strings.TrimSpace(observation.Model) == "" || observation.ObservedAt.IsZero() || (len(observation.Quota) == 0 && observation.ActiveLimit == "") {
 			continue
+		}
+		quota := observation.Quota
+		if quota == nil {
+			quota = []entities.PassiveQuotaMetric{}
 		}
 		models = append(models, passiveModelQuotaObservationResponse{
 			Source: "cpa_passive", Scope: "model", Model: observation.Model,
-			ObservedAt: observation.ObservedAt, ActiveLimit: observation.ActiveLimit, Quota: observation.Quota,
+			ObservedAt: observation.ObservedAt, ActiveLimit: observation.ActiveLimit, Quota: quota,
 		})
 	}
 	return account, models

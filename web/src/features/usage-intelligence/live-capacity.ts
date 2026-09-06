@@ -187,7 +187,7 @@ function passiveAccountObservation(providerKind: ProviderKind, observation: Pass
     return undefined
   }
   const metrics = observation.quota.map(metricFromQuotaRow)
-  if (metrics.length === 0) return undefined
+  if (metrics.length === 0 && !observation.active_limit) return undefined
   return { source: observation.source, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }
 }
 
@@ -197,7 +197,7 @@ function passiveModelObservations(providerKind: ProviderKind, observations: Pass
     const model = observation.model.trim()
     if (observation.source !== "cpa_passive" || observation.scope !== "model" || !model || !validObservationTime(observation.observed_at)) return []
     const metrics = observation.quota.map(metricFromQuotaRow)
-    if (metrics.length === 0) return []
+    if (metrics.length === 0 && !observation.active_limit) return []
     return [{ source: observation.source, model, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }]
   })
 }
@@ -393,6 +393,7 @@ function valueLabel(row: QuotaRow): string {
   if (typeof row.remaining === "number") return `${formatQuotaNumber(row.remaining)}${row.unit ? ` ${row.unit}` : ""} left`
   if (typeof row.used === "number" && typeof row.limit === "number") return `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
   if (typeof row.allowed === "boolean") return row.allowed ? "Allowed" : "Blocked"
+  if (typeof row.limitReached === "boolean") return row.limitReached ? "Limit reached" : "Limit not reached"
   return "Measured"
 }
 
@@ -418,10 +419,10 @@ function isRemainingExhausted(row: QuotaRow): boolean {
 }
 
 function resetLabel(...rows: Array<QuotaRow | undefined>): string {
-  const row = rows.find((item) => item?.resetAt || item?.resetAfterSeconds)
+  const row = rows.find((item) => item?.resetAt || typeof item?.resetAfterSeconds === "number")
   if (!row) return "-"
   if (row.resetAt) return formatResetDate(row.resetAt)
-  if (row.resetAfterSeconds) return formatResetDuration(row.resetAfterSeconds)
+  if (typeof row.resetAfterSeconds === "number") return formatResetDuration(row.resetAfterSeconds)
   return "-"
 }
 

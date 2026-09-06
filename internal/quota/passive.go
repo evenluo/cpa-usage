@@ -68,14 +68,14 @@ func normalizePassiveObservation(provider, scope string, raw *authfiles.QuotaObs
 	case "codex":
 		rows = normalizeCodexPassiveRows(scope, signals)
 	}
-	if len(rows) == 0 {
+	activeLimit := ""
+	if provider == "codex" {
+		activeLimit = safePassiveIdentifier(signals["x-codex-active-limit"])
+	}
+	if len(rows) == 0 && activeLimit == "" {
 		return nil
 	}
-	observation := &entities.PassiveQuotaObservation{ObservedAt: observedAt, Quota: rows}
-	if provider == "codex" {
-		observation.ActiveLimit = safePassiveIdentifier(signals["x-codex-active-limit"])
-	}
-	return observation
+	return &entities.PassiveQuotaObservation{ObservedAt: observedAt, ActiveLimit: activeLimit, Quota: rows}
 }
 
 func passiveObservedAt(value any) (time.Time, bool) {

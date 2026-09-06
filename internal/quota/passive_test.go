@@ -143,6 +143,16 @@ func TestNormalizePassiveQuotaSnapshotCodexResetAtRequiresProducerUnixSeconds(t 
 	}
 }
 
+func TestNormalizePassiveQuotaSnapshotPreservesActiveLimitOnlyObservation(t *testing.T) {
+	got := NormalizePassiveQuotaSnapshot("codex", &authfiles.QuotaObservation{
+		ObservedAt: "2026-09-07T08:00:00Z",
+		Signals:    map[string]any{"X-Codex-Active-Limit": "codex_bengalfox"},
+	}, nil)
+	if got.Account == nil || got.Account.ActiveLimit != "codex_bengalfox" || len(got.Account.Quota) != 0 {
+		t.Fatalf("expected active-limit-only partial observation, got %+v", got.Account)
+	}
+}
+
 func TestNormalizePassiveQuotaSnapshotAcceptsAbsoluteRetryAfterWithoutSchedulerInference(t *testing.T) {
 	got := NormalizePassiveQuotaSnapshot("claude", &authfiles.QuotaObservation{
 		ObservedAt: "2026-09-07T08:00:00Z",

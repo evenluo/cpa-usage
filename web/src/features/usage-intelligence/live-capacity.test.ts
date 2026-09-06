@@ -329,6 +329,46 @@ describe("Live Capacity view model", () => {
     ])
   })
 
+  it("preserves standalone limit state, zero-second reset and active-limit observations", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          active_limit: "codex_bengalfox",
+          quota: [
+            { key: "state", label: "Limit state", limitReached: true },
+            { key: "reset", label: "Retry hint", resetAfterSeconds: 0 },
+          ],
+        },
+        passive_model_quotas: [{
+          source: "cpa_passive",
+          scope: "model",
+          model: "gpt-5.3-codex",
+          observed_at: "2026-09-07T07:30:00Z",
+          active_limit: "model_limit",
+          quota: [],
+        }],
+      })],
+    })
+
+    expect(rows[0].passiveQuota).toMatchObject({
+      activeLimit: "codex_bengalfox",
+      metrics: [
+        { valueLabel: "Limit reached", tone: "red" },
+        { resetLabel: "0s" },
+      ],
+    })
+    expect(rows[0].passiveModelQuotas).toEqual([{
+      source: "cpa_passive",
+      model: "gpt-5.3-codex",
+      observedAt: "2026-09-07T07:30:00Z",
+      activeLimit: "model_limit",
+      metrics: [],
+    }])
+  })
+
   it("keeps missing account state and availability explicit", () => {
     const rows = buildLiveCapacityRows({ identities: [identity({ status: undefined, unavailable: undefined })] })
 
