@@ -4,12 +4,14 @@ import (
 	"context"
 	"math"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository/dto"
+	"gorm.io/gorm"
 )
 
 func TestUsageAttemptPerformanceSeparatesResultExecutionAndInvalidSamples(t *testing.T) {
@@ -152,7 +154,7 @@ func TestUsageAttemptPerformanceLeavesInvalidTimingAndTokensUnavailable(t *testi
 		{LatencyMS: 200, TTFTMS: &validTTFT, OutputTokens: 0, Generate: &knownTrue, Stream: &knownTrue},
 		{LatencyMS: 300, TTFTMS: &validTTFT, OutputTokens: 10, Generate: &knownFalse, Stream: &knownTrue},
 		{Failed: true, LatencyMS: 400, TTFTMS: &validTTFT, OutputTokens: 10, Generate: &knownTrue, Stream: &knownTrue},
-	})
+	}, true)
 	if item.AttemptCount != 6 || item.SuccessfulAttempts != 5 || item.FailedAttempts != 1 {
 		t.Fatalf("unexpected edge-case populations: %+v", item)
 	}
@@ -161,6 +163,101 @@ func TestUsageAttemptPerformanceLeavesInvalidTimingAndTokensUnavailable(t *testi
 	}
 	if item.SuccessfulExecution.NonGenerating != 1 || item.FailedLatencyMS.SampleCount != 1 {
 		t.Fatalf("non-generating and failed attempts must remain explicitly qualified: %+v", item)
+	}
+}
+
+func TestUsageAttemptPerformanceRequiresProviderForComparableOutputTPS(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "attempt-performance-provider-scope.db")})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	closeTestDatabase(t, db)
+	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	knownTrue := true
+	ttft := int64(100)
+	events := []entities.UsageEvent{
+		{EventKey: "claude", Timestamp: start.Add(time.Minute), Provider: "claude", Model: "shared-model", AuthIndex: "shared-account", LatencyMS: 1_100, TTFTMS: &ttft, OutputTokens: 100, Generate: &knownTrue, Stream: &knownTrue},
+		{EventKey: "openai", Timestamp: start.Add(2 * time.Minute), Provider: "openai", Model: "shared-model", AuthIndex: "shared-account", LatencyMS: 1_100, TTFTMS: &ttft, OutputTokens: 200, Generate: &knownTrue, Stream: &knownTrue},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert usage attempts: %v", err)
+	}
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end}}
+	result, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
+	if err != nil {
+		t.Fatalf("build cross-provider performance: %v", err)
+	}
+	if result.StreamingOutputTPS.PopulationCount != 2 || result.StreamingOutputTPS.SampleCount != 0 || result.StreamingOutputTPS.P50 != nil {
+		t.Fatalf("cross-provider overall TPS must remain unavailable: %+v", result.StreamingOutputTPS)
+	}
+	if len(result.Providers.Items) != 2 || result.Providers.Items[0].StreamingOutputTPS.SampleCount != 1 || result.Providers.Items[1].StreamingOutputTPS.SampleCount != 1 {
+		t.Fatalf("provider-qualified breakdowns must retain comparable TPS: %+v", result.Providers)
+	}
+	if result.Models.Items[0].StreamingOutputTPS.SampleCount != 0 || result.Accounts.Items[0].StreamingOutputTPS.SampleCount != 0 {
+		t.Fatalf("model/account TPS must remain unavailable until provider is selected: models=%+v accounts=%+v", result.Models, result.Accounts)
+	}
+
+	filter.Provider = "claude"
+	selected, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
+	if err != nil {
+		t.Fatalf("build provider performance: %v", err)
+	}
+	if selected.StreamingOutputTPS.SampleCount != 1 || selected.Models.Items[0].StreamingOutputTPS.SampleCount != 1 || selected.Accounts.Items[0].StreamingOutputTPS.SampleCount != 1 {
+		t.Fatalf("provider-selected TPS must be available throughout: %+v", selected)
+	}
+}
+
+func TestUsageAttemptPerformanceUsesOneSnapshotAcrossDelayedIntake(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "attempt-performance-snapshot.db")
+	reader, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("open reader database: %v", err)
+	}
+	closeTestDatabase(t, reader)
+	writer, err := OpenDatabase(config.Config{SQLitePath: dbPath})
+	if err != nil {
+		t.Fatalf("open writer database: %v", err)
+	}
+	closeTestDatabase(t, writer)
+	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	if _, _, err := InsertUsageEvents(reader, []entities.UsageEvent{{EventKey: "initial", Timestamp: start.Add(time.Minute), Provider: "claude", LatencyMS: 100}}); err != nil {
+		t.Fatalf("insert initial usage attempt: %v", err)
+	}
+
+	delayed := entities.UsageEvent{EventKey: "delayed", Timestamp: start.Add(2 * time.Minute), Provider: "claude", LatencyMS: 200}
+	var once sync.Once
+	var insertErr error
+	inserted := false
+	insertAfterFirstRead := func(_ *gorm.DB) {
+		once.Do(func() {
+			insertErr = writer.Create(&delayed).Error
+			inserted = true
+		})
+	}
+	if err := reader.Callback().Query().After("gorm:query").Register("test:insert_delayed_attempt_query", insertAfterFirstRead); err != nil {
+		t.Fatalf("register query callback: %v", err)
+	}
+
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end, Provider: "claude"}}
+	result, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), reader, filter)
+	if err != nil {
+		t.Fatalf("build performance snapshot: %v", err)
+	}
+	if !inserted || insertErr != nil {
+		t.Fatalf("delayed intake was not committed between read statements: inserted=%t err=%v", inserted, insertErr)
+	}
+	if result.TotalAttempts != 1 || result.SuccessfulLatencyMS.SampleCount != 1 {
+		t.Fatalf("one response must stay on its opening snapshot: %+v", result)
+	}
+	assertUsagePerformanceBreakdownParity(t, result.TotalAttempts, result.Providers)
+	var persisted int64
+	if err := writer.Model(&entities.UsageEvent{}).Count(&persisted).Error; err != nil {
+		t.Fatalf("count persisted attempts: %v", err)
+	}
+	if persisted != 2 {
+		t.Fatalf("delayed intake should remain committed for the next response, got %d rows", persisted)
 	}
 }
 

@@ -87,5 +87,7 @@ describe("AttemptPerformance", () => {
     rerender(<AttemptPerformance provider="" data={performance()} isLoading={false} error={new Error("refresh") } onRetry={retry} />)
     expect(screen.getByRole("button", { name: "Retry refresh" })).toBeInTheDocument()
     expect(screen.getByText("0/5 · 0%")).toBeInTheDocument()
+    expect(screen.getAllByText("Select a provider for comparable throughput.")).toHaveLength(1)
+    expect(screen.getAllByText(/TPS Select provider/)).toHaveLength(2)
   })
 })

@@ -39,17 +39,25 @@ func BenchmarkUsageAttemptPerformanceHighCardinality(b *testing.B) {
 		output_tokens = CASE WHEN output_tokens > 0 THEN output_tokens ELSE 1 END`).Error; err != nil {
 		b.Fatalf("prepare attempt performance execution facts: %v", err)
 	}
-	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &fixture.start, EndTime: &fixture.end}}
+	windowEnd := fixture.end
+	windowStart := windowEnd.Add(-24 * time.Hour)
+	expectedAttempts := int64(0)
+	for _, event := range fixture.events {
+		if !event.Timestamp.Before(windowStart) && !event.Timestamp.After(windowEnd) {
+			expectedAttempts++
+		}
+	}
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &windowStart, EndTime: &windowEnd}}
 	warm, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
 	if err != nil {
 		b.Fatalf("warm attempt performance benchmark: %v", err)
 	}
-	if warm.TotalAttempts != requestEvidencePerformanceEventCount || len(warm.Providers.Items) != dto.UsagePerformanceBreakdownLimit || warm.StreamingOutputTPS.SampleCount == 0 {
+	if warm.TotalAttempts != expectedAttempts || len(warm.Providers.Items) != dto.UsagePerformanceBreakdownLimit || warm.Providers.Items[0].StreamingOutputTPS.SampleCount == 0 {
 		b.Fatalf("benchmark fixture did not exercise exact percentile breakdowns: %+v", warm)
 	}
-	b.ReportMetric(requestEvidencePerformanceEventCount, "fixture_attempts")
+	b.ReportMetric(float64(expectedAttempts), "window_attempts")
 	b.ReportMetric(float64(dto.UsagePerformanceBreakdownLimit), "top_n_limit")
-	b.ReportMetric(float64(warm.StreamingOutputTPS.SampleCount), "valid_tps_samples")
+	b.ReportMetric(float64(warm.Providers.Items[0].StreamingOutputTPS.SampleCount), "valid_tps_samples")
 	b.ReportMetric(float64(runtime.GOMAXPROCS(0)), "gomaxprocs")
 	b.ReportAllocs()
 	b.ResetTimer()

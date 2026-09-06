@@ -89,8 +89,14 @@ function PerformanceSummary({ summary, provider, windowEnd }: { summary: UsageAt
         <MetricRow label="Execution unknown" metric={summary.ttft_ms.unknown_execution} kind="latency" />
       </MetricSection>
       <MetricSection title="Output TPS">
-        <MetricRow label="Generate + stream" metric={summary.output_tps.generating_streaming} kind="tps" />
-        <MetricRow label="Execution unknown" metric={summary.output_tps.unknown_execution} kind="tps" />
+        {provider ? (
+          <>
+            <MetricRow label="Generate + stream" metric={summary.output_tps.generating_streaming} kind="tps" />
+            <MetricRow label="Execution unknown" metric={summary.output_tps.unknown_execution} kind="tps" />
+          </>
+        ) : (
+          <p className="text-xs text-muted-foreground">Select a provider for comparable throughput.</p>
+        )}
       </MetricSection>
     </div>
   )
@@ -179,7 +185,7 @@ function PerformanceBreakdown({
             <div className="mt-1 grid grid-cols-3 gap-2 text-muted-foreground">
               <span>Latency {formatPair(item.latency_ms.successful, "latency")}</span>
               <span>TTFT {formatPair(item.ttft_ms.generating_streaming, "latency")}</span>
-              <span>TPS {formatPair(item.output_tps.generating_streaming, "tps")}</span>
+              <span>TPS {selection === "provider" || provider ? formatPair(item.output_tps.generating_streaming, "tps") : "Select provider"}</span>
             </div>
             {item.latency_ms.successful.p95 !== null ? (
               <Link
