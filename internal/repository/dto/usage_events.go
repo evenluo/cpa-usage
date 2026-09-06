@@ -48,3 +48,27 @@ type UsageEventRecord struct {
 	CacheCreationTokens *int64
 	TotalTokens         int64
 }
+
+const UsageFailureBreakdownLimit = 8
+
+// UsageFailureDistributionRecord keeps each breakdown independently bounded
+// while OtherCount preserves parity with TotalFailures.
+type UsageFailureDistributionRecord struct {
+	TotalFailures int64
+	Categories    UsageFailureBreakdownRecord
+	Statuses      UsageFailureBreakdownRecord
+	Providers     UsageFailureBreakdownRecord
+	Accounts      UsageFailureBreakdownRecord
+	Models        UsageFailureBreakdownRecord
+	Endpoints     UsageFailureBreakdownRecord
+}
+
+type UsageFailureBreakdownRecord struct {
+	Items      []UsageFailureBreakdownItemRecord
+	OtherCount int64
+}
+
+type UsageFailureBreakdownItemRecord struct {
+	Value string
+	Count int64
+}

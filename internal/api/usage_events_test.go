@@ -21,6 +21,9 @@ type usageEventsStub struct {
 	lastOptionsFilter  dto.UsageTimeScope
 	filterCalls        int
 	filterOptionCalls  int
+	failureRecord      *dto.UsageFailureDistributionRecord
+	lastFailureFilter  dto.UsageDiagnosticFilter
+	failureCalls       int
 }
 
 func (s *usageEventsStub) GetUsageOverview(context.Context, dto.UsageOverviewFilter) (*dto.UsageOverviewRecord, error) {
@@ -38,6 +41,15 @@ func (s *usageEventsStub) ListUsageEvents(_ context.Context, filter dto.UsageEve
 		return s.eventsPage, s.err
 	}
 	return &dto.UsageEventsPageRecord{Events: s.events, TotalCount: int64(len(s.events)), Page: 1, PageSize: dto.DefaultUsageEventsLimit, TotalPages: 1}, s.err
+}
+
+func (s *usageEventsStub) GetUsageFailureDistribution(_ context.Context, filter dto.UsageDiagnosticFilter) (*dto.UsageFailureDistributionRecord, error) {
+	s.lastFailureFilter = filter
+	s.failureCalls++
+	if s.failureRecord != nil {
+		return s.failureRecord, s.err
+	}
+	return &dto.UsageFailureDistributionRecord{}, s.err
 }
 
 func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {

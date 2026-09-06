@@ -2,6 +2,8 @@ package api
 
 import (
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -276,5 +278,114 @@ func TestParseUsageEventListFilterQueryRejectsInvalidEventsPagination(t *testing
 		if _, err := parseUsageEventListFilterQuery(req, time.Time{}); err == nil {
 			t.Fatalf("expected pagination error for %s", path)
 		}
+	}
+}
+
+func TestParseFixedUsageDiagnosticFilterQueryBuildsBoundedSelection(t *testing.T) {
+	anchor := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	req := httptest.NewRequest("GET", "/api/v1/usage/failures?range=24h&provider=%20claude%20&model=%20sonnet%20&account=%20auth-1%20&endpoint=%20/v1/messages%20&status=4XX", nil)
+
+	filter, err := parseFixedUsageDiagnosticFilterQuery(req, anchor)
+	if err != nil {
+		t.Fatalf("parseFixedUsageDiagnosticFilterQuery returned error: %v", err)
+	}
+	if !filter.StartTime.Equal(anchor.Add(-24*time.Hour)) || !filter.EndTime.Equal(anchor) {
+		t.Fatalf("expected exact fixed 24h bounds, got %+v", filter)
+	}
+	if filter.Provider != "claude" || filter.Model != "sonnet" || filter.Account != "auth-1" || filter.Endpoint != "/v1/messages" || filter.Status != "4xx" {
+		t.Fatalf("unexpected normalized diagnostic selection: %+v", filter)
+	}
+	if got := filter.repositoryFilter(); got.Provider != "claude" || got.Account != "auth-1" || got.Status != "4xx" {
+		t.Fatalf("unexpected repository diagnostic filter: %+v", got)
+	}
+}
+
+func TestDiagnosticSelectionIsSharedWithRequestEvidence(t *testing.T) {
+	anchor := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&page=3&page_size=10&provider=claude&model=sonnet&account=auth-1&endpoint=/v1/messages&status=429&result=failed", nil)
+
+	filter, err := parseUsageEventListFilterQuery(req, anchor)
+	if err != nil {
+		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
+	}
+	got := filter.repositoryFilter()
+	if got.Page != 3 || got.Offset != 20 || got.Result != "failed" {
+		t.Fatalf("unexpected evidence pagination/result: %+v", got)
+	}
+	if got.Provider != "claude" || got.Model != "sonnet" || got.Account != "auth-1" || got.Endpoint != "/v1/messages" || got.Status != "429" {
+		t.Fatalf("expected shared diagnostic selection, got %+v", got)
+	}
+}
+
+func TestRequestEvidenceRejectsDiagnosticSelectionOutsideFixedWindow(t *testing.T) {
+	for _, path := range []string{
+		"/api/v1/usage/events?range=all&status=4xx",
+		"/api/v1/usage/events?range=7d&account=auth-1",
+		"/api/v1/usage/events?range=custom&start=2026-09-01&end=2026-09-07&endpoint=/v1/messages",
+	} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			if _, err := parseUsageEventListFilterQuery(req, time.Now()); err == nil {
+				t.Fatalf("expected diagnostic evidence outside fixed 24h window to be rejected: %s", path)
+			}
+		})
+	}
+}
+
+func TestParseFixedUsageDiagnosticFilterQueryRejectsUnboundedOrInvalidSelections(t *testing.T) {
+	tests := []string{
+		"/api/v1/usage/failures?range=7d",
+		"/api/v1/usage/failures?status=99",
+		"/api/v1/usage/failures?status=600",
+		"/api/v1/usage/failures?status=04xx",
+		"/api/v1/usage/failures?endpoint=/v1/messages%3Ftoken%3Dsecret",
+		"/api/v1/usage/failures?endpoint=/v1/messages%23fragment",
+		"/api/v1/usage/failures?endpoint=/v1/%0Amessages",
+	}
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest("GET", path, nil)
+			if _, err := parseFixedUsageDiagnosticFilterQuery(req, time.Now()); err == nil {
+				t.Fatalf("expected %s to be rejected", path)
+			}
+		})
+	}
+}
+
+func TestNormalizeDiagnosticStatusAcceptsFamiliesBoundariesAndUnknown(t *testing.T) {
+	for _, value := range []string{"unknown", "other", "1xx", "2xx", "3xx", "4xx", "5xx", "100", "399", "400", "499", "500", "599"} {
+		if got, err := normalizeDiagnosticStatus(value); err != nil || got != value {
+			t.Fatalf("expected %q to normalize unchanged, got %q err=%v", value, got, err)
+		}
+	}
+}
+
+func TestFrozenDiagnosticWindowRoundTripsNanosecondsIntoEvidence(t *testing.T) {
+	anchor := time.Date(2026, 9, 7, 12, 0, 0, 123456789, time.UTC)
+	failureFilter, err := parseFixedUsageDiagnosticFilterQuery(httptest.NewRequest("GET", "/api/v1/usage/failures", nil), anchor)
+	if err != nil {
+		t.Fatalf("parse failure filter: %v", err)
+	}
+	windowEnd := failureFilter.EndTime.Format(time.RFC3339Nano)
+	evidenceRequest := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&window_end="+url.QueryEscape(windowEnd), nil)
+	evidenceFilter, err := parseUsageEventListFilterQuery(evidenceRequest, anchor.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("parse evidence filter: %v", err)
+	}
+	if !evidenceFilter.EndTime.Equal(*failureFilter.EndTime) || !evidenceFilter.StartTime.Equal(*failureFilter.StartTime) {
+		t.Fatalf("frozen diagnostic window lost precision: failure=%+v evidence=%+v", failureFilter.usageWindow, evidenceFilter.usageWindow)
+	}
+}
+
+func TestRequestEvidenceKeepsLegacyModelLengthUntilDiagnosticSelectionIsUsed(t *testing.T) {
+	longModel := strings.Repeat("m", 129)
+	legacyRequest := httptest.NewRequest("GET", "/api/v1/usage/events?range=all&model="+longModel, nil)
+	legacyFilter, err := parseUsageEventListFilterQuery(legacyRequest, time.Now())
+	if err != nil || legacyFilter.Model != longModel {
+		t.Fatalf("expected existing list filter compatibility, filter=%+v err=%v", legacyFilter, err)
+	}
+	diagnosticRequest := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&status=4xx&model="+longModel, nil)
+	if _, err := parseUsageEventListFilterQuery(diagnosticRequest, time.Now()); err == nil {
+		t.Fatal("expected bounded diagnostic model to be rejected")
 	}
 }

@@ -315,6 +315,39 @@ export interface UsageEventsPage {
   total_pages: number
 }
 
+export interface UsageDiagnosticSelection {
+  provider?: string
+  model?: string
+  account?: string
+  endpoint?: string
+  status?: string
+  windowEnd?: string
+}
+
+export interface UsageFailureBreakdownItem {
+  value: string
+  label: string
+  category?: string
+  count: number
+}
+
+export interface UsageFailureBreakdown {
+  items: UsageFailureBreakdownItem[]
+  other_count: number
+}
+
+export interface UsageFailureDistribution {
+  window_start: string
+  window_end: string
+  total_failures: number
+  categories: UsageFailureBreakdown
+  statuses: UsageFailureBreakdown
+  providers: UsageFailureBreakdown
+  accounts: UsageFailureBreakdown
+  models: UsageFailureBreakdown
+  endpoints: UsageFailureBreakdown
+}
+
 export interface PricingEntry {
   model: string
   prompt_price_per_1m: number

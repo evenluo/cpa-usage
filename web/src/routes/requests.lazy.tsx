@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useEvents } from "@/hooks/useEvents"
+import { ApiError } from "@/lib/api"
 import { formatCompact, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { UsageEvent } from "@/types/api"
@@ -22,12 +23,16 @@ export const Route = createLazyFileRoute("/requests")({
 })
 
 function RequestsRoute() {
-  const { provider, model, result } = Route.useSearch()
+  const { provider, model, account, endpoint, status, windowEnd, result } = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
     <RequestsPage
       provider={provider}
       model={model}
+      account={account}
+      endpoint={endpoint}
+      status={status}
+      windowEnd={windowEnd}
       result={result}
       onFiltersChange={(filters) => void navigate({ search: (current) => ({ ...current, ...filters }) })}
     />
@@ -37,19 +42,31 @@ function RequestsRoute() {
 export function RequestsPage({
   provider,
   model = "",
+  account = "",
+  endpoint = "",
+  status = "",
+  windowEnd = "",
   result = "",
   onFiltersChange,
 }: {
   provider: string
   model?: string
+  account?: string
+  endpoint?: string
+  status?: string
+  windowEnd?: string
   result?: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed" }) => void
+  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; windowEnd?: string }) => void
 }) {
   return (
     <ProviderScopedRequestsPage
-      key={`${provider}:${model}:${result}`}
+      key={`${provider}:${model}:${account}:${endpoint}:${status}:${windowEnd}:${result}`}
       provider={provider}
       model={model}
+      account={account}
+      endpoint={endpoint}
+      status={status}
+      windowEnd={windowEnd}
       result={result}
       onFiltersChange={onFiltersChange}
     />
@@ -59,18 +76,28 @@ export function RequestsPage({
 function ProviderScopedRequestsPage({
   provider,
   model,
+  account,
+  endpoint,
+  status,
+  windowEnd,
   result,
   onFiltersChange,
 }: {
   provider: string
   model: string
+  account: string
+  endpoint: string
+  status: string
+  windowEnd: string
   result: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed" }) => void
+  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; windowEnd?: string }) => void
 }) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
   const [modelDraft, setModelDraft] = useState(model)
-  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, { model, result })
+  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, {
+    model, account, endpoint, status, windowEnd, result,
+  })
   const hasCompleteData = data !== undefined
   const events = data?.events ?? []
   const selectedEvent = events.find((event) => requestEventKey(event) === selectedEventKey) ?? events[0]
@@ -137,6 +164,17 @@ function ProviderScopedRequestsPage({
         <Button type="submit" variant="outline">Apply model</Button>
       </form>
 
+      {account || endpoint || status ? (
+        <div className="flex flex-wrap items-center gap-2" aria-label="Diagnostic filters">
+          {account ? <Badge variant="outline">Account: {account}</Badge> : null}
+          {endpoint ? <Badge variant="outline">Endpoint: {endpoint}</Badge> : null}
+          {status ? <Badge variant="outline">Status: {status.toUpperCase()}</Badge> : null}
+          <Button type="button" size="sm" variant="ghost" onClick={() => onFiltersChange?.({ model, result, account: "", endpoint: "", status: "", windowEnd: "" })}>
+            Clear diagnostic filters
+          </Button>
+        </div>
+      ) : null}
+
       {hasCompleteData && error ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
           <span>Request evidence refresh failed; showing the last complete page.</span>
@@ -152,7 +190,7 @@ function ProviderScopedRequestsPage({
       ) : !hasCompleteData && error ? (
         <Card>
           <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-sm text-red-500">
-            <span>Failed to load request evidence</span>
+            <span>{error instanceof ApiError && error.status === 400 ? "Invalid request evidence filters" : "Failed to load request evidence"}</span>
             <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>Retry request evidence</Button>
           </CardContent>
         </Card>

@@ -31,6 +31,10 @@ func (s *usageAnalysisStub) ListUsageEvents(context.Context, dto.UsageEventListF
 	return nil, nil
 }
 
+func (s *usageAnalysisStub) GetUsageFailureDistribution(context.Context, dto.UsageDiagnosticFilter) (*dto.UsageFailureDistributionRecord, error) {
+	return &dto.UsageFailureDistributionRecord{}, nil
+}
+
 func (s *usageAnalysisStub) ListUsageEventFilterOptions(context.Context, dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	return nil, nil
 }

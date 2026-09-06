@@ -109,6 +109,8 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - Provider filtering scopes both **Selected Analysis Window** modules and **Fixed Operational Window** modules.
 - **Request Evidence** drill-down preserves the current provider scope and begins that scope on its first result page.
 - **Request Evidence** drill-down may further filter its fixed 24-hour attempt set by actual model and attempt result.
+- **Failure concentration** is a fixed 24-hour diagnostic reading of failed **Usage Attempts**, grouped independently by observed status family, exact status, provider, account, actual model, and public endpoint path. Missing status stays in an Unknown bucket; an observed HTTP status is evidence, not a proven root cause.
+- Selecting a **Failure concentration** breakdown opens first-page **Request Evidence** with the same provider/model/account/endpoint/status selection and the distribution's exact 24-hour snapshot window. Each breakdown is bounded to ranked rows and preserves omitted or unavailable attempts in an explicit other count.
 - Provider filter options are derived from the **Selected Analysis Window**, not from fixed windows or a global provider catalog.
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
 - The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.

@@ -62,6 +62,7 @@ type UsageProvider interface {
 	GetUsageOverview(context.Context, repodto.UsageOverviewFilter) (*repodto.UsageOverviewRecord, error)
 	GetRequestHealth(context.Context, repodto.UsageOverviewFilter) (*repodto.UsageOverviewHealthRecord, error)
 	ListUsageEvents(context.Context, repodto.UsageEventListFilter) (*repodto.UsageEventsPageRecord, error)
+	GetUsageFailureDistribution(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageFailureDistributionRecord, error)
 	ListUsageEventFilterOptions(context.Context, repodto.UsageTimeScope) (*repodto.UsageEventFilterOptionsRecord, error)
 	GetUsageAnalysis(context.Context, repodto.UsageTimeScope) ([]repodto.UsageAnalysisAPIStatRecord, []repodto.UsageAnalysisModelStatRecord, error)
 }
@@ -128,6 +129,7 @@ func NewRouter(
 	registerUsageAnalysisRoute(protected, usageProvider)
 	registerAnalyticsRoutes(protected, optionalProviders.Analytics)
 	registerUsageEventsRoute(protected, usageProvider, optionalProviders.UsageIdentity, optionalProviders.KeyAlias)
+	registerUsageFailuresRoute(protected, usageProvider, optionalProviders.UsageIdentity)
 	registerUsageIdentityRoutes(protected, optionalProviders.UsageIdentity, optionalProviders.KeyAlias, optionalProviders.AccountStatus)
 	registerPricingRoutes(protected, pricingProvider)
 	registerQuotaRoutes(protected, optionalProviders.Quota)

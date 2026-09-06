@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { apiFetch } from "@/lib/api"
-import { fetchEvents } from "./useEvents"
+import { buildEventsPath, fetchEvents } from "./useEvents"
 
 vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
 
@@ -11,6 +11,12 @@ beforeEach(() => {
 })
 
 describe("fetchEvents", () => {
+  it("serializes the shared diagnostic selection and frozen window", () => {
+    expect(buildEventsPath("24h", 10, "claude", 1, {
+      model: "sonnet", account: "auth-1", endpoint: "/v1/messages", status: "4xx",
+      windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
+    })).toBe("/usage/events?range=24h&page_size=10&page=1&provider=claude&model=sonnet&account=auth-1&endpoint=%2Fv1%2Fmessages&status=4xx&window_end=2026-09-07T12%3A00%3A00.123456789Z&result=failed")
+  })
   it("accepts a populated page and the normalized empty page", async () => {
     const event = {
       timestamp: "2026-08-27T00:00:00Z",

@@ -121,9 +121,13 @@ function DashboardPage() {
         isRequestEvidenceLoading={dashboard.isRequestEvidenceLoading}
         isRequestEvidenceRefreshing={dashboard.isRequestEvidenceRefreshing}
         requestEvidenceError={dashboard.requestEvidenceError}
+        failureDistributionData={dashboard.failureDistributionData}
+        isFailureDistributionLoading={dashboard.isFailureDistributionLoading}
+        failureDistributionError={dashboard.failureDistributionError}
         onRetryHeatmap={dashboard.retryHeatmap}
         onRetryRequestHealth={dashboard.retryRequestHealth}
         onRetryRequestEvidence={dashboard.retryRequestEvidence}
+        onRetryFailureDistribution={dashboard.retryFailureDistribution}
       />
     </div>
   )

@@ -18,7 +18,7 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 	db = db.WithContext(ctx)
 
 	// 第一步：应用列表筛选，统计分页总数。
-	baseQuery := queryUsageEvents(db)
+	baseQuery := queryUsageEventsForList(db, filter)
 	baseQuery = applyUsageEventListQuery(baseQuery, filter)
 
 	var totalCount int64
@@ -48,7 +48,7 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 		offset = 0
 	}
 
-	query := applyUsageEventListQuery(db.Model(&entities.UsageEvent{}), filter)
+	query := applyUsageEventListQuery(queryUsageEventsForList(db, filter), filter)
 	query = query.Order("timestamp DESC, id DESC").Limit(pageSize).Offset(offset)
 
 	var events []entities.UsageEvent
@@ -164,6 +164,14 @@ func queryUsageEvents(db *gorm.DB) *gorm.DB {
 	return db.Model(&entities.UsageEvent{})
 }
 
+func queryUsageEventsForList(db *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
+	if filter.StartTime != nil && filter.EndTime != nil &&
+		(strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "") {
+		return db.Table("usage_events INDEXED BY idx_usage_events_timestamp_id")
+	}
+	return queryUsageEvents(db)
+}
+
 // Request Event Log 筛选项第一步：应用时间窗口和 provider scope，不叠加当前列表筛选。
 func applyUsageEventFilterOptionsQuery(query *gorm.DB, filter dto.UsageTimeScope) *gorm.DB {
 	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
@@ -171,11 +179,7 @@ func applyUsageEventFilterOptionsQuery(query *gorm.DB, filter dto.UsageTimeScope
 
 // Request Event Log 列表第一步：在时间窗口和 provider scope 上叠加 model/source/auth_index/result。
 func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
-	query = applyUsageQueryWindow(query, filter.UsageTimeScope)
-	query = applyUsageProviderFilter(query, filter.UsageTimeScope)
-	if model := strings.TrimSpace(filter.Model); model != "" {
-		query = query.Where("TRIM(model) = ?", model)
-	}
+	query = applyUsageDiagnosticQuery(query, filter.DiagnosticFilter())
 	if source := strings.TrimSpace(filter.Source); source != "" {
 		if authIndex := strings.TrimSpace(filter.AuthIndex); authIndex != "" {
 			// 第二步：API 层会把 Source 下拉转成 auth_index，这里兼容直接传 source 的仓储调用。
@@ -193,4 +197,41 @@ func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageEventListFilter) *
 		query = query.Where("failed = ?", true)
 	}
 	return query
+}
+
+const publicUsageEndpointSQL = `TRIM(CASE
+	WHEN INSTR(endpoint, '?') > 0 AND (INSTR(endpoint, '#') = 0 OR INSTR(endpoint, '?') < INSTR(endpoint, '#'))
+		THEN SUBSTR(endpoint, 1, INSTR(endpoint, '?') - 1)
+	WHEN INSTR(endpoint, '#') > 0 THEN SUBSTR(endpoint, 1, INSTR(endpoint, '#') - 1)
+	ELSE endpoint END)`
+
+func applyUsageDiagnosticQuery(query *gorm.DB, filter dto.UsageDiagnosticFilter) *gorm.DB {
+	query = applyUsageProviderFilter(applyUsageQueryWindow(query, filter.UsageTimeScope), filter.UsageTimeScope)
+	if model := strings.TrimSpace(filter.Model); model != "" {
+		query = query.Where("TRIM(model) = ?", model)
+	}
+	if account := strings.TrimSpace(filter.Account); account != "" {
+		query = query.Where("TRIM(auth_index) = ?", account)
+	}
+	if endpoint := strings.TrimSpace(filter.Endpoint); endpoint != "" {
+		query = query.Where(publicUsageEndpointSQL+" = ?", endpoint)
+	}
+	return applyUsageStatusFilter(query, filter.Status)
+}
+
+func applyUsageStatusFilter(query *gorm.DB, status string) *gorm.DB {
+	status = strings.TrimSpace(status)
+	switch status {
+	case "":
+		return query
+	case "unknown":
+		return query.Where("status_code = 0")
+	case "other":
+		return query.Where("status_code <> 0 AND (status_code < 100 OR status_code > 599)")
+	}
+	if len(status) == 3 && status[1:] == "xx" {
+		lower := int(status[0]-'0') * 100
+		return query.Where("status_code >= ? AND status_code < ?", lower, lower+100)
+	}
+	return query.Where("status_code = ?", status)
 }

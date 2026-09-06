@@ -28,6 +28,10 @@ export interface UsageIntelligenceLoadPlan {
       pageSize: number
       provider: string
     }
+    failureDistribution: {
+      range: typeof FIXED_OPERATIONAL_WINDOW
+      provider: string
+    }
     liveCapacity: {
       provider: string
     }
@@ -60,6 +64,10 @@ export function buildUsageIntelligenceLoadPlan(input: {
       requestEvidence: {
         range: FIXED_OPERATIONAL_WINDOW,
         pageSize: LATEST_EVIDENCE_PAGE_SIZE,
+        provider: input.provider,
+      },
+      failureDistribution: {
+        range: FIXED_OPERATIONAL_WINDOW,
         provider: input.provider,
       },
       liveCapacity: {

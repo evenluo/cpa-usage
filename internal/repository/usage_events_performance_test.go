@@ -22,9 +22,36 @@ const (
 )
 
 var (
-	requestEvidenceBenchmarkResult *dto.UsageEventsPageRecord
-	usageAttemptBenchmarkInserted  int
+	requestEvidenceBenchmarkResult     *dto.UsageEventsPageRecord
+	failureDistributionBenchmarkResult *dto.UsageFailureDistributionRecord
+	usageAttemptBenchmarkInserted      int
 )
+
+// BenchmarkUsageFailureDistributionHighCardinality measures all bounded Top-N
+// breakdown queries over the deterministic 65,536-attempt fixture.
+func BenchmarkUsageFailureDistributionHighCardinality(b *testing.B) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(b, requestEvidencePerformanceEventCount)
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &fixture.start, EndTime: &fixture.end}}
+	warm, err := BuildUsageFailureDistributionWithFilter(context.Background(), db, filter)
+	if err != nil {
+		b.Fatalf("warm failure distribution benchmark: %v", err)
+	}
+	if warm.TotalFailures == 0 || len(warm.Providers.Items) != dto.UsageFailureBreakdownLimit || len(warm.Models.Items) != dto.UsageFailureBreakdownLimit {
+		b.Fatalf("benchmark fixture did not exercise bounded breakdowns: %+v", warm)
+	}
+	b.ReportMetric(requestEvidencePerformanceEventCount, "fixture_attempts")
+	b.ReportMetric(float64(warm.TotalFailures), "matching_failures")
+	b.ReportMetric(float64(dto.UsageFailureBreakdownLimit), "top_n_limit")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for benchmarkIndex := 0; benchmarkIndex < b.N; benchmarkIndex++ {
+		result, err := BuildUsageFailureDistributionWithFilter(context.Background(), db, filter)
+		if err != nil {
+			b.Fatalf("build failure distribution benchmark: %v", err)
+		}
+		failureDistributionBenchmarkResult = result
+	}
+}
 
 // BenchmarkListUsageEventsHighCardinalityCombinedFilters measures Request
 // Evidence's count, model-options, and page queries together at the same
@@ -138,6 +165,27 @@ func TestRequestEvidenceQueryPlansAvoidFullScans(t *testing.T) {
 		  AND failed = ?
 		ORDER BY timestamp DESC, id DESC
 		LIMIT 100`, fixture.start, fixture.end, target.Provider, target.Model, target.Failed)
+}
+
+func TestFailureDistributionQueryPlansUseBoundedTimeIndex(t *testing.T) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(t, 4_096)
+	queries := []struct {
+		name string
+		sql  string
+	}{
+		{name: "failure total", sql: `EXPLAIN QUERY PLAN SELECT COUNT(*) FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1`},
+		{name: "status family", sql: `EXPLAIN QUERY PLAN SELECT status_code / 100, COUNT(*) FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1 GROUP BY status_code / 100 ORDER BY COUNT(*) DESC LIMIT 8`},
+		{name: "endpoint", sql: `EXPLAIN QUERY PLAN SELECT TRIM(endpoint), COUNT(*) FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1 GROUP BY TRIM(endpoint) ORDER BY COUNT(*) DESC LIMIT 8`},
+		{name: "frozen evidence", sql: `EXPLAIN QUERY PLAN SELECT id FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1 AND status_code >= 400 AND status_code < 500
+			ORDER BY timestamp DESC, id DESC LIMIT 10`},
+	}
+	for _, query := range queries {
+		assertUsageEventsQueryPlanUsesSearch(t, db, query.name, query.sql, fixture.start, fixture.end)
+	}
 }
 
 func assertUsageEventsQueryPlanUsesSearch(t *testing.T, db *gorm.DB, name string, query string, args ...any) {

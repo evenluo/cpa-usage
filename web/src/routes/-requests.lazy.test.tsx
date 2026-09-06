@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { UsageEventsPage } from "@/types/api"
+import { ApiError } from "@/lib/api"
 
 vi.mock("@tanstack/react-router", () => ({
   createLazyFileRoute: () => (options: object) => ({
@@ -83,7 +84,7 @@ describe("RequestsPage provider scope", () => {
 
     const calls = vi.mocked(useEvents).mock.calls
     const call = calls[calls.length - 1]
-    expect(call?.[5]).toEqual({ model: "gpt-5", result: "failed" })
+    expect(call?.[5]).toEqual({ model: "gpt-5", account: "", endpoint: "", status: "", windowEnd: "", result: "failed" })
     expect(screen.getByDisplayValue("gpt-5")).toBeInTheDocument()
     expect(screen.getByDisplayValue("Failed attempts")).toBeInTheDocument()
 
@@ -91,5 +92,52 @@ describe("RequestsPage provider scope", () => {
     await user.type(screen.getByLabelText("Actual model"), "claude-sonnet")
     await user.click(screen.getByRole("button", { name: "Apply model" }))
     expect(onFiltersChange).toHaveBeenCalledWith({ model: "claude-sonnet", result: "failed" })
+  })
+
+  it("passes the frozen diagnostic selection and clears page-local state when scope changes", async () => {
+    vi.mocked(useEvents).mockImplementation((_range, _pageSize, provider = "", page = 1) => ({
+      data: eventsPage(page, provider), isLoading: false, error: null, refetch: vi.fn(),
+    }) as never)
+    const onFiltersChange = vi.fn()
+    const { rerender } = render(
+      <RequestsPage
+        provider="claude"
+        account="auth-1"
+        endpoint="/v1/messages"
+        status="4xx"
+        windowEnd="2026-09-07T12:00:00.123456789Z"
+        result="failed"
+        onFiltersChange={onFiltersChange}
+      />,
+    )
+
+    const diagnosticCalls = vi.mocked(useEvents).mock.calls
+    expect(diagnosticCalls[diagnosticCalls.length - 1]?.[5]).toEqual({
+      model: "", account: "auth-1", endpoint: "/v1/messages", status: "4xx",
+      windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
+    })
+    expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Account: auth-1")
+
+    rerender(<RequestsPage provider="openai" status="500" result="failed" onFiltersChange={onFiltersChange} />)
+    const resetCalls = vi.mocked(useEvents).mock.calls
+    expect(resetCalls[resetCalls.length - 1]?.slice(0, 4)).toEqual(["24h", 10, "openai", 1])
+    expect(screen.getByRole("button", { name: "Select attempt 10" })).toHaveAttribute("aria-pressed", "true")
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear diagnostic filters" }))
+    expect(onFiltersChange).toHaveBeenCalledWith({ model: "", result: "failed", account: "", endpoint: "", status: "", windowEnd: "" })
+  })
+
+  it("distinguishes invalid filters, API failure, and an empty successful page", () => {
+    vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(400, "invalid status"), refetch: vi.fn() } as never)
+    const { rerender } = render(<RequestsPage provider="" status="broken" />)
+    expect(screen.getByText("Invalid request evidence filters")).toBeInTheDocument()
+
+    vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(500, "unavailable"), refetch: vi.fn() } as never)
+    rerender(<RequestsPage provider="" status="500" />)
+    expect(screen.getByText("Failed to load request evidence")).toBeInTheDocument()
+
+    vi.mocked(useEvents).mockReturnValue({ data: { ...eventsPage(1, ""), events: [], total_count: 0, total_pages: 1 }, isLoading: false, error: null, refetch: vi.fn() } as never)
+    rerender(<RequestsPage provider="" />)
+    expect(screen.getByText("No recent request evidence")).toBeInTheDocument()
   })
 })

@@ -7,8 +7,9 @@ import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
 import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
+import { FailureDistribution } from "@/components/intelligence/failure-distribution"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
-import type { UsageEventsPage } from "@/types/api"
+import type { UsageEventsPage, UsageFailureDistribution } from "@/types/api"
 
 interface DashboardFixedOverviewProps {
   surfaces: UsageDashboardSurfaces
@@ -18,9 +19,13 @@ interface DashboardFixedOverviewProps {
   isRequestEvidenceLoading: boolean
   isRequestEvidenceRefreshing: boolean
   requestEvidenceError: unknown
+  failureDistributionData?: UsageFailureDistribution
+  isFailureDistributionLoading: boolean
+  failureDistributionError: unknown
   onRetryHeatmap: () => void
   onRetryRequestHealth: () => void
   onRetryRequestEvidence: () => void
+  onRetryFailureDistribution: () => void
 }
 
 export function DashboardFixedOverview({
@@ -31,9 +36,13 @@ export function DashboardFixedOverview({
   isRequestEvidenceLoading,
   isRequestEvidenceRefreshing,
   requestEvidenceError,
+  failureDistributionData,
+  isFailureDistributionLoading,
+  failureDistributionError,
   onRetryHeatmap,
   onRetryRequestHealth,
   onRetryRequestEvidence,
+  onRetryFailureDistribution,
 }: DashboardFixedOverviewProps) {
   return (
     <>
@@ -129,6 +138,14 @@ export function DashboardFixedOverview({
           onRetry={onRetryRequestEvidence}
         />
       </div>
+
+      <FailureDistribution
+        provider={requestEvidenceProvider}
+        data={failureDistributionData}
+        isLoading={isFailureDistributionLoading}
+        error={failureDistributionError}
+        onRetry={onRetryFailureDistribution}
+      />
     </>
   )
 }
