@@ -140,9 +140,10 @@ func (s *ModelSupportService) Load(ctx context.Context, request ModelSupportRequ
 
 	requestCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
-	channels := uniqueModelSupportChannels(identities)
+	accounts := s.loadAccounts(requestCtx, identities)
+	channels := uniqueLoadedModelSupportChannels(accounts)
 	catalogs := s.loadDefinitionCatalogs(requestCtx, channels)
-	accounts := s.loadAccounts(requestCtx, identities, catalogs)
+	applyModelDefinitionCatalogs(accounts, catalogs)
 
 	loaded := 0
 	for _, account := range accounts {
@@ -207,19 +208,18 @@ func loadModelSupportIdentities(ctx context.Context, db *gorm.DB, ids []uint) ([
 	return identities, nil
 }
 
-func uniqueModelSupportChannels(identities []entities.UsageIdentity) []string {
-	seen := make(map[string]struct{}, len(identities))
-	channels := make([]string, 0, len(identities))
-	for _, identity := range identities {
-		channel, ok := modelDefinitionChannel(identity.Type)
-		if !ok {
+func uniqueLoadedModelSupportChannels(accounts []AccountModelSupport) []string {
+	seen := make(map[string]struct{}, len(accounts))
+	channels := make([]string, 0, len(accounts))
+	for _, account := range accounts {
+		if account.Status != "loaded" || account.Channel == "" {
 			continue
 		}
-		if _, exists := seen[channel]; exists {
+		if _, exists := seen[account.Channel]; exists {
 			continue
 		}
-		seen[channel] = struct{}{}
-		channels = append(channels, channel)
+		seen[account.Channel] = struct{}{}
+		channels = append(channels, account.Channel)
 	}
 	sort.Strings(channels)
 	return channels
@@ -257,7 +257,7 @@ func (s *ModelSupportService) loadDefinitionCatalogs(ctx context.Context, channe
 		channel := channels[index]
 		catalog := modelDefinitionCatalog{status: "error"}
 		response, err := s.client.FetchStaticModelDefinitions(ctx, channel)
-		if err == nil && response != nil && strings.EqualFold(strings.TrimSpace(response.Payload.Channel), channel) {
+		if err == nil && response != nil && response.Payload.Models != nil && strings.EqualFold(strings.TrimSpace(response.Payload.Channel), channel) {
 			definitions, valid := indexStaticModelDefinitions(response.Payload.Models)
 			if valid {
 				catalog.status = "loaded"
@@ -287,15 +287,15 @@ func indexStaticModelDefinitions(items []cpamodels.StaticModelDefinition) (map[s
 	return definitions, true
 }
 
-func (s *ModelSupportService) loadAccounts(ctx context.Context, identities []entities.UsageIdentity, catalogs map[string]modelDefinitionCatalog) []AccountModelSupport {
+func (s *ModelSupportService) loadAccounts(ctx context.Context, identities []entities.UsageIdentity) []AccountModelSupport {
 	accounts := make([]AccountModelSupport, len(identities))
 	s.runBounded(len(identities), func(index int) {
-		accounts[index] = s.loadAccount(ctx, identities[index], catalogs)
+		accounts[index] = s.loadAccount(ctx, identities[index])
 	})
 	return accounts
 }
 
-func (s *ModelSupportService) loadAccount(ctx context.Context, identity entities.UsageIdentity, catalogs map[string]modelDefinitionCatalog) AccountModelSupport {
+func (s *ModelSupportService) loadAccount(ctx context.Context, identity entities.UsageIdentity) AccountModelSupport {
 	channel, channelKnown := modelDefinitionChannel(identity.Type)
 	account := AccountModelSupport{
 		IdentityID:  identity.ID,
@@ -310,7 +310,7 @@ func (s *ModelSupportService) loadAccount(ctx context.Context, identity entities
 	if !channelKnown {
 		account.CatalogStatus = "unknown_channel"
 	} else {
-		account.CatalogStatus = catalogs[channel].status
+		account.CatalogStatus = "error"
 	}
 
 	file, found, err := s.client.FetchAuthFileByAuthIndex(ctx, identity.Identity)
@@ -335,7 +335,7 @@ func (s *ModelSupportService) loadAccount(ctx context.Context, identity entities
 		account.ErrorCode = "upstream_error"
 		return account
 	}
-	models, valid := buildRegisteredModelSupport(registered.Payload.Models, catalogs[channel], channelKnown)
+	models, valid := buildRegisteredModelSupport(registered.Payload.Models)
 	if !valid {
 		account.ErrorCode = "invalid_upstream_response"
 		return account
@@ -345,7 +345,10 @@ func (s *ModelSupportService) loadAccount(ctx context.Context, identity entities
 	return account
 }
 
-func buildRegisteredModelSupport(items []cpamodels.RegisteredModel, catalog modelDefinitionCatalog, channelKnown bool) ([]RegisteredModelSupport, bool) {
+func buildRegisteredModelSupport(items []cpamodels.RegisteredModel) ([]RegisteredModelSupport, bool) {
+	if items == nil {
+		return nil, false
+	}
 	models := make([]RegisteredModelSupport, 0, len(items))
 	seen := make(map[string]struct{}, len(items))
 	for _, item := range items {
@@ -363,21 +366,39 @@ func buildRegisteredModelSupport(items []cpamodels.RegisteredModel, catalog mode
 			Type:        strings.TrimSpace(item.Type),
 			OwnedBy:     strings.TrimSpace(item.OwnedBy),
 		}
-		switch {
-		case !channelKnown:
-			model.DefinitionStatus = "unknown_channel"
-		case catalog.status != "loaded":
-			model.DefinitionStatus = "error"
-		case catalog.definitions[id].ID == "":
-			model.DefinitionStatus = "absent"
-		default:
-			model.DefinitionStatus = "available"
-			model.Capability = modelCapability(catalog.definitions[id])
-		}
 		models = append(models, model)
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	return models, true
+}
+
+func applyModelDefinitionCatalogs(accounts []AccountModelSupport, catalogs map[string]modelDefinitionCatalog) {
+	for index := range accounts {
+		account := &accounts[index]
+		if account.Status != "loaded" {
+			continue
+		}
+		if account.Channel == "" {
+			for modelIndex := range account.RegisteredModels {
+				account.RegisteredModels[modelIndex].DefinitionStatus = "unknown_channel"
+			}
+			continue
+		}
+		catalog := catalogs[account.Channel]
+		account.CatalogStatus = catalog.status
+		for modelIndex := range account.RegisteredModels {
+			model := &account.RegisteredModels[modelIndex]
+			switch {
+			case catalog.status != "loaded":
+				model.DefinitionStatus = "error"
+			case catalog.definitions[model.ID].ID == "":
+				model.DefinitionStatus = "absent"
+			default:
+				model.DefinitionStatus = "available"
+				model.Capability = modelCapability(catalog.definitions[model.ID])
+			}
+		}
+	}
 }
 
 func modelCapability(item cpamodels.StaticModelDefinition) *ModelCapability {

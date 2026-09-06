@@ -630,9 +630,9 @@ func TestFetchStaticModelDefinitionsPreservesCapabilityPresence(t *testing.T) {
 	if definition.ContextLength == nil || *definition.ContextLength != 200000 || definition.Thinking == nil || definition.Thinking.ZeroAllowed == nil || *definition.Thinking.ZeroAllowed {
 		t.Fatalf("expected explicit capability values, got %+v", definition)
 	}
-	marshaled, err := json.Marshal(definition)
+	marshaled, err := json.Marshal(result)
 	if err != nil {
-		t.Fatalf("marshal allowlisted definition: %v", err)
+		t.Fatalf("marshal allowlisted model definitions result: %v", err)
 	}
 	if strings.Contains(string(marshaled), "override_header") || strings.Contains(string(marshaled), "fixture-secret") || strings.Contains(string(marshaled), "unknown_capability") {
 		t.Fatalf("unexpected non-allowlisted data retained: %s", marshaled)

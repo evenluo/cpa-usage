@@ -250,6 +250,23 @@ describe("LiveCapacityCard", () => {
     expect(mutate.mock.calls[0][0]).toEqual([1, 2])
   })
 
+  it("clears only model-support state when the provider changes", async () => {
+    const user = userEvent.setup()
+    setupMock({ identities: [identity({ id: 1, identity: "codex-a", displayName: "Codex A" })] })
+    const reset = vi.fn()
+    mockUseModelSupport.mockReturnValue({ mutate: vi.fn(), reset, data: undefined, isPending: false, isError: false, error: null })
+    const view = render(<LiveCapacityCard provider="Codex" />)
+
+    await user.click(screen.getByRole("button", { name: "Select displayed" }))
+    expect(screen.getByText("support 1/12")).toBeInTheDocument()
+    reset.mockClear()
+
+    view.rerender(<LiveCapacityCard provider="Gemini" />)
+
+    await waitFor(() => expect(screen.getByText("support 0/12")).toBeInTheDocument())
+    expect(reset).toHaveBeenCalledTimes(1)
+  })
+
   it("shows partial registered support without a single-account conclusion", async () => {
     const user = userEvent.setup()
     const identities = [

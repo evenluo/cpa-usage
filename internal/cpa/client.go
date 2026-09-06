@@ -180,9 +180,7 @@ func (c *Client) FetchAuthFileModels(ctx context.Context, name string) (*respons
 		return result, fmt.Errorf("auth file name is required")
 	}
 	queryPath := cpaManagementAuthFileModelsEndpoint + "?name=" + url.QueryEscape(name)
-	statusCode, body, err := c.doManagementJSONRequest(ctx, queryPath, &result.Payload, "auth file models")
-	result.StatusCode = statusCode
-	result.Body = body
+	_, _, err := c.doManagementJSONRequest(ctx, queryPath, &result.Payload, "auth file models")
 	if err != nil {
 		return result, err
 	}
@@ -196,9 +194,7 @@ func (c *Client) FetchStaticModelDefinitions(ctx context.Context, channel string
 		return result, fmt.Errorf("model definition channel is required")
 	}
 	requestPath := cpaManagementModelDefinitionsEndpoint + url.PathEscape(channel)
-	statusCode, body, err := c.doManagementJSONRequest(ctx, requestPath, &result.Payload, "model definitions")
-	result.StatusCode = statusCode
-	result.Body = body
+	_, _, err := c.doManagementJSONRequest(ctx, requestPath, &result.Payload, "model definitions")
 	if err != nil {
 		return result, err
 	}

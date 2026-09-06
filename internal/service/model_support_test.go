@@ -25,10 +25,15 @@ type modelSupportClientStub struct {
 	activeCalls     int
 	maxActiveCalls  int
 	block           <-chan struct{}
+	definitionBlock <-chan struct{}
 	delay           time.Duration
 }
 
 func (s *modelSupportClientStub) begin(ctx context.Context) error {
+	return s.beginWithBlock(ctx, s.block)
+}
+
+func (s *modelSupportClientStub) beginWithBlock(ctx context.Context, block <-chan struct{}) error {
 	s.mu.Lock()
 	s.requestCount++
 	s.activeCalls++
@@ -41,7 +46,7 @@ func (s *modelSupportClientStub) begin(ctx context.Context) error {
 		s.activeCalls--
 		s.mu.Unlock()
 	}()
-	if s.block == nil {
+	if block == nil {
 		if s.delay == 0 {
 			return nil
 		}
@@ -53,7 +58,7 @@ func (s *modelSupportClientStub) begin(ctx context.Context) error {
 		}
 	}
 	select {
-	case <-s.block:
+	case <-block:
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -79,13 +84,91 @@ func (s *modelSupportClientStub) FetchAuthFileModels(ctx context.Context, name s
 }
 
 func (s *modelSupportClientStub) FetchStaticModelDefinitions(ctx context.Context, channel string) (*response.StaticModelDefinitionsResult, error) {
-	if err := s.begin(ctx); err != nil {
+	block := s.block
+	if s.definitionBlock != nil {
+		block = s.definitionBlock
+	}
+	if err := s.beginWithBlock(ctx, block); err != nil {
 		return nil, err
 	}
 	if err := s.definitionError[channel]; err != nil {
 		return nil, err
 	}
 	return &response.StaticModelDefinitionsResult{Payload: cpamodels.StaticModelDefinitionsResponse{Channel: channel, Models: s.definitions[channel]}}, nil
+}
+
+func TestLoadModelSupportKeepsRegisteredSupportWhenCatalogTimesOut(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	identity := entities.UsageIdentity{Name: "Codex", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth-a", Type: "codex", Provider: "Codex"}
+	if err := db.Create(&identity).Error; err != nil {
+		t.Fatalf("seed identity: %v", err)
+	}
+	blocked := make(chan struct{})
+	client := &modelSupportClientStub{
+		files:       map[string]authfiles.AuthFile{"auth-a": {AuthIndex: "auth-a", Name: "a.json"}},
+		models:      map[string][]cpamodels.RegisteredModel{"a.json": {{ID: "gpt-exact"}}},
+		modelErrors: map[string]error{}, definitions: map[string][]cpamodels.StaticModelDefinition{},
+		definitionError: map[string]error{}, definitionBlock: blocked,
+	}
+	service := NewModelSupportService(db, client)
+	service.timeout = 10 * time.Millisecond
+	result, err := service.Load(context.Background(), ModelSupportRequest{IdentityIDs: []uint{identity.ID}})
+	if err != nil {
+		t.Fatalf("catalog timeout should be represented as optional enrichment failure: %v", err)
+	}
+	if !result.Complete || result.LoadedCount != 1 || result.Accounts[0].Status != "loaded" {
+		t.Fatalf("catalog timeout must not erase registered support: %+v", result)
+	}
+	if result.Accounts[0].CatalogStatus != "error" || len(result.Accounts[0].RegisteredModels) != 1 || result.Accounts[0].RegisteredModels[0].DefinitionStatus != "error" {
+		t.Fatalf("expected explicit catalog-only failure: %+v", result.Accounts[0])
+	}
+}
+
+func TestLoadModelSupportRejectsMissingModelCollectionsButAcceptsEmptyArrays(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	identities := []entities.UsageIdentity{
+		{Name: "Missing", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth-missing", Type: "codex", Provider: "Codex"},
+		{Name: "Empty", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth-empty", Type: "claude", Provider: "Claude"},
+	}
+	if err := db.Create(&identities).Error; err != nil {
+		t.Fatalf("seed identities: %v", err)
+	}
+	client := &modelSupportClientStub{
+		files: map[string]authfiles.AuthFile{
+			"auth-missing": {AuthIndex: "auth-missing", Name: "missing.json"},
+			"auth-empty":   {AuthIndex: "auth-empty", Name: "empty.json"},
+		},
+		models: map[string][]cpamodels.RegisteredModel{
+			"missing.json": nil,
+			"empty.json":   {},
+		},
+		modelErrors: map[string]error{},
+		definitions: map[string][]cpamodels.StaticModelDefinition{
+			"claude": {},
+		},
+		definitionError: map[string]error{},
+	}
+	service := NewModelSupportService(db, client)
+	result, err := service.Load(context.Background(), ModelSupportRequest{IdentityIDs: []uint{identities[0].ID, identities[1].ID}})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if result.Complete || result.Accounts[0].ErrorCode != "invalid_upstream_response" {
+		t.Fatalf("missing/null registered models must be invalid: %+v", result.Accounts[0])
+	}
+	if result.Accounts[1].Status != "loaded" || result.Accounts[1].CatalogStatus != "loaded" || result.Accounts[1].RegisteredModels == nil {
+		t.Fatalf("explicit empty arrays must remain valid: %+v", result.Accounts[1])
+	}
+
+	client.models["missing.json"] = []cpamodels.RegisteredModel{{ID: "gpt-exact"}}
+	client.definitions["codex"] = nil
+	result, err = service.Load(context.Background(), ModelSupportRequest{IdentityIDs: []uint{identities[0].ID}})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if !result.Complete || result.Accounts[0].CatalogStatus != "error" || result.Accounts[0].RegisteredModels[0].DefinitionStatus != "error" {
+		t.Fatalf("missing/null static models must be explicit enrichment failure: %+v", result.Accounts[0])
+	}
 }
 
 func TestLoadModelSupportReturnsCompleteExactCoverageAndCapabilities(t *testing.T) {
@@ -264,6 +347,7 @@ func TestLoadModelSupportHonorsConcurrencyAndTotalTimeout(t *testing.T) {
 		identity.Type = "codex"
 		identity.Provider = "Codex"
 		client.files[identity.Identity] = authfiles.AuthFile{AuthIndex: identity.Identity, Name: fmt.Sprintf("%d.json", index)}
+		client.models[fmt.Sprintf("%d.json", index)] = []cpamodels.RegisteredModel{}
 	}
 	if err := db.Create(&identities).Error; err != nil {
 		t.Fatalf("seed identities: %v", err)

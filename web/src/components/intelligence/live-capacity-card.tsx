@@ -14,7 +14,7 @@ import {
   Timer,
   type LucideIcon,
 } from "lucide-react"
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -121,13 +121,19 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   const displayedIdentityIDs = useMemo(() => displayedRows.map((row) => row.id), [displayedRows])
   const displayedSelected = displayedIdentityIDs.length > 0 && displayedIdentityIDs.every((id) => selectedSupportIDs.has(id))
   const selectionTooLarge = selectedSupportIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS
+  const previousSupportProvider = useRef(provider)
 
-  const resetSupportSelection = () => {
+  const resetSupportSelection = useCallback(() => {
     setSelectedSupportIDs(new Set())
     setLoadedSupportScopeKey("")
     setRequestedSupportScopeKey("")
     modelSupport.reset()
-  }
+  }, [modelSupport])
+  useEffect(() => {
+    if (previousSupportProvider.current === provider) return
+    previousSupportProvider.current = provider
+    resetSupportSelection()
+  }, [provider, resetSupportSelection])
   const selectProviderKind = (kind: ProviderKind | "all") => {
     setSelectedKind(kind)
     resetSupportSelection()
