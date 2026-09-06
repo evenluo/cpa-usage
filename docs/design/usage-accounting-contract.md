@@ -193,12 +193,30 @@ occurs on both builds. This is a local artifact-size comparison, not runtime or
 production latency evidence.
 
 The existing deterministic analytics benchmark (65,536 attempts, 32 providers,
-512 models, 2,048 identities per kind; `GOMAXPROCS=1`, `-benchtime=1x`) measured
-the raw core snapshot at 8.460 s and the covered hourly snapshot at 0.788 s.
-Both retain existing bounded top-N output. These are single local observations
-on a shared host, not a baseline regression estimate or an SLA. Migration plan
-evidence separately verifies indexed extrema reads; focused tests cover the
-provider-scoped hybrid window and bounded backfill completion.
+512 models, 2,048 identities per kind) ran sequentially on a `git archive` of
+base `f536cab0a2f20399f2397ffe0df042f7189409f2`, then implementation
+`7e04dae29f5084af2d703a590766bb57b248c537`, with identical fixtures and command:
+
+```text
+GOCACHE=/tmp/cpa-usage-go-cache GOMAXPROCS=1 go test ./internal/repository -run '^$' -bench '^(BenchmarkAnalyticsCoreRawFastHighCardinality|BenchmarkAnalyticsCoreCoveredRollupHighCardinality)$' -benchmem -count=1 -benchtime=1x
+```
+
+Environment: Apple M4, darwin/arm64, Go 1.27.1. The existing benchmark excludes
+setup, warms the read, and checks bounded top-N output. Other tasks shared the
+host; this is one paired observation, not proof of a stable regression or an SLA.
+
+| Existing path | Base ns/op | G ns/op | Elapsed change | Base / G B/op | Base / G allocs/op |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Raw SQL-limited fast Adapter | 8,245,562,083 | 8,343,143,167 | +1.18% | 833,952 / 927,336 | 7,740 / 7,808 |
+| Covered hourly plan | 779,984,958 | 797,331,166 | +2.22% | 7,420,512 / 7,499,960 | 130,404 / 130,469 |
+
+Raw bytes/allocations change by +11.20%/+0.88%; covered bytes/allocations by
++1.07%/+0.05%. These observations are inside the existing
+[convergence disposition](analytics-raw-rollup-convergence.md)'s 10% elapsed and
+20% bytes/allocations thresholds; the single sample does not establish timing
+stability. The raw SQL-limited Adapter and current source-plan ownership remain
+unchanged. Migration plan evidence separately verifies indexed extrema reads;
+focused tests cover provider-scoped hybrid windows and bounded backfill completion.
 
 ## Local intake performance evidence (2026-09-07)
 
