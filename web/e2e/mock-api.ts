@@ -3,6 +3,7 @@ import analyticsSummary from "../src/test/contracts/analytics_summary.json" with
 import apiKeyAliasTargets from "../src/test/contracts/api_key_alias_targets_page.json" with { type: "json" }
 import usageFailureDistribution from "../src/test/contracts/usage_failure_distribution.json" with { type: "json" }
 import usageIdentities from "../src/test/contracts/usage_identities_page.json" with { type: "json" }
+import usageModelMappings from "../src/test/contracts/usage_model_mappings.json" with { type: "json" }
 
 export const statusPayload = {
   running: true,
@@ -52,6 +53,7 @@ export const usageEvents = Array.from({ length: 11 }, (_, index) => ({
     auth_index: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
     api_key_alias: "Agent API Key With A Very Long Mobile Label",
     api_key_display: "sk-live-mobile-overflow-regression-key-display-with-extra-long-suffix",
+    request_id: index < 2 ? "request-correlated-e2e" : `request-${index + 1}`,
     failed: index === 2,
     latency_ms: index === 0 ? 21_245 : 240 + index,
     ttft_ms: index === 0 ? 1_052 : null,
@@ -78,6 +80,24 @@ export const authFileIdentitiesPayload = {
       total_cost: 0,
       cost_available: false,
       last_used_at: null,
+      status: "error",
+      unavailable: true,
+      metadata_observed_at: "2026-09-07T08:00:00Z",
+      next_retry_after: "2026-09-07T08:30:00Z",
+      passive_quota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T08:00:00Z",
+        active_limit: "codex_primary",
+        quota: [{ key: "primary", label: "5h", usedPercent: 25, allowed: false, resetAfterSeconds: 120, window: { seconds: 18_000 } }],
+      },
+      passive_model_quotas: [{
+        source: "cpa_passive",
+        scope: "model",
+        model: "gpt-exact",
+        observed_at: "2026-09-07T07:30:00Z",
+        quota: [{ key: "weekly", label: "Weekly", usedPercent: 40, window: { seconds: 604_800 } }],
+      }],
       active_start: "2026-08-21T02:59:00Z",
       active_until: "2026-09-25T07:15:00Z",
     },
@@ -95,6 +115,9 @@ export const authFileIdentitiesPayload = {
       total_cost: 0,
       cost_available: false,
       last_used_at: null,
+      disabled: true,
+      status: "disabled",
+      unavailable: true,
     },
   ],
   total_count: 2,
@@ -130,6 +153,95 @@ const pricingPayload = {
 
 const usedModelsPayload = {
   models: ["priced-model", "mobile-overflow-regression-model"],
+}
+
+function percentile(populationCount: number, sampleCount: number, p50: number | null, p95: number | null) {
+  return {
+    population_count: populationCount,
+    sample_count: sampleCount,
+    coverage: populationCount === 0 ? null : sampleCount / populationCount,
+    p50,
+    p95,
+  }
+}
+
+const performanceSummary = {
+  successful_attempts: 18,
+  failed_attempts: 2,
+  successful_execution: { generating_streaming: 10, non_generating: 2, non_streaming: 1, unknown: 5 },
+  latency_ms: {
+    successful: percentile(18, 18, 500, 9_000),
+    failed: percentile(2, 1, 12_000, 12_000),
+  },
+  ttft_ms: {
+    generating_streaming: percentile(10, 8, 120, 1_500),
+    unknown_execution: percentile(5, 0, null, null),
+  },
+  output_tps: {
+    generating_streaming: percentile(10, 7, 42, 88),
+    unknown_execution: percentile(5, 2, 30, 35),
+  },
+}
+
+const performanceSummaryWithoutComparableTPS = {
+  ...performanceSummary,
+  output_tps: {
+    generating_streaming: percentile(10, 0, null, null),
+    unknown_execution: percentile(5, 0, null, null),
+  },
+}
+
+export const usageAttemptPerformance = {
+  ...performanceSummaryWithoutComparableTPS,
+  window_start: "2026-09-06T12:00:00Z",
+  window_end: "2026-09-07T12:00:00.123456789Z",
+  total_attempts: 20,
+  providers: { items: [{ ...performanceSummary, value: "claude", label: "claude", attempt_count: 20 }], other_count: 0 },
+  models: { items: [{ ...performanceSummaryWithoutComparableTPS, value: "sonnet", label: "sonnet", attempt_count: 20 }], other_count: 3 },
+  accounts: { items: [{ ...performanceSummaryWithoutComparableTPS, value: "auth-1", label: "Claude Primary", attempt_count: 20 }], other_count: 0 },
+}
+
+const modelSupportPayload = {
+  scope_complete: false,
+  selected_count: 2,
+  loaded_count: 1,
+  accounts: [{
+    identity_id: 501,
+    auth_index: "codex-auth-e2e",
+    display_name: "Codex Auth",
+    provider: "Codex",
+    channel: "codex",
+    disabled: false,
+    unavailable: true,
+    status: "loaded",
+    catalog_status: "loaded",
+    registered_models: [{
+      id: "gpt-exact",
+      display_name: "GPT Exact",
+      type: "model",
+      definition_status: "available",
+      capability: { context_length: 200_000, supported_input_modalities: ["TEXT", "IMAGE"], thinking: { zero_allowed: false } },
+    }],
+  }, {
+    identity_id: 502,
+    auth_index: "openai-auth-e2e",
+    display_name: "Unsupported OpenAI",
+    provider: "OpenAI",
+    disabled: true,
+    unavailable: true,
+    status: "failed",
+    error_code: "upstream_error",
+    catalog_status: "error",
+    registered_models: [],
+  }],
+  models: [{
+    model_id: "gpt-exact",
+    display_name: "GPT Exact",
+    observed_supporting_accounts: 1,
+    selected_accounts: 2,
+    single_registered_account_in_scope: null,
+  }],
+  limits: { max_accounts: 12, max_concurrency: 4, timeout_seconds: 15, max_upstream_requests: 36 },
 }
 
 const dashboardAnalyticsSummary = {
@@ -176,12 +288,13 @@ const dashboardAnalyticsSummary = {
   ],
 }
 
-const { comparison: _comparison, heatmap, previous_range_start: _previousRangeStart, previous_range_end: _previousRangeEnd, ...dashboardAnalyticsCore } = dashboardAnalyticsSummary
+export const { comparison: _comparison, heatmap, previous_range_start: _previousRangeStart, previous_range_end: _previousRangeEnd, ...dashboardAnalyticsCore } = dashboardAnalyticsSummary
 
 export interface RecordedAPIRequest {
   path: string
   method: string
   url: URL
+  body: string | null
 }
 
 export interface MockAPIOptions {
@@ -204,7 +317,7 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
     const apiIndex = url.pathname.indexOf("/api/v1")
     const path = apiIndex >= 0 ? url.pathname.slice(apiIndex + "/api/v1".length) : url.pathname
     const method = request.method()
-    options.onRequest?.({ path, method, url })
+    options.onRequest?.({ path, method, url, body: request.postData() })
 
     if (path === "/auth/session") {
       await route.fulfill({ json: { authenticated: options.authenticated ?? true } })
@@ -246,6 +359,23 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
       await route.fulfill({ json: usageFailureDistribution })
       return
     }
+    if (path === "/usage/performance") {
+      await route.fulfill({ json: usageAttemptPerformance })
+      return
+    }
+    if (path === "/usage/model-mappings") {
+      await route.fulfill({ json: usageModelMappings })
+      return
+    }
+    if (path === "/usage/events/export") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/csv; charset=utf-8",
+        headers: { "Content-Disposition": 'attachment; filename="request-evidence.csv"' },
+        body: "timestamp_utc,account,actual_model,request_id\n2026-09-07T11:59:00Z,auth-1,sonnet,request-correlated-e2e\n",
+      })
+      return
+    }
     if (path === "/usage/events") {
       const page = Number(url.searchParams.get("page") ?? "1")
       const pageSize = Number(url.searchParams.get("page_size") ?? "100")
@@ -266,6 +396,7 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
         : usageEvents
       await route.fulfill({ json: {
         events: scopedEvents.slice(start, start + pageSize),
+        window_end: url.searchParams.get("window_end") || "2026-09-07T12:00:00.123456789Z",
         total_count: scopedEvents.length,
         page,
         page_size: pageSize,
@@ -277,6 +408,10 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
       const payload = url.searchParams.get("auth_type") === "1" ? authFileIdentitiesPayload : usageIdentities
       const pageSize = Number(url.searchParams.get("page_size") ?? "10")
       await route.fulfill({ json: { ...payload, page_size: pageSize, total_pages: Math.max(1, Math.ceil(payload.total_count / pageSize)) } })
+      return
+    }
+    if (path === "/usage/identities/model-support" && method === "POST") {
+      await route.fulfill({ json: modelSupportPayload })
       return
     }
     if (path === "/usage/api-keys/page") {
