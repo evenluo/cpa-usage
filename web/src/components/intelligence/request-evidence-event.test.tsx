@@ -51,6 +51,8 @@ describe("RequestEvidenceEvent", () => {
     render(<RequestEvidenceEvent event={event} label="Selected upstream attempt" detail />)
 
     expect(screen.getByText("Selected upstream attempt")).toBeInTheDocument()
+    expect(screen.getByText("Observed alias label")).toBeInTheDocument()
+    expect(screen.queryByText("Requested model")).not.toBeInTheDocument()
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
     expect(screen.getByText("gpt-5-requested")).toBeInTheDocument()
     expect(screen.getByText("gpt-5")).toBeInTheDocument()

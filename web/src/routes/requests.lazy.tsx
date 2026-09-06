@@ -23,6 +23,7 @@ function buildCorrelatedAttemptsSearch(provider: string, requestId: string, wind
   return {
     provider: provider.trim(),
     model: "",
+    modelAlias: "",
     account: "",
     endpoint: "",
     status: "",
@@ -37,12 +38,13 @@ export const Route = createLazyFileRoute("/requests")({
 })
 
 function RequestsRoute() {
-  const { provider, model, account, endpoint, status, requestId, windowEnd, result } = Route.useSearch()
+  const { provider, model, modelAlias, account, endpoint, status, requestId, windowEnd, result } = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
     <RequestsPage
       provider={provider}
       model={model}
+      modelAlias={modelAlias}
       account={account}
       endpoint={endpoint}
       status={status}
@@ -58,6 +60,7 @@ function RequestsRoute() {
 export function RequestsPage({
   provider,
   model = "",
+  modelAlias = "",
   account = "",
   endpoint = "",
   status = "",
@@ -69,20 +72,22 @@ export function RequestsPage({
 }: {
   provider: string
   model?: string
+  modelAlias?: string
   account?: string
   endpoint?: string
   status?: string
   requestId?: string
   windowEnd?: string
   result?: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; windowEnd?: string }) => void
+  onFiltersChange?: (filters: { model: string; modelAlias?: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; windowEnd?: string }) => void
   onCorrelatedAttempts?: (search: RequestsSearch) => void
 }) {
   return (
     <ProviderScopedRequestsPage
-      key={`${provider}:${model}:${account}:${endpoint}:${status}:${requestId}:${windowEnd}:${result}`}
+      key={`${provider}:${model}:${modelAlias}:${account}:${endpoint}:${status}:${requestId}:${windowEnd}:${result}`}
       provider={provider}
       model={model}
+      modelAlias={modelAlias}
       account={account}
       endpoint={endpoint}
       status={status}
@@ -98,6 +103,7 @@ export function RequestsPage({
 function ProviderScopedRequestsPage({
   provider,
   model,
+  modelAlias,
   account,
   endpoint,
   status,
@@ -109,20 +115,21 @@ function ProviderScopedRequestsPage({
 }: {
   provider: string
   model: string
+  modelAlias: string
   account: string
   endpoint: string
   status: string
   requestId: string
   windowEnd: string
   result: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; windowEnd?: string }) => void
+  onFiltersChange?: (filters: { model: string; modelAlias?: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; windowEnd?: string }) => void
   onCorrelatedAttempts?: (search: RequestsSearch) => void
 }) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
   const [modelDraft, setModelDraft] = useState(model)
   const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, {
-    model, account, endpoint, status, requestId, windowEnd, result,
+    model, modelAlias, account, endpoint, status, requestId, windowEnd, result,
   })
   const hasCompleteData = data !== undefined
   const events = data?.events ?? []
@@ -190,12 +197,13 @@ function ProviderScopedRequestsPage({
         <Button type="submit" variant="outline">Apply model</Button>
       </form>
 
-      {account || endpoint || status ? (
+      {modelAlias || account || endpoint || status ? (
         <div className="flex flex-wrap items-center gap-2" aria-label="Diagnostic filters">
+          {modelAlias ? <Badge variant="outline">Observed alias: {modelAlias}</Badge> : null}
           {account ? <Badge variant="outline">Account: {account}</Badge> : null}
           {endpoint ? <Badge variant="outline">Endpoint: {endpoint}</Badge> : null}
           {status ? <Badge variant="outline">Status: {status.toUpperCase()}</Badge> : null}
-          <Button type="button" size="sm" variant="ghost" onClick={() => onFiltersChange?.({ model, result, account: "", endpoint: "", status: "", windowEnd: "" })}>
+          <Button type="button" size="sm" variant="ghost" onClick={() => onFiltersChange?.({ model, modelAlias: "", result, account: "", endpoint: "", status: "", windowEnd: "" })}>
             Clear diagnostic filters
           </Button>
         </div>

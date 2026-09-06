@@ -86,7 +86,7 @@ describe("RequestsPage provider scope", () => {
 
     const calls = vi.mocked(useEvents).mock.calls
     const call = calls[calls.length - 1]
-    expect(call?.[5]).toEqual({ model: "gpt-5", account: "", endpoint: "", status: "", requestId: "", windowEnd: "", result: "failed" })
+    expect(call?.[5]).toEqual({ model: "gpt-5", modelAlias: "", account: "", endpoint: "", status: "", requestId: "", windowEnd: "", result: "failed" })
     expect(screen.getByDisplayValue("gpt-5")).toBeInTheDocument()
     expect(screen.getByDisplayValue("Failed attempts")).toBeInTheDocument()
 
@@ -104,6 +104,7 @@ describe("RequestsPage provider scope", () => {
     const { rerender } = render(
       <RequestsPage
         provider="claude"
+        modelAlias="sonnet-route"
         account="auth-1"
         endpoint="/v1/messages"
         status="4xx"
@@ -115,10 +116,11 @@ describe("RequestsPage provider scope", () => {
 
     const diagnosticCalls = vi.mocked(useEvents).mock.calls
     expect(diagnosticCalls[diagnosticCalls.length - 1]?.[5]).toEqual({
-      model: "", account: "auth-1", endpoint: "/v1/messages", status: "4xx", requestId: "",
+      model: "", modelAlias: "sonnet-route", account: "auth-1", endpoint: "/v1/messages", status: "4xx", requestId: "",
       windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
     })
     expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Account: auth-1")
+    expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Observed alias: sonnet-route")
 
     rerender(<RequestsPage provider="openai" status="500" result="failed" onFiltersChange={onFiltersChange} />)
     const resetCalls = vi.mocked(useEvents).mock.calls
@@ -126,7 +128,7 @@ describe("RequestsPage provider scope", () => {
     expect(screen.getByRole("button", { name: "Select attempt 10" })).toHaveAttribute("aria-pressed", "true")
 
     await userEvent.click(screen.getByRole("button", { name: "Clear diagnostic filters" }))
-    expect(onFiltersChange).toHaveBeenCalledWith({ model: "", result: "failed", account: "", endpoint: "", status: "", windowEnd: "" })
+    expect(onFiltersChange).toHaveBeenCalledWith({ model: "", modelAlias: "", result: "failed", account: "", endpoint: "", status: "", windowEnd: "" })
   })
 
   it("replaces the current filters with a fixed correlated-attempt selection", async () => {
@@ -137,6 +139,7 @@ describe("RequestsPage provider scope", () => {
       <RequestsPage
         provider="claude"
         model="sonnet"
+        modelAlias="sonnet-route"
         account="auth-1"
         endpoint="/v1/messages"
         status="429"
@@ -147,7 +150,7 @@ describe("RequestsPage provider scope", () => {
 
     await user.click(screen.getByRole("button", { name: "View correlated attempts" }))
     expect(onCorrelatedAttempts).toHaveBeenCalledWith({
-      provider: "claude", model: "", account: "", endpoint: "", status: "", requestId: "request-1",
+      provider: "claude", model: "", modelAlias: "", account: "", endpoint: "", status: "", requestId: "request-1",
       windowEnd: "2026-09-07T12:00:00.123456789Z", result: "",
     })
   })

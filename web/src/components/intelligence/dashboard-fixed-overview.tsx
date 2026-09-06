@@ -8,8 +8,9 @@ import { HealthGrid } from "@/components/charts/health-grid"
 import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { FailureDistribution } from "@/components/intelligence/failure-distribution"
+import { ModelMappings } from "@/components/intelligence/model-mappings"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
-import type { UsageEventsPage, UsageFailureDistribution } from "@/types/api"
+import type { UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
 
 interface DashboardFixedOverviewProps {
   surfaces: UsageDashboardSurfaces
@@ -22,10 +23,14 @@ interface DashboardFixedOverviewProps {
   failureDistributionData?: UsageFailureDistribution
   isFailureDistributionLoading: boolean
   failureDistributionError: unknown
+  modelMappingsData?: UsageModelMappingDistribution
+  isModelMappingsLoading: boolean
+  modelMappingsError: unknown
   onRetryHeatmap: () => void
   onRetryRequestHealth: () => void
   onRetryRequestEvidence: () => void
   onRetryFailureDistribution: () => void
+  onRetryModelMappings: () => void
 }
 
 export function DashboardFixedOverview({
@@ -39,10 +44,14 @@ export function DashboardFixedOverview({
   failureDistributionData,
   isFailureDistributionLoading,
   failureDistributionError,
+  modelMappingsData,
+  isModelMappingsLoading,
+  modelMappingsError,
   onRetryHeatmap,
   onRetryRequestHealth,
   onRetryRequestEvidence,
   onRetryFailureDistribution,
+  onRetryModelMappings,
 }: DashboardFixedOverviewProps) {
   return (
     <>
@@ -145,6 +154,13 @@ export function DashboardFixedOverview({
         isLoading={isFailureDistributionLoading}
         error={failureDistributionError}
         onRetry={onRetryFailureDistribution}
+      />
+
+      <ModelMappings
+        data={modelMappingsData}
+        isLoading={isModelMappingsLoading}
+        error={modelMappingsError}
+        onRetry={onRetryModelMappings}
       />
     </>
   )

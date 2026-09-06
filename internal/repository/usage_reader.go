@@ -33,6 +33,10 @@ func (r UsageReader) GetUsageFailureDistribution(ctx context.Context, filter dto
 	return BuildUsageFailureDistributionWithFilter(ctx, r.db, filter)
 }
 
+func (r UsageReader) GetUsageModelMappings(ctx context.Context, filter dto.UsageDiagnosticFilter) (*dto.UsageModelMappingDistributionRecord, error) {
+	return BuildUsageModelMappingsWithFilter(ctx, r.db, filter)
+}
+
 func (r UsageReader) ListUsageEventFilterOptions(ctx context.Context, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	return ListUsageEventFilterOptionsWithFilter(ctx, r.db, filter)
 }

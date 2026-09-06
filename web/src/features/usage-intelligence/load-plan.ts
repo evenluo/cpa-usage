@@ -32,6 +32,10 @@ export interface UsageIntelligenceLoadPlan {
       range: typeof FIXED_OPERATIONAL_WINDOW
       provider: string
     }
+    modelMappings: {
+      range: typeof FIXED_OPERATIONAL_WINDOW
+      provider: string
+    }
     liveCapacity: {
       provider: string
     }
@@ -67,6 +71,10 @@ export function buildUsageIntelligenceLoadPlan(input: {
         provider: input.provider,
       },
       failureDistribution: {
+        range: FIXED_OPERATIONAL_WINDOW,
+        provider: input.provider,
+      },
+      modelMappings: {
         range: FIXED_OPERATIONAL_WINDOW,
         provider: input.provider,
       },

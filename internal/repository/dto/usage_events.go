@@ -72,3 +72,33 @@ type UsageFailureBreakdownItemRecord struct {
 	Value string
 	Count int64
 }
+
+const UsageModelMappingLimit = 20
+
+// UsageModelMappingDistributionRecord describes the fixed-window population
+// that has an observed CPA alias label and its bounded actual-model mappings.
+type UsageModelMappingDistributionRecord struct {
+	TotalAttempts         int64
+	ObservedAliasAttempts int64
+	MissingAliasAttempts  int64
+	ObservedTotalCost     float64
+	ObservedCostAvailable bool
+	ObservedCostStatus    string
+	Mappings              []UsageModelMappingRecord
+	OtherAttempts         int64
+}
+
+type UsageModelMappingRecord struct {
+	ModelAlias         string
+	Model              string
+	Provider           string
+	AttemptCount       int64
+	FailureCount       int64
+	FailureShare       float64
+	TotalLatencyMS     int64
+	LatencySampleCount int64
+	MeanLatencyMS      float64
+	TotalCost          float64
+	CostAvailable      bool
+	CostStatus         string
+}

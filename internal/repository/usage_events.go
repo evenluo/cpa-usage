@@ -169,7 +169,7 @@ func queryUsageEvents(db *gorm.DB) *gorm.DB {
 
 func queryUsageEventsForList(db *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
 	if filter.StartTime != nil && filter.EndTime != nil &&
-		(strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "" || strings.TrimSpace(filter.RequestID) != "") {
+		(strings.TrimSpace(filter.ModelAlias) != "" || strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "" || strings.TrimSpace(filter.RequestID) != "") {
 		return db.Table("usage_events INDEXED BY idx_usage_events_timestamp_id")
 	}
 	return queryUsageEvents(db)
@@ -212,6 +212,9 @@ func applyUsageDiagnosticQuery(query *gorm.DB, filter dto.UsageDiagnosticFilter)
 	query = applyUsageProviderFilter(applyUsageQueryWindow(query, filter.UsageTimeScope), filter.UsageTimeScope)
 	if model := strings.TrimSpace(filter.Model); model != "" {
 		query = query.Where("TRIM(model) = ?", model)
+	}
+	if modelAlias := strings.TrimSpace(filter.ModelAlias); modelAlias != "" {
+		query = query.Where("TRIM(model_alias) = ?", modelAlias)
 	}
 	if account := strings.TrimSpace(filter.Account); account != "" {
 		query = query.Where("TRIM(auth_index) = ?", account)

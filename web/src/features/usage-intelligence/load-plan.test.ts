@@ -29,6 +29,7 @@ describe("Usage Intelligence load plan", () => {
       provider: "OpenAI",
     })
     expect(plan.fixedWindow.failureDistribution).toEqual({ range: "24h", provider: "OpenAI" })
+    expect(plan.fixedWindow.modelMappings).toEqual({ range: "24h", provider: "OpenAI" })
     expect(plan.fixedWindow.liveCapacity).toEqual({
       provider: "OpenAI",
     })

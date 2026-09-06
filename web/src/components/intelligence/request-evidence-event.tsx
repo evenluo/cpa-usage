@@ -49,7 +49,7 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
   const facts = event.attempt_facts
   const accounting = facts?.accounting
   const fields = [
-    ["Requested model", event.model_alias || "-"],
+    ["Observed alias label", event.model_alias || "-"],
     ["Actual model", event.model || "-"],
     ["Endpoint", event.endpoint || "-"],
     ["Request ID", event.request_id || "-"],

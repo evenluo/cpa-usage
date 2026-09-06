@@ -28,33 +28,36 @@ type AnalyticsFilter struct {
 // are canonicalized and bounded by the API layer before repository projection.
 type UsageDiagnosticFilter struct {
 	UsageTimeScope
-	Model     string
-	Account   string
-	Endpoint  string
-	Status    string
-	RequestID string
+	Model      string
+	ModelAlias string
+	Account    string
+	Endpoint   string
+	Status     string
+	RequestID  string
 }
 
 // UsageEventListFilter 是 Request Evidence 列表的查询条件。
 type UsageEventListFilter struct {
 	UsageTimeScope
-	Page      int
-	PageSize  int
-	Offset    int
-	Model     string
-	Account   string
-	Endpoint  string
-	Status    string
-	RequestID string
-	Source    string
-	AuthIndex string
-	Result    string
+	Page       int
+	PageSize   int
+	Offset     int
+	Model      string
+	ModelAlias string
+	Account    string
+	Endpoint   string
+	Status     string
+	RequestID  string
+	Source     string
+	AuthIndex  string
+	Result     string
 }
 
 func (f UsageEventListFilter) DiagnosticFilter() UsageDiagnosticFilter {
 	return UsageDiagnosticFilter{
 		UsageTimeScope: f.UsageTimeScope,
 		Model:          f.Model,
+		ModelAlias:     f.ModelAlias,
 		Account:        f.Account,
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,

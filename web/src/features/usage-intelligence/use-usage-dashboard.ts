@@ -3,7 +3,8 @@ import { useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useEvents } from "@/hooks/useEvents"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { useFailureDistribution } from "@/hooks/useFailureDistribution"
-import type { AnalyticsCoreResponse, TimeGranularity, TimeRange, UsageEventsPage, UsageFailureDistribution } from "@/types/api"
+import { useModelMappings } from "@/hooks/useModelMappings"
+import type { AnalyticsCoreResponse, TimeGranularity, TimeRange, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
 import { buildUsageIntelligenceLoadPlan, type UsageIntelligenceLoadPlan } from "./load-plan"
 import { useVisibilityRefresh } from "./refresh"
 import { buildUsageDashboardSurfaces, type UsageDashboardSurfaces } from "./surfaces"
@@ -40,11 +41,15 @@ export interface UseUsageDashboardResult {
   failureDistributionData?: UsageFailureDistribution
   isFailureDistributionLoading: boolean
   failureDistributionError: unknown
+  modelMappingsData?: UsageModelMappingDistribution
+  isModelMappingsLoading: boolean
+  modelMappingsError: unknown
   retryCore: () => void
   retryHeatmap: () => void
   retryRequestHealth: () => void
   retryRequestEvidence: () => void
   retryFailureDistribution: () => void
+  retryModelMappings: () => void
   refreshDashboard: () => void
 }
 
@@ -133,10 +138,16 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     refetch: refetchFailureDistribution,
     error: failureDistributionError,
   } = useFailureDistribution(fixedWindow.failureDistribution.provider)
+  const {
+    data: modelMappingsData,
+    isLoading: isModelMappingsLoading,
+    refetch: refetchModelMappings,
+    error: modelMappingsError,
+  } = useModelMappings(fixedWindow.modelMappings.provider)
 
   const refreshDashboard = useCallback(() => {
-    void Promise.allSettled([refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution()])
-  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution])
+    void Promise.allSettled([refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution(), refetchModelMappings()])
+  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappings])
   useVisibilityRefresh(refreshDashboard)
 
   const viewModel = useMemo(
@@ -192,6 +203,9 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     failureDistributionData,
     isFailureDistributionLoading,
     failureDistributionError,
+    modelMappingsData,
+    isModelMappingsLoading,
+    modelMappingsError,
     retryCore: () => {
       void refetchCoreAnalytics()
     },
@@ -206,6 +220,9 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     },
     retryFailureDistribution: () => {
       void refetchFailureDistribution()
+    },
+    retryModelMappings: () => {
+      void refetchModelMappings()
     },
     refreshDashboard,
   }

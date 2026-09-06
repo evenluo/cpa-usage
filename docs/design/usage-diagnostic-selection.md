@@ -4,7 +4,7 @@ Status: current
 
 Owner: `internal/api` normalization, `internal/repository` bounded read aggregation
 
-Consumers: failure distribution, Request Evidence, and parent slices C/D/J/K
+Consumers: failure distribution, observed model mappings, Request Evidence, and parent slices C/D/J/K
 
 ## Contract
 
@@ -14,14 +14,14 @@ The selection is one exact 24-hour snapshot:
 
 - `range` is absent or `24h`.
 - `window_end` is an optional RFC3339Nano snapshot anchor. Failure distribution returns its exact `window_end`; drill-down passes it to Request Evidence so aggregate counts and first-page rows use identical inclusive bounds.
-- `provider`, `model`, and `account` are trimmed exact values with a 128-byte maximum.
+- `provider`, `model`, `model_alias`, and `account` are trimmed exact values with a 128-byte maximum. `model_alias` selects the observed CPA alias label and does not mean a client-requested model.
 - `endpoint` is a trimmed exact public path with a 256-byte maximum. Query strings, fragments, and control characters are rejected. Stored endpoint queries/fragments are removed before grouping and matching so they cannot enter the response.
 - `status` is absent, `unknown`, `other`, one family from `1xx` through `5xx`, or one canonical decimal HTTP code from 100 through 599. `unknown` selects missing status (`status_code = 0`); `other` selects observed nonzero values outside the HTTP range.
 - `request_id` is an optional trimmed exact value with a 256-byte maximum and no control characters. Its presence makes the event-list query diagnostic, so both inclusive 24-hour bounds are always concrete. It correlates rows; it never deduplicates them or establishes retry order or a final client outcome.
 
-Failure distribution always adds `failed = true`. Request Evidence applies the same selection and separately carries its existing pagination and `result` selection. A breakdown link uses `result=failed`, page one, and the returned `window_end`.
+Failure distribution always adds `failed = true`. Observed model mappings and Request Evidence apply the same selection; Request Evidence separately carries its existing pagination and `result` selection. A failure breakdown link uses `result=failed`, page one, and the returned `window_end`. A complete mapping row uses its exact `model_alias`, actual `model`, provider, page one, and returned `window_end`.
 
-The event-list response publishes its normalized `window_end` when the query has an upper time bound. The correlated-attempt action constructs a complete new selection from exactly that returned anchor, the current provider scope, and the selected nonempty `request_id`; the API derives and enforces the inclusive 24-hour lower bound. The action explicitly clears model, account, endpoint, status, result, source, and auth-index restrictions so siblings are not hidden. Consumers adding another event-list filter must add it to the complete frontend search type and explicitly decide whether correlation clears it; spreading the prior selection is not the contract.
+The event-list response publishes its normalized `window_end` when the query has an upper time bound. The correlated-attempt action constructs a complete new selection from exactly that returned anchor, the current provider scope, and the selected nonempty `request_id`; the API derives and enforces the inclusive 24-hour lower bound. The action explicitly clears model, model alias, account, endpoint, status, result, source, and auth-index restrictions so siblings are not hidden. Consumers adding another event-list filter must add it to the complete frontend search type and explicitly decide whether correlation clears it; spreading the prior selection is not the contract.
 
 ## Response and boundedness
 
@@ -35,4 +35,4 @@ The reusable cross-stack fixture is `web/src/test/contracts/usage_failure_distri
 
 Invalid selection returns HTTP 400 without running a repository query. A successful zero count returns HTTP 200 with empty breakdowns. Repository/API failure remains a distinct HTTP 500 and the frontend preserves stale complete data when available.
 
-This is an additive Request Evidence filtering and response-metadata contract. Existing event routes, pagination, non-diagnostic model/provider/source/auth-index/result behavior, selected-window analytics, storage, ingestion, endpoint redaction, auth/session, and deployment behavior remain unchanged. Provider scope remains visible during correlation; matching attempts under another provider are omitted when a provider is selected. Historical request-ID-collapsed rows are retained and qualified rather than reconstructed. Status labels describe observations only and never infer a provider root cause or final client-visible outcome.
+This is an additive route, Request Evidence filtering and response-metadata contract. Existing event routes, pagination, non-diagnostic model/provider/source/auth-index/result behavior, selected-window analytics, storage, ingestion, endpoint redaction, auth/session, and deployment behavior remain unchanged. Provider scope remains visible during correlation; matching attempts under another provider are omitted when a provider is selected. Historical request-ID-collapsed rows are retained and qualified rather than reconstructed. Status labels describe observations only and never infer a provider root cause or final client-visible outcome. An observed alias-to-model pair does not infer client intent, fallback cause, account selection, or a final request outcome.

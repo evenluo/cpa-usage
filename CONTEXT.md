@@ -64,6 +64,10 @@ _Avoid_: Request event workbench, full event search, audit log
 One CPA usage record for one upstream provider call. Retries, failovers, and additional-model calls can be separate attempts that share one request ID.
 _Avoid_: Final request outcome, request-ID event
 
+**Observed Model Alias**:
+The alias label present on a CPA **Usage Attempt**, shown beside its actual model and provider. Equality with the actual model means only that no distinct alias was observed; it may be direct or producer-canonicalized.
+_Avoid_: Requested model, client intent, configured route
+
 **Output TPS**:
 The per-attempt provider-normalized output tokens generated per second after the first token; it excludes input and cached tokens.
 _Avoid_: Total token TPS, Effective TPS, Visible TPS
@@ -112,9 +116,10 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - The selected-window token surface shows canonical composition separately from provider scalar KPIs/trends. Canonical coverage is valid-structure attempts divided by all attempts in the selected window and provider scope; quality counts use valid attempts as their denominator. Only valid structure contributes canonical sums, including qualified inconsistent/unclassified quality. Missing historical facts stay unavailable. Request Evidence exposes reported canonical facts with their state and quality, nullable generation/stream flags, and independent requested/response tiers; Cost completeness remains independent.
 - Provider filtering scopes both **Selected Analysis Window** modules and **Fixed Operational Window** modules.
 - **Request Evidence** drill-down preserves the current provider scope and begins that scope on its first result page.
-- **Request Evidence** drill-down may further filter its fixed 24-hour attempt set by actual model and attempt result.
+- **Request Evidence** drill-down may further filter its fixed 24-hour attempt set by actual model, **Observed Model Alias**, and attempt result.
 - **Failure concentration** is a fixed 24-hour diagnostic reading of failed **Usage Attempts**, grouped independently by observed status family, exact status, provider, account, actual model, and public endpoint path. Missing status stays in an Unknown bucket; an observed HTTP status is evidence, not a proven root cause.
 - Selecting a **Failure concentration** breakdown opens first-page **Request Evidence** with the same provider/model/account/endpoint/status selection and the distribution's exact 24-hour snapshot window. Each breakdown is bounded to ranked rows and preserves omitted or unavailable attempts in an explicit other count.
+- **Observed model mappings** is a distinct fixed 24-hour explanation of CPA alias labels split by actual model/provider. It reports missing-alias coverage and bounded omitted attempts; alias equality is direct-or-canonicalized, not proof of a requested model. Complete mapping rows open first-page **Request Evidence** with the exact alias/model/provider and snapshot window, while Model Mix remains the selected-window actual-model view.
 - Provider filter options are derived from the **Selected Analysis Window**, not from fixed windows or a global provider catalog.
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
 - The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.

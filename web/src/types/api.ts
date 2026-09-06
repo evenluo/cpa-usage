@@ -359,11 +359,40 @@ export interface UsageEventsPage {
 export interface UsageDiagnosticSelection {
   provider?: string
   model?: string
+  modelAlias?: string
   account?: string
   endpoint?: string
   status?: string
   requestId?: string
   windowEnd?: string
+}
+
+export interface UsageModelMapping {
+  model_alias: string
+  model: string
+  provider: string
+  attempt_count: number
+  failure_count: number
+  failure_share: number
+  latency_sample_count: number
+  mean_latency_ms: number
+  total_cost: number
+  cost_available: boolean
+  cost_status: CostStatus
+}
+
+export interface UsageModelMappingDistribution {
+  window_start: string
+  window_end: string
+  total_attempts: number
+  observed_alias_attempts: number
+  missing_alias_attempts: number
+  alias_coverage: number
+  observed_total_cost: number
+  observed_cost_available: boolean
+  observed_cost_status: CostStatus
+  mappings: UsageModelMapping[]
+  other_attempts: number
 }
 
 export interface UsageFailureBreakdownItem {

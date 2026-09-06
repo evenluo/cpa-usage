@@ -283,7 +283,7 @@ func TestParseUsageEventListFilterQueryRejectsInvalidEventsPagination(t *testing
 
 func TestParseFixedUsageDiagnosticFilterQueryBuildsBoundedSelection(t *testing.T) {
 	anchor := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
-	req := httptest.NewRequest("GET", "/api/v1/usage/failures?range=24h&provider=%20claude%20&model=%20sonnet%20&account=%20auth-1%20&endpoint=%20/v1/messages%20&status=4XX", nil)
+	req := httptest.NewRequest("GET", "/api/v1/usage/failures?range=24h&provider=%20claude%20&model=%20sonnet%20&model_alias=%20sonnet-route%20&account=%20auth-1%20&endpoint=%20/v1/messages%20&status=4XX", nil)
 
 	filter, err := parseFixedUsageDiagnosticFilterQuery(req, anchor)
 	if err != nil {
@@ -292,17 +292,17 @@ func TestParseFixedUsageDiagnosticFilterQueryBuildsBoundedSelection(t *testing.T
 	if !filter.StartTime.Equal(anchor.Add(-24*time.Hour)) || !filter.EndTime.Equal(anchor) {
 		t.Fatalf("expected exact fixed 24h bounds, got %+v", filter)
 	}
-	if filter.Provider != "claude" || filter.Model != "sonnet" || filter.Account != "auth-1" || filter.Endpoint != "/v1/messages" || filter.Status != "4xx" {
+	if filter.Provider != "claude" || filter.Model != "sonnet" || filter.ModelAlias != "sonnet-route" || filter.Account != "auth-1" || filter.Endpoint != "/v1/messages" || filter.Status != "4xx" {
 		t.Fatalf("unexpected normalized diagnostic selection: %+v", filter)
 	}
-	if got := filter.repositoryFilter(); got.Provider != "claude" || got.Account != "auth-1" || got.Status != "4xx" {
+	if got := filter.repositoryFilter(); got.Provider != "claude" || got.ModelAlias != "sonnet-route" || got.Account != "auth-1" || got.Status != "4xx" {
 		t.Fatalf("unexpected repository diagnostic filter: %+v", got)
 	}
 }
 
 func TestDiagnosticSelectionIsSharedWithRequestEvidence(t *testing.T) {
 	anchor := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
-	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&page=3&page_size=10&provider=claude&model=sonnet&account=auth-1&endpoint=/v1/messages&status=429&request_id=request-42&result=failed", nil)
+	req := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&page=3&page_size=10&provider=claude&model=sonnet&model_alias=sonnet-route&account=auth-1&endpoint=/v1/messages&status=429&request_id=request-42&result=failed", nil)
 
 	filter, err := parseUsageEventListFilterQuery(req, anchor)
 	if err != nil {
@@ -312,7 +312,7 @@ func TestDiagnosticSelectionIsSharedWithRequestEvidence(t *testing.T) {
 	if got.Page != 3 || got.Offset != 20 || got.Result != "failed" {
 		t.Fatalf("unexpected evidence pagination/result: %+v", got)
 	}
-	if got.Provider != "claude" || got.Model != "sonnet" || got.Account != "auth-1" || got.Endpoint != "/v1/messages" || got.Status != "429" || got.RequestID != "request-42" {
+	if got.Provider != "claude" || got.Model != "sonnet" || got.ModelAlias != "sonnet-route" || got.Account != "auth-1" || got.Endpoint != "/v1/messages" || got.Status != "429" || got.RequestID != "request-42" {
 		t.Fatalf("expected shared diagnostic selection, got %+v", got)
 	}
 }
@@ -323,6 +323,7 @@ func TestRequestEvidenceRejectsDiagnosticSelectionOutsideFixedWindow(t *testing.
 		"/api/v1/usage/events?range=7d&account=auth-1",
 		"/api/v1/usage/events?range=custom&start=2026-09-01&end=2026-09-07&endpoint=/v1/messages",
 		"/api/v1/usage/events?range=all&request_id=request-42",
+		"/api/v1/usage/events?range=7d&model_alias=sonnet-route",
 	} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)

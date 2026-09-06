@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router"
 export interface RequestsSearch {
   provider: string
   model: string
+  modelAlias: string
   account: string
   endpoint: string
   status: string
@@ -16,6 +17,7 @@ export function normalizeRequestsSearch(search: Record<string, unknown>): Reques
   return {
     provider: typeof search.provider === "string" ? search.provider.trim() : "",
     model: typeof search.model === "string" ? search.model.trim() : "",
+    modelAlias: typeof search.modelAlias === "string" ? search.modelAlias.trim() : "",
     account: typeof search.account === "string" ? search.account.trim() : "",
     endpoint: typeof search.endpoint === "string" ? search.endpoint.trim() : "",
     status: typeof search.status === "string" ? search.status.trim().toLowerCase() : "",

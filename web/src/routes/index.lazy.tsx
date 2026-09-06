@@ -125,10 +125,14 @@ function DashboardPage() {
         failureDistributionData={dashboard.failureDistributionData}
         isFailureDistributionLoading={dashboard.isFailureDistributionLoading}
         failureDistributionError={dashboard.failureDistributionError}
+        modelMappingsData={dashboard.modelMappingsData}
+        isModelMappingsLoading={dashboard.isModelMappingsLoading}
+        modelMappingsError={dashboard.modelMappingsError}
         onRetryHeatmap={dashboard.retryHeatmap}
         onRetryRequestHealth={dashboard.retryRequestHealth}
         onRetryRequestEvidence={dashboard.retryRequestEvidence}
         onRetryFailureDistribution={dashboard.retryFailureDistribution}
+        onRetryModelMappings={dashboard.retryModelMappings}
       />
     </div>
   )

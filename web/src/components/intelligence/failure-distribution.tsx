@@ -106,6 +106,7 @@ function FailureBreakdownSection({
           const search = {
             provider,
             model: "",
+            modelAlias: "",
             account: "",
             endpoint: "",
             status: "",

@@ -35,11 +35,12 @@ type usageEventListFilter struct {
 
 type usageDiagnosticFilter struct {
 	usageTimeFilter
-	Model     string
-	Account   string
-	Endpoint  string
-	Status    string
-	RequestID string
+	Model      string
+	ModelAlias string
+	Account    string
+	Endpoint   string
+	Status     string
+	RequestID  string
 }
 
 type analyticsFilter struct {
@@ -69,6 +70,7 @@ func (f usageEventListFilter) repositoryFilter() repodto.UsageEventListFilter {
 		PageSize:       f.PageSize,
 		Offset:         f.Offset,
 		Model:          f.Model,
+		ModelAlias:     f.ModelAlias,
 		Account:        f.Account,
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,
@@ -83,6 +85,7 @@ func (f usageDiagnosticFilter) repositoryFilter() repodto.UsageDiagnosticFilter 
 	return repodto.UsageDiagnosticFilter{
 		UsageTimeScope: f.repositoryScope(),
 		Model:          f.Model,
+		ModelAlias:     f.ModelAlias,
 		Account:        f.Account,
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,
@@ -191,6 +194,7 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		}
 		filter.Provider = selection.Provider
 		filter.Model = selection.Model
+		filter.ModelAlias = selection.ModelAlias
 		filter.Account = selection.Account
 		filter.Endpoint = selection.Endpoint
 		filter.Status = selection.Status
@@ -211,7 +215,7 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 }
 
 func hasUsageDiagnosticSelection(query mapQuery) bool {
-	for _, name := range []string{"account", "endpoint", "status", "request_id", "window_end"} {
+	for _, name := range []string{"model_alias", "account", "endpoint", "status", "request_id", "window_end"} {
 		if strings.TrimSpace(query.Get(name)) != "" {
 			return true
 		}
@@ -268,6 +272,10 @@ func parseUsageDiagnosticSelection(query mapQuery) (usageDiagnosticFilter, error
 	if err != nil {
 		return usageDiagnosticFilter{}, err
 	}
+	modelAlias, err := normalizeDiagnosticValue("model_alias", query.Get("model_alias"), 128)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
 	account, err := normalizeDiagnosticValue("account", query.Get("account"), 128)
 	if err != nil {
 		return usageDiagnosticFilter{}, err
@@ -289,7 +297,7 @@ func parseUsageDiagnosticSelection(query mapQuery) (usageDiagnosticFilter, error
 	}
 	return usageDiagnosticFilter{
 		usageTimeFilter: usageTimeFilter{Provider: provider},
-		Model:           model, Account: account, Endpoint: endpoint, Status: status, RequestID: requestID,
+		Model:           model, ModelAlias: modelAlias, Account: account, Endpoint: endpoint, Status: status, RequestID: requestID,
 	}, nil
 }
 
