@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { apiFetch, apiPath, appBasePath, ApiError } from "./api"
+import { apiFetch, apiPath, appBasePath, ApiError, metricsFetch, metricsPath } from "./api"
 
 const CPA_STORAGE_PREFIX = "enc::v1::"
 const CPA_STORAGE_SEED = "cli-proxy-api-webui::secure-storage"
@@ -64,6 +64,20 @@ describe("apiPath", () => {
 
     window.__APP_BASE_PATH__ = "/cpa-usage/"
     expect(apiPath("/usage/identities/page")).toBe("/cpa-usage/api/v1/usage/identities/page")
+  })
+})
+
+describe("metricsPath", () => {
+  afterEach(() => {
+    delete window.__APP_BASE_PATH__
+  })
+
+  it("uses the app base path without entering the protected API prefix", () => {
+    delete window.__APP_BASE_PATH__
+    expect(metricsPath()).toBe("/metrics")
+
+    window.__APP_BASE_PATH__ = "/usage/"
+    expect(metricsPath()).toBe("/usage/metrics")
   })
 })
 
@@ -233,5 +247,28 @@ describe("apiFetch", () => {
     expect(error).toBeInstanceOf(TypeError)
     expect(error).not.toBeInstanceOf(ApiError)
     expect((error as Error).message).toBe("Failed to fetch")
+  })
+})
+
+describe("metricsFetch", () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    delete window.__APP_BASE_PATH__
+    vi.stubGlobal("fetch", fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    delete window.__APP_BASE_PATH__
+  })
+
+  it("reads the public metrics snapshot without issuing a sync or sending session headers", async () => {
+    window.__APP_BASE_PATH__ = "/usage"
+    fetchMock.mockResolvedValueOnce(jsonResponse({ redis_inbox_pending: 2 }))
+
+    await expect(metricsFetch<{ redis_inbox_pending: number }>()).resolves.toEqual({ redis_inbox_pending: 2 })
+    expect(fetchMock).toHaveBeenCalledWith("/usage/metrics")
   })
 })

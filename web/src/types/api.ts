@@ -350,6 +350,18 @@ export interface StatusPayload {
   }
 }
 
+export interface MetricsPayload {
+  uptime_seconds?: number
+  poller_running?: boolean
+  poller_sync_running?: boolean
+  redis_inbox_pending?: number
+  redis_events_processed_total?: number
+  redis_events_processed_batches_total?: number
+  redis_events_last_processed_at?: string
+  redis_events_processing_rate_per_minute?: number
+  db_unavailable?: boolean
+}
+
 export interface AuthSessionPayload {
   authenticated: boolean
 }

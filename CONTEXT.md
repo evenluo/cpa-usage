@@ -130,6 +130,7 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - Backup inspection and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.
 - Logout should leave the user at the login surface rather than keeping them inside a protected workspace.
 - A successful manual sync should refresh usage, evidence, identity, and reference-data read models in the frontend.
+- Operations keeps manual sync state separate from local ingestion observations. Pending inbox rows, the last observed nonempty processing batch, scrape-derived processing rate, and runner state do not establish upstream freshness or end-to-end ingestion health; a missing observation is not a zero or a health verdict.
 - Production rollout for **Usage Intelligence** refinements updates the `cpa-usage` service on `/usage` and must leave the CPA root service intact.
 
 ## Example dialogue

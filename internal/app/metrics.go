@@ -19,7 +19,7 @@ type metricsSnapshotInput struct {
 	eventsProcessedTotal   int64
 	eventsProcessedBatches int64
 	eventsLastProcessedAt  time.Time
-	eventsRatePerMinute    float64
+	eventsRatePerMinute    *float64
 	dbUnavailable          bool
 }
 
@@ -55,23 +55,23 @@ func buildMetricsSnapshot(input metricsSnapshotInput) map[string]any {
 	if !input.eventsLastProcessedAt.IsZero() {
 		snapshot["redis_events_last_processed_at"] = input.eventsLastProcessedAt.UTC()
 	}
-	if input.eventsRatePerMinute > 0 {
-		snapshot["redis_events_processing_rate_per_minute"] = input.eventsRatePerMinute
+	if input.eventsRatePerMinute != nil {
+		snapshot["redis_events_processing_rate_per_minute"] = *input.eventsRatePerMinute
 	}
 	return snapshot
 }
 
-// eventsPerMinute 用两次快照的累计事件数增量除以间隔分钟计算处理速率；
-// 首采样或计数回退时返回 0。
-func eventsPerMinute(previousAt time.Time, previousTotal int64, now time.Time, currentTotal int64) float64 {
+// eventsPerMinute 用两次快照的累计事件数增量除以间隔分钟计算处理速率。
+// 首采样、计数回退或无正间隔时没有可用速率；已完成的相邻采样可以产生真实的 0。
+func eventsPerMinute(previousAt time.Time, previousTotal int64, now time.Time, currentTotal int64) (float64, bool) {
 	if previousAt.IsZero() || currentTotal < previousTotal {
-		return 0
+		return 0, false
 	}
 	elapsedMinutes := now.Sub(previousAt).Minutes()
 	if elapsedMinutes <= 0 {
-		return 0
+		return 0, false
 	}
-	return float64(currentTotal-previousTotal) / elapsedMinutes
+	return float64(currentTotal-previousTotal) / elapsedMinutes, true
 }
 
 // MetricsSnapshot 实现 api.MetricsProvider：从后台 runner 与 repository 读模型
@@ -114,12 +114,15 @@ func (a *App) MetricsSnapshot(ctx context.Context) (map[string]any, error) {
 	}
 
 	a.metricsMu.Lock()
-	input.eventsRatePerMinute = eventsPerMinute(
+	rate, rateAvailable := eventsPerMinute(
 		a.lastMetricsSampleAt,
 		a.lastMetricsEventsTotal,
 		input.now,
 		input.eventsProcessedTotal,
 	)
+	if rateAvailable {
+		input.eventsRatePerMinute = &rate
+	}
 	a.lastMetricsSampleAt = input.now
 	a.lastMetricsEventsTotal = input.eventsProcessedTotal
 	a.metricsMu.Unlock()

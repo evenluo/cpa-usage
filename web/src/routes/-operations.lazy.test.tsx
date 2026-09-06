@@ -6,7 +6,7 @@ vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => vi.fn(),
 }))
 
-import { RollupCoverage } from "./operations.lazy"
+import { IngestionObservations, RollupCoverage } from "./operations.lazy"
 
 afterEach(cleanup)
 
@@ -25,5 +25,33 @@ describe("Operations rollup coverage", () => {
     expect(screen.getByText(/Target/)).toBeInTheDocument()
     expect(screen.queryByText(/usage sync/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/healthy/i)).not.toBeInTheDocument()
+  })
+})
+
+describe("Operations ingestion observations", () => {
+  it("keeps manual sync separate from populated local observations", () => {
+    render(<IngestionObservations
+      isLoading={false}
+      isError={false}
+      metrics={{
+        redis_inbox_pending: 2,
+        redis_events_last_processed_at: "2026-09-07T01:02:03Z",
+        redis_events_processing_rate_per_minute: 0,
+        poller_running: false,
+      }}
+    />)
+
+    expect(screen.getByText("Ingestion observations")).toBeInTheDocument()
+    expect(screen.getByText("0 events/min")).toBeInTheDocument()
+    expect(screen.getByText("Runner idle")).toBeInTheDocument()
+    expect(screen.getByText(/do not establish upstream freshness/i)).toBeInTheDocument()
+    expect(screen.queryByText(/last manual sync/i)).not.toBeInTheDocument()
+  })
+
+  it("makes a failed metrics request explicit", () => {
+    render(<IngestionObservations isLoading={false} isError metrics={undefined} />)
+
+    expect(screen.getByText("Ingestion observations unavailable")).toBeInTheDocument()
+    expect(screen.getByText(/runtime metrics request failed/i)).toBeInTheDocument()
   })
 })

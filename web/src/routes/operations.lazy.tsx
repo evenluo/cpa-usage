@@ -6,9 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/components/providers/toast-provider"
 import { useAuth, useLogout } from "@/hooks/useAuth"
-import { useManualSync, useStatus } from "@/hooks/useStatus"
+import { useManualSync, useMetrics, useStatus } from "@/hooks/useStatus"
 import { formatDate } from "@/lib/format"
-import type { StatusPayload } from "@/types/api"
+import { deriveIngestionObservations } from "@/features/operations/ingestion-observations"
+import type { MetricsPayload, StatusPayload } from "@/types/api"
 
 export const Route = createLazyFileRoute("/operations")({
   component: OperationsPage,
@@ -57,8 +58,53 @@ export function RollupCoverage({ status }: { status?: StatusPayload }) {
   )
 }
 
+export function IngestionObservations({ metrics, isLoading, isError }: {
+  metrics?: MetricsPayload
+  isLoading: boolean
+  isError: boolean
+}) {
+  if (isLoading) {
+    return <Skeleton className="h-40 w-full" />
+  }
+  if (isError || !metrics) {
+    return (
+      <div className="rounded-lg border border-border p-3">
+        <p className="text-sm font-semibold">Ingestion observations unavailable</p>
+        <p className="mt-1 text-xs text-muted-foreground">The runtime metrics request failed. Manual sync state remains separate.</p>
+      </div>
+    )
+  }
+
+  const observations = deriveIngestionObservations(metrics)
+  const rows = [
+    ["Local inbox pending", observations.backlog],
+    ["Last observed nonempty processing", observations.lastProcessed],
+    ["Observed processing rate", observations.processingRate],
+    ["Observed runtime state", observations.runtime],
+  ] as const
+
+  return (
+    <section aria-labelledby="ingestion-observations-heading">
+      <div>
+        <h2 id="ingestion-observations-heading" className="text-sm font-semibold">Ingestion observations</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Local observations only; they do not establish upstream freshness or end-to-end ingestion health.</p>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {rows.map(([title, observation]) => (
+          <div key={title} className="rounded-lg border border-border p-3">
+            <p className="text-xs font-medium text-muted-foreground">{title}</p>
+            <p className="mt-1 text-sm font-semibold">{observation.label}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{observation.detail}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function OperationsPage() {
   const { data: status, isLoading } = useStatus()
+  const metrics = useMetrics()
   const { data: auth } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
@@ -122,6 +168,12 @@ function OperationsPage() {
                 )}
 
                 <RollupCoverage status={status} />
+
+                <IngestionObservations
+                  metrics={metrics.data}
+                  isLoading={metrics.isLoading}
+                  isError={metrics.isError}
+                />
 
                 <Button
                   variant="outline"
