@@ -71,6 +71,7 @@ Do not run full runtime verification for docs-only changes unless the change als
 
 ## Current Operational Contracts
 
+- [CPA data compatibility](../design/cpa-data-compatibility.md) owns supported producer fields, future-only observations, additive SQLite upgrades, and accounting rollup reconstruction. A successful migration does not establish completed rollup coverage or a pre-upgrade backup.
 - The repository-root `Makefile` is the public development and verification Interface. `make dev-app` is the integrated UI/API path; `make dev-frontend` is isolated HMR without an API proxy.
 - Auth-file model support uses one protected, explicit selected-scope read. Its request-scoped fan-out is bounded and leaves failures visible; it does not add persisted model state, a catalog worker, automatic retry, or page-load provider calls.
 - `cmd/server` and `internal/app` own the bounded process lifecycle from SIGINT/SIGTERM through HTTP drain, background-runner cancellation and wait, then database and log closure.
