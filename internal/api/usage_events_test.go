@@ -4,15 +4,20 @@ import (
 	"context"
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"cpa-usage/internal/config"
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/redact"
+	"cpa-usage/internal/repository"
 	"cpa-usage/internal/repository/dto"
+	"cpa-usage/internal/service"
 )
 
 func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T) {
@@ -168,6 +173,68 @@ func BenchmarkEncodeUsageEventsCSVAtLimit(b *testing.B) {
 		}
 		if len(body) == 0 {
 			b.Fatal("expected CSV body")
+		}
+	}
+}
+
+func BenchmarkUsageEventsExportHandlerAtLimit(b *testing.B) {
+	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(b.TempDir(), "usage-export-benchmark.db")})
+	if err != nil {
+		b.Fatalf("open benchmark database: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		b.Fatalf("open benchmark sql database: %v", err)
+	}
+	b.Cleanup(func() { _ = sqlDB.Close() })
+
+	const rowCount = usageEventsCSVExportLimit
+	observedAt := time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC)
+	events := make([]entities.UsageEvent, 0, rowCount)
+	aliases := make([]entities.KeyAlias, 0, rowCount)
+	for index := 0; index < rowCount; index++ {
+		identity := fmt.Sprintf("sk-export-%04d", index)
+		events = append(events, entities.UsageEvent{
+			EventKey: fmt.Sprintf("export-event-%04d", index), Timestamp: observedAt, AuthType: entities.UsageIdentityAuthTypeNameAPIKey,
+			Source: identity, AuthIndex: "benchmark-account", Model: "benchmark-model", InputTokens: 1, OutputTokens: 2, TotalTokens: 3,
+		})
+		aliases = append(aliases, entities.KeyAlias{
+			AuthType: entities.UsageIdentityAuthTypeAIProvider, Identity: identity, Alias: fmt.Sprintf("Alias %04d", index), CreatedAt: observedAt, UpdatedAt: observedAt,
+		})
+	}
+	if err := db.CreateInBatches(&events, 400).Error; err != nil {
+		b.Fatalf("seed benchmark events: %v", err)
+	}
+	if err := db.CreateInBatches(&aliases, 400).Error; err != nil {
+		b.Fatalf("seed benchmark aliases: %v", err)
+	}
+	if err := db.Create(&entities.UsageIdentity{
+		Name: "Benchmark account", AuthType: entities.UsageIdentityAuthTypeAIProvider, AuthTypeName: entities.UsageIdentityAuthTypeNameAPIKey,
+		Identity: "benchmark-account", Provider: "Benchmark provider",
+	}).Error; err != nil {
+		b.Fatalf("seed benchmark usage identity: %v", err)
+	}
+
+	router := NewRouter(nil, nil, repository.NewUsageReader(db), nil, AuthConfig{}, nil, "", OptionalProviders{
+		UsageIdentity: repository.NewUsageIdentityReader(db),
+		KeyAlias:      service.NewKeyAliasService(db),
+	})
+	requestPath := "/api/v1/usage/events/export?range=24h&window_end=2026-09-07T12:00:00Z"
+	warmResponse := httptest.NewRecorder()
+	router.ServeHTTP(warmResponse, httptest.NewRequest(http.MethodGet, requestPath, nil))
+	if warmResponse.Code != http.StatusOK || !strings.Contains(warmResponse.Body.String(), "Alias 0000") || strings.Contains(warmResponse.Body.String(), "sk-export-0000") {
+		b.Fatalf("warm export did not exercise safe alias enrichment: status=%d bytes=%d", warmResponse.Code, warmResponse.Body.Len())
+	}
+
+	b.ReportMetric(rowCount, "export_rows")
+	b.ReportMetric(rowCount, "distinct_api_keys")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for index := 0; index < b.N; index++ {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, requestPath, nil))
+		if response.Code != http.StatusOK || response.Body.Len() == 0 {
+			b.Fatalf("export handler failed: status=%d bytes=%d", response.Code, response.Body.Len())
 		}
 	}
 }
