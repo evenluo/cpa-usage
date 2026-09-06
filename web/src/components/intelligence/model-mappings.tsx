@@ -69,7 +69,11 @@ function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: str
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold">{row.model_alias}</p>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {row.model_alias === row.model ? "No distinct alias observed · Direct or canonicalized" : `Observed remap → ${row.model || "Model unavailable"}`}
+          {!row.model
+            ? "Actual model unavailable"
+            : row.model_alias === row.model
+              ? "No distinct alias observed · Direct or canonicalized"
+              : `Observed remap → ${row.model}`}
         </p>
         <p className="mt-1 truncate text-xs text-muted-foreground">{row.provider || "Provider unavailable"}</p>
       </div>

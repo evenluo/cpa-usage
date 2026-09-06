@@ -211,7 +211,7 @@ const publicUsageEndpointSQL = `TRIM(CASE
 func applyUsageDiagnosticQuery(query *gorm.DB, filter dto.UsageDiagnosticFilter) *gorm.DB {
 	query = applyUsageProviderFilter(applyUsageQueryWindow(query, filter.UsageTimeScope), filter.UsageTimeScope)
 	if model := strings.TrimSpace(filter.Model); model != "" {
-		query = query.Where("TRIM(model) = ?", model)
+		query = query.Where("TRIM(usage_events.model) = ?", model)
 	}
 	if modelAlias := strings.TrimSpace(filter.ModelAlias); modelAlias != "" {
 		query = query.Where("TRIM(model_alias) = ?", modelAlias)

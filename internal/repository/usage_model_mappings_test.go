@@ -53,18 +53,18 @@ func TestUsageModelMappingsPreserveObservedPopulationSplitsAndEvidenceParity(t *
 		t.Fatalf("unexpected first mapping: %+v", first)
 	}
 
-	selection := dto.UsageDiagnosticFilter{UsageTimeScope: filter.UsageTimeScope, ModelAlias: "route-a"}
+	selection := dto.UsageDiagnosticFilter{UsageTimeScope: filter.UsageTimeScope, Model: "actual-a", ModelAlias: "route-a"}
 	mappings, err := BuildUsageModelMappingsWithFilter(context.Background(), db, selection)
 	if err != nil {
 		t.Fatalf("build selected mappings: %v", err)
 	}
 	evidence, err := ListUsageEventsWithFilter(context.Background(), db, dto.UsageEventListFilter{
-		UsageTimeScope: selection.UsageTimeScope, ModelAlias: selection.ModelAlias, Page: 1, PageSize: 10,
+		UsageTimeScope: selection.UsageTimeScope, Model: selection.Model, ModelAlias: selection.ModelAlias, Page: 1, PageSize: 10,
 	})
 	if err != nil {
 		t.Fatalf("list selected evidence: %v", err)
 	}
-	if mappings.TotalAttempts != 3 || mappings.ObservedAliasAttempts != 3 || evidence.TotalCount != 3 || len(evidence.Events) != 3 {
+	if mappings.TotalAttempts != 2 || mappings.ObservedAliasAttempts != 2 || evidence.TotalCount != 2 || len(evidence.Events) != 2 {
 		t.Fatalf("expected aggregate/evidence parity for exact observed alias, mappings=%+v evidence=%+v", mappings, evidence)
 	}
 }

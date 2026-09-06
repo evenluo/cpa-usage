@@ -30,4 +30,17 @@ describe("ModelMappings", () => {
     render(<ModelMappings data={{ ...fixture, observed_alias_attempts: 0, missing_alias_attempts: 6, alias_coverage: 0, observed_total_cost: 0, mappings: [] } as UsageModelMappingDistribution} isLoading={false} error={null} onRetry={vi.fn()} />)
     expect(screen.getByText("Observed Cost: No observed alias population")).toBeInTheDocument()
   })
+
+  it("does not infer a remap when the actual model is unavailable", () => {
+    const missingModel = {
+      ...fixture,
+      mappings: [{ ...fixture.mappings[0], model: "" }],
+    } as UsageModelMappingDistribution
+
+    render(<ModelMappings data={missingModel} isLoading={false} error={null} onRetry={vi.fn()} />)
+
+    expect(screen.getByText("Actual model unavailable")).toBeInTheDocument()
+    expect(screen.queryByText(/Observed remap/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole("link")).not.toBeInTheDocument()
+  })
 })
