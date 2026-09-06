@@ -4,7 +4,8 @@ import { useEvents } from "@/hooks/useEvents"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { useFailureDistribution } from "@/hooks/useFailureDistribution"
 import { useModelMappings } from "@/hooks/useModelMappings"
-import type { AnalyticsCoreResponse, TimeGranularity, TimeRange, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
+import { useAttemptPerformance } from "@/hooks/useAttemptPerformance"
+import type { AnalyticsCoreResponse, TimeGranularity, TimeRange, UsageAttemptPerformance, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
 import { buildUsageIntelligenceLoadPlan, type UsageIntelligenceLoadPlan } from "./load-plan"
 import { useVisibilityRefresh } from "./refresh"
 import { buildUsageDashboardSurfaces, type UsageDashboardSurfaces } from "./surfaces"
@@ -44,12 +45,16 @@ export interface UseUsageDashboardResult {
   modelMappingsData?: UsageModelMappingDistribution
   isModelMappingsLoading: boolean
   modelMappingsError: unknown
+  attemptPerformanceData?: UsageAttemptPerformance
+  isAttemptPerformanceLoading: boolean
+  attemptPerformanceError: unknown
   retryCore: () => void
   retryHeatmap: () => void
   retryRequestHealth: () => void
   retryRequestEvidence: () => void
   retryFailureDistribution: () => void
   retryModelMappings: () => void
+  retryAttemptPerformance: () => void
   refreshDashboard: () => void
 }
 
@@ -144,10 +149,16 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     refetch: refetchModelMappings,
     error: modelMappingsError,
   } = useModelMappings(fixedWindow.modelMappings.provider)
+  const {
+    data: attemptPerformanceData,
+    isLoading: isAttemptPerformanceLoading,
+    refetch: refetchAttemptPerformance,
+    error: attemptPerformanceError,
+  } = useAttemptPerformance(fixedWindow.attemptPerformance.provider)
 
   const refreshDashboard = useCallback(() => {
-    void Promise.allSettled([refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution(), refetchModelMappings()])
-  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappings])
+    void Promise.allSettled([refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution(), refetchModelMappings(), refetchAttemptPerformance()])
+  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappings, refetchAttemptPerformance])
   useVisibilityRefresh(refreshDashboard)
 
   const viewModel = useMemo(
@@ -206,6 +217,9 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     modelMappingsData,
     isModelMappingsLoading,
     modelMappingsError,
+    attemptPerformanceData,
+    isAttemptPerformanceLoading,
+    attemptPerformanceError,
     retryCore: () => {
       void refetchCoreAnalytics()
     },
@@ -223,6 +237,9 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     },
     retryModelMappings: () => {
       void refetchModelMappings()
+    },
+    retryAttemptPerformance: () => {
+      void refetchAttemptPerformance()
     },
     refreshDashboard,
   }

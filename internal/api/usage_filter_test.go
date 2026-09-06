@@ -283,7 +283,7 @@ func TestParseUsageEventListFilterQueryRejectsInvalidEventsPagination(t *testing
 
 func TestParseFixedUsageDiagnosticFilterQueryBuildsBoundedSelection(t *testing.T) {
 	anchor := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
-	req := httptest.NewRequest("GET", "/api/v1/usage/failures?range=24h&provider=%20claude%20&model=%20sonnet%20&model_alias=%20sonnet-route%20&account=%20auth-1%20&endpoint=%20/v1/messages%20&status=4XX", nil)
+	req := httptest.NewRequest("GET", "/api/v1/usage/failures?range=24h&provider=%20claude%20&model=%20sonnet%20&model_alias=%20sonnet-route%20&account=%20auth-1%20&endpoint=%20/v1/messages%20&status=4XX&min_latency_ms=500", nil)
 
 	filter, err := parseFixedUsageDiagnosticFilterQuery(req, anchor)
 	if err != nil {
@@ -295,7 +295,10 @@ func TestParseFixedUsageDiagnosticFilterQueryBuildsBoundedSelection(t *testing.T
 	if filter.Provider != "claude" || filter.Model != "sonnet" || filter.ModelAlias != "sonnet-route" || filter.Account != "auth-1" || filter.Endpoint != "/v1/messages" || filter.Status != "4xx" {
 		t.Fatalf("unexpected normalized diagnostic selection: %+v", filter)
 	}
-	if got := filter.repositoryFilter(); got.Provider != "claude" || got.ModelAlias != "sonnet-route" || got.Account != "auth-1" || got.Status != "4xx" {
+	if filter.MinLatencyMS == nil || *filter.MinLatencyMS != 500 {
+		t.Fatalf("expected normalized inclusive latency threshold, got %+v", filter)
+	}
+	if got := filter.repositoryFilter(); got.Provider != "claude" || got.ModelAlias != "sonnet-route" || got.Account != "auth-1" || got.Status != "4xx" || got.MinLatencyMS == nil || *got.MinLatencyMS != 500 {
 		t.Fatalf("unexpected repository diagnostic filter: %+v", got)
 	}
 }
@@ -365,6 +368,11 @@ func TestParseFixedUsageDiagnosticFilterQueryRejectsUnboundedOrInvalidSelections
 		"/api/v1/usage/failures?endpoint=/v1/messages%3Ftoken%3Dsecret",
 		"/api/v1/usage/failures?endpoint=/v1/messages%23fragment",
 		"/api/v1/usage/failures?endpoint=/v1/%0Amessages",
+		"/api/v1/usage/failures?min_latency_ms=0",
+		"/api/v1/usage/failures?min_latency_ms=-1",
+		"/api/v1/usage/failures?min_latency_ms=0500",
+		"/api/v1/usage/failures?min_latency_ms=1.5",
+		"/api/v1/usage/failures?min_latency_ms=9223372036854775808",
 	}
 	for _, path := range tests {
 		t.Run(path, func(t *testing.T) {
@@ -373,6 +381,23 @@ func TestParseFixedUsageDiagnosticFilterQueryRejectsUnboundedOrInvalidSelections
 				t.Fatalf("expected %s to be rejected", path)
 			}
 		})
+	}
+}
+
+func TestSlowAttemptSelectionRoundTripsIntoEvidence(t *testing.T) {
+	anchor := time.Date(2026, 9, 7, 12, 0, 0, 123456789, time.UTC)
+	performanceRequest := httptest.NewRequest("GET", "/api/v1/usage/performance?range=24h&provider=claude&model=sonnet&account=auth-1&min_latency_ms=500", nil)
+	performanceFilter, err := parseFixedUsageDiagnosticFilterQuery(performanceRequest, anchor)
+	if err != nil {
+		t.Fatalf("parse performance filter: %v", err)
+	}
+	evidenceRequest := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&provider=claude&model=sonnet&account=auth-1&min_latency_ms=500&window_end="+url.QueryEscape(performanceFilter.EndTime.Format(time.RFC3339Nano)), nil)
+	evidenceFilter, err := parseUsageEventListFilterQuery(evidenceRequest, anchor.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("parse evidence filter: %v", err)
+	}
+	if evidenceFilter.MinLatencyMS == nil || *evidenceFilter.MinLatencyMS != 500 || !evidenceFilter.EndTime.Equal(*performanceFilter.EndTime) || !evidenceFilter.StartTime.Equal(*performanceFilter.StartTime) {
+		t.Fatalf("slow selection lost threshold or frozen window: performance=%+v evidence=%+v", performanceFilter, evidenceFilter)
 	}
 }
 

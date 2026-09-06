@@ -37,6 +37,10 @@ func (r UsageReader) GetUsageModelMappings(ctx context.Context, filter dto.Usage
 	return BuildUsageModelMappingsWithFilter(ctx, r.db, filter)
 }
 
+func (r UsageReader) GetUsageAttemptPerformance(ctx context.Context, filter dto.UsageDiagnosticFilter) (*dto.UsageAttemptPerformanceRecord, error) {
+	return BuildUsageAttemptPerformanceWithFilter(ctx, r.db, filter)
+}
+
 func (r UsageReader) ListUsageEventFilterOptions(ctx context.Context, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	return ListUsageEventFilterOptionsWithFilter(ctx, r.db, filter)
 }

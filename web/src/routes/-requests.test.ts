@@ -52,8 +52,8 @@ describe("requests search validation", () => {
   })
 
   it("preserves diagnostic values for server-owned validation", () => {
-    expect(normalizeRequestsSearch({ account: " auth-1 ", endpoint: " /v1/messages ", status: " 4XX " })).toEqual({
-      provider: "", model: "", modelAlias: "", account: "auth-1", endpoint: "/v1/messages", status: "4xx", requestId: "", windowEnd: "", result: "",
+    expect(normalizeRequestsSearch({ account: " auth-1 ", endpoint: " /v1/messages ", status: " 4XX ", minLatencyMS: " 500 " })).toEqual({
+      provider: "", model: "", modelAlias: "", account: "auth-1", endpoint: "/v1/messages", status: "4xx", requestId: "", minLatencyMS: "500", windowEnd: "", result: "",
     })
   })
 

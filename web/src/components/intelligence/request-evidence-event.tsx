@@ -90,7 +90,7 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
 }
 
 function formatOptionalBoolean(value: boolean | null | undefined): string {
-  return typeof value === "boolean" ? (value ? "Yes" : "No") : "-"
+  return typeof value === "boolean" ? (value ? "Yes" : "No") : "Unknown"
 }
 
 function formatOptionalNumber(value: number | null | undefined): string {

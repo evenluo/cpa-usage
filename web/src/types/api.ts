@@ -364,6 +364,7 @@ export interface UsageDiagnosticSelection {
   endpoint?: string
   status?: string
   requestId?: string
+  minLatencyMS?: string
   windowEnd?: string
 }
 
@@ -417,6 +418,60 @@ export interface UsageFailureDistribution {
   accounts: UsageFailureBreakdown
   models: UsageFailureBreakdown
   endpoints: UsageFailureBreakdown
+}
+
+export interface UsagePercentileDistribution {
+  population_count: number
+  sample_count: number
+  coverage: number | null
+  p50: number | null
+  p95: number | null
+}
+
+export interface UsageExecutionPopulation {
+  generating_streaming: number
+  non_generating: number
+  non_streaming: number
+  unknown: number
+}
+
+export interface UsageAttemptPerformanceSummary {
+  attempt_count?: number
+  successful_attempts: number
+  failed_attempts: number
+  successful_execution: UsageExecutionPopulation
+  latency_ms: {
+    successful: UsagePercentileDistribution
+    failed: UsagePercentileDistribution
+  }
+  ttft_ms: {
+    generating_streaming: UsagePercentileDistribution
+    unknown_execution: UsagePercentileDistribution
+  }
+  output_tps: {
+    generating_streaming: UsagePercentileDistribution
+    unknown_execution: UsagePercentileDistribution
+  }
+}
+
+export interface UsagePerformanceBreakdownItem extends UsageAttemptPerformanceSummary {
+  value: string
+  label: string
+  attempt_count: number
+}
+
+export interface UsagePerformanceBreakdown {
+  items: UsagePerformanceBreakdownItem[]
+  other_count: number
+}
+
+export interface UsageAttemptPerformance extends UsageAttemptPerformanceSummary {
+  window_start: string
+  window_end: string
+  total_attempts: number
+  providers: UsagePerformanceBreakdown
+  models: UsagePerformanceBreakdown
+  accounts: UsagePerformanceBreakdown
 }
 
 export interface PricingEntry {

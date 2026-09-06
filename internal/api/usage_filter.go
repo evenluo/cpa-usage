@@ -35,12 +35,13 @@ type usageEventListFilter struct {
 
 type usageDiagnosticFilter struct {
 	usageTimeFilter
-	Model      string
-	ModelAlias string
-	Account    string
-	Endpoint   string
-	Status     string
-	RequestID  string
+	Model        string
+	ModelAlias   string
+	Account      string
+	Endpoint     string
+	Status       string
+	RequestID    string
+	MinLatencyMS *int64
 }
 
 type analyticsFilter struct {
@@ -75,6 +76,7 @@ func (f usageEventListFilter) repositoryFilter() repodto.UsageEventListFilter {
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,
 		RequestID:      f.RequestID,
+		MinLatencyMS:   f.MinLatencyMS,
 		Source:         f.Source,
 		AuthIndex:      f.AuthIndex,
 		Result:         f.Result,
@@ -90,6 +92,7 @@ func (f usageDiagnosticFilter) repositoryFilter() repodto.UsageDiagnosticFilter 
 		Endpoint:       f.Endpoint,
 		Status:         f.Status,
 		RequestID:      f.RequestID,
+		MinLatencyMS:   f.MinLatencyMS,
 	}
 }
 
@@ -199,6 +202,7 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		filter.Endpoint = selection.Endpoint
 		filter.Status = selection.Status
 		filter.RequestID = selection.RequestID
+		filter.MinLatencyMS = selection.MinLatencyMS
 	} else {
 		// Preserve the existing event-list contract when no diagnostic-only
 		// selection is present; model/provider historically only trim whitespace.
@@ -215,7 +219,7 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 }
 
 func hasUsageDiagnosticSelection(query mapQuery) bool {
-	for _, name := range []string{"model_alias", "account", "endpoint", "status", "request_id", "window_end"} {
+	for _, name := range []string{"model_alias", "account", "endpoint", "status", "request_id", "min_latency_ms", "window_end"} {
 		if strings.TrimSpace(query.Get(name)) != "" {
 			return true
 		}
@@ -295,9 +299,13 @@ func parseUsageDiagnosticSelection(query mapQuery) (usageDiagnosticFilter, error
 	if err != nil {
 		return usageDiagnosticFilter{}, err
 	}
+	minLatencyMS, err := normalizeDiagnosticMinLatency(query.Get("min_latency_ms"))
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
 	return usageDiagnosticFilter{
 		usageTimeFilter: usageTimeFilter{Provider: provider},
-		Model:           model, ModelAlias: modelAlias, Account: account, Endpoint: endpoint, Status: status, RequestID: requestID,
+		Model:           model, ModelAlias: modelAlias, Account: account, Endpoint: endpoint, Status: status, RequestID: requestID, MinLatencyMS: minLatencyMS,
 	}, nil
 }
 
@@ -331,6 +339,18 @@ func normalizeDiagnosticStatus(value string) (string, error) {
 		return "", fmt.Errorf("invalid status %q", value)
 	}
 	return value, nil
+}
+
+func normalizeDiagnosticMinLatency(value string) (*int64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	threshold, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || threshold <= 0 || strconv.FormatInt(threshold, 10) != value {
+		return nil, fmt.Errorf("invalid min_latency_ms %q", value)
+	}
+	return &threshold, nil
 }
 
 func parseUsageWindowQuery(req *http.Request, anchor time.Time) (usageWindow, error) {

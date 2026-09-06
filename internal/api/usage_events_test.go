@@ -13,20 +13,23 @@ import (
 )
 
 type usageEventsStub struct {
-	events             []dto.UsageEventRecord
-	eventsPage         *dto.UsageEventsPageRecord
-	eventFilterOptions *dto.UsageEventFilterOptionsRecord
-	err                error
-	lastFilter         dto.UsageEventListFilter
-	lastOptionsFilter  dto.UsageTimeScope
-	filterCalls        int
-	filterOptionCalls  int
-	failureRecord      *dto.UsageFailureDistributionRecord
-	lastFailureFilter  dto.UsageDiagnosticFilter
-	failureCalls       int
-	mappingRecord      *dto.UsageModelMappingDistributionRecord
-	lastMappingFilter  dto.UsageDiagnosticFilter
-	mappingCalls       int
+	events                []dto.UsageEventRecord
+	eventsPage            *dto.UsageEventsPageRecord
+	eventFilterOptions    *dto.UsageEventFilterOptionsRecord
+	err                   error
+	lastFilter            dto.UsageEventListFilter
+	lastOptionsFilter     dto.UsageTimeScope
+	filterCalls           int
+	filterOptionCalls     int
+	failureRecord         *dto.UsageFailureDistributionRecord
+	lastFailureFilter     dto.UsageDiagnosticFilter
+	failureCalls          int
+	mappingRecord         *dto.UsageModelMappingDistributionRecord
+	lastMappingFilter     dto.UsageDiagnosticFilter
+	mappingCalls          int
+	performanceRecord     *dto.UsageAttemptPerformanceRecord
+	lastPerformanceFilter dto.UsageDiagnosticFilter
+	performanceCalls      int
 }
 
 func (s *usageEventsStub) GetUsageOverview(context.Context, dto.UsageOverviewFilter) (*dto.UsageOverviewRecord, error) {
@@ -64,6 +67,15 @@ func (s *usageEventsStub) GetUsageModelMappings(_ context.Context, filter dto.Us
 	return &dto.UsageModelMappingDistributionRecord{}, s.err
 }
 
+func (s *usageEventsStub) GetUsageAttemptPerformance(_ context.Context, filter dto.UsageDiagnosticFilter) (*dto.UsageAttemptPerformanceRecord, error) {
+	s.lastPerformanceFilter = filter
+	s.performanceCalls++
+	if s.performanceRecord != nil {
+		return s.performanceRecord, s.err
+	}
+	return &dto.UsageAttemptPerformanceRecord{}, s.err
+}
+
 func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	s.lastOptionsFilter = filter
 	s.filterOptionCalls++
@@ -94,7 +106,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	accountingVersion := int64(2)
 	quality := "complete"
 	generate := true
-	stream := true
+	stream := false
 	requestTier := "priority"
 	responseTier := "default"
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
@@ -168,7 +180,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 		t.Fatalf("expected HTTP projection to use AttemptFacts Output TPS, got %s", body)
 	}
 	for _, fact := range []string{
-		`"attempt_facts":{`, `"generate":true`, `"stream":true`, `"request_service_tier":"priority"`, `"response_service_tier":"default"`,
+		`"attempt_facts":{`, `"generate":true`, `"stream":false`, `"request_service_tier":"priority"`, `"response_service_tier":"default"`,
 		`"accounting":{"state":"valid"`, `"accounting_version":2`, `"schema_version":2`, `"quality":"complete"`,
 		`"input":{"total_tokens":10,"uncached_tokens":6,"cache_read_tokens":0,"cache_write_tokens":4}`,
 		`"output":{"total_tokens":4,"non_reasoning_tokens":2,"reasoning_tokens":2}`, `"unclassified_tokens":0`,

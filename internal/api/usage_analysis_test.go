@@ -39,6 +39,10 @@ func (s *usageAnalysisStub) GetUsageModelMappings(context.Context, dto.UsageDiag
 	return &dto.UsageModelMappingDistributionRecord{}, nil
 }
 
+func (s *usageAnalysisStub) GetUsageAttemptPerformance(context.Context, dto.UsageDiagnosticFilter) (*dto.UsageAttemptPerformanceRecord, error) {
+	return &dto.UsageAttemptPerformanceRecord{}, nil
+}
+
 func (s *usageAnalysisStub) ListUsageEventFilterOptions(context.Context, dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {
 	return nil, nil
 }

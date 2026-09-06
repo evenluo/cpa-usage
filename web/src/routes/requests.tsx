@@ -8,13 +8,14 @@ export interface RequestsSearch {
   endpoint: string
   status: string
   requestId: string
+  minLatencyMS?: string
   windowEnd: string
   result: "" | "success" | "failed"
 }
 
 export function normalizeRequestsSearch(search: Record<string, unknown>): RequestsSearch {
   const result = search.result === "success" || search.result === "failed" ? search.result : ""
-  return {
+  const normalized: RequestsSearch = {
     provider: typeof search.provider === "string" ? search.provider.trim() : "",
     model: typeof search.model === "string" ? search.model.trim() : "",
     modelAlias: typeof search.modelAlias === "string" ? search.modelAlias.trim() : "",
@@ -25,6 +26,10 @@ export function normalizeRequestsSearch(search: Record<string, unknown>): Reques
     windowEnd: typeof search.windowEnd === "string" ? search.windowEnd.trim() : "",
     result,
   }
+  if (typeof search.minLatencyMS === "string" && search.minLatencyMS.trim()) {
+    normalized.minLatencyMS = search.minLatencyMS.trim()
+  }
+  return normalized
 }
 
 export const Route = createFileRoute("/requests")({

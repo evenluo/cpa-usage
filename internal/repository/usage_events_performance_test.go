@@ -24,8 +24,43 @@ const (
 var (
 	requestEvidenceBenchmarkResult     *dto.UsageEventsPageRecord
 	failureDistributionBenchmarkResult *dto.UsageFailureDistributionRecord
+	attemptPerformanceBenchmarkResult  *dto.UsageAttemptPerformanceRecord
 	usageAttemptBenchmarkInserted      int
 )
+
+// BenchmarkUsageAttemptPerformanceHighCardinality measures exact fixed-window
+// percentile assembly and the independent provider/model/account statements on
+// the deterministic 65,536-attempt fixture. Setup remains outside the timer.
+func BenchmarkUsageAttemptPerformanceHighCardinality(b *testing.B) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(b, requestEvidencePerformanceEventCount)
+	if err := db.Exec(`UPDATE usage_events SET
+		ttft_ms = CASE WHEN latency_ms > 1 THEN latency_ms / 2 ELSE 1 END,
+		generate = 1, stream = 1,
+		output_tokens = CASE WHEN output_tokens > 0 THEN output_tokens ELSE 1 END`).Error; err != nil {
+		b.Fatalf("prepare attempt performance execution facts: %v", err)
+	}
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &fixture.start, EndTime: &fixture.end}}
+	warm, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
+	if err != nil {
+		b.Fatalf("warm attempt performance benchmark: %v", err)
+	}
+	if warm.TotalAttempts != requestEvidencePerformanceEventCount || len(warm.Providers.Items) != dto.UsagePerformanceBreakdownLimit || warm.StreamingOutputTPS.SampleCount == 0 {
+		b.Fatalf("benchmark fixture did not exercise exact percentile breakdowns: %+v", warm)
+	}
+	b.ReportMetric(requestEvidencePerformanceEventCount, "fixture_attempts")
+	b.ReportMetric(float64(dto.UsagePerformanceBreakdownLimit), "top_n_limit")
+	b.ReportMetric(float64(warm.StreamingOutputTPS.SampleCount), "valid_tps_samples")
+	b.ReportMetric(float64(runtime.GOMAXPROCS(0)), "gomaxprocs")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for benchmarkIndex := 0; benchmarkIndex < b.N; benchmarkIndex++ {
+		result, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
+		if err != nil {
+			b.Fatalf("build attempt performance benchmark: %v", err)
+		}
+		attemptPerformanceBenchmarkResult = result
+	}
+}
 
 // BenchmarkUsageFailureDistributionHighCardinality measures all bounded Top-N
 // breakdown queries over the deterministic 65,536-attempt fixture.
@@ -185,6 +220,16 @@ func TestFailureDistributionQueryPlansUseBoundedTimeIndex(t *testing.T) {
 	}
 	for _, query := range queries {
 		assertUsageEventsQueryPlanUsesSearch(t, db, query.name, query.sql, fixture.start, fixture.end)
+	}
+}
+
+func TestAttemptPerformanceDimensionPlansUseBoundedTimeIndex(t *testing.T) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(t, 4_096)
+	for _, dimension := range []string{"provider", "model", "auth_index"} {
+		query := fmt.Sprintf(`EXPLAIN QUERY PLAN SELECT %s, latency_ms, ttft_ms, output_tokens
+			FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ?`, dimension)
+		assertUsageEventsQueryPlanUsesSearch(t, db, "attempt performance "+dimension, query, fixture.start, fixture.end)
 	}
 }
 

@@ -169,7 +169,7 @@ func queryUsageEvents(db *gorm.DB) *gorm.DB {
 
 func queryUsageEventsForList(db *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
 	if filter.StartTime != nil && filter.EndTime != nil &&
-		(strings.TrimSpace(filter.ModelAlias) != "" || strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "" || strings.TrimSpace(filter.RequestID) != "") {
+		(strings.TrimSpace(filter.ModelAlias) != "" || strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "" || strings.TrimSpace(filter.RequestID) != "" || filter.MinLatencyMS != nil) {
 		return db.Table("usage_events INDEXED BY idx_usage_events_timestamp_id")
 	}
 	return queryUsageEvents(db)
@@ -224,6 +224,9 @@ func applyUsageDiagnosticQuery(query *gorm.DB, filter dto.UsageDiagnosticFilter)
 	}
 	if requestID := strings.TrimSpace(filter.RequestID); requestID != "" {
 		query = query.Where("TRIM(request_id) = ?", requestID)
+	}
+	if filter.MinLatencyMS != nil {
+		query = query.Where("latency_ms >= ?", *filter.MinLatencyMS)
 	}
 	return applyUsageStatusFilter(query, filter.Status)
 }
