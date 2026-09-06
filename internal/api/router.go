@@ -83,6 +83,7 @@ type OptionalProviders struct {
 	KeyAlias       service.KeyAliasProvider
 	Quota          QuotaProvider
 	AccountStatus  AccountStatusProvider
+	ModelSupport   ModelSupportProvider
 	RollupBackfill RollupBackfillStatusProvider
 	Metrics        MetricsProvider
 }
@@ -135,6 +136,7 @@ func NewRouter(
 	registerUsageModelMappingsRoute(protected, usageProvider)
 	registerUsagePerformanceRoute(protected, usageProvider, optionalProviders.UsageIdentity)
 	registerUsageIdentityRoutes(protected, optionalProviders.UsageIdentity, optionalProviders.KeyAlias, optionalProviders.AccountStatus)
+	registerModelSupportRoute(protected, optionalProviders.ModelSupport)
 	registerPricingRoutes(protected, pricingProvider)
 	registerQuotaRoutes(protected, optionalProviders.Quota)
 

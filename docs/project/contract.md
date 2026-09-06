@@ -72,6 +72,7 @@ Do not run full runtime verification for docs-only changes unless the change als
 ## Current Operational Contracts
 
 - The repository-root `Makefile` is the public development and verification Interface. `make dev-app` is the integrated UI/API path; `make dev-frontend` is isolated HMR without an API proxy.
+- Auth-file model support uses one protected, explicit selected-scope read. Its request-scoped fan-out is bounded and leaves failures visible; it does not add persisted model state, a catalog worker, automatic retry, or page-load provider calls.
 - `cmd/server` and `internal/app` own the bounded process lifecycle from SIGINT/SIGTERM through HTTP drain, background-runner cancellation and wait, then database and log closure.
 - [ADR 0008](../adr/0008-redis-inbox-replay-and-loss-window.md) owns the destructive Redis pop, deterministic inbox replay, and explicit pop-to-SQLite loss-window contract.
 - [Dokploy release chain](../deploy/dokploy-release.md) owns canonical pre-mutation Compose verification, exact converted-image readback, correlated terminal deployment proof, and deployed `/usage/healthz` proof. Static-only Compose validation is supporting evidence, not the release gate.

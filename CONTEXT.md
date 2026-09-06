@@ -48,6 +48,10 @@ _Avoid_: Ignored filter, stale range
 A restricted operational reading that keeps user-triggered CPA generic `api-call` probes separate from the latest supported passive quota watermarks already present in CPA auth-file metadata.
 _Avoid_: Usage quota analytics, billing quota, quota history, inferred expiry or automatic provider calls
 
+**Registered Model Support**:
+An explicitly loaded, selected-scope reading of models currently registered to auth-file accounts in CPA, optionally enriched by exact-ID static capability metadata.
+_Avoid_: Live model availability, routable model catalog, provider health
+
 **Reference Data**:
 Supporting user-maintained labels and rates that make **Usage Intelligence** readable and complete.
 _Avoid_: Credentials, setup data, generic data
@@ -109,6 +113,10 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - **Live Capacity** shows the probe observation and cache-expiry times, the auth-file active window, and every provider quota row returned by the existing probe contract. These timestamps and rows are operational evidence, not billing renewal or account-history claims.
 - A manual **Live Capacity** refresh is rejected as unavailable once its worker lifecycle starts shutting down; it must not return a task that cannot run.
 - **Live Capacity** follows provider filtering, but the **Selected Analysis Window** and **Time Granularity** do not change its query key or probe window.
+- **Registered Model Support** is loaded only by an explicit user action for a selected auth-file account set; loading **Usage Intelligence** never fans out model-support requests.
+- **Registered Model Support** remains separate from **Live Capacity**: registry membership and static capability metadata do not prove current routing availability, capacity, or health.
+- Selected-scope model coverage is complete only when every selected account model lookup succeeds. A failed account is unknown rather than unsupported, and a one-supporting-account conclusion is available only for a complete selected scope.
+- Static model capability metadata joins registered models by exact model ID only. Missing definitions, unknown channels, and catalog errors stay explicit; no family fallback is inferred.
 - **Activity Heatmap** uses a fixed 30-day **Fixed Operational Window** with date-by-hour cells to show recent usage rhythm. Its dedicated frontend load uses day granularity and remains independent of the **Selected Analysis Window**.
 - Attempt health and **Request Evidence** use fixed 24-hour **Fixed Operational Windows** to show recent stability and supporting samples, independent of the **Selected Analysis Window**.
 - Usage event counts, success rates, and failure rates describe **Usage Attempts**. A request ID is correlation detail only and does not collapse retries or imply the final client-visible outcome.

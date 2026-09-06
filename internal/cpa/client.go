@@ -173,6 +173,38 @@ func (c *Client) FetchAuthFiles(ctx context.Context) (*response.AuthFilesResult,
 	return result, nil
 }
 
+func (c *Client) FetchAuthFileModels(ctx context.Context, name string) (*response.AuthFileModelsResult, error) {
+	result := &response.AuthFileModelsResult{}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return result, fmt.Errorf("auth file name is required")
+	}
+	queryPath := cpaManagementAuthFileModelsEndpoint + "?name=" + url.QueryEscape(name)
+	statusCode, body, err := c.doManagementJSONRequest(ctx, queryPath, &result.Payload, "auth file models")
+	result.StatusCode = statusCode
+	result.Body = body
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (c *Client) FetchStaticModelDefinitions(ctx context.Context, channel string) (*response.StaticModelDefinitionsResult, error) {
+	result := &response.StaticModelDefinitionsResult{}
+	channel = strings.ToLower(strings.TrimSpace(channel))
+	if channel == "" {
+		return result, fmt.Errorf("model definition channel is required")
+	}
+	requestPath := cpaManagementModelDefinitionsEndpoint + url.PathEscape(channel)
+	statusCode, body, err := c.doManagementJSONRequest(ctx, requestPath, &result.Payload, "model definitions")
+	result.StatusCode = statusCode
+	result.Body = body
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
 // FetchAuthFileByAuthIndex 按 auth_index 过滤查询单个 auth file，用于把账户开关请求
 // 解析到 CPA 要求的 name（文件名或 auth ID）；found=false 表示 CPA 侧不存在该凭据。
 func (c *Client) FetchAuthFileByAuthIndex(ctx context.Context, authIndex string) (authfiles.AuthFile, bool, error) {

@@ -242,6 +242,69 @@ export interface KeyIdentityPage {
   total_pages: number
 }
 
+export interface ModelThinkingSupport {
+  min?: number
+  max?: number
+  zero_allowed?: boolean
+  dynamic_allowed?: boolean
+  levels?: string[]
+}
+
+export interface ModelCapability {
+  context_length?: number
+  input_token_limit?: number
+  max_completion_tokens?: number
+  output_token_limit?: number
+  supported_input_modalities?: string[]
+  supported_output_modalities?: string[]
+  thinking?: ModelThinkingSupport
+}
+
+export interface RegisteredModelSupport {
+  id: string
+  display_name?: string
+  type?: string
+  owned_by?: string
+  definition_status: "available" | "absent" | "unknown_channel" | "error"
+  capability?: ModelCapability
+}
+
+export interface AccountModelSupport {
+  identity_id: number
+  auth_index: string
+  display_name: string
+  provider: string
+  channel?: string
+  disabled: boolean
+  unavailable: boolean | null
+  status: "loaded" | "failed"
+  error_code?: "auth_file_missing" | "invalid_upstream_response" | "upstream_error"
+  catalog_status: "loaded" | "unknown_channel" | "error"
+  registered_models: RegisteredModelSupport[]
+}
+
+export interface ModelSupportCoverage {
+  model_id: string
+  display_name?: string
+  observed_supporting_accounts: number
+  selected_accounts: number
+  single_registered_account_in_scope: boolean | null
+}
+
+export interface ModelSupportResponse {
+  scope_complete: boolean
+  selected_count: number
+  loaded_count: number
+  accounts: AccountModelSupport[]
+  models: ModelSupportCoverage[]
+  limits: {
+    max_accounts: number
+    max_concurrency: number
+    timeout_seconds: number
+    max_upstream_requests: number
+  }
+}
+
 export interface QuotaWindow {
   duration?: number
   unit?: string

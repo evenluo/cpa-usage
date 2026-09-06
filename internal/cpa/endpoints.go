@@ -2,6 +2,8 @@ package cpa
 
 const (
 	cpaManagementAuthFilesEndpoint           = "/v0/management/auth-files"
+	cpaManagementAuthFileModelsEndpoint      = "/v0/management/auth-files/models"
+	cpaManagementModelDefinitionsEndpoint    = "/v0/management/model-definitions/"
 	cpaManagementExternalAPIKeysEndpoint     = "/v0/management/api-keys"
 	cpaManagementVertexAPIKeyEndpoint        = "/v0/management/vertex-api-key"
 	cpaManagementGeminiAPIKeyEndpoint        = "/v0/management/gemini-api-key"

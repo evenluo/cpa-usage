@@ -2,7 +2,7 @@ import { act } from "react"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
+import type { KeyIdentity, ModelSupportResponse, QuotaCacheResponse } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
 // Mock the useLiveCapacity hook
@@ -12,6 +12,15 @@ vi.mock("@/hooks/useQuota", async (importOriginal) => {
   return {
     ...original,
     useLiveCapacity: (...args: Parameters<typeof original.useLiveCapacity>) => mockUseLiveCapacity(...args),
+  }
+})
+
+const mockUseModelSupport = vi.fn()
+vi.mock("@/hooks/useModelSupport", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/hooks/useModelSupport")>()
+  return {
+    ...original,
+    useModelSupport: () => mockUseModelSupport(),
   }
 })
 
@@ -80,6 +89,14 @@ function setupMock(props: Partial<LiveCapacityReturn> = {}): LiveCapacityReturn 
   }
   const merged = { ...defaults, ...props }
   mockUseLiveCapacity.mockReturnValue(merged)
+  mockUseModelSupport.mockReturnValue({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    data: undefined,
+    isPending: false,
+    isError: false,
+    error: null,
+  })
   return merged
 }
 
@@ -212,6 +229,87 @@ describe("LiveCapacityCard", () => {
 
     expect(screen.getByText("Codex Pro")).toBeInTheDocument()
     expect(screen.getByText("Alpha Codex")).toBeInTheDocument()
+  })
+
+  it("loads model support only after an explicit selected-scope action", async () => {
+    const user = userEvent.setup()
+    const identities = [
+      identity({ id: 1, identity: "codex-a", displayName: "Codex A" }),
+      identity({ id: 2, identity: "codex-b", displayName: "Codex B" }),
+    ]
+    setupMock({ identities })
+    const mutate = vi.fn()
+    mockUseModelSupport.mockReturnValue({ mutate, reset: vi.fn(), data: undefined, isPending: false, isError: false, error: null })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(mutate).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "Select displayed" }))
+    await user.click(screen.getByRole("button", { name: "Load model support" }))
+
+    expect(mutate).toHaveBeenCalledTimes(1)
+    expect(mutate.mock.calls[0][0]).toEqual([1, 2])
+  })
+
+  it("shows partial registered support without a single-account conclusion", async () => {
+    const user = userEvent.setup()
+    const identities = [
+      identity({ id: 1, identity: "codex-a", displayName: "Codex A" }),
+      identity({ id: 2, identity: "codex-b", displayName: "Codex B" }),
+    ]
+    const data: ModelSupportResponse = {
+      scope_complete: false,
+      selected_count: 2,
+      loaded_count: 1,
+      accounts: [{
+        identity_id: 1,
+        auth_index: "codex-a",
+        display_name: "Codex A",
+        provider: "Codex",
+        channel: "codex",
+        disabled: false,
+        unavailable: null,
+        status: "loaded",
+        catalog_status: "loaded",
+        registered_models: [{
+          id: "gpt-exact",
+          definition_status: "available",
+          capability: { context_length: 200000, supported_input_modalities: ["TEXT", "IMAGE"], thinking: { zero_allowed: false } },
+        }],
+      }, {
+        identity_id: 2,
+        auth_index: "codex-b",
+        display_name: "Codex B",
+        provider: "Codex",
+        channel: "codex",
+        disabled: true,
+        unavailable: true,
+        status: "failed",
+        error_code: "upstream_error",
+        catalog_status: "loaded",
+        registered_models: [],
+      }],
+      models: [{
+        model_id: "gpt-exact",
+        observed_supporting_accounts: 1,
+        selected_accounts: 2,
+        single_registered_account_in_scope: null,
+      }],
+      limits: { max_accounts: 12, max_concurrency: 4, timeout_seconds: 15, max_upstream_requests: 36 },
+    }
+    setupMock({ identities })
+    const mutate = vi.fn((_ids: number[], options: { onSuccess?: () => void }) => options.onSuccess?.())
+    mockUseModelSupport.mockReturnValue({ mutate, reset: vi.fn(), data, isPending: false, isError: false, error: null })
+    render(<LiveCapacityCard provider="" />)
+
+    await user.click(screen.getByRole("button", { name: "Select displayed" }))
+    await user.click(screen.getByRole("button", { name: "Load model support" }))
+
+    expect(await screen.findByText("Partial selected scope")).toBeInTheDocument()
+    expect(screen.getByText("observed in 1/1 loaded accounts")).toBeInTheDocument()
+    expect(screen.queryByText(/1 registered account in this scope/)).not.toBeInTheDocument()
+    expect(screen.getByText("Failed accounts are unknown, not unsupported")).toBeInTheDocument()
+    expect(screen.getByText(/Context 200,000/)).toBeInTheDocument()
+    expect(screen.getByText(/zero not allowed/)).toBeInTheDocument()
   })
 
   it("visualizes probe freshness, subscription window, and additional quota rows", () => {

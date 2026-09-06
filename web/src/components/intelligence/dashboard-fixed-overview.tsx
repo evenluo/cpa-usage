@@ -74,7 +74,7 @@ export function DashboardFixedOverview({
         <div className="h-px flex-1 bg-border" />
       </div>
 
-      <LiveCapacityCard provider={liveCapacityProvider} />
+      <LiveCapacityCard key={liveCapacityProvider || "all"} provider={liveCapacityProvider} />
 
       {/* Activity Heatmap — 30d fixed */}
       <Card>

@@ -8,6 +8,7 @@ import {
   Gauge,
   Hourglass,
   Loader2,
+  ListChecks,
   Power,
   RefreshCw,
   Timer,
@@ -32,15 +33,18 @@ import {
   type ProviderKind,
 } from "@/features/usage-intelligence/live-capacity"
 import { useLiveCapacity } from "@/hooks/useQuota"
+import { MODEL_SUPPORT_MAX_ACCOUNTS, useModelSupport } from "@/hooks/useModelSupport"
 import { useSetIdentityDisabled } from "@/hooks/useKeys"
 import { useFlipReorder } from "@/hooks/useFlipReorder"
 import { useToast } from "@/components/providers/toast-provider"
 import { formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import type { AccountModelSupport, ModelCapability, ModelSupportResponse, RegisteredModelSupport } from "@/types/api"
 import { ProviderBrandIcon } from "./provider-brand-icon"
 
 export function LiveCapacityCard({ provider }: { provider: string }) {
   const { identities, cachedQuota, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider)
+  const modelSupport = useModelSupport()
   const derivedRows = useMemo(
     () => buildLiveCapacityRows({ identities, cachedQuota, taskStates }),
     [identities, cachedQuota, taskStates],
@@ -98,6 +102,66 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   }, [orderedRegularRows, effectiveKind])
   const displayedRows = useMemo(() => [...priorityRows, ...regularRows], [priorityRows, regularRows])
 
+  const [selectedSupportIDs, setSelectedSupportIDs] = useState<Set<number>>(() => new Set())
+  const [loadedSupportScopeKey, setLoadedSupportScopeKey] = useState("")
+  const [requestedSupportScopeKey, setRequestedSupportScopeKey] = useState("")
+  const visibleIdentityIDs = useMemo(() => new Set(identities.map((identity) => identity.id)), [identities])
+  const selectedSupportIdentityIDs = useMemo(
+    () => [...selectedSupportIDs].filter((id) => visibleIdentityIDs.has(id)).sort((a, b) => a - b),
+    [selectedSupportIDs, visibleIdentityIDs],
+  )
+  const selectedSupportScopeKey = selectedSupportIdentityIDs.join(",")
+  const loadedModelSupport = modelSupport.data && loadedSupportScopeKey === selectedSupportScopeKey
+    ? modelSupport.data
+    : undefined
+  const supportByIdentityID = useMemo(
+    () => new Map((loadedModelSupport?.accounts ?? []).map((account) => [account.identity_id, account])),
+    [loadedModelSupport],
+  )
+  const displayedIdentityIDs = useMemo(() => displayedRows.map((row) => row.id), [displayedRows])
+  const displayedSelected = displayedIdentityIDs.length > 0 && displayedIdentityIDs.every((id) => selectedSupportIDs.has(id))
+  const selectionTooLarge = selectedSupportIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS
+
+  const resetSupportSelection = () => {
+    setSelectedSupportIDs(new Set())
+    setLoadedSupportScopeKey("")
+    setRequestedSupportScopeKey("")
+    modelSupport.reset()
+  }
+  const selectProviderKind = (kind: ProviderKind | "all") => {
+    setSelectedKind(kind)
+    resetSupportSelection()
+  }
+  const toggleSupportSelection = (identityID: number) => {
+    setLoadedSupportScopeKey("")
+    setRequestedSupportScopeKey("")
+    modelSupport.reset()
+    setSelectedSupportIDs((current) => {
+      const next = new Set(current)
+      if (next.has(identityID)) next.delete(identityID)
+      else next.add(identityID)
+      return next
+    })
+  }
+  const toggleDisplayedSelection = () => {
+    if (displayedSelected) {
+      resetSupportSelection()
+      return
+    }
+    if (displayedIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS) return
+    setLoadedSupportScopeKey("")
+    setRequestedSupportScopeKey("")
+    modelSupport.reset()
+    setSelectedSupportIDs(new Set(displayedIdentityIDs))
+  }
+  const loadSelectedSupport = () => {
+    const scopeKey = selectedSupportScopeKey
+    setRequestedSupportScopeKey(scopeKey)
+    modelSupport.mutate(selectedSupportIdentityIDs, {
+      onSuccess: () => setLoadedSupportScopeKey(scopeKey),
+    })
+  }
+
   const regularRowKeys = useMemo(() => regularRows.map((r) => r.authIndex), [regularRows])
   const flipEnabled = !isLoading && !error && regularRows.length > 0
   const { containerRef, registerItem } = useFlipReorder(regularRowKeys, { enabled: flipEnabled })
@@ -123,6 +187,17 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
           <Badge variant="blue">live probe</Badge>
           <Badge variant="outline">fixed</Badge>
           {displayedCount > refreshLimit ? <Badge variant="amber">max {refreshLimit}</Badge> : null}
+          <Badge variant={selectionTooLarge ? "amber" : "outline"}>support {selectedSupportIdentityIDs.length}/{MODEL_SUPPORT_MAX_ACCOUNTS}</Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={loadSelectedSupport}
+            disabled={selectedSupportIdentityIDs.length === 0 || selectionTooLarge || modelSupport.isPending}
+          >
+            {modelSupport.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ListChecks className="mr-1.5 h-3.5 w-3.5" />}
+            Load model support
+          </Button>
           <Button type="button" variant="outline" size="sm" onClick={refreshDisplayed} disabled={displayedCount === 0}>
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isRefreshing && "animate-spin")} />
             {refreshLabel}
@@ -152,7 +227,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                   label="All"
                   count={derivedRows.length}
                   active={effectiveKind === "all"}
-                  onClick={() => setSelectedKind("all")}
+                  onClick={() => selectProviderKind("all")}
                 />
                 {providerGroups.map((group) => (
                   <ProviderFilterChip
@@ -161,10 +236,38 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                     count={group.count}
                     providerKind={group.kind}
                     active={effectiveKind === group.kind}
-                    onClick={() => setSelectedKind(group.kind)}
+                    onClick={() => selectProviderKind(group.kind)}
                   />
                 ))}
               </div>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/[0.12] p-2.5 text-xs">
+              <span className="text-muted-foreground">
+                Select an account set, then load registered support. This does not test current routing availability.
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={toggleDisplayedSelection}
+                disabled={modelSupport.isPending || (!displayedSelected && displayedIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS)}
+              >
+                {displayedSelected ? "Clear selection" : displayedIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS ? `Choose up to ${MODEL_SUPPORT_MAX_ACCOUNTS}` : "Select displayed"}
+              </Button>
+            </div>
+            {selectionTooLarge ? (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.05] p-2.5 text-xs text-amber-700 dark:text-amber-300" role="alert">
+                Narrow selection to {MODEL_SUPPORT_MAX_ACCOUNTS} accounts or fewer. Nothing will be silently omitted.
+              </div>
+            ) : null}
+            {modelSupport.isPending ? (
+              <Skeleton className="h-20 w-full" />
+            ) : modelSupport.isError && requestedSupportScopeKey === selectedSupportScopeKey ? (
+              <div className="rounded-md border border-red-500/25 bg-red-500/[0.025] p-3 text-sm text-red-600" role="alert">
+                Failed to load registered model support. {modelSupport.error instanceof Error ? modelSupport.error.message : "Try again."}
+              </div>
+            ) : loadedModelSupport ? (
+              <ModelSupportCoveragePanel result={loadedModelSupport} />
             ) : null}
             <div className="flex max-h-[560px] flex-col gap-3 overflow-y-auto pr-1">
               {priorityRows.length > 0 ? (
@@ -174,6 +277,10 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                       key={row.authIndex}
                       row={row}
                       onRefresh={() => refresh(row.authIndex)}
+                      selectedForSupport={selectedSupportIDs.has(row.id)}
+                      onToggleSupportSelection={() => toggleSupportSelection(row.id)}
+                      modelSupport={supportByIdentityID.get(row.id)}
+                      supportSelectionDisabled={modelSupport.isPending}
                     />
                   ))}
                 </div>
@@ -193,6 +300,10 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                       <LiveCapacityAccountTile
                         row={row}
                         onRefresh={() => refresh(row.authIndex)}
+                        selectedForSupport={selectedSupportIDs.has(row.id)}
+                        onToggleSupportSelection={() => toggleSupportSelection(row.id)}
+                        modelSupport={supportByIdentityID.get(row.id)}
+                        supportSelectionDisabled={modelSupport.isPending}
                       />
                     </div>
                   ))}
@@ -250,9 +361,17 @@ function ProviderFilterChip({
 function LiveCapacityAccountTile({
   row,
   onRefresh,
+  selectedForSupport,
+  onToggleSupportSelection,
+  modelSupport,
+  supportSelectionDisabled,
 }: {
   row: LiveCapacityRow
   onRefresh: () => void
+  selectedForSupport: boolean
+  onToggleSupportSelection: () => void
+  modelSupport?: AccountModelSupport
+  supportSelectionDisabled: boolean
 }) {
   const toast = useToast()
   const setIdentityDisabled = useSetIdentityDisabled()
@@ -365,6 +484,17 @@ function LiveCapacityAccountTile({
           >
             {formatAuthIndex(row.authIndex)}
           </button>
+          <label className="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[10px] text-muted-foreground">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 accent-terracotta-600"
+              checked={selectedForSupport}
+              onChange={onToggleSupportSelection}
+              disabled={supportSelectionDisabled}
+              aria-label={`Include ${accountTitle} in model support coverage`}
+            />
+            Support scope
+          </label>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
         {hasAttention ? (
@@ -432,6 +562,7 @@ function LiveCapacityAccountTile({
         account={row.passiveQuota}
         models={row.passiveModelQuotas}
       />
+      {modelSupport ? <AccountModelSupportDetails account={modelSupport} /> : null}
 
       {!row.disabled ? (
         <div className="mt-3 grid gap-2">
@@ -495,6 +626,54 @@ function PassiveQuotaEvidence({
   )
 }
 
+function ModelSupportCoveragePanel({ result }: { result: ModelSupportResponse }) {
+  const failures = result.accounts.filter((account) => account.status === "failed")
+  return (
+    <div className="rounded-lg border border-border bg-background/70 p-3 text-sm" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium">Registered model support</span>
+        <Badge variant={result.scope_complete ? "green" : "amber"}>
+          {result.scope_complete ? "Complete selected scope" : "Partial selected scope"}
+        </Badge>
+        <span className="text-xs text-muted-foreground">{result.loaded_count}/{result.selected_count} accounts loaded</span>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">
+        Counts describe registry membership in this selected scope, not current routing availability or provider health.
+      </p>
+      {result.models.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {result.models.map((model) => (
+            <span key={model.model_id} className="rounded-md border border-border/70 bg-muted/20 px-2 py-1 text-xs" title={model.model_id}>
+              <span className="font-medium">{model.display_name || model.model_id}</span>
+              <span className="ml-1.5 text-muted-foreground">
+                {result.scope_complete
+                  ? model.single_registered_account_in_scope
+                    ? "1 registered account in this scope"
+                    : `${model.observed_supporting_accounts}/${model.selected_accounts} accounts`
+                  : `observed in ${model.observed_supporting_accounts}/${result.loaded_count} loaded accounts`}
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-muted-foreground">
+          {result.scope_complete ? "CPA returned no registered models for this selected scope." : "No registered models were observed in the successfully loaded accounts."}
+        </p>
+      )}
+      {failures.length > 0 ? (
+        <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/[0.04] p-2.5 text-xs text-amber-700 dark:text-amber-300">
+          <p className="font-medium">Failed accounts are unknown, not unsupported</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4">
+            {failures.map((account) => (
+              <li key={account.identity_id}>{account.display_name || account.auth_index}: {modelSupportErrorLabel(account.error_code)}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function PassiveQuotaObservationSection({
   label,
   observation,
@@ -522,6 +701,79 @@ function PassiveQuotaObservationSection({
       </div>
     </section>
   )
+}
+
+function AccountModelSupportDetails({ account }: { account: AccountModelSupport }) {
+  if (account.status === "failed") {
+    return (
+      <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/[0.04] p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
+        Registered support unknown: {modelSupportErrorLabel(account.error_code)}. This is not an unsupported result.
+      </div>
+    )
+  }
+  return (
+    <details className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5">
+      <summary className="cursor-pointer text-[11px] font-medium">
+        Registered models ({account.registered_models.length})
+      </summary>
+      <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Registered capability only; not current routing availability.</p>
+      {account.registered_models.length === 0 ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">CPA returned no registered models for this account.</p>
+      ) : (
+        <ul className="mt-2 space-y-2">
+          {account.registered_models.map((model) => <RegisteredModelDetails key={model.id} model={model} />)}
+        </ul>
+      )}
+    </details>
+  )
+}
+
+function RegisteredModelDetails({ model }: { model: RegisteredModelSupport }) {
+  return (
+    <li className="rounded border border-border/60 bg-background/50 p-2 text-[11px]">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="break-all font-medium">{model.display_name || model.id}</span>
+        {model.display_name ? <span className="break-all text-[10px] text-muted-foreground">{model.id}</span> : null}
+        {model.type ? <Badge variant="outline" className="px-1.5 py-0 text-[9px]">{model.type}</Badge> : null}
+      </div>
+      {model.capability ? <ModelCapabilityDetails capability={model.capability} /> : (
+        <p className="mt-1 text-[10px] text-muted-foreground">{definitionStatusLabel(model.definition_status)}</p>
+      )}
+    </li>
+  )
+}
+
+function ModelCapabilityDetails({ capability }: { capability: ModelCapability }) {
+  const facts: string[] = []
+  if (capability.context_length !== undefined) facts.push(`Context ${capability.context_length.toLocaleString()}`)
+  if (capability.input_token_limit !== undefined) facts.push(`Input limit ${capability.input_token_limit.toLocaleString()}`)
+  if (capability.max_completion_tokens !== undefined) facts.push(`Max completion ${capability.max_completion_tokens.toLocaleString()}`)
+  if (capability.output_token_limit !== undefined) facts.push(`Output limit ${capability.output_token_limit.toLocaleString()}`)
+  if (capability.supported_input_modalities?.length) facts.push(`Input ${capability.supported_input_modalities.join(", ")}`)
+  if (capability.supported_output_modalities?.length) facts.push(`Output ${capability.supported_output_modalities.join(", ")}`)
+  const thinking = capability.thinking
+  if (thinking) {
+    const details: string[] = []
+    if (thinking.min !== undefined || thinking.max !== undefined) details.push(`budget ${thinking.min ?? "?"}–${thinking.max ?? "?"}`)
+    if (thinking.levels?.length) details.push(`levels ${thinking.levels.join(", ")}`)
+    if (thinking.zero_allowed !== undefined) details.push(`zero ${thinking.zero_allowed ? "allowed" : "not allowed"}`)
+    if (thinking.dynamic_allowed !== undefined) details.push(`dynamic ${thinking.dynamic_allowed ? "allowed" : "not allowed"}`)
+    facts.push(details.length > 0 ? `Thinking: ${details.join("; ")}` : "Thinking metadata returned")
+  }
+  return facts.length > 0 ? <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{facts.join(" · ")}</p> : null
+}
+
+function modelSupportErrorLabel(code: AccountModelSupport["error_code"]): string {
+  if (code === "auth_file_missing") return "auth file is no longer present in the current CPA lookup"
+  if (code === "invalid_upstream_response") return "CPA returned an invalid model-support response"
+  return "CPA model-support request failed or timed out"
+}
+
+function definitionStatusLabel(status: RegisteredModelSupport["definition_status"]): string {
+  if (status === "available") return "Static definition returned without supported capability fields."
+  if (status === "absent") return "No exact static definition was returned for this model ID."
+  if (status === "unknown_channel") return "No supported static catalog channel is known for this account type."
+  return "Static capability metadata could not be loaded."
 }
 
 function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {

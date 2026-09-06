@@ -16,6 +16,7 @@ type AuthFileStatusRequest struct {
 
 // AuthFile 是 CPA /management/auth-files 中单个 auth file 的原始响应 DTO。
 type AuthFile struct {
+	ID             string                      `json:"id"`
 	AuthIndex      string                      `json:"auth_index"`
 	Name           string                      `json:"name"`
 	Email          string                      `json:"email"`

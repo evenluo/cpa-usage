@@ -1,0 +1,11 @@
+{
+  "models": [
+    {
+      "id": "gpt-fixture-exact",
+      "display_name": "GPT Fixture Exact",
+      "type": "openai",
+      "owned_by": "fixture-owner",
+      "ignored_field": "not retained"
+    }
+  ]
+}
