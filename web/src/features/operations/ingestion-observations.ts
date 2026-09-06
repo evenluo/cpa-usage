@@ -27,19 +27,28 @@ export function deriveIngestionObservations(metrics: MetricsPayload): IngestionO
   const rate = metrics.redis_events_processing_rate_per_minute
 
   return {
-    backlog: dbUnavailable
-      ? { label: "Unavailable", detail: "The local inbox reading is unavailable because the database could not be read." }
-      : { label: countLabel(metrics.redis_inbox_pending), detail: "Retryable rows pending in the local inbox." },
+    backlog: metrics.redis_inbox_pending !== undefined
+      ? {
+          label: countLabel(metrics.redis_inbox_pending),
+          detail: dbUnavailable
+            ? "Retryable rows pending in the local inbox. Other database-backed observations are unavailable."
+            : "Retryable rows pending in the local inbox.",
+        }
+      : dbUnavailable
+        ? { label: "Unavailable", detail: "The local inbox reading is unavailable because the database could not be read." }
+        : { label: "Not observed", detail: "No local inbox reading was observed." },
     lastProcessed: metrics.redis_events_last_processed_at
       ? { label: metrics.redis_events_last_processed_at, observedAt: metrics.redis_events_last_processed_at, detail: "Last observed nonempty local processing batch." }
       : { label: "Not observed", detail: "No nonempty local processing batch has been observed in this process." },
     processingRate: rate === undefined
       ? { label: "Rate unavailable", detail: `A processing rate is available after a comparable metrics scrape. ${processedVolumeDetail(metrics)}` }
       : { label: `${rate.toLocaleString(undefined, { maximumFractionDigits: 1 })} events/min`, detail: `Observed local processing between metric scrapes. ${processedVolumeDetail(metrics)}` },
-    runtime: metrics.poller_running === true
-      ? { label: "Runner active", detail: "The local poller runner is active." }
-      : metrics.poller_running === false
-        ? { label: "Runner idle", detail: "The local poller runner is not active." }
-        : { label: "Runtime unavailable", detail: "No local poller runtime state was observed." },
+    runtime: metrics.poller_running !== true
+      ? metrics.poller_running === false
+        ? { label: "Runner stopped", detail: "The local poller runner is not active." }
+        : { label: "Runtime unavailable", detail: "No local poller runtime state was observed." }
+      : metrics.poller_sync_running === true
+        ? { label: "Processing active", detail: "The active local runner is pulling, processing, or serving a manual sync." }
+        : { label: "Runner idle", detail: "The local poller runner is active with no pull, processing, or manual sync in progress." },
   }
 }

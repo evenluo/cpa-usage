@@ -10,11 +10,12 @@ describe("deriveIngestionObservations", () => {
       redis_events_processed_total: 13,
       redis_events_processed_batches_total: 2,
       poller_running: true,
+      poller_sync_running: true,
     })).toEqual({
       backlog: { label: "3", detail: "Retryable rows pending in the local inbox." },
       lastProcessed: { label: "2026-09-07T01:02:03Z", observedAt: "2026-09-07T01:02:03Z", detail: "Last observed nonempty local processing batch." },
       processingRate: { label: "12.5 events/min", detail: "Observed local processing between metric scrapes. 13 events in 2 nonempty batches processed in this process." },
-      runtime: { label: "Runner active", detail: "The local poller runner is active." },
+      runtime: { label: "Processing active", detail: "The active local runner is pulling, processing, or serving a manual sync." },
     })
   })
 
@@ -33,11 +34,31 @@ describe("deriveIngestionObservations", () => {
     })
   })
 
-  it("keeps idle, missing timestamp, and unavailable database observations distinct", () => {
-    const observations = deriveIngestionObservations({ poller_running: false, db_unavailable: true })
+  it("keeps runner lifecycle and active processing state distinct", () => {
+    expect(deriveIngestionObservations({ poller_running: true, poller_sync_running: false }).runtime.label).toBe("Runner idle")
+    expect(deriveIngestionObservations({ poller_running: true, poller_sync_running: true }).runtime.label).toBe("Processing active")
+    expect(deriveIngestionObservations({ poller_running: false }).runtime.label).toBe("Runner stopped")
+    expect(deriveIngestionObservations({}).runtime.label).toBe("Runtime unavailable")
+  })
 
-    expect(observations.backlog.label).toBe("Unavailable")
+  it("keeps missing timestamp and database degradation distinct from an observed inbox count", () => {
+    const observations = deriveIngestionObservations({
+      poller_running: true,
+      poller_sync_running: false,
+      db_unavailable: true,
+      redis_inbox_pending: 4,
+    })
+
+    expect(observations.backlog).toEqual({
+      label: "4",
+      detail: "Retryable rows pending in the local inbox. Other database-backed observations are unavailable.",
+    })
     expect(observations.lastProcessed.label).toBe("Not observed")
     expect(observations.runtime.label).toBe("Runner idle")
+  })
+
+  it("shows an unavailable inbox only when its field is absent during database degradation", () => {
+    expect(deriveIngestionObservations({ db_unavailable: true }).backlog.label).toBe("Unavailable")
+    expect(deriveIngestionObservations({}).backlog.label).toBe("Not observed")
   })
 })

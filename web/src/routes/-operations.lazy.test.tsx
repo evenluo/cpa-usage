@@ -40,7 +40,8 @@ describe("Operations ingestion observations", () => {
         redis_events_processing_rate_per_minute: 0,
         redis_events_processed_total: 0,
         redis_events_processed_batches_total: 0,
-        poller_running: false,
+        poller_running: true,
+        poller_sync_running: false,
       }}
     />)
 

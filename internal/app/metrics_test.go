@@ -36,8 +36,8 @@ func TestBuildMetricsSnapshotIncludesUptimeAndRunnerStates(t *testing.T) {
 		},
 		backupLastAt:           backupAt,
 		inboxPending:           int64Ptr(12),
-		eventsProcessedTotal:   340,
-		eventsProcessedBatches: 8,
+		eventsProcessedTotal:   int64Ptr(340),
+		eventsProcessedBatches: int64Ptr(8),
 		eventsLastProcessedAt:  processedAt,
 		eventsRatePerMinute:    float64Ptr(12.5),
 	})
@@ -88,8 +88,8 @@ func TestBuildMetricsSnapshotOmitsUnavailableStates(t *testing.T) {
 		}
 	}
 	for _, key := range []string{"redis_events_processed_total", "redis_events_processed_batches_total"} {
-		if _, exists := snapshot[key]; !exists {
-			t.Fatalf("expected %q to always be present", key)
+		if _, exists := snapshot[key]; exists {
+			t.Fatalf("expected %q to be omitted when processing metrics are unavailable", key)
 		}
 	}
 }
@@ -185,11 +185,25 @@ func TestEventsPerMinuteComputesDeltaRateBetweenSamples(t *testing.T) {
 func TestBuildMetricsSnapshotPreservesObservedZeroRate(t *testing.T) {
 	zero := float64(0)
 	snapshot := buildMetricsSnapshot(metricsSnapshotInput{
-		startedAt:           time.Now(),
-		now:                 time.Now(),
-		eventsRatePerMinute: &zero,
+		startedAt:              time.Now(),
+		now:                    time.Now(),
+		eventsProcessedTotal:   int64Ptr(0),
+		eventsProcessedBatches: int64Ptr(0),
+		eventsRatePerMinute:    &zero,
 	})
 	if snapshot["redis_events_processing_rate_per_minute"] != zero {
 		t.Fatalf("expected observed zero rate, got %v", snapshot["redis_events_processing_rate_per_minute"])
+	}
+}
+
+func TestBuildMetricsSnapshotOmitsUnobservedProcessedVolume(t *testing.T) {
+	snapshot := buildMetricsSnapshot(metricsSnapshotInput{
+		startedAt: time.Now(),
+		now:       time.Now(),
+	})
+	for _, key := range []string{"redis_events_processed_total", "redis_events_processed_batches_total"} {
+		if _, exists := snapshot[key]; exists {
+			t.Fatalf("expected %q to be omitted without a process metrics provider", key)
+		}
 	}
 }

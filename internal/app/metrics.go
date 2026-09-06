@@ -16,8 +16,8 @@ type metricsSnapshotInput struct {
 	rollupStatus           *repodto.RollupBackfillStatus
 	backupLastAt           time.Time
 	inboxPending           *int64
-	eventsProcessedTotal   int64
-	eventsProcessedBatches int64
+	eventsProcessedTotal   *int64
+	eventsProcessedBatches *int64
 	eventsLastProcessedAt  time.Time
 	eventsRatePerMinute    *float64
 	dbUnavailable          bool
@@ -50,8 +50,12 @@ func buildMetricsSnapshot(input metricsSnapshotInput) map[string]any {
 	if input.dbUnavailable {
 		snapshot["db_unavailable"] = true
 	}
-	snapshot["redis_events_processed_total"] = input.eventsProcessedTotal
-	snapshot["redis_events_processed_batches_total"] = input.eventsProcessedBatches
+	if input.eventsProcessedTotal != nil {
+		snapshot["redis_events_processed_total"] = *input.eventsProcessedTotal
+	}
+	if input.eventsProcessedBatches != nil {
+		snapshot["redis_events_processed_batches_total"] = *input.eventsProcessedBatches
+	}
 	if !input.eventsLastProcessedAt.IsZero() {
 		snapshot["redis_events_last_processed_at"] = input.eventsLastProcessedAt.UTC()
 	}
@@ -90,8 +94,8 @@ func (a *App) MetricsSnapshot(ctx context.Context) (map[string]any, error) {
 		input.pollerStatus = &status
 		if provider, ok := a.Poller.(poller.ProcessMetricsProvider); ok {
 			metrics := provider.ProcessMetrics()
-			input.eventsProcessedTotal = metrics.EventsTotal
-			input.eventsProcessedBatches = metrics.BatchesTotal
+			input.eventsProcessedTotal = &metrics.EventsTotal
+			input.eventsProcessedBatches = &metrics.BatchesTotal
 			input.eventsLastProcessedAt = metrics.LastProcessedAt
 		}
 	}
@@ -114,17 +118,19 @@ func (a *App) MetricsSnapshot(ctx context.Context) (map[string]any, error) {
 	}
 
 	a.metricsMu.Lock()
-	rate, rateAvailable := eventsPerMinute(
-		a.lastMetricsSampleAt,
-		a.lastMetricsEventsTotal,
-		input.now,
-		input.eventsProcessedTotal,
-	)
-	if rateAvailable {
-		input.eventsRatePerMinute = &rate
+	if input.eventsProcessedTotal != nil {
+		rate, rateAvailable := eventsPerMinute(
+			a.lastMetricsSampleAt,
+			a.lastMetricsEventsTotal,
+			input.now,
+			*input.eventsProcessedTotal,
+		)
+		if rateAvailable {
+			input.eventsRatePerMinute = &rate
+		}
+		a.lastMetricsSampleAt = input.now
+		a.lastMetricsEventsTotal = *input.eventsProcessedTotal
 	}
-	a.lastMetricsSampleAt = input.now
-	a.lastMetricsEventsTotal = input.eventsProcessedTotal
 	a.metricsMu.Unlock()
 
 	return buildMetricsSnapshot(input), nil
