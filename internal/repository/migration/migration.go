@@ -35,6 +35,7 @@ const (
 	migrationAddUsageEventTTFT                      = "20260714_add_usage_event_ttft"
 	migrationAddUsageAttemptFields                  = "20260831_add_usage_attempt_fields"
 	migrationAddUsageRollupCacheReadFields          = "20260831_add_usage_rollup_cache_read_fields"
+	migrationAddUsageAccountingFields               = "20260907_add_usage_accounting_fields"
 	migrationAddUsageIdentityDisabled               = "20260902_add_usage_identity_disabled"
 )
 
@@ -116,6 +117,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationAddUsageAttemptFields, run: addUsageAttemptFieldsMigration},
 		{version: migrationAddUsageRollupCacheReadFields, run: addUsageRollupCacheReadFieldsMigration},
 		{version: migrationAddUsageIdentityDisabled, run: addUsageIdentityDisabledMigration},
+		{version: migrationAddUsageAccountingFields, run: addUsageAccountingFieldsMigration},
 	}
 }
 

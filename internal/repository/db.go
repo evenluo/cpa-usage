@@ -134,6 +134,10 @@ func InsertUsageEvents(db *gorm.DB, events []entities.UsageEvent) (int, int, err
 		return 0, 0, nil
 	}
 
+	for i := range events {
+		events[i].AccountingState = usageAccountingState(events[i].UsageAccounting)
+	}
+
 	inserted := 0
 	affectedEventKeys := map[string]struct{}{}
 

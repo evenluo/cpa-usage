@@ -1,0 +1,57 @@
+package migration
+
+import (
+	"path/filepath"
+	"reflect"
+	"testing"
+
+	"cpa-usage/internal/entities"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+func TestUsageAccountingMigrationPreservesHistoricalFacts(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(testSQLiteDSN(filepath.Join(t.TempDir(), "accounting.db"))), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeOpenedDatabase(t, db)
+	if err := db.Exec(`CREATE TABLE usage_events (id INTEGER PRIMARY KEY, event_key TEXT, input_tokens INTEGER, output_tokens INTEGER, cached_tokens INTEGER, total_tokens INTEGER, service_tier TEXT)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO usage_events VALUES (1, 'historical', 100, 30, 40, 142, 'priority')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := addUsageAccountingFieldsMigration(db); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var event entities.UsageEvent
+	if err := db.First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	if event.InputTokens != 100 || event.OutputTokens != 30 || event.CachedTokens != 40 || event.TotalTokens != 142 || event.ServiceTier != "priority" {
+		t.Fatalf("historical facts rewritten: %+v", event)
+	}
+	if !reflect.DeepEqual(event.UsageAccounting, entities.UsageAccounting{AccountingState: "absent"}) || event.Generate != nil || event.Stream != nil || event.ResponseServiceTier != nil {
+		t.Fatalf("historical evidence fabricated: %+v", event)
+	}
+	fresh, err := gorm.Open(sqlite.Open(testSQLiteDSN(filepath.Join(t.TempDir(), "fresh.db"))), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeOpenedDatabase(t, fresh)
+	if err := fresh.AutoMigrate(&entities.UsageEvent{}); err != nil {
+		t.Fatal(err)
+	}
+	upgradedShape, freshShape := loadUsageAttemptColumnShapes(t, db), loadUsageAttemptColumnShapes(t, fresh)
+	for name, shape := range upgradedShape {
+		if name == "id" || name == "event_key" || name == "input_tokens" || name == "output_tokens" || name == "cached_tokens" || name == "total_tokens" || name == "service_tier" {
+			continue
+		}
+		if shape != freshShape[name] {
+			t.Fatalf("fresh/upgraded constraint mismatch for %s: %+v %+v", name, shape, freshShape[name])
+		}
+	}
+}

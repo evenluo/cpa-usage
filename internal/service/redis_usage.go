@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"cpa-usage/internal/cpa"
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository/dto"
 )
@@ -52,6 +53,7 @@ func redactedInvalidRedisUsageMessage(message string) string {
 }
 
 type queuedUsageDetail struct {
+	cpa.UsageAccountingFields
 	Timestamp       *time.Time             `json:"timestamp,omitempty"`
 	LatencyMS       int64                  `json:"latency_ms,omitempty"`
 	TTFTMS          *int64                 `json:"ttft_ms,omitempty"`
@@ -176,6 +178,10 @@ func (d queuedUsageDetail) toUsageEvent(fallbackTimestamp time.Time) entities.Us
 		eventKey = BuildEventKey(apiGroupKey, model, timestamp, source, authIndex, d.Failed, tokens)
 	}
 	return entities.UsageEvent{
+		UsageAccounting:     queuedAccountingFacts(d.UsageAccountingFields),
+		Generate:            d.Generate.Value,
+		Stream:              d.Stream.Value,
+		ResponseServiceTier: trimRedisOptionalString(d.ResponseServiceTier.Value),
 		EventKey:            eventKey,
 		APIGroupKey:         apiGroupKey,
 		Provider:            strings.TrimSpace(d.Provider),

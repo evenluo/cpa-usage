@@ -58,7 +58,9 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 
 	rows := make([]dto.UsageEventRecord, 0, len(events))
 	for _, event := range events {
+		facts := InterpretUsageAttempt(event)
 		rows = append(rows, dto.UsageEventRecord{
+			AttemptFacts:        facts,
 			ID:                  event.ID,
 			Timestamp:           event.Timestamp.UTC(),
 			APIGroupKey:         strings.TrimSpace(event.APIGroupKey),
@@ -78,7 +80,7 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 			ServiceTier:         strings.TrimSpace(event.ServiceTier),
 			LatencyMS:           event.LatencyMS,
 			TTFTMS:              event.TTFTMS,
-			OutputTPS:           usageEventOutputTPS(event.OutputTokens, event.LatencyMS, event.TTFTMS),
+			OutputTPS:           facts.OutputTPS,
 			InputTokens:         event.InputTokens,
 			OutputTokens:        event.OutputTokens,
 			ReasoningTokens:     event.ReasoningTokens,
