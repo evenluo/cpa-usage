@@ -143,12 +143,56 @@ describe("LiveCapacityCard", () => {
     }
   })
 
+  it("renders account and model passive observations separately from a manual probe", () => {
+    setupMock({
+      identities: [identity({
+        disabled: true,
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          active_limit: "codex_bengalfox",
+          quota: [
+            { key: "primary", label: "5h", usedPercent: 25, resetAfterSeconds: 120, window: { seconds: 18_000 } },
+            { key: "credits", label: "Credits", remaining: 4.5, unit: "credits" },
+          ],
+        },
+        passive_model_quotas: [{
+          source: "cpa_passive",
+          scope: "model",
+          model: "gpt-5.3-codex",
+          observed_at: "2026-09-07T07:30:00Z",
+          quota: [{ key: "secondary", label: "Weekly", allowed: false, window: { seconds: 604_800 } }],
+        }],
+      })],
+      cachedQuota: {
+        items: [{ id: "codex-auth", cachedAt: "2026-09-07T09:00:00Z", quota: [{ key: "manual", label: "5h", usedPercent: 10 }] }],
+      },
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
+    expect(within(passive).getByText("Account")).toBeInTheDocument()
+    expect(within(passive).getByText("gpt-5.3-codex")).toBeInTheDocument()
+    expect(within(passive).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
+    expect(within(passive).getByText("25% used")).toBeInTheDocument()
+    expect(within(passive).getByText("4.5 credits left")).toBeInTheDocument()
+    expect(within(passive).getByText("Blocked")).toBeInTheDocument()
+    expect(within(passive).getByText("reported reset 2m")).toBeInTheDocument()
+    expect(passive.querySelector("time[datetime='2026-09-07T08:00:00Z']")).toBeInTheDocument()
+    expect(passive.querySelector("time[datetime='2026-09-07T07:30:00Z']")).toBeInTheDocument()
+    expect(screen.queryByText("Manual capacity probe")).not.toBeInTheDocument()
+    expect(screen.queryByText("10% used")).not.toBeInTheDocument()
+  })
+
   it("does not present missing account state as active", () => {
     setupMock({ identities: [identity({ status: undefined, unavailable: undefined })] })
     render(<LiveCapacityCard provider="" />)
     const availability = screen.getByRole("group", { name: "Account availability" })
     expect(within(availability).getByText("CPA status: State not reported")).toBeInTheDocument()
     expect(within(availability).queryByText("CPA status: Active")).not.toBeInTheDocument()
+    const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
+    expect(within(passive).getByText("No readable passive quota observation.")).toBeInTheDocument()
   })
 
   it("renders tiles for each identity", () => {
@@ -484,9 +528,31 @@ describe("LiveCapacityCard", () => {
   it("filters tiles via provider chips and restores the full list on All", async () => {
     const user = userEvent.setup()
     const identities = [
-      identity({ identity: "codex-a", displayName: "Codex A", provider: "Codex", type: "codex" }),
+      identity({
+        identity: "codex-a",
+        displayName: "Codex A",
+        provider: "Codex",
+        type: "codex",
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [{ key: "codex-passive", label: "Codex passive evidence", allowed: true }],
+        },
+      }),
       identity({ identity: "codex-b", displayName: "Codex B", provider: "Codex", type: "codex" }),
-      identity({ identity: "claude-a", displayName: "Claude A", provider: "Claude", type: "claude" }),
+      identity({
+        identity: "claude-a",
+        displayName: "Claude A",
+        provider: "Claude",
+        type: "claude",
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [{ key: "claude-passive", label: "Claude passive evidence", allowed: true }],
+        },
+      }),
     ]
     const cachedQuota: QuotaCacheResponse = {
       items: [
@@ -508,11 +574,14 @@ describe("LiveCapacityCard", () => {
 
     await user.click(claudeChip)
     expect(screen.queryByText("Codex A")).not.toBeInTheDocument()
+    expect(screen.queryByText("Codex passive evidence")).not.toBeInTheDocument()
     expect(screen.getByText("Claude A")).toBeInTheDocument()
+    expect(screen.getByText("Claude passive evidence")).toBeInTheDocument()
     expect(claudeChip).toHaveAttribute("aria-pressed", "true")
 
     await user.click(allChip)
     expect(screen.getByText("Codex A")).toBeInTheDocument()
+    expect(screen.getByText("Codex passive evidence")).toBeInTheDocument()
     expect(screen.getByText("Claude A")).toBeInTheDocument()
   })
 

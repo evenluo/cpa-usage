@@ -878,6 +878,89 @@ func TestSyncMetadataKeepsDisabledAndUnavailableIndependentAndBoundsStatus(t *te
 	}
 }
 
+func TestSyncMetadataPersistsPassiveQuotaWithOriginalObservationTimes(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	syncAt := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
+	nextRetryAfter := syncAt.Add(30 * time.Minute)
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return syncAt },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex:      "codex-passive",
+			Type:           "codex",
+			Provider:       "Codex",
+			NextRetryAfter: &nextRetryAfter,
+			Quota: &authfiles.QuotaObservation{
+				ObservedAt: "2026-09-07T08:00:00Z",
+				Signals: map[string]any{
+					"X-Codex-Primary-Used-Percent":   "51",
+					"X-Codex-Primary-Window-Minutes": "300",
+					"Retry-After":                    "120",
+				},
+			},
+			ModelQuotas: map[string]authfiles.QuotaObservation{
+				"gpt-5.3-codex": {
+					ObservedAt: "2026-09-07T07:30:00Z",
+					Signals:    map[string]any{"X-Codex-Secondary-Used-Percent": "20", "X-Codex-Secondary-Window-Minutes": "10080"},
+				},
+			},
+		}}}}},
+	})
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	rows, err := repository.ListUsageIdentities(context.Background(), db)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("load passive quota identity: rows=%+v err=%v", rows, err)
+	}
+	row := rows[0]
+	if row.MetadataObservedAt == nil || !row.MetadataObservedAt.Equal(syncAt) {
+		t.Fatalf("metadata observation should use sync time, got %+v", row.MetadataObservedAt)
+	}
+	passiveAt := time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC)
+	if row.PassiveQuota == nil || !row.PassiveQuota.ObservedAt.Equal(passiveAt) || len(row.PassiveQuota.Quota) != 2 {
+		t.Fatalf("expected account passive observation with original time, got %+v", row.PassiveQuota)
+	}
+	if row.NextRetryAfter == nil || !row.NextRetryAfter.Equal(nextRetryAfter) {
+		t.Fatalf("passive retry hint must not replace scheduler next_retry_after, got %+v", row.NextRetryAfter)
+	}
+	modelAt := time.Date(2026, 9, 7, 7, 30, 0, 0, time.UTC)
+	if len(row.PassiveModelQuotas) != 1 || row.PassiveModelQuotas[0].Model != "gpt-5.3-codex" || !row.PassiveModelQuotas[0].ObservedAt.Equal(modelAt) {
+		t.Fatalf("expected model passive observation with original time, got %+v", row.PassiveModelQuotas)
+	}
+}
+
+func TestSyncMetadataClearsAbsentPassiveQuotaWithoutInventingZeroState(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	ctx := context.Background()
+	seed := entities.UsageIdentity{
+		Name: "Codex", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "codex-passive", Type: "codex", Provider: "Codex",
+		PassiveQuota:       &entities.PassiveQuotaObservation{ObservedAt: time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC), Quota: []entities.PassiveQuotaMetric{{Key: "codex.rate_limit.primary", Label: "5h", Scope: "account"}}},
+		PassiveModelQuotas: []entities.PassiveModelQuotaObservation{{Model: "gpt-5", ObservedAt: time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC), Quota: []entities.PassiveQuotaMetric{{Key: "codex.rate_limit.primary", Label: "5h", Scope: "model"}}}},
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed passive quota identity: %v", err)
+	}
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC) },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex: seed.Identity, Type: "codex", Provider: "Codex",
+			Quota: &authfiles.QuotaObservation{ObservedAt: "2026-09-07T10:00:00Z", Signals: map[string]any{"X-Codex-Primary-Used-Percent": "not-a-number"}},
+		}}}}},
+	})
+	if err := service.SyncMetadata(ctx); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	row, err := repository.GetUsageIdentityByID(ctx, db, seed.ID)
+	if err != nil {
+		t.Fatalf("load updated identity: %v", err)
+	}
+	if row.PassiveQuota != nil || len(row.PassiveModelQuotas) != 0 {
+		t.Fatalf("malformed or absent passive observations must be unavailable, got account=%+v models=%+v", row.PassiveQuota, row.PassiveModelQuotas)
+	}
+}
+
 func TestSyncMetadataAuthFilesFetchFailureDoesNotDeleteAccounts(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	seed := entities.UsageIdentity{

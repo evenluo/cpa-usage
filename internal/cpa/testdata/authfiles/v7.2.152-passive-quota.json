@@ -1,0 +1,47 @@
+{
+  "files": [
+    {
+      "auth_index": "synthetic-codex",
+      "type": "codex",
+      "provider": "codex",
+      "quota": {
+        "observed_at": "2026-09-07T08:00:00Z",
+        "signals": {
+          "X-Codex-Plan-Type": "pro",
+          "X-Codex-Primary-Used-Percent": "51",
+          "X-Codex-Primary-Window-Minutes": "300",
+          "X-Codex-Primary-Reset-After-Seconds": "60",
+          "X-Codex-Additional-GPT-5.3-Codex-Spark-Limit-Name": "GPT-5.3-Codex-Spark",
+          "X-Codex-Additional-GPT-5.3-Codex-Spark-Secondary-Used-Percent": "63",
+          "X-Codex-Additional-GPT-5.3-Codex-Spark-Secondary-Window-Minutes": "10080",
+          "X-Codex-Credits-Balance": "0"
+        }
+      },
+      "model_quotas": {
+        "gpt-5.3-codex": {
+          "observed_at": "2026-09-07T07:30:00Z",
+          "signals": {
+            "X-Codex-Primary-Used-Percent": "80",
+            "X-Codex-Primary-Window-Minutes": "300"
+          }
+        }
+      }
+    },
+    {
+      "auth_index": "synthetic-claude",
+      "type": "claude",
+      "provider": "claude",
+      "quota": {
+        "observed_at": "2026-09-07T08:15:00Z",
+        "signals": {
+          "Anthropic-Ratelimit-Unified-5h-Utilization": "0.25",
+          "Anthropic-Ratelimit-Unified-5h-Status": "allowed_warning",
+          "Anthropic-Ratelimit-Unified-5h-Reset": "2026-09-07T12:00:00Z",
+          "Anthropic-Ratelimit-Unified-7d-Utilization": "0.53",
+          "Anthropic-Ratelimit-Unified-7d-Status": "allowed",
+          "Anthropic-Ratelimit-Unified-7d-Reset": "1787695200"
+        }
+      }
+    }
+  ]
+}

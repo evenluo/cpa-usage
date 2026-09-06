@@ -10,6 +10,7 @@ import (
 	"cpa-usage/internal/config"
 	"cpa-usage/internal/cpa"
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/quota"
 	"cpa-usage/internal/repository"
 
 	"cpa-usage/internal/cpa/dto/authfiles"
@@ -210,6 +211,9 @@ var authFileUsageIdentityExtensions = map[string]authFileUsageIdentityExtension{
 // auth_files 先走通用身份映射，再按 type 追加各来源特有字段，方便后续扩展新类型。
 func authFileUsageIdentity(file authfiles.AuthFile, observedAt time.Time) entities.UsageIdentity {
 	identity := baseAuthFileUsageIdentity(file, observedAt)
+	passiveQuota := quota.NormalizePassiveQuotaSnapshot(firstNonEmpty(file.Type, file.Provider), file.Quota, file.ModelQuotas)
+	identity.PassiveQuota = passiveQuota.Account
+	identity.PassiveModelQuotas = passiveQuota.Models
 	if extend, ok := authFileUsageIdentityExtensions[strings.ToLower(strings.TrimSpace(file.Type))]; ok {
 		extend(file, &identity)
 	}

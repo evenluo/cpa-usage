@@ -26,6 +26,7 @@ import {
   WEEKLY_WINDOW_SECONDS,
   type LiveCapacityAccountStateTone,
   type LiveCapacityMetric,
+  type LiveCapacityPassiveObservation,
   type LiveCapacityPlanTone,
   type LiveCapacityRow,
   type ProviderKind,
@@ -116,7 +117,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
             Live Capacity
             <Gauge className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed live capacity probe" />
           </CardTitle>
-          <CardDescription>Cached auth-file capacity probe</CardDescription>
+          <CardDescription>Manual probes and CPA passive observations</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="blue">live probe</Badge>
@@ -426,8 +427,15 @@ function LiveCapacityAccountTile({
 
       <AccountAvailabilitySummary row={row} />
 
+      <PassiveQuotaEvidence
+        supported={row.providerKind === "claude" || row.providerKind === "codex"}
+        account={row.passiveQuota}
+        models={row.passiveModelQuotas}
+      />
+
       {!row.disabled ? (
         <div className="mt-3 grid gap-2">
+          <p className="text-[10px] font-medium text-foreground/70">Manual capacity probe</p>
           <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} />
           <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} />
           {remainingMetrics.map((metric, index) => (
@@ -448,6 +456,71 @@ function LiveCapacityAccountTile({
         />
       ) : null}
     </div>
+  )
+}
+
+function PassiveQuotaEvidence({
+  supported,
+  account,
+  models,
+}: {
+  supported: boolean
+  account?: LiveCapacityPassiveObservation
+  models: LiveCapacityRow["passiveModelQuotas"]
+}) {
+  if (!supported) return null
+  return (
+    <div
+      className="mt-3 rounded-md border border-terracotta-500/20 bg-terracotta-500/[0.025] p-2.5"
+      role="group"
+      aria-label="CPA passive quota observation"
+    >
+      <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
+        <Eye className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
+        <span>CPA passive quota observation</span>
+      </div>
+      <div className="mt-2 space-y-3">
+        {!account && models.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground">No readable passive quota observation.</p>
+        ) : null}
+        {account ? <PassiveQuotaObservationSection label="Account" observation={account} /> : null}
+        {models.map((observation) => (
+          <PassiveQuotaObservationSection key={`${observation.model}:${observation.observedAt}`} label={observation.model} observation={observation} />
+        ))}
+      </div>
+      <p className="mt-2 text-[9px] leading-3 text-muted-foreground">
+        Latest provider watermark observed by CPA. No expiry or history is inferred; relative reset hints are anchored to the observation time.
+      </p>
+    </div>
+  )
+}
+
+function PassiveQuotaObservationSection({
+  label,
+  observation,
+}: {
+  label: string
+  observation: LiveCapacityPassiveObservation
+}) {
+  return (
+    <section aria-label={`${label} passive quota`}>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
+        <span className="truncate font-medium text-foreground/90" title={label}>{label}</span>
+        {observation.activeLimit ? (
+          <span className="truncate rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground" title={observation.activeLimit}>
+            Active limit {observation.activeLimit}
+          </span>
+        ) : null}
+        <time className="ml-auto text-muted-foreground" dateTime={observation.observedAt} title={observation.observedAt}>
+          {formatDate(observation.observedAt)}
+        </time>
+      </div>
+      <div className="mt-1.5 grid gap-1.5">
+        {observation.metrics.map((metric, index) => (
+          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} resetPrefix="reported reset" />
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -668,13 +741,15 @@ function PlanBadge({
 function MetricMeter({
   title,
   metric,
+  resetPrefix = "reset",
 }: {
   title: string
   metric?: LiveCapacityMetric
+  resetPrefix?: string
 }) {
   const progress = metric?.progress ?? null
   const resetLabel = metric?.resetLabel ?? "-"
-  const resetText = resetLabel === "-" ? "-" : `reset ${resetLabel}`
+  const resetText = resetLabel === "-" ? "-" : `${resetPrefix} ${resetLabel}`
   const WindowIcon = metric?.windowSeconds === FIVE_HOUR_WINDOW_SECONDS
     ? Timer
     : metric?.windowSeconds === WEEKLY_WINDOW_SECONDS

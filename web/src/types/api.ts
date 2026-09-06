@@ -200,6 +200,8 @@ export interface KeyIdentity {
   last_refresh?: string | null
   next_retry_after?: string | null
   metadata_observed_at?: string | null
+  passive_quota?: PassiveQuotaObservation | null
+  passive_model_quotas?: PassiveModelQuotaObservation[] | null
   plan_type?: string | null
   active_start?: string | null
   active_until?: string | null
@@ -255,13 +257,32 @@ export interface QuotaRow {
   used?: number
   limit?: number
   remaining?: number
+  unit?: string
   usedPercent?: number
   remainingFraction?: number
   allowed?: boolean
   limitReached?: boolean
+  unlimited?: boolean
   window?: QuotaWindow
   resetAt?: string
   resetAfterSeconds?: number
+}
+
+export interface PassiveQuotaObservation {
+  source: "cpa_passive"
+  scope: "account"
+  observed_at: string
+  active_limit?: string
+  quota: QuotaRow[]
+}
+
+export interface PassiveModelQuotaObservation {
+  source: "cpa_passive"
+  scope: "model"
+  model: string
+  observed_at: string
+  active_limit?: string
+  quota: QuotaRow[]
 }
 
 export interface QuotaCheckResponse {

@@ -17,7 +17,7 @@ The backend keeps a responsibility-based Go package layout. Choose an existing p
 - `internal/cpa`: CPA external API client boundaries and CPA DTOs, including the remote queue effect boundary that permits transport fallback only before a destructive command starts.
 - Accounting-v2 queue DTOs live in `internal/cpa/usage_accounting.go`; `internal/service` projects their allowlisted facts, and `internal/repository/usage_accounting.go` owns per-attempt interpretation plus the materialized SQL availability state. The [accounting contract](../design/usage-accounting-contract.md) defines consumer and storage semantics.
 - Selected-window canonical composition and state/quality counts use that materialized accounting state in the existing raw/hourly aggregation owner. `internal/api` projects summary accounting and per-attempt evidence; the existing Usage Intelligence view model and token/evidence presentation consume those facts without interpreting validity again.
-- `internal/quota`: restricted auth-file capacity probes, cache and refresh-task lifecycle used by **Live Capacity**. It is not CPA native quota administration.
+- `internal/quota`: restricted auth-file capacity probes, cache and refresh-task lifecycle, plus the allowlisted pure normalizer for passive Claude/Codex quota observations used by **Live Capacity**. It is not CPA native quota administration.
 - `internal/poller`: background queue consumption and polling execution.
 
 Supporting backend packages keep focused ownership:

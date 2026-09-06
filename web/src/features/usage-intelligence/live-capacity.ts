@@ -1,5 +1,5 @@
 import { formatDate } from "@/lib/format"
-import type { KeyIdentity, QuotaCacheResponse, QuotaRow, QuotaWindow } from "@/types/api"
+import type { KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaCacheResponse, QuotaRow, QuotaWindow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
 export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported" | "disabled"
@@ -48,9 +48,22 @@ export interface LiveCapacityRow {
   metadataObservedAt?: string | null
   lastRefresh?: string | null
   nextRetryAfter?: string | null
+  passiveQuota?: LiveCapacityPassiveObservation
+  passiveModelQuotas: LiveCapacityPassiveModelObservation[]
   /** Subscription start, exposed only while still in the future. */
   activeStart?: string | null
   activeUntil?: string | null
+}
+
+export interface LiveCapacityPassiveObservation {
+  source: "cpa_passive"
+  observedAt: string
+  activeLimit?: string
+  metrics: LiveCapacityMetric[]
+}
+
+export interface LiveCapacityPassiveModelObservation extends LiveCapacityPassiveObservation {
+  model: string
 }
 
 export interface LiveCapacityMetric {
@@ -105,6 +118,8 @@ export function buildLiveCapacityRows(input: {
       const resolvedPlanType = planType(quotaRows, identity.plan_type)
       const planDisplay = planDisplayFor(providerKind, resolvedPlanType)
       const priorityLabel = planDisplay.tone === "priority" ? planDisplay.label : undefined
+      const passiveQuota = passiveAccountObservation(providerKind, identity.passive_quota)
+      const passiveModelQuotas = passiveModelObservations(providerKind, identity.passive_model_quotas)
 
       let status: LiveCapacityStatus = activeQuota ? "cached" : "no_cache"
       let error: string | undefined
@@ -155,6 +170,8 @@ export function buildLiveCapacityRows(input: {
         metadataObservedAt: identity.metadata_observed_at,
         lastRefresh: identity.last_refresh,
         nextRetryAfter: identity.next_retry_after,
+        passiveQuota,
+        passiveModelQuotas,
         isCacheStale: status === "cached" && isPastTimestamp(expiresAt),
         // active_start only carries signal while still in the future (the
         // subscription is not yet effective); past starts are display noise.
@@ -163,6 +180,34 @@ export function buildLiveCapacityRows(input: {
       }
     })
     .sort(compareLiveCapacityRows)
+}
+
+function passiveAccountObservation(providerKind: ProviderKind, observation: PassiveQuotaObservation | null | undefined): LiveCapacityPassiveObservation | undefined {
+  if (!supportsPassiveQuota(providerKind) || observation?.source !== "cpa_passive" || observation.scope !== "account" || !validObservationTime(observation.observed_at)) {
+    return undefined
+  }
+  const metrics = observation.quota.map(metricFromQuotaRow)
+  if (metrics.length === 0) return undefined
+  return { source: observation.source, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }
+}
+
+function passiveModelObservations(providerKind: ProviderKind, observations: PassiveModelQuotaObservation[] | null | undefined): LiveCapacityPassiveModelObservation[] {
+  if (!supportsPassiveQuota(providerKind)) return []
+  return (observations ?? []).flatMap((observation) => {
+    const model = observation.model.trim()
+    if (observation.source !== "cpa_passive" || observation.scope !== "model" || !model || !validObservationTime(observation.observed_at)) return []
+    const metrics = observation.quota.map(metricFromQuotaRow)
+    if (metrics.length === 0) return []
+    return [{ source: observation.source, model, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }]
+  })
+}
+
+function supportsPassiveQuota(providerKind: ProviderKind): boolean {
+  return providerKind === "claude" || providerKind === "codex"
+}
+
+function validObservationTime(value: string): boolean {
+  return value.trim() !== "" && Number.isFinite(new Date(value).getTime())
 }
 
 export function accountStateFromIdentity(status: KeyIdentity["status"]): LiveCapacityAccountState {
@@ -339,12 +384,13 @@ function progressFromQuotaRow(row: QuotaRow): number | null {
 }
 
 function valueLabel(row: QuotaRow): string {
+  if (row.unlimited === true) return "Unlimited"
   if (typeof row.usedPercent === "number") return `${Math.round(row.usedPercent)}% used`
   if (typeof row.remainingFraction === "number") return `${Math.round((1 - row.remainingFraction) * 100)}% used`
   if (typeof row.remaining === "number" && typeof row.limit === "number" && row.limit > 0) {
     return `${formatQuotaNumber(Math.max(0, row.limit - row.remaining))} / ${formatQuotaNumber(row.limit)} used`
   }
-  if (typeof row.remaining === "number") return `${formatQuotaNumber(row.remaining)} left`
+  if (typeof row.remaining === "number") return `${formatQuotaNumber(row.remaining)}${row.unit ? ` ${row.unit}` : ""} left`
   if (typeof row.used === "number" && typeof row.limit === "number") return `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
   if (typeof row.allowed === "boolean") return row.allowed ? "Allowed" : "Blocked"
   return "Measured"

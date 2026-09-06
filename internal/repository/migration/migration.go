@@ -39,6 +39,7 @@ const (
 	migrationAddUsageRollupAccountingFields         = "20260907_add_usage_rollup_accounting_fields"
 	migrationAddUsageIdentityDisabled               = "20260902_add_usage_identity_disabled"
 	migrationAddUsageIdentityAvailability           = "20260907_add_usage_identity_availability"
+	migrationAddUsageIdentityPassiveQuota           = "20260907_add_usage_identity_passive_quota"
 )
 
 type schemaMigration struct {
@@ -122,6 +123,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationAddUsageAccountingFields, run: addUsageAccountingFieldsMigration},
 		{version: migrationAddUsageIdentityAvailability, run: addUsageIdentityAvailabilityMigration},
 		{version: migrationAddUsageRollupAccountingFields, run: addUsageRollupAccountingFieldsMigration},
+		{version: migrationAddUsageIdentityPassiveQuota, run: addUsageIdentityPassiveQuotaMigration},
 	}
 }
 

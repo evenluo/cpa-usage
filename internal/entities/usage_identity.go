@@ -73,6 +73,8 @@ type UsageIdentity struct {
 	LastRefresh        *time.Time
 	NextRetryAfter     *time.Time
 	MetadataObservedAt *time.Time
+	PassiveQuota       *PassiveQuotaObservation       `gorm:"serializer:json;type:text"`
+	PassiveModelQuotas []PassiveModelQuotaObservation `gorm:"serializer:json;type:text"`
 
 	TotalRequests   int64
 	SuccessCount    int64

@@ -134,6 +134,9 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 	deletedAt := time.Date(2026, 5, 4, 11, 0, 0, 0, time.UTC)
 	status := "error"
 	unavailable := true
+	passiveUsedPercent := float64(51)
+	passiveAllowed := true
+	passiveObservedAt := time.Date(2026, 5, 4, 8, 30, 0, 0, time.UTC)
 
 	activeIdentity := entities.UsageIdentity{
 		ID:                         1,
@@ -160,8 +163,17 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		LastRefresh:                &lastRefresh,
 		NextRetryAfter:             &nextRetryAfter,
 		MetadataObservedAt:         &metadataObservedAt,
-		CreatedAt:                  createdAt,
-		UpdatedAt:                  updatedAt,
+		PassiveQuota: &entities.PassiveQuotaObservation{
+			ObservedAt:  passiveObservedAt,
+			ActiveLimit: "codex_bengalfox",
+			Quota:       []entities.PassiveQuotaMetric{{Key: "codex.rate_limit.primary", Label: "5h", Scope: "account", UsedPercent: &passiveUsedPercent}},
+		},
+		PassiveModelQuotas: []entities.PassiveModelQuotaObservation{{
+			Model: "gpt-5.3-codex", ObservedAt: passiveObservedAt.Add(-time.Hour),
+			Quota: []entities.PassiveQuotaMetric{{Key: "codex.model.primary", Label: "5h", Scope: "model", Allowed: &passiveAllowed}},
+		}},
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 	deletedIdentity := entities.UsageIdentity{
 		ID:           2,
@@ -208,6 +220,8 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		`"output_tokens":200`,
 		`"reasoning_tokens":30`,
 		`"cached_tokens":40`,
+		`"passive_quota":{"source":"cpa_passive","scope":"account","observed_at":"2026-05-04T08:30:00Z","active_limit":"codex_bengalfox","quota":[{"key":"codex.rate_limit.primary","label":"5h","scope":"account","usedPercent":51}]}`,
+		`"passive_model_quotas":[{"source":"cpa_passive","scope":"model","model":"gpt-5.3-codex","observed_at":"2026-05-04T07:30:00Z","quota":[{"key":"codex.model.primary","label":"5h","scope":"model","allowed":true}]}]`,
 		`"total_tokens":370`,
 		`"last_aggregated_usage_event_id":99`,
 		`"first_used_at":"2026-05-04T08:00:00Z"`,
@@ -222,6 +236,11 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected %s in response body: %s", expected, body)
+		}
+	}
+	for _, forbidden := range []string{"signals", "Authorization", "Retry-After"} {
+		if contains(body, forbidden) {
+			t.Fatalf("raw passive signal material %q must not be projected: %s", forbidden, body)
 		}
 	}
 }
@@ -239,7 +258,7 @@ func TestUsageIdentitiesRoutePreservesMissingAvailabilityEvidence(t *testing.T) 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
 	}
-	for _, absent := range []string{`"status"`, `"unavailable"`, `"last_refresh"`, `"next_retry_after"`, `"metadata_observed_at"`} {
+	for _, absent := range []string{`"status"`, `"unavailable"`, `"last_refresh"`, `"next_retry_after"`, `"metadata_observed_at"`, `"passive_quota"`, `"passive_model_quotas"`} {
 		if contains(body, absent) {
 			t.Fatalf("expected missing availability field %s to remain absent, got %s", absent, body)
 		}

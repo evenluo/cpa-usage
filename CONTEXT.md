@@ -45,8 +45,8 @@ A fixed recent window used for stable activity, health, or evidence readings tha
 _Avoid_: Ignored filter, stale range
 
 **Live Capacity**:
-A restricted operational reading that uses CPA generic `api-call` support to probe cached or refreshed auth-file account capacity.
-_Avoid_: Usage quota analytics, CPA native quota source, billing quota
+A restricted operational reading that keeps user-triggered CPA generic `api-call` probes separate from the latest supported passive quota watermarks already present in CPA auth-file metadata.
+_Avoid_: Usage quota analytics, billing quota, quota history, inferred expiry or automatic provider calls
 
 **Reference Data**:
 Supporting user-maintained labels and rates that make **Usage Intelligence** readable and complete.
@@ -96,12 +96,14 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - The frontend defaults the 30-day **Selected Analysis Window** to daily granularity and all other selectable windows to hourly granularity; an explicit user selection overrides that default.
 - **Usage Intelligence** uses the **Selected Analysis Window** for KPIs, primary trends, and ranked contributors.
 - **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, attempt health, recent request evidence, and **Live Capacity**.
-- **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility; it is powered by CPA generic `api-call` quota probes and cached refresh tasks, not by a CPA native quota datasource.
+- **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility. It presents cached manual CPA generic `api-call` probes and supported passive CPA auth-file observations as separate sources.
 - **Live Capacity** displays active auth-file accounts that can be probed for capacity. Unsupported auth-file accounts are shown explicitly instead of blocking supported accounts.
 - **Live Capacity** can disable or re-enable an auth-file account in CPA via the account power action; disabling requires an inline confirmation, enabling applies immediately. Disabled accounts stay visible with a Disabled badge, sink to the end of the account grid, and are excluded from capacity probes until re-enabled.
 - Disabled auth-file accounts remain active identities in the local read model with a disabled marker instead of being dropped during metadata sync, so their historical usage and re-enable action stay available.
 - Temporarily unavailable auth-file accounts also remain the same active local identities. Operator-disabled, temporarily unavailable, and CPA lifecycle status are independent observations; absence of a reported status or availability flag does not imply an active account.
 - **Live Capacity** keeps CPA auth-file metadata observation time separate from upstream token refresh time and capacity-probe observation/cache time. A reported next-retry time is only the earliest retry eligibility, never a recovery guarantee.
+- Claude and Codex passive quota observations keep their original CPA `observed_at`, account/model scope and allowlisted normalized rows. Missing, empty, unsupported or malformed observations are unavailable rather than zero or healthy; they do not create expiry, history, refresh state or scheduler recovery claims.
+- Passive quota watermarks never replace manual probe rows or cache times, and passive retry hints never replace auth-file `next_retry_after`.
 - Compatibility: **Compatible**. Availability columns are nullable, API fields are additive and optional, legacy SQLite rows retain `NULL`, and existing navigation, toggle, and probe behavior remain unchanged.
 - **Live Capacity** is cache-first. Loading **Usage Intelligence** reads cached quota probe results only; manual refresh is the user action that may trigger provider calls.
 - **Live Capacity** shows the probe observation and cache-expiry times, the auth-file active window, and every provider quota row returned by the existing probe contract. These timestamps and rows are operational evidence, not billing renewal or account-history claims.
@@ -139,7 +141,7 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - **Request Evidence** drill-down lives inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
 - First-version insights are conditional deterministic warnings, not AI-generated summaries and not a duplicate summary of visible metrics.
 - **Usage Intelligence** insights prioritize metric completeness and health risks; cost, token, and contributor movements remain in their owning analysis surfaces.
-- CPA native quota administration remains out of scope; the supported capacity surface is the restricted **Live Capacity** probe inside **Usage Intelligence**.
+- CPA native quota administration remains out of scope; **Live Capacity** is read-only for passive quota metadata and retains the existing explicit manual probe action.
 - The first **Operations Console** covers manual sync state, rollup backfill coverage from the existing status contract, runtime state, access state, and logout. It does not claim background-ingestion freshness.
 - Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
 - Backup inspection and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.

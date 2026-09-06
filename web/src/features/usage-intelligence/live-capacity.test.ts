@@ -248,6 +248,87 @@ describe("Live Capacity view model", () => {
     })
   })
 
+  it("keeps passive CPA observations separate from manual probe state and plan", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        identity: "codex-auth",
+        plan_type: "team",
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          active_limit: "codex_bengalfox",
+          quota: [
+            { key: "codex.rate_limit.primary", label: "5h", usedPercent: 99, planType: "pro", window: { seconds: 18_000 } },
+          ],
+        },
+        passive_model_quotas: [
+          {
+            source: "cpa_passive",
+            scope: "model",
+            model: "gpt-5.3-codex",
+            observed_at: "2026-09-07T07:30:00Z",
+            quota: [
+              { key: "codex.model.secondary", label: "Weekly", usedPercent: 80, window: { seconds: 604_800 } },
+            ],
+          },
+        ],
+      })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          cachedAt: "2026-09-07T09:00:00Z",
+          expiresAt: "2026-09-07T09:05:00Z",
+          quota: [{ key: "manual", label: "5h", usedPercent: 10, planType: "team" }],
+        }],
+      },
+    })
+
+    expect(rows[0]).toMatchObject({
+      planType: "team",
+      planLabel: "Team",
+      isPriorityAccount: false,
+      isConstrained: false,
+      observedAt: "2026-09-07T09:00:00Z",
+      expiresAt: "2026-09-07T09:05:00Z",
+      fiveHour: { valueLabel: "10% used" },
+      passiveQuota: {
+        source: "cpa_passive",
+        observedAt: "2026-09-07T08:00:00Z",
+        activeLimit: "codex_bengalfox",
+        metrics: [{ label: "5h", valueLabel: "99% used" }],
+      },
+      passiveModelQuotas: [{
+        model: "gpt-5.3-codex",
+        observedAt: "2026-09-07T07:30:00Z",
+        metrics: [{ label: "Weekly", valueLabel: "80% used" }],
+      }],
+    })
+  })
+
+  it("drops malformed or unsupported passive projections without inventing zero state", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({
+          identity: "unsupported",
+          provider: "Gemini",
+          type: "gemini-cli",
+          passive_quota: { source: "cpa_passive", scope: "account", observed_at: "2026-09-07T08:00:00Z", quota: [{ key: "bad", label: "Bad", usedPercent: 0 }] },
+        }),
+        identity({
+          identity: "malformed",
+          passive_quota: { source: "cpa_passive", scope: "account", observed_at: "bad-time", quota: [{ key: "bad", label: "Bad", usedPercent: 0 }] },
+          passive_model_quotas: [],
+        }),
+      ],
+    })
+
+    expect(rows.map((row) => [row.authIndex, row.passiveQuota, row.passiveModelQuotas])).toEqual([
+      ["malformed", undefined, []],
+      ["unsupported", undefined, []],
+    ])
+  })
+
   it("keeps missing account state and availability explicit", () => {
     const rows = buildLiveCapacityRows({ identities: [identity({ status: undefined, unavailable: undefined })] })
 

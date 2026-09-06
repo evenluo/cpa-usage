@@ -430,6 +430,9 @@ func normalizeUsageIdentities(identities []entities.UsageIdentity, authType enti
 		identity.ProjectID = trimOptionalString(identity.ProjectID)
 		identity.PlanType = trimOptionalString(identity.PlanType)
 		identity.AuthFileStatus = trimOptionalString(identity.AuthFileStatus)
+		if len(identity.PassiveModelQuotas) == 0 {
+			identity.PassiveModelQuotas = nil
+		}
 		identity.IsDeleted = false
 		identity.DeletedAt = nil
 		normalized = append(normalized, identity)
@@ -529,6 +532,8 @@ func upsertUsageIdentities(tx *gorm.DB, identities []entities.UsageIdentity) err
 			"last_refresh":         gorm.Expr("excluded.last_refresh"),
 			"next_retry_after":     gorm.Expr("excluded.next_retry_after"),
 			"metadata_observed_at": gorm.Expr("excluded.metadata_observed_at"),
+			"passive_quota":        gorm.Expr("excluded.passive_quota"),
+			"passive_model_quotas": gorm.Expr("excluded.passive_model_quotas"),
 			"disabled":             gorm.Expr("excluded.disabled"),
 			"is_deleted":           false,
 			"deleted_at":           nil,
