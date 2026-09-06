@@ -55,7 +55,7 @@ func InterpretUsageAttempt(event entities.UsageEvent) dto.UsageAttemptFacts {
 		// Keep the existing historical Output TPS interpretation, visibly without
 		// canonical evidence. Distribution population selection belongs to C.
 	case AccountingValid:
-		if *event.TokenQuality != "complete" {
+		if *event.TokenQuality != "complete" || event.OutputTokens > *event.CanonicalOutputTokens {
 			return facts
 		}
 		// Preserve the existing provider-normalized OutputTokens numerator.

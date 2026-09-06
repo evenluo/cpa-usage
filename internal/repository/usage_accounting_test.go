@@ -56,4 +56,7 @@ func TestAccountingSumsRejectOverflowAndInvalidQuality(t *testing.T) {
 			t.Fatalf("structure must not upgrade quality: %+v", got)
 		}
 	}
+	if facts := InterpretUsageAttempt(entities.UsageEvent{UsageAccounting: valid, OutputTokens: 31, LatencyMS: 1200, TTFTMS: ptr(200)}); facts.OutputTPS != nil {
+		t.Fatal("legacy output exceeding canonical total output cannot yield consistent TPS")
+	}
 }

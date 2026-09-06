@@ -81,8 +81,11 @@ response tier. Empty/malformed response tiers are unknown. Neither fills or
 overwrites the other.
 
 `InterpretUsageAttempt.OutputTPS` reuses the existing positive-output,
-positive-TTFT, latency-greater-than-TTFT arithmetic and the existing `event.OutputTokens` numerator. Valid complete v2
-qualifies this reading; any other supplied canonical evidence yields no TPS. Explicit non-generating or non-streaming
+positive-TTFT, latency-greater-than-TTFT arithmetic and the existing
+`event.OutputTokens` numerator. Valid complete v2 qualifies this reading; any
+other supplied canonical evidence yields no TPS. A legacy output scalar
+exceeding the canonical output total is inconsistent with that evidence and
+also yields no TPS. Explicit non-generating or non-streaming
 attempts yield no TPS. Absent canonical evidence keeps the existing historical
 output interpretation, with absence and unknown flags visible in `AttemptFacts`.
 The formula remains output tokens × 1000 / (latency_ms − ttft_ms).
@@ -99,7 +102,7 @@ Positive-reasoning fixtures lock the unchanged numerator. This is not a newly
 defined canonical-output throughput metric, and it must not be described as
 excluding reasoning. C must qualify provider/actual-model/execution populations
 and must not imply exact throughput comparability across provider semantics.
- C owns the
+C owns the
 explicit success/failure and known-execution sample populations and coverage;
 the per-attempt seam does not infer a final client outcome.
 
