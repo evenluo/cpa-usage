@@ -36,6 +36,7 @@ The current frontend lives in `web/` and uses React, TypeScript, Vite, Tailwind,
 - `web/src/routes`: route files and route-level composition. Route files may own page-local React state, data fetching hooks, mutations, events, toasts, and layout composition.
 - `web/src/features/usage-intelligence`: tested Usage Intelligence selected/fixed-window load planning and view-model derivation, including Model Mix, deterministic Insights, and **Live Capacity** presentation facts.
 - `web/src/features/reference-data`: tested Reference Data interaction, model logic, and page workbench state for Key Aliases and Cost Rates.
+- `web/src/features/operations`: tested Operations Console presentation derivation for local runtime and ingestion observations, including explicit unavailable states.
 - `web/src/hooks`: reusable API-facing hooks and query wrappers, including cache-first **Live Capacity** reads and manual refresh-task polling.
 - `web/src/lib`: shared client utilities such as API access, formatting, and class-name helpers.
 - `web/src/components/ui`: low-level reusable UI primitives.

@@ -21,4 +21,4 @@ CPA Usage exposes `GET /metrics` next to `/healthz` as an unauthenticated runtim
 
 ## Compatibility
 
-This is an additive endpoint decision. Existing API contracts, auth behavior, the protected status surface, ingestion semantics, and deployment topology remain compatible. The endpoint is new externally observable behavior and is deliberately unauthenticated; deployments that require authenticated access must enforce it at the reverse proxy.
+This is an additive endpoint decision. Existing API contracts, auth behavior, the protected status surface, ingestion semantics, and deployment topology remain compatible. The endpoint is new externally observable behavior and is deliberately unauthenticated; deployments that require authenticated access must enforce it at the reverse proxy. The processing-rate correction is intentional: after comparable scrapes an observed zero is emitted as `0`, while a first scrape or absent process-metrics provider still omits the field; consumers must distinguish absent from zero.
