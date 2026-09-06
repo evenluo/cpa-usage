@@ -6,6 +6,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 test("mobile uses bottom navigation without the fixed desktop sidebar", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("cpa-theme", "light")
+  })
   await page.goto("/")
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
 
@@ -116,6 +119,10 @@ test("login and operations remain usable on small screens", async ({ page }) => 
 
   await page.goto("/operations")
   await expect(page.getByText("Operational Status")).toBeVisible()
+  await expect(page.getByText("Ingestion observations")).toBeVisible()
+  await expect(page.getByText(/Local observations only/)).toBeVisible()
+  await expect(page.getByText("12.5 events/min")).toBeVisible()
+  await expect(page.getByText("Runner idle")).toBeVisible()
   await page.getByRole("button", { name: "Trigger Sync" }).click()
   await expect(page.getByText("Sync triggered")).toBeVisible()
   await expectNoDocumentOverflow(page)

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test"
 import analyticsSummary from "../src/test/contracts/analytics_summary.json" with { type: "json" }
 import apiKeyAliasTargets from "../src/test/contracts/api_key_alias_targets_page.json" with { type: "json" }
+import usageFailureDistribution from "../src/test/contracts/usage_failure_distribution.json" with { type: "json" }
 import usageIdentities from "../src/test/contracts/usage_identities_page.json" with { type: "json" }
 
 export const statusPayload = {
@@ -10,6 +11,17 @@ export const statusPayload = {
   last_run_at: "2026-05-18T09:30:00Z",
   timezone: "Asia/Shanghai",
   version: "e2e",
+}
+
+export const metricsPayload = {
+  uptime_seconds: 3_600,
+  poller_running: true,
+  poller_sync_running: false,
+  redis_inbox_pending: 2,
+  redis_events_processed_total: 25,
+  redis_events_processed_batches_total: 2,
+  redis_events_last_processed_at: "2026-09-07T01:02:03Z",
+  redis_events_processing_rate_per_minute: 12.5,
 }
 
 export const usageOverviewPayload = {
@@ -182,6 +194,10 @@ export interface MockAPIOptions {
 }
 
 export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
+  await page.route("**/metrics", async (route) => {
+    await route.fulfill({ json: metricsPayload })
+  })
+
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -224,6 +240,10 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
     }
     if (path === "/usage/request-health") {
       await route.fulfill({ json: usageOverviewPayload })
+      return
+    }
+    if (path === "/usage/failures") {
+      await route.fulfill({ json: usageFailureDistribution })
       return
     }
     if (path === "/usage/events") {
