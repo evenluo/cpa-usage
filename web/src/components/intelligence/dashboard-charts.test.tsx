@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
 import type { AnalyticsCoreResponse, Insight, ModelDistribution } from "@/types/api"
 import { DashboardCharts } from "./dashboard-charts"
+import analyticsSummaryFixture from "@/test/contracts/analytics_summary.json"
 
 vi.mock("@/components/charts/model-distribution", () => ({
   ModelDistributionChart: ({ data, measure }: { data: ModelDistribution[]; measure: string }) => (
@@ -37,6 +38,26 @@ const model = { model: "provider-scoped-model" } as ModelDistribution
 const insight = { title: "Pricing incomplete", severity: "amber" } as Insight
 
 describe("DashboardCharts Usage Intelligence fields", () => {
+  it("shows selected-window accounting inside the existing trend surface only when the core is ready", () => {
+    const props = {
+      coreAnalyticsData: analyticsSummaryFixture as AnalyticsCoreResponse,
+      effectiveGranularity: "hour" as const,
+      trendView: "cost-token" as const,
+      onSelectTrendView: vi.fn(),
+      leaderboardScope: "api-key" as const,
+      onSelectLeaderboardScope: vi.fn(),
+      leaderboardSortLabel: "Sort: Cost",
+      modelMixMeasure: "tokens" as const,
+      modelMixCostStateLabel: "Local estimate incomplete, by tokens",
+      onRetryCore: vi.fn(),
+    }
+    const { rerender } = render(<DashboardCharts {...props} surfaces={surfaces()} />)
+    expect(screen.getByText("Canonical token composition")).toBeInTheDocument()
+    expect(screen.getByText(/3 \/ 3 attempts have valid/)).toBeInTheDocument()
+    rerender(<DashboardCharts {...props} surfaces={surfaces({ core: { status: "error", data: undefined, error: new Error("unavailable") } })} />)
+    expect(screen.queryByText("Canonical token composition")).not.toBeInTheDocument()
+  })
+
   it("renders the Model Mix owner and conditional attention signals with token fallback labeling", () => {
     render(
       <DashboardCharts
@@ -51,12 +72,12 @@ describe("DashboardCharts Usage Intelligence fields", () => {
         onSelectLeaderboardScope={vi.fn()}
         leaderboardSortLabel="Sort: Tokens"
         modelMixMeasure="tokens"
-        modelMixCostStateLabel="Cost partial, by tokens"
+        modelMixCostStateLabel="Local estimate incomplete, by tokens"
         onRetryCore={vi.fn()}
       />,
     )
 
-    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Cost partial, by tokens")
+    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Local estimate incomplete, by tokens")
     expect(screen.getByTestId("model-distribution-owner")).toHaveTextContent("tokens:provider-scoped-model")
     expect(screen.getByTestId("insight-rail-owner")).toHaveTextContent("Pricing incomplete")
   })

@@ -3,7 +3,39 @@ export type TimeRange = "today" | "yesterday" | "24h" | "7d" | "30d"
 export type CostStatus = "available" | "partial" | "unavailable"
 export type CacheReadShareState = "available" | "partial" | "no_cache_data" | "no_prompt_input"
 
+export type AccountingState = "absent" | "valid"
+export type AccountingQuality = "complete" | "inconsistent" | "unclassified"
+
+export interface CanonicalComposition<T = number> {
+  total_tokens: T
+  input: { total_tokens: T; uncached_tokens: T; cache_read_tokens: T; cache_write_tokens: T }
+  output: { total_tokens: T; non_reasoning_tokens: T; reasoning_tokens: T }
+  unclassified_tokens: T
+}
+
+export interface AccountingSummary {
+  total_attempts: number
+  valid_attempts: number
+  coverage_pct: number | null
+  states: Record<AccountingState, number>
+  valid_quality: Record<AccountingQuality, number>
+  composition: CanonicalComposition
+}
+
+export interface UsageAttemptFacts {
+  generate: boolean | null
+  stream: boolean | null
+  request_service_tier: string | null
+  response_service_tier: string | null
+  output_tps: number | null
+  accounting: CanonicalComposition<number | null> & {
+    state: AccountingState
+    quality: AccountingQuality | null
+  }
+}
+
 export interface AnalyticsSummary {
+  accounting: AccountingSummary
   total_cost: number
   total_tokens: number
   request_count: number
@@ -12,8 +44,8 @@ export interface AnalyticsSummary {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
   cache_read_tokens: number
+  cache_write_tokens: number
   success_rate: number
   cost_available: boolean
   cost_status: CostStatus
@@ -30,12 +62,13 @@ export interface TrendPoint {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
+  cache_read_tokens: number
   request_count: number
   success_count: number
   failure_count: number
   cost_available: boolean
   cost_status: CostStatus
+  canonical_valid_attempts: number
 }
 
 export interface KeyAliasBreakdown {
@@ -57,7 +90,8 @@ export interface KeyAliasBreakdown {
   last_used_at: string | null
   cost_available: boolean
   cost_status: CostStatus
-  trend: Array<Pick<TrendPoint, "label" | "total_cost" | "total_tokens" | "cost_available" | "cost_status">>
+  canonical_valid_attempts: number
+  trend: Array<Pick<TrendPoint, "label" | "total_cost" | "total_tokens" | "cost_available" | "cost_status" | "canonical_valid_attempts">>
 }
 
 export interface ModelDistribution {
@@ -68,7 +102,6 @@ export interface ModelDistribution {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
   cache_read_tokens: number
   cache_read_share: number
   cache_read_coverage: number
@@ -83,6 +116,7 @@ export interface ModelDistribution {
   average_latency_ms: number
   cost_available: boolean
   cost_status: CostStatus
+  canonical_valid_attempts: number
 }
 
 export interface Insight {
@@ -101,6 +135,7 @@ export interface ProviderOption {
   provider: string
   request_count: number
   total_tokens: number
+  canonical_valid_attempts: number
   total_cost: number
   cost_available: boolean
   cost_status: CostStatus
@@ -117,6 +152,7 @@ export interface HeatmapCell {
   failure_count: number
   cost_available: boolean
   cost_status: CostStatus
+  canonical_valid_attempts: number
 }
 
 export interface HeatmapRow {
@@ -161,10 +197,18 @@ export interface KeyIdentity {
   type: string
   provider: string
   disabled: boolean
+  status?: "active" | "pending" | "refreshing" | "error" | "disabled" | "unknown" | "other" | null
+  unavailable?: boolean | null
+  last_refresh?: string | null
+  next_retry_after?: string | null
+  metadata_observed_at?: string | null
+  passive_quota?: PassiveQuotaObservation | null
+  passive_model_quotas?: PassiveModelQuotaObservation[] | null
   plan_type?: string | null
   active_start?: string | null
   active_until?: string | null
   total_tokens: number
+  canonical_valid_attempts: number
   total_cost: number
   cost_available: boolean
   last_used_at: string | null
@@ -184,8 +228,9 @@ export interface APIKeyAliasTarget {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
+  cache_read_tokens: number
   total_tokens: number
+  canonical_valid_attempts: number
   total_cost: number
   cost_available: boolean
   cost_status: CostStatus
@@ -199,6 +244,69 @@ export interface KeyIdentityPage {
   page: number
   page_size: number
   total_pages: number
+}
+
+export interface ModelThinkingSupport {
+  min?: number
+  max?: number
+  zero_allowed?: boolean
+  dynamic_allowed?: boolean
+  levels?: string[]
+}
+
+export interface ModelCapability {
+  context_length?: number
+  input_token_limit?: number
+  max_completion_tokens?: number
+  output_token_limit?: number
+  supported_input_modalities?: string[]
+  supported_output_modalities?: string[]
+  thinking?: ModelThinkingSupport
+}
+
+export interface RegisteredModelSupport {
+  id: string
+  display_name?: string
+  type?: string
+  owned_by?: string
+  definition_status: "available" | "absent" | "unknown_channel" | "error"
+  capability?: ModelCapability
+}
+
+export interface AccountModelSupport {
+  identity_id: number
+  auth_index: string
+  display_name: string
+  provider: string
+  channel?: string
+  disabled: boolean
+  unavailable: boolean | null
+  status: "loaded" | "failed"
+  error_code?: "auth_file_missing" | "invalid_upstream_response" | "upstream_error"
+  catalog_status: "loaded" | "unknown_channel" | "error"
+  registered_models: RegisteredModelSupport[]
+}
+
+export interface ModelSupportCoverage {
+  model_id: string
+  display_name?: string
+  observed_supporting_accounts: number
+  selected_accounts: number
+  single_registered_account_in_scope: boolean | null
+}
+
+export interface ModelSupportResponse {
+  scope_complete: boolean
+  selected_count: number
+  loaded_count: number
+  accounts: AccountModelSupport[]
+  models: ModelSupportCoverage[]
+  limits: {
+    max_accounts: number
+    max_concurrency: number
+    timeout_seconds: number
+    max_upstream_requests: number
+  }
 }
 
 export interface QuotaWindow {
@@ -216,13 +324,33 @@ export interface QuotaRow {
   used?: number
   limit?: number
   remaining?: number
+  unit?: string
   usedPercent?: number
   remainingFraction?: number
   allowed?: boolean
   limitReached?: boolean
+  hasCredits?: boolean
+  unlimited?: boolean
   window?: QuotaWindow
   resetAt?: string
   resetAfterSeconds?: number
+}
+
+export interface PassiveQuotaObservation {
+  source: "cpa_passive"
+  scope: "account"
+  observed_at: string
+  active_limit?: string
+  quota: QuotaRow[]
+}
+
+export interface PassiveModelQuotaObservation {
+  source: "cpa_passive"
+  scope: "model"
+  model: string
+  observed_at: string
+  active_limit?: string
+  quota: QuotaRow[]
 }
 
 export interface QuotaCheckResponse {
@@ -278,6 +406,7 @@ export interface APIKeyAliasTargetPage {
 }
 
 export interface UsageEvent {
+  attempt_facts: UsageAttemptFacts
   id?: number
   timestamp: string
   model: string
@@ -287,7 +416,6 @@ export interface UsageEvent {
   status_code?: number
   executor_type?: string
   reasoning_effort?: string
-  service_tier?: string
   source: string
   auth_index?: string
   api_key_alias?: string
@@ -295,24 +423,134 @@ export interface UsageEvent {
   failed: boolean
   latency_ms: number
   ttft_ms: number | null
-  output_tps: number | null
-  tokens: {
-    input_tokens?: number
-    output_tokens: number
-    reasoning_tokens?: number
-    cached_tokens?: number
-    cache_read_tokens?: number
-    cache_creation_tokens?: number
-    total_tokens: number
-  }
 }
 
 export interface UsageEventsPage {
   events: UsageEvent[]
+  window_end?: string
   total_count: number
   page: number
   page_size: number
   total_pages: number
+}
+
+export interface UsageDiagnosticSelection {
+  provider?: string
+  model?: string
+  modelAlias?: string
+  account?: string
+  endpoint?: string
+  status?: string
+  requestId?: string
+  minLatencyMS?: string
+  windowEnd?: string
+}
+
+export interface UsageModelMapping {
+  model_alias: string
+  model: string
+  provider: string
+  attempt_count: number
+  canonical_valid_attempts: number
+  failure_count: number
+  failure_share: number
+  latency_sample_count: number
+  mean_latency_ms: number
+  total_cost: number
+  cost_available: boolean
+  cost_status: CostStatus
+}
+
+export interface UsageModelMappingDistribution {
+  window_start: string
+  window_end: string
+  total_attempts: number
+  observed_alias_attempts: number
+  canonical_valid_attempts: number
+  missing_alias_attempts: number
+  alias_coverage: number
+  observed_total_cost: number
+  observed_cost_available: boolean
+  observed_cost_status: CostStatus
+  mappings: UsageModelMapping[]
+  other_attempts: number
+}
+
+export interface UsageFailureBreakdownItem {
+  value: string
+  label: string
+  category?: string
+  count: number
+}
+
+export interface UsageFailureBreakdown {
+  items: UsageFailureBreakdownItem[]
+  other_count: number
+}
+
+export interface UsageFailureDistribution {
+  window_start: string
+  window_end: string
+  total_failures: number
+  categories: UsageFailureBreakdown
+  statuses: UsageFailureBreakdown
+  providers: UsageFailureBreakdown
+  accounts: UsageFailureBreakdown
+  models: UsageFailureBreakdown
+  endpoints: UsageFailureBreakdown
+}
+
+export interface UsagePercentileDistribution {
+  population_count: number
+  sample_count: number
+  coverage: number | null
+  p50: number | null
+  p95: number | null
+}
+
+export interface UsageExecutionPopulation {
+  generating_streaming: number
+  non_generating: number
+  non_streaming: number
+  unknown: number
+}
+
+export interface UsageAttemptPerformanceSummary {
+  attempt_count?: number
+  successful_attempts: number
+  failed_attempts: number
+  successful_execution: UsageExecutionPopulation
+  latency_ms: {
+    successful: UsagePercentileDistribution
+    failed: UsagePercentileDistribution
+  }
+  ttft_ms: {
+    generating_streaming: UsagePercentileDistribution
+    unknown_execution: UsagePercentileDistribution
+  }
+  output_tps: {
+    generating_streaming: UsagePercentileDistribution
+  }
+}
+
+export interface UsagePerformanceBreakdownItem extends UsageAttemptPerformanceSummary {
+  value: string
+  label: string
+  attempt_count: number
+}
+
+export interface UsagePerformanceBreakdown {
+  items: UsagePerformanceBreakdownItem[]
+  other_count: number
+}
+
+export interface UsageAttemptPerformance extends UsageAttemptPerformanceSummary {
+  window_start: string
+  window_end: string
+  total_attempts: number
+  providers: UsagePerformanceBreakdown
+  models: UsagePerformanceBreakdown
+  accounts: UsagePerformanceBreakdown
 }
 
 export interface PricingEntry {
@@ -348,6 +586,18 @@ export interface StatusPayload {
     failed_at?: string
     last_error?: string
   }
+}
+
+export interface MetricsPayload {
+  uptime_seconds?: number
+  poller_running?: boolean
+  poller_sync_running?: boolean
+  redis_inbox_pending?: number
+  redis_events_processed_total?: number
+  redis_events_processed_batches_total?: number
+  redis_events_last_processed_at?: string
+  redis_events_processing_rate_per_minute?: number
+  db_unavailable?: boolean
 }
 
 export interface AuthSessionPayload {

@@ -12,10 +12,12 @@ The backend keeps a responsibility-based Go package layout. Choose an existing p
 - `cmd/server`: executable entrypoint and SIGINT/SIGTERM signal boundary.
 - `internal/app`: application wiring plus the single runtime lifecycle owner: admission closure, bounded HTTP drain, background-runner cancellation/wait, then database and log closure. Manual sync admission and manual-command `Last*` status also live here.
 - `internal/api`: HTTP contracts, handlers, request parsing, response payloads, route-level API behavior, and the analytics/usage read-path provider seams consumed by handlers. Usage read-query normalization is API-owned and projects once into capability-specific repository filters.
-- `internal/service`: write-path use cases and orchestration (usage intake, sync, reference data, account status toggles, rollup backfill) that should not live in handlers or persistence code. Analytics and usage read paths do not pass through this package; handlers call repository-backed readers through the seams defined in `internal/api`.
-- `internal/repository`: SQLite/GORM persistence, migrations, analytics and usage read models, and SQL aggregation. It owns canonical identity, Cost completeness, and API-key aggregate facts. Its Reader seams produce the read DTOs consumed by HTTP. Analytics source planning converges summary, trend, provider options, and snapshot assembly while retaining SQL-limited raw identity/API-key/model Adapters where [accepted parity and high-cardinality evidence](../design/analytics-raw-rollup-convergence.md) requires them.
+- `internal/service`: write-path use cases and bounded upstream orchestration (usage intake, sync, reference data, account status toggles, explicit auth-file model-support loads, rollup backfill) that should not live in handlers or persistence code. Analytics and persisted usage read paths do not pass through this package; handlers call repository-backed readers through the seams defined in `internal/api`.
+- `internal/repository`: SQLite/GORM persistence, migrations, analytics and usage read models, and SQL aggregation. It owns canonical identity, Cost completeness, API-key aggregate facts, and bounded raw attempt-performance percentiles. Its Reader seams produce the read DTOs consumed by HTTP. Analytics source planning converges summary, trend, provider options, and snapshot assembly while retaining SQL-limited raw identity/API-key/model Adapters where [accepted parity and high-cardinality evidence](../design/analytics-raw-rollup-convergence.md) requires them.
 - `internal/cpa`: CPA external API client boundaries and CPA DTOs, including the remote queue effect boundary that permits transport fallback only before a destructive command starts.
-- `internal/quota`: restricted auth-file capacity probes, cache and refresh-task lifecycle used by **Live Capacity**. It is not CPA native quota administration.
+- Accounting-v2 queue DTOs live in `internal/cpa/usage_accounting.go`; `internal/service` projects their allowlisted facts, and `internal/repository/usage_accounting.go` owns canonical validation, per-attempt interpretation and the materialized valid/absent SQL availability state. The [accounting contract](../design/usage-accounting-contract.md) defines consumer and storage semantics.
+- Selected-window canonical composition and state/quality counts use that materialized accounting state in the existing raw/hourly aggregation owner. `internal/api` projects summary accounting and per-attempt evidence; the existing Usage Intelligence view model and token/evidence presentation consume those facts without interpreting validity again.
+- `internal/quota`: restricted auth-file capacity probes, cache and refresh-task lifecycle, plus the allowlisted pure normalizer for passive Claude/Codex quota observations used by **Live Capacity**. It is not CPA native quota administration.
 - `internal/poller`: background queue consumption and polling execution.
 
 Supporting backend packages keep focused ownership:
@@ -34,9 +36,10 @@ Supporting backend packages keep focused ownership:
 The current frontend lives in `web/` and uses React, TypeScript, Vite, Tailwind, and shadcn-style UI primitives.
 
 - `web/src/routes`: route files and route-level composition. Route files may own page-local React state, data fetching hooks, mutations, events, toasts, and layout composition.
-- `web/src/features/usage-intelligence`: tested Usage Intelligence selected/fixed-window load planning and view-model derivation, including Model Mix, deterministic Insights, and **Live Capacity** presentation facts.
+- `web/src/features/usage-intelligence`: tested Usage Intelligence selected/fixed-window load planning and view-model derivation, including Model Mix, observed model mappings, deterministic Insights, and **Live Capacity** presentation facts.
 - `web/src/features/reference-data`: tested Reference Data interaction, model logic, and page workbench state for Key Aliases and Cost Rates.
-- `web/src/hooks`: reusable API-facing hooks and query wrappers, including cache-first **Live Capacity** reads and manual refresh-task polling.
+- `web/src/features/operations`: tested Operations Console presentation derivation for local runtime and ingestion observations, including explicit unavailable states.
+- `web/src/hooks`: reusable API-facing hooks and query wrappers, including cache-first **Live Capacity** reads, manual refresh-task polling, and mutation-only **Registered Model Support** loads.
 - `web/src/lib`: shared client utilities such as API access, formatting, and class-name helpers.
 - `web/src/components/ui`: low-level reusable UI primitives.
 - `web/src/components/charts`: chart components and chart-specific presentation helpers.

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	repodto "cpa-usage/internal/repository/dto"
 )
@@ -23,14 +24,24 @@ type usageTimeFilter struct {
 }
 
 type usageEventListFilter struct {
-	usageTimeFilter
+	usageDiagnosticFilter
 	Page      int
 	PageSize  int
 	Offset    int
-	Model     string
 	Source    string
 	AuthIndex string
 	Result    string
+}
+
+type usageDiagnosticFilter struct {
+	usageTimeFilter
+	Model        string
+	ModelAlias   string
+	Account      string
+	Endpoint     string
+	Status       string
+	RequestID    string
+	MinLatencyMS *int64
 }
 
 type analyticsFilter struct {
@@ -60,9 +71,28 @@ func (f usageEventListFilter) repositoryFilter() repodto.UsageEventListFilter {
 		PageSize:       f.PageSize,
 		Offset:         f.Offset,
 		Model:          f.Model,
+		ModelAlias:     f.ModelAlias,
+		Account:        f.Account,
+		Endpoint:       f.Endpoint,
+		Status:         f.Status,
+		RequestID:      f.RequestID,
+		MinLatencyMS:   f.MinLatencyMS,
 		Source:         f.Source,
 		AuthIndex:      f.AuthIndex,
 		Result:         f.Result,
+	}
+}
+
+func (f usageDiagnosticFilter) repositoryFilter() repodto.UsageDiagnosticFilter {
+	return repodto.UsageDiagnosticFilter{
+		UsageTimeScope: f.repositoryScope(),
+		Model:          f.Model,
+		ModelAlias:     f.ModelAlias,
+		Account:        f.Account,
+		Endpoint:       f.Endpoint,
+		Status:         f.Status,
+		RequestID:      f.RequestID,
+		MinLatencyMS:   f.MinLatencyMS,
 	}
 }
 
@@ -122,15 +152,22 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		return usageEventListFilter{}, err
 	}
 	filter := usageEventListFilter{
-		usageTimeFilter: usageTimeFilter{usageWindow: window},
-		Page:            1,
-		PageSize:        repodto.DefaultUsageEventsLimit,
+		usageDiagnosticFilter: usageDiagnosticFilter{usageTimeFilter: usageTimeFilter{usageWindow: window}},
+		Page:                  1,
+		PageSize:              repodto.DefaultUsageEventsLimit,
 	}
 	if req == nil {
 		return filter, nil
 	}
 
 	query := req.URL.Query()
+	if hasUsageDiagnosticSelection(query) {
+		fixedWindow, err := parseFixedUsageDiagnosticWindow(query, anchor)
+		if err != nil {
+			return usageEventListFilter{}, err
+		}
+		filter.usageWindow = fixedWindow
+	}
 	if pageValue := strings.TrimSpace(query.Get("page")); pageValue != "" {
 		page, err := strconv.Atoi(pageValue)
 		if err != nil || page < 1 {
@@ -139,8 +176,8 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		filter.Page = page
 	}
 	pageSizeValue := strings.TrimSpace(query.Get("page_size"))
-	if pageSizeValue == "" {
-		pageSizeValue = strings.TrimSpace(query.Get("limit"))
+	if query.Has("limit") {
+		return usageEventListFilter{}, fmt.Errorf("use page_size instead of removed limit parameter")
 	}
 	if pageSizeValue != "" {
 		pageSize, err := strconv.Atoi(pageSizeValue)
@@ -153,8 +190,12 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		filter.PageSize = pageSize
 	}
 	filter.Offset = (filter.Page - 1) * filter.PageSize
-	filter.Model = strings.TrimSpace(query.Get("model"))
-	filter.Provider = strings.TrimSpace(query.Get("provider"))
+	selection, err := parseUsageDiagnosticSelection(query)
+	if err != nil {
+		return usageEventListFilter{}, err
+	}
+	selection.usageWindow = filter.usageWindow
+	filter.usageDiagnosticFilter = selection
 	filter.Source = strings.TrimSpace(query.Get("source"))
 	filter.AuthIndex = strings.TrimSpace(query.Get("auth_index"))
 	filter.Result = strings.TrimSpace(query.Get("result"))
@@ -162,6 +203,167 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		return usageEventListFilter{}, fmt.Errorf("invalid result %q", filter.Result)
 	}
 	return filter, nil
+}
+
+// parseUsageEventExportFilterQuery deliberately reuses the Request Evidence
+// selection parser. An export is the complete, fixed snapshot selection, never
+// one paginated page or a source/auth-index compatibility filter.
+func parseUsageEventExportFilterQuery(req *http.Request, anchor time.Time, limit int) (usageEventListFilter, error) {
+	if req == nil {
+		return usageEventListFilter{}, fmt.Errorf("export requires window_end")
+	}
+	query := req.URL.Query()
+	if strings.TrimSpace(query.Get("window_end")) == "" {
+		return usageEventListFilter{}, fmt.Errorf("export requires window_end from Request Evidence")
+	}
+	for _, name := range []string{"page", "page_size", "limit", "source", "auth_index"} {
+		if strings.TrimSpace(query.Get(name)) != "" {
+			return usageEventListFilter{}, fmt.Errorf("export does not accept %s", name)
+		}
+	}
+	filter, err := parseUsageEventListFilterQuery(req, anchor)
+	if err != nil {
+		return usageEventListFilter{}, err
+	}
+	filter.Page = 1
+	filter.PageSize = limit + 1
+	filter.Offset = 0
+	return filter, nil
+}
+
+func hasUsageDiagnosticSelection(query mapQuery) bool {
+	for _, name := range []string{"model_alias", "account", "endpoint", "status", "request_id", "min_latency_ms", "window_end"} {
+		if strings.TrimSpace(query.Get(name)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func parseFixedUsageDiagnosticFilterQuery(req *http.Request, anchor time.Time) (usageDiagnosticFilter, error) {
+	window, err := parseFixedUsageDiagnosticWindow(nil, anchor)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	filter := usageDiagnosticFilter{usageTimeFilter: usageTimeFilter{usageWindow: window}}
+	if req == nil {
+		return filter, nil
+	}
+	query := req.URL.Query()
+	window, err = parseFixedUsageDiagnosticWindow(query, anchor)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	selection, err := parseUsageDiagnosticSelection(query)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	selection.usageWindow = window
+	return selection, nil
+}
+
+func parseFixedUsageDiagnosticWindow(query mapQuery, anchor time.Time) (usageWindow, error) {
+	windowEnd := anchor.UTC()
+	if query != nil {
+		if rangeValue := strings.TrimSpace(query.Get("range")); rangeValue != "" && rangeValue != "24h" {
+			return usageWindow{}, fmt.Errorf("diagnostic selection requires range %q", "24h")
+		}
+		if value := strings.TrimSpace(query.Get("window_end")); value != "" {
+			parsed, err := time.Parse(time.RFC3339Nano, value)
+			if err != nil {
+				return usageWindow{}, fmt.Errorf("invalid window_end: %w", err)
+			}
+			windowEnd = parsed.UTC()
+		}
+	}
+	windowStart := windowEnd.Add(-24 * time.Hour)
+	return usageWindow{Range: "24h", StartTime: &windowStart, EndTime: &windowEnd, FixedWindowEnd: &windowEnd}, nil
+}
+
+func parseUsageDiagnosticSelection(query mapQuery) (usageDiagnosticFilter, error) {
+	provider, err := normalizeDiagnosticValue("provider", query.Get("provider"), 128)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	model, err := normalizeDiagnosticValue("model", query.Get("model"), 128)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	modelAlias, err := normalizeDiagnosticValue("model_alias", query.Get("model_alias"), 128)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	account, err := normalizeDiagnosticValue("account", query.Get("account"), 128)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	endpoint, err := normalizeDiagnosticValue("endpoint", query.Get("endpoint"), 256)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	if strings.ContainsAny(endpoint, "?#") {
+		return usageDiagnosticFilter{}, fmt.Errorf("invalid endpoint %q", endpoint)
+	}
+	status, err := normalizeDiagnosticStatus(query.Get("status"))
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	requestID, err := normalizeDiagnosticValue("request_id", query.Get("request_id"), 256)
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	minLatencyMS, err := normalizeDiagnosticMinLatency(query.Get("min_latency_ms"))
+	if err != nil {
+		return usageDiagnosticFilter{}, err
+	}
+	return usageDiagnosticFilter{
+		usageTimeFilter: usageTimeFilter{Provider: provider},
+		Model:           model, ModelAlias: modelAlias, Account: account, Endpoint: endpoint, Status: status, RequestID: requestID, MinLatencyMS: minLatencyMS,
+	}, nil
+}
+
+// mapQuery is the narrow query-string Interface used by both diagnostic entry
+// points. url.Values satisfies it without exposing HTTP request parsing below.
+type mapQuery interface {
+	Get(string) string
+}
+
+func normalizeDiagnosticValue(name, value string, maxLength int) (string, error) {
+	value = strings.TrimSpace(value)
+	if len(value) > maxLength {
+		return "", fmt.Errorf("%s exceeds %d bytes", name, maxLength)
+	}
+	if strings.IndexFunc(value, unicode.IsControl) >= 0 {
+		return "", fmt.Errorf("invalid %s", name)
+	}
+	return value, nil
+}
+
+func normalizeDiagnosticStatus(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" || value == "unknown" || value == "other" {
+		return value, nil
+	}
+	if len(value) == 3 && value[1:] == "xx" && value[0] >= '1' && value[0] <= '5' {
+		return value, nil
+	}
+	code, err := strconv.Atoi(value)
+	if err != nil || code < 100 || code > 599 || strconv.Itoa(code) != value {
+		return "", fmt.Errorf("invalid status %q", value)
+	}
+	return value, nil
+}
+
+func normalizeDiagnosticMinLatency(value string) (*int64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	threshold, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || threshold <= 0 || strconv.FormatInt(threshold, 10) != value {
+		return nil, fmt.Errorf("invalid min_latency_ms %q", value)
+	}
+	return &threshold, nil
 }
 
 func parseUsageWindowQuery(req *http.Request, anchor time.Time) (usageWindow, error) {

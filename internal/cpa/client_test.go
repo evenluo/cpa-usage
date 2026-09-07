@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -569,6 +571,71 @@ func TestFetchAuthFileByAuthIndexFiltersByAuthIndex(t *testing.T) {
 	}
 	if !found || file.Name != "codex-user.json" || !file.Disabled {
 		t.Fatalf("unexpected auth file: %+v found=%v", file, found)
+	}
+}
+
+func TestFetchAuthFileModelsUsesResolvedNameAndAllowlistedFixture(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/models/auth-file-models.json")
+	if err != nil {
+		t.Fatalf("read auth-file models fixture: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != cpaManagementAuthFileModelsEndpoint {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("name"); got != "codex user.json" {
+			t.Fatalf("expected encoded auth file name, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
+			t.Fatalf("expected management Authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(fixture)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	result, err := client.FetchAuthFileModels(context.Background(), " codex user.json ")
+	if err != nil {
+		t.Fatalf("FetchAuthFileModels returned error: %v", err)
+	}
+	if len(result.Payload.Models) != 1 || result.Payload.Models[0].ID != "gpt-fixture-exact" || result.Payload.Models[0].DisplayName != "GPT Fixture Exact" {
+		t.Fatalf("unexpected registered models payload: %+v", result.Payload)
+	}
+}
+
+func TestFetchStaticModelDefinitionsPreservesCapabilityPresence(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/models/static-model-definitions.json")
+	if err != nil {
+		t.Fatalf("read static model definitions fixture: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != cpaManagementModelDefinitionsEndpoint+"codex" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(fixture)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	result, err := client.FetchStaticModelDefinitions(context.Background(), " Codex ")
+	if err != nil {
+		t.Fatalf("FetchStaticModelDefinitions returned error: %v", err)
+	}
+	if result.Payload.Channel != "codex" || len(result.Payload.Models) != 1 {
+		t.Fatalf("unexpected definitions payload: %+v", result.Payload)
+	}
+	definition := result.Payload.Models[0]
+	if definition.ContextLength == nil || *definition.ContextLength != 200000 || definition.Thinking == nil || definition.Thinking.ZeroAllowed == nil || *definition.Thinking.ZeroAllowed {
+		t.Fatalf("expected explicit capability values, got %+v", definition)
+	}
+	marshaled, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal allowlisted model definitions result: %v", err)
+	}
+	if strings.Contains(string(marshaled), "override_header") || strings.Contains(string(marshaled), "fixture-secret") || strings.Contains(string(marshaled), "unknown_capability") {
+		t.Fatalf("unexpected non-allowlisted data retained: %s", marshaled)
 	}
 }
 

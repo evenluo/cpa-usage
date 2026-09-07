@@ -45,8 +45,12 @@ A fixed recent window used for stable activity, health, or evidence readings tha
 _Avoid_: Ignored filter, stale range
 
 **Live Capacity**:
-A restricted operational reading that uses CPA generic `api-call` support to probe cached or refreshed auth-file account capacity.
-_Avoid_: Usage quota analytics, CPA native quota source, billing quota
+A restricted operational reading that keeps user-triggered CPA generic `api-call` probes separate from the latest supported passive quota watermarks already present in CPA auth-file metadata.
+_Avoid_: Usage quota analytics, billing quota, quota history, inferred expiry or automatic provider calls
+
+**Registered Model Support**:
+An explicitly loaded, selected-scope reading of models currently registered to auth-file accounts in CPA, optionally enriched by exact-ID static capability metadata.
+_Avoid_: Live model availability, routable model catalog, provider health
 
 **Reference Data**:
 Supporting user-maintained labels and rates that make **Usage Intelligence** readable and complete.
@@ -63,6 +67,10 @@ _Avoid_: Request event workbench, full event search, audit log
 **Usage Attempt**:
 One CPA usage record for one upstream provider call. Retries, failovers, and additional-model calls can be separate attempts that share one request ID.
 _Avoid_: Final request outcome, request-ID event
+
+**Observed Model Alias**:
+The alias label present on a CPA **Usage Attempt**, shown beside its actual model and provider. Equality with the actual model means only that no distinct alias was observed; it may be direct or producer-canonicalized.
+_Avoid_: Requested model, client intent, configured route
 
 **Output TPS**:
 The per-attempt provider-normalized output tokens generated per second after the first token; it excludes input and cached tokens.
@@ -92,44 +100,62 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - The frontend defaults the 30-day **Selected Analysis Window** to daily granularity and all other selectable windows to hourly granularity; an explicit user selection overrides that default.
 - **Usage Intelligence** uses the **Selected Analysis Window** for KPIs, primary trends, and ranked contributors.
 - **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, attempt health, recent request evidence, and **Live Capacity**.
-- **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility; it is powered by CPA generic `api-call` quota probes and cached refresh tasks, not by a CPA native quota datasource.
+- **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility. It presents cached manual CPA generic `api-call` probes and supported passive CPA auth-file observations as separate sources.
 - **Live Capacity** displays active auth-file accounts that can be probed for capacity. Unsupported auth-file accounts are shown explicitly instead of blocking supported accounts.
 - **Live Capacity** can disable or re-enable an auth-file account in CPA via the account power action; disabling requires an inline confirmation, enabling applies immediately. Disabled accounts stay visible with a Disabled badge, sink to the end of the account grid, and are excluded from capacity probes until re-enabled.
 - Disabled auth-file accounts remain active identities in the local read model with a disabled marker instead of being dropped during metadata sync, so their historical usage and re-enable action stay available.
+- Temporarily unavailable auth-file accounts also remain the same active local identities. Operator-disabled, temporarily unavailable, and CPA lifecycle status are independent observations; absence of a reported status or availability flag does not imply an active account.
+- **Live Capacity** keeps CPA auth-file metadata observation time separate from upstream token refresh time and capacity-probe observation/cache time. A reported next-retry time is only the earliest retry eligibility, never a recovery guarantee.
+- Claude and Codex passive quota observations keep their original CPA `observed_at`, account/model scope and allowlisted normalized rows. Missing, empty, unsupported or malformed observations are unavailable rather than zero or healthy; they do not create expiry, history, refresh state or scheduler recovery claims.
+- Passive quota watermarks never replace manual probe rows or cache times, and passive retry hints never replace auth-file `next_retry_after`.
+- Compatibility: **Compatible**. Availability columns are nullable, API fields are additive and optional, legacy SQLite rows retain `NULL`, and existing navigation, toggle, and probe behavior remain unchanged.
 - **Live Capacity** is cache-first. Loading **Usage Intelligence** reads cached quota probe results only; manual refresh is the user action that may trigger provider calls.
 - **Live Capacity** shows the probe observation and cache-expiry times, the auth-file active window, and every provider quota row returned by the existing probe contract. These timestamps and rows are operational evidence, not billing renewal or account-history claims.
 - A manual **Live Capacity** refresh is rejected as unavailable once its worker lifecycle starts shutting down; it must not return a task that cannot run.
 - **Live Capacity** follows provider filtering, but the **Selected Analysis Window** and **Time Granularity** do not change its query key or probe window.
+- **Registered Model Support** is loaded only by an explicit user action for a selected auth-file account set; loading **Usage Intelligence** never fans out model-support requests.
+- **Registered Model Support** remains separate from **Live Capacity**: registry membership and static capability metadata do not prove current routing availability, capacity, or health.
+- Selected-scope model coverage is complete only when every selected account model lookup succeeds. A failed account is unknown rather than unsupported, and a one-supporting-account conclusion is available only for a complete selected scope.
+- Static model capability metadata joins registered models by exact model ID only. Missing definitions, unknown channels, and catalog errors stay explicit; no family fallback is inferred.
 - **Activity Heatmap** uses a fixed 30-day **Fixed Operational Window** with date-by-hour cells to show recent usage rhythm. Its dedicated frontend load uses day granularity and remains independent of the **Selected Analysis Window**.
 - Attempt health and **Request Evidence** use fixed 24-hour **Fixed Operational Windows** to show recent stability and supporting samples, independent of the **Selected Analysis Window**.
 - Usage event counts, success rates, and failure rates describe **Usage Attempts**. A request ID is correlation detail only and does not collapse retries or imply the final client-visible outcome.
 - New Redis-ingested attempts use their persisted inbox row as stable identity. Historical request-ID-collapsed rows remain unchanged because missing attempts cannot be reconstructed locally.
 - Newly popped Redis records are projected to replay-required fields before inbox persistence. Provider failure bodies, response headers, and unknown fields do not enter SQLite or its backups; malformed records retain only a digest and byte length for decode-failure observability.
+- Accounting v2 is the sole token metric source under the [accepted direct cut](docs/design/accounting-v2-direct-cut.md). New intake requires the supported schema and explicit generate/stream. The repository owns canonical validation, quality and metric interpretation; persisted availability is only valid/absent and accepted wire versions are not repeated in storage or reads; malformed/unsupported new messages use the existing observable inbox failure lifecycle.
+- KPI, trend, contributors, Request Evidence and CSV use canonical buckets. Historical raw attempts retain known counts/status/timing but their absent canonical facts remain unavailable. Coverage counts valid canonical attempts; complete/inconsistent/unclassified quality remains separately visible. Output TPS includes canonical reasoning output and requires complete generating-streaming evidence. Local three-rate Cost uses complete canonical observations, preserving operator configuration without implying upstream billed amounts.
 - Provider filtering scopes both **Selected Analysis Window** modules and **Fixed Operational Window** modules.
 - **Request Evidence** drill-down preserves the current provider scope and begins that scope on its first result page.
-- **Request Evidence** drill-down may further filter its fixed 24-hour attempt set by actual model and attempt result.
+- **Request Evidence** drill-down may further filter its fixed 24-hour attempt set by actual model, **Observed Model Alias**, and attempt result.
+- **Failure concentration** is a fixed 24-hour diagnostic reading of failed **Usage Attempts**, grouped independently by observed status family, exact status, provider, account, actual model, and public endpoint path. Missing status stays in an Unknown bucket; an observed HTTP status is evidence, not a proven root cause.
+- **Attempt performance** is a fixed 24-hour diagnostic reading of nearest-rank p50/p95 latency, TTFT, and **Output TPS**. Successful and failed latency, known generating/streaming execution, and historical unknown execution stay separately qualified with sample coverage. Provider, actual-model, and account comparisons retain excluded lower-rank attempts explicitly, and slow evidence uses an inclusive observed latency threshold.
+- Selecting a **Failure concentration** breakdown opens first-page **Request Evidence** with the same provider/model/account/endpoint/status selection and the distribution's exact 24-hour snapshot window. Each breakdown is bounded to ranked rows and preserves omitted or unavailable attempts in an explicit other count.
+- **Observed model mappings** is a distinct fixed 24-hour explanation of CPA alias labels split by actual model/provider. It reports missing-alias coverage and bounded omitted attempts; alias equality is direct-or-canonicalized, not proof of a requested model. Complete mapping rows open first-page **Request Evidence** with the exact alias/model/provider and snapshot window, while Model Mix remains the selected-window actual-model view.
 - Provider filter options are derived from the **Selected Analysis Window**, not from fixed windows or a global provider catalog.
 - The default heatmap measure is token volume because it represents usage intensity without depending on pricing completeness.
 - The first heatmap view uses date-by-hour buckets for the fixed 30-day **Fixed Operational Window**, not weekday averages and not the **Selected Analysis Window**.
 - KPI comparison uses the immediately previous period for the same selected range; missing previous-period data is shown explicitly instead of inferred.
-- **Cache Read Share** is calculated only from internally consistent explicit provider cache-read observations: provider-normalized prompt input must be positive and cache-read tokens must be between zero and that input total. Invalid provider facts contribute to neither the read numerator nor the observed-input denominator, while Request Evidence preserves and shows their raw generic, cache-read, and cache-creation values separately. Coverage is the valid observed prompt-input token volume divided by total prompt-input token volume; complete coverage is `Exact`, incomplete nonzero coverage is `Partial`, and no valid observed coverage is unavailable.
+- **Cache Read Share** is canonical cache-read input divided by canonical total input. Missing historical canonical facts remain unavailable; accounting attempt coverage separately reports valid canonical attempts against all attempts. Generic cached scalars never supply a fallback numerator or denominator.
 - **Metric Completeness** warnings explain incomplete interpretation, not false or invalid usage events.
-- Leaderboards default to **Cost** ordering when cost metrics are complete; partial **Cost** may still order by the priced cost portion when labeled as partial; token volume becomes the ordering measure when cost is unavailable.
+- Leaderboards use **Cost** ordering only when Cost is complete; otherwise they order by canonical token volume and qualify incomplete Cost.
 - The default analytics breakdown dimensions are **Key Alias**, model, and time.
 - **Model Mix** is a current visible **Selected Analysis Window** reading of the returned model breakdown; rankings and shares are scoped to that returned set. Deterministic **Insights** appear only when a warning affects how the selected window should be interpreted; informational maxima remain in their owning trend, ranking, or metric surface.
 - Attempt health appears as a stability breakdown within analytics, not as the primary dashboard story.
 - **Request Evidence** supports **Usage Intelligence** with recent attempt samples; it is not the complete request event inspection surface.
 - **Request Evidence** status and failure metadata describe the selected upstream attempt, not the final client request outcome.
-- **Request Evidence** displays **Output TPS** only when output tokens, total latency, and time to first token are available and internally consistent; otherwise it displays `-` instead of estimating a fallback value.
+- **Correlated attempts** are distinct Request Evidence rows sharing one nonempty request ID inside the same fixed 24-hour window and visible provider scope. Entering correlation clears filters that could hide sibling attempts; it does not infer retries, ordering, missing historical attempts, or a final client outcome.
+- **Request Evidence** reads tokens, execution, **Output TPS**, and requested/response service tiers from the single `attempt_facts` projection. TPS requires complete canonical accounting, generating/streaming execution and valid timing; unavailable values display `-`.
+- **Request Evidence** displays nullable generate/stream execution facts as Yes, No, or Unknown and can preserve an inclusive minimum-latency diagnostic selection.
 - **Request Evidence** drill-down lives inside **Usage Intelligence** as a secondary explanation path, not as a top-level Events page and not inside the **Operations Console**.
 - First-version insights are conditional deterministic warnings, not AI-generated summaries and not a duplicate summary of visible metrics.
 - **Usage Intelligence** insights prioritize metric completeness and health risks; cost, token, and contributor movements remain in their owning analysis surfaces.
-- CPA native quota administration remains out of scope; the supported capacity surface is the restricted **Live Capacity** probe inside **Usage Intelligence**.
+- CPA native quota administration remains out of scope; **Live Capacity** is read-only for passive quota metadata and retains the existing explicit manual probe action.
 - The first **Operations Console** covers manual sync state, rollup backfill coverage from the existing status contract, runtime state, access state, and logout. It does not claim background-ingestion freshness.
 - Update-check actions and update-check state are explicit non-features for the current web frontend because there is no user-facing update-management workflow.
 - Backup inspection and log inspection are explicit non-features for the current web frontend because **Operations Console** should stay simple and lightweight.
 - Logout should leave the user at the login surface rather than keeping them inside a protected workspace.
 - A successful manual sync should refresh usage, evidence, identity, and reference-data read models in the frontend.
+- Operations keeps manual sync state separate from local ingestion observations. Pending inbox rows, the last observed nonempty processing batch, scrape-derived processing rate, and runner state do not establish upstream freshness or end-to-end ingestion health; a missing observation is not a zero or a health verdict.
 - Production rollout for **Usage Intelligence** refinements updates the `cpa-usage` service on `/usage` and must leave the CPA root service intact.
 
 ## Example dialogue

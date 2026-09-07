@@ -1,0 +1,10 @@
+{
+  "files": [
+    {
+      "auth_index": "synthetic-codex-v7262",
+      "type": "codex",
+      "provider": "codex",
+      "disabled": false
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiFetch } from "@/lib/api"
-import type { StatusPayload } from "@/types/api"
+import { apiFetch, metricsFetch } from "@/lib/api"
+import type { MetricsPayload, StatusPayload } from "@/types/api"
 
 const STATUS_QUERY_KEY = ["status"] as const
+const METRICS_QUERY_KEY = ["metrics"] as const
 
 /**
  * Prefixes refreshed after a successful manual sync.
@@ -27,6 +28,14 @@ export function useStatus() {
     queryFn: () => apiFetch<StatusPayload>("/status"),
     staleTime: 30_000,
   })
+}
+
+export function useMetrics() {
+	return useQuery({
+		queryKey: METRICS_QUERY_KEY,
+		queryFn: () => metricsFetch<MetricsPayload>(),
+		staleTime: 30_000,
+	})
 }
 
 export function useManualSync() {

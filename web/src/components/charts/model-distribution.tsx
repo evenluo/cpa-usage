@@ -18,6 +18,7 @@ interface ModelMixRow {
   totalCost: number
   costAvailable: boolean
   totalTokens: number
+  tokensAvailable: boolean
   requestCount: number
   color: string
 }
@@ -47,7 +48,7 @@ const MEASURE_CONFIG: Record<Measure, MeasureConfig> = {
     emptyMessage: "No cost recorded for shown models",
     unavailableMessage: "Cost unavailable for shown models",
     centerLabel: "Shown cost mix",
-    supportingMetric: (row) => `${formatCompact(row.totalTokens, 1)} tokens`,
+    supportingMetric: (row) => row.tokensAvailable ? `${formatCompact(row.totalTokens, 1)} canonical tokens` : "Tokens n/a",
   },
   tokens: {
     value: (row) => row.total_tokens,
@@ -65,7 +66,7 @@ function hasAvailableCost(row: Pick<ModelDistribution, "cost_available" | "cost_
 // An unavailable cost must render as unavailable, never as a fabricated zero
 // share, so such rows carry value 0 and are excluded from the mix total.
 function measureRow(row: ModelDistribution, measure: Measure): Pick<ModelMixRow, "value" | "valueAvailable"> {
-  const valueAvailable = measure === "tokens" || hasAvailableCost(row)
+  const valueAvailable = measure === "tokens" ? row.canonical_valid_attempts > 0 : hasAvailableCost(row)
   return { value: valueAvailable ? MEASURE_CONFIG[measure].value(row) : 0, valueAvailable }
 }
 
@@ -83,6 +84,7 @@ function buildRows(data: ModelDistribution[], measure: Measure): ModelMixRow[] {
     totalCost: row.total_cost,
     costAvailable: hasAvailableCost(row),
     totalTokens: row.total_tokens,
+    tokensAvailable: row.canonical_valid_attempts > 0,
     requestCount: row.request_count,
     color: PALETTE[index],
   }))
@@ -90,7 +92,8 @@ function buildRows(data: ModelDistribution[], measure: Measure): ModelMixRow[] {
   if (remaining.length === 0) return visible
 
   const otherCostAvailable = remaining.every(hasAvailableCost)
-  const otherValueAvailable = measure === "tokens" || otherCostAvailable
+  const otherTokensAvailable = remaining.some((row) => row.canonical_valid_attempts > 0)
+  const otherValueAvailable = measure === "tokens" ? otherTokensAvailable : otherCostAvailable
   visible.push({
     key: "other-models",
     model: "Other shown models",
@@ -99,7 +102,8 @@ function buildRows(data: ModelDistribution[], measure: Measure): ModelMixRow[] {
     valueAvailable: otherValueAvailable,
     totalCost: remaining.reduce((sum, row) => sum + row.total_cost, 0),
     costAvailable: otherCostAvailable,
-    totalTokens: remaining.reduce((sum, row) => sum + row.total_tokens, 0),
+    totalTokens: remaining.reduce((sum, row) => sum + (row.canonical_valid_attempts > 0 ? row.total_tokens : 0), 0),
+    tokensAvailable: otherTokensAvailable,
     requestCount: remaining.reduce((sum, row) => sum + row.request_count, 0),
     color: PALETTE[PALETTE.length - 1],
   })

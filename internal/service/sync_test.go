@@ -167,7 +167,7 @@ func TestPullRedisUsageInboxOnlyStoresPendingRows(t *testing.T) {
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pull-only","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pull-only"}`),
 		}},
 	})
 
@@ -199,7 +199,7 @@ func TestProcessRedisUsageInboxPersistsEventsWithoutSnapshot(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","endpoint":"/v1/messages","auth_type":"api_key","model":"sonnet","request_id":"process-only","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","endpoint":"/v1/messages","auth_type":"api_key","model":"sonnet","request_id":"process-only"}`),
 		PoppedAt:   time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC),
 	}})
 	if err != nil {
@@ -241,7 +241,7 @@ func TestProcessRedisUsageInboxDoesNotFetchMetadata(t *testing.T) {
 	metadata := &trackingMetadataFetcher{}
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-no-metadata","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-no-metadata"}`),
 		PoppedAt:   time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC),
 	}})
 	if err != nil {
@@ -298,7 +298,7 @@ func TestRedisInboxPullThenProcessPersistsEventsWithoutMetadata(t *testing.T) {
 	metadata := &trackingMetadataFetcher{}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL:         "https://cpa.example.com",
-		RedisQueue:      staticRedisQueue{messages: []string{`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-1","tokens":{"input_tokens":1,"output_tokens":2}}`}},
+		RedisQueue:      staticRedisQueue{messages: []string{withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-1"}`)}},
 		MetadataFetcher: metadata,
 	})
 
@@ -334,7 +334,7 @@ func TestRedisInboxPullThenProcessPersistsValidRowsWhenBatchContainsMalformedMes
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-valid","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-valid"}`),
 			`{bad-json}`,
 		}},
 	})
@@ -399,7 +399,7 @@ func TestProcessRedisUsageInboxProcessesPendingRowsWithoutPoppingRedis(t *testin
 	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pending-1","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pending-1"}`),
 		PoppedAt:   poppedAt,
 	}})
 	if err != nil {
@@ -447,7 +447,7 @@ func TestRedisInboxPullThenProcessDoesNotWatermarkFilterRedisInboxEvents(t *test
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-26T07:00:00Z","provider":"claude","model":"sonnet","request_id":"old-but-unique","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-26T07:00:00Z","provider":"claude","model":"sonnet","request_id":"old-but-unique"}`),
 		}},
 	})
 
@@ -470,7 +470,7 @@ func TestProcessRedisUsageInboxRetriesProcessFailedRowsWithoutPoppingRedis(t *te
 	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"retry-process-failed","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"retry-process-failed"}`),
 		PoppedAt:   poppedAt,
 	}})
 	if err != nil {
@@ -500,13 +500,12 @@ func TestProcessRedisUsageInboxRetriesProcessFailedRowsWithoutPoppingRedis(t *te
 	}
 }
 
-func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEventExists(t *testing.T) {
+func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentHistoricalEventExists(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	timestamp := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	tokens := dto.TokenStats{InputTokens: 10, OutputTokens: 20, ReasoningTokens: 5, CachedTokens: 4, TotalTokens: 39}
-	canonicalKey := BuildEventKey("external-api-key", "claude-sonnet", timestamp, "codex-a", "1", false, tokens)
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
-		EventKey:        canonicalKey,
+		EventKey:        "historical-event:equivalent-fields",
 		APIGroupKey:     "external-api-key",
 		Model:           "claude-sonnet",
 		Timestamp:       timestamp,
@@ -520,7 +519,7 @@ func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEven
 		CachedTokens:    tokens.CachedTokens,
 		TotalTokens:     tokens.TotalTokens,
 	}}); err != nil {
-		t.Fatalf("seed canonical usage event: %v", err)
+		t.Fatalf("seed historical usage event: %v", err)
 	}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
@@ -534,7 +533,7 @@ func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEven
 		t.Fatalf("pull then process returned error: %v", err)
 	}
 	if result.InsertedEvents != 1 || result.DedupedEvents != 0 {
-		t.Fatalf("expected Redis request_id event to insert separately from canonical event, got %+v", result)
+		t.Fatalf("expected Redis request_id event to insert separately from historical event, got %+v", result)
 	}
 	assertUsageEventCount(t, db, 2)
 	var inbox entities.RedisUsageInbox
@@ -575,7 +574,7 @@ func TestRedisInboxPullThenProcessWritesDebugLogsWithoutRawPayload(t *testing.T)
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-log","api_key":"raw-secret-key","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-log","api_key":"raw-secret-key"}`),
 		}},
 	})
 
@@ -669,17 +668,12 @@ func TestSyncMetadataWritesAuthFilesToUsageIdentities(t *testing.T) {
 	assertTableNotExists(t, db, "auth_files")
 }
 
-func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
+func TestSyncMetadataSeparatesAbsentAndUnavailableAuthFiles(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	now := time.Date(2026, 5, 14, 9, 0, 0, 0, time.UTC)
+	errorStatus := "error"
+	unavailable := true
 	if err := db.Create(&[]entities.UsageIdentity{{
-		Name:         "Deleted Account",
-		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
-		AuthTypeName: "oauth",
-		Identity:     "auth-deleted",
-		Type:         "codex",
-		Provider:     "Codex",
-	}, {
 		Name:         "Disabled Account",
 		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
 		AuthTypeName: "oauth",
@@ -694,6 +688,13 @@ func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
 		Type:         "gemini-cli",
 		Provider:     "Gemini",
 	}, {
+		Name:         "Absent Account",
+		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName: "oauth",
+		Identity:     "auth-absent",
+		Type:         "codex",
+		Provider:     "Codex",
+	}, {
 		Name:         "Active Account",
 		AuthType:     entities.UsageIdentityAuthTypeAuthFile,
 		AuthTypeName: "oauth",
@@ -707,11 +708,6 @@ func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
 		BaseURL: "https://cpa.example.com",
 		Now:     func() time.Time { return now },
 		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
-			AuthIndex: "auth-deleted",
-			Type:      "codex",
-			Provider:  "Codex",
-			Status:    "deleted",
-		}, {
 			AuthIndex: "auth-disabled",
 			Type:      "claude",
 			Provider:  "Claude",
@@ -720,7 +716,8 @@ func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
 			AuthIndex:   "auth-unavailable",
 			Type:        "gemini-cli",
 			Provider:    "Gemini",
-			Unavailable: true,
+			Status:      &errorStatus,
+			Unavailable: &unavailable,
 		}, {
 			AuthIndex: "auth-active",
 			Type:      "codex",
@@ -736,11 +733,9 @@ func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
 		t.Fatalf("list usage identities: %v", err)
 	}
 	byIdentity := usageIdentitiesByIdentity(items)
-	for _, authIndex := range []string{"auth-deleted", "auth-unavailable"} {
-		row := byIdentity[authIndex]
-		if !row.IsDeleted || row.DeletedAt == nil || !row.DeletedAt.Equal(now) {
-			t.Fatalf("expected inactive auth file %q to be deleted at %s, got %+v", authIndex, now, row)
-		}
+	absentRow := byIdentity["auth-absent"]
+	if !absentRow.IsDeleted || absentRow.DeletedAt == nil || !absentRow.DeletedAt.Equal(now) {
+		t.Fatalf("expected absent auth file to be deleted at %s, got %+v", now, absentRow)
 	}
 	// disabled 账户不再丢弃：保留为活跃身份并带 Disabled 标记，供看板展示与重新启用。
 	disabled := byIdentity["auth-disabled"]
@@ -757,8 +752,233 @@ func TestSyncMetadataMarksReturnedInactiveAuthFilesDeleted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list active auth identities: %v", err)
 	}
-	if total != 2 || len(activeItems) != 2 {
-		t.Fatalf("expected active and disabled auth files in active page, total=%d items=%+v", total, activeItems)
+	unavailableRow := byIdentity["auth-unavailable"]
+	if unavailableRow.IsDeleted || unavailableRow.Unavailable == nil || !*unavailableRow.Unavailable || unavailableRow.AuthFileStatus == nil || *unavailableRow.AuthFileStatus != "error" {
+		t.Fatalf("expected returned unavailable auth file to remain active with observed state, got %+v", unavailableRow)
+	}
+	if total != 3 || len(activeItems) != 3 {
+		t.Fatalf("expected active, disabled and unavailable auth files in active page, total=%d items=%+v", total, activeItems)
+	}
+}
+
+func TestSyncMetadataPreservesUnavailableIdentityAndClearsTransientState(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	ctx := context.Background()
+	firstObservedAt := time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC)
+	secondObservedAt := firstObservedAt.Add(time.Hour)
+	lastRefresh := firstObservedAt.Add(-15 * time.Minute)
+	nextRetryAfter := firstObservedAt.Add(30 * time.Minute)
+	errorStatus := "error"
+	activeStatus := "active"
+	unavailable := true
+	healthy := false
+	seed := entities.UsageIdentity{
+		Name:          "Codex Account",
+		AuthType:      entities.UsageIdentityAuthTypeAuthFile,
+		AuthTypeName:  "oauth",
+		Identity:      "auth-codex",
+		Type:          "codex",
+		Provider:      "Codex",
+		TotalRequests: 7,
+		TotalTokens:   99,
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed usage identity: %v", err)
+	}
+	if _, err := repository.SetKeyAlias(ctx, db, entities.UsageIdentityAuthTypeAuthFile, seed.Identity, "Primary Codex", firstObservedAt.Add(-time.Hour)); err != nil {
+		t.Fatalf("seed key alias: %v", err)
+	}
+
+	firstSync := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return firstObservedAt },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex:      seed.Identity,
+			Name:           seed.Name,
+			Type:           seed.Type,
+			Provider:       seed.Provider,
+			Status:         &errorStatus,
+			Unavailable:    &unavailable,
+			LastRefresh:    &lastRefresh,
+			NextRetryAfter: &nextRetryAfter,
+		}}}}},
+	})
+	if err := firstSync.SyncMetadata(ctx); err != nil {
+		t.Fatalf("first SyncMetadata returned error: %v", err)
+	}
+
+	transient, err := repository.GetUsageIdentityByID(ctx, db, seed.ID)
+	if err != nil {
+		t.Fatalf("load transient identity: %v", err)
+	}
+	if transient.ID != seed.ID || transient.IsDeleted || transient.DeletedAt != nil || transient.TotalRequests != 7 || transient.TotalTokens != 99 {
+		t.Fatalf("expected unavailable transition to preserve identity and history, got %+v", transient)
+	}
+	if transient.AuthFileStatus == nil || *transient.AuthFileStatus != "error" || transient.Unavailable == nil || !*transient.Unavailable || transient.LastRefresh == nil || !transient.LastRefresh.Equal(lastRefresh) || transient.NextRetryAfter == nil || !transient.NextRetryAfter.Equal(nextRetryAfter) || transient.MetadataObservedAt == nil || !transient.MetadataObservedAt.Equal(firstObservedAt) {
+		t.Fatalf("expected transient availability evidence, got %+v", transient)
+	}
+
+	secondSync := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return secondObservedAt },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex:   seed.Identity,
+			Name:        seed.Name,
+			Type:        seed.Type,
+			Provider:    seed.Provider,
+			Status:      &activeStatus,
+			Unavailable: &healthy,
+		}}}}},
+	})
+	if err := secondSync.SyncMetadata(ctx); err != nil {
+		t.Fatalf("second SyncMetadata returned error: %v", err)
+	}
+
+	recovered, err := repository.GetUsageIdentityByID(ctx, db, seed.ID)
+	if err != nil {
+		t.Fatalf("load recovered identity: %v", err)
+	}
+	if recovered.ID != seed.ID || recovered.IsDeleted || recovered.AuthFileStatus == nil || *recovered.AuthFileStatus != "active" || recovered.Unavailable == nil || *recovered.Unavailable || recovered.NextRetryAfter != nil || recovered.LastRefresh != nil || recovered.MetadataObservedAt == nil || !recovered.MetadataObservedAt.Equal(secondObservedAt) {
+		t.Fatalf("expected healthy observation to clear transient evidence without replacing identity, got %+v", recovered)
+	}
+	alias, err := repository.GetKeyAlias(ctx, db, entities.UsageIdentityAuthTypeAuthFile, seed.Identity)
+	if err != nil || alias.Alias != "Primary Codex" {
+		t.Fatalf("expected alias to survive availability transitions, alias=%+v err=%v", alias, err)
+	}
+}
+
+func TestSyncMetadataKeepsDisabledAndUnavailableIndependentAndBoundsStatus(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	now := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
+	rawStatus := "provider said: credential body follows"
+	unavailable := true
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return now },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex:   "auth-both",
+			Type:        "codex",
+			Provider:    "Codex",
+			Status:      &rawStatus,
+			Disabled:    true,
+			Unavailable: &unavailable,
+		}}}}},
+	})
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	rows, err := repository.ListUsageIdentities(context.Background(), db)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list usage identities: rows=%+v err=%v", rows, err)
+	}
+	row := rows[0]
+	if row.IsDeleted || !row.Disabled || row.Unavailable == nil || !*row.Unavailable || row.AuthFileStatus == nil || *row.AuthFileStatus != "other" || strings.Contains(*row.AuthFileStatus, "provider said") {
+		t.Fatalf("expected independent disabled/unavailable flags and bounded status, got %+v", row)
+	}
+}
+
+func TestSyncMetadataPersistsPassiveQuotaWithOriginalObservationTimes(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	syncAt := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
+	nextRetryAfter := syncAt.Add(30 * time.Minute)
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return syncAt },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex:      "codex-passive",
+			Type:           "codex",
+			Provider:       "Codex",
+			NextRetryAfter: &nextRetryAfter,
+			Quota: &authfiles.QuotaObservation{
+				ObservedAt: "2026-09-07T08:00:00Z",
+				Signals: map[string]any{
+					"X-Codex-Primary-Used-Percent":   "51",
+					"X-Codex-Primary-Window-Minutes": "300",
+					"Retry-After":                    "120",
+				},
+			},
+			ModelQuotas: map[string]authfiles.QuotaObservation{
+				"gpt-5.3-codex": {
+					ObservedAt: "2026-09-07T07:30:00Z",
+					Signals:    map[string]any{"X-Codex-Secondary-Used-Percent": "20", "X-Codex-Secondary-Window-Minutes": "10080"},
+				},
+			},
+		}}}}},
+	})
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	rows, err := repository.ListUsageIdentities(context.Background(), db)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("load passive quota identity: rows=%+v err=%v", rows, err)
+	}
+	row := rows[0]
+	if row.MetadataObservedAt == nil || !row.MetadataObservedAt.Equal(syncAt) {
+		t.Fatalf("metadata observation should use sync time, got %+v", row.MetadataObservedAt)
+	}
+	passiveAt := time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC)
+	if row.PassiveQuota == nil || !row.PassiveQuota.ObservedAt.Equal(passiveAt) || len(row.PassiveQuota.Quota) != 2 {
+		t.Fatalf("expected account passive observation with original time, got %+v", row.PassiveQuota)
+	}
+	if row.NextRetryAfter == nil || !row.NextRetryAfter.Equal(nextRetryAfter) {
+		t.Fatalf("passive retry hint must not replace scheduler next_retry_after, got %+v", row.NextRetryAfter)
+	}
+	modelAt := time.Date(2026, 9, 7, 7, 30, 0, 0, time.UTC)
+	if len(row.PassiveModelQuotas) != 1 || row.PassiveModelQuotas[0].Model != "gpt-5.3-codex" || !row.PassiveModelQuotas[0].ObservedAt.Equal(modelAt) {
+		t.Fatalf("expected model passive observation with original time, got %+v", row.PassiveModelQuotas)
+	}
+}
+
+func TestSyncMetadataClearsAbsentPassiveQuotaWithoutInventingZeroState(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	ctx := context.Background()
+	seed := entities.UsageIdentity{
+		Name: "Codex", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "codex-passive", Type: "codex", Provider: "Codex",
+		PassiveQuota:       &entities.PassiveQuotaObservation{ObservedAt: time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC), Quota: []entities.PassiveQuotaMetric{{Key: "codex.rate_limit.primary", Label: "5h", Scope: "account"}}},
+		PassiveModelQuotas: []entities.PassiveModelQuotaObservation{{Model: "gpt-5", ObservedAt: time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC), Quota: []entities.PassiveQuotaMetric{{Key: "codex.rate_limit.primary", Label: "5h", Scope: "model"}}}},
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed passive quota identity: %v", err)
+	}
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC) },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex: seed.Identity, Type: "codex", Provider: "Codex",
+			Quota: &authfiles.QuotaObservation{ObservedAt: "2026-09-07T10:00:00Z", Signals: map[string]any{"X-Codex-Primary-Used-Percent": "not-a-number"}},
+		}}}}},
+	})
+	if err := service.SyncMetadata(ctx); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	row, err := repository.GetUsageIdentityByID(ctx, db, seed.ID)
+	if err != nil {
+		t.Fatalf("load updated identity: %v", err)
+	}
+	if row.PassiveQuota != nil || len(row.PassiveModelQuotas) != 0 {
+		t.Fatalf("malformed or absent passive observations must be unavailable, got account=%+v models=%+v", row.PassiveQuota, row.PassiveModelQuotas)
+	}
+}
+
+func TestSyncMetadataAuthFilesFetchFailureDoesNotDeleteAccounts(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	seed := entities.UsageIdentity{
+		Name: "Codex", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-codex", Type: "codex", Provider: "Codex",
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed usage identity: %v", err)
+	}
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL:         "https://cpa.example.com",
+		MetadataFetcher: stubMetadataFetcher{authFilesErr: errors.New("auth-files unavailable")},
+	})
+	err := service.SyncMetadata(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "auth-files unavailable") {
+		t.Fatalf("expected auth-files fetch error, got %v", err)
+	}
+	stored, loadErr := repository.GetUsageIdentityByID(context.Background(), db, seed.ID)
+	if loadErr != nil || stored.IsDeleted || stored.DeletedAt != nil {
+		t.Fatalf("expected fetch failure to preserve account, stored=%+v err=%v", stored, loadErr)
 	}
 }
 
@@ -1196,15 +1416,26 @@ func TestSyncMetadataAggregatesUsageIdentityStatsAfterUpsert(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	eventTime := time.Date(2026, 5, 4, 8, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
+	input, output, total, zero := int64(11), int64(13), int64(24), int64(0)
+	quality := "complete"
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
-		EventKey:     "auth-stat-event",
-		AuthType:     "oauth",
-		AuthIndex:    "auth-stat",
-		Model:        "sonnet",
-		Timestamp:    eventTime,
-		InputTokens:  11,
-		OutputTokens: 13,
-		TotalTokens:  24,
+		EventKey:  "auth-stat-event",
+		AuthType:  "oauth",
+		AuthIndex: "auth-stat",
+		Model:     "sonnet",
+		Timestamp: eventTime,
+		UsageAccounting: entities.UsageAccounting{
+			TokenQuality:                &quality,
+			CanonicalTotalTokens:        &total,
+			CanonicalInputTokens:        &input,
+			CanonicalUncachedTokens:     &input,
+			CanonicalCacheReadTokens:    &zero,
+			CanonicalCacheWriteTokens:   &zero,
+			CanonicalOutputTokens:       &output,
+			CanonicalNonReasoningTokens: &output,
+			CanonicalReasoningTokens:    &zero,
+			CanonicalUnclassifiedTokens: &zero,
+		},
 	}}); err != nil {
 		t.Fatalf("seed usage event: %v", err)
 	}
@@ -1226,11 +1457,19 @@ func TestSyncMetadataAggregatesUsageIdentityStatsAfterUpsert(t *testing.T) {
 	if err := db.Where("identity = ?", "auth-stat").First(&identity).Error; err != nil {
 		t.Fatalf("load usage identity: %v", err)
 	}
-	if identity.TotalRequests != 1 || identity.SuccessCount != 1 || identity.InputTokens != 11 || identity.OutputTokens != 13 || identity.TotalTokens != 24 || identity.LastAggregatedUsageEventID == 0 || identity.StatsUpdatedAt == nil || !identity.StatsUpdatedAt.Equal(now) {
+	if identity.TotalRequests != 1 || identity.SuccessCount != 1 || identity.LastAggregatedUsageEventID == 0 || identity.StatsUpdatedAt == nil || !identity.StatsUpdatedAt.Equal(now) {
 		t.Fatalf("expected usage identity stats aggregated after metadata upsert, got %+v", identity)
 	}
 	if identity.FirstUsedAt == nil || !identity.FirstUsedAt.Equal(eventTime) || identity.LastUsedAt == nil || !identity.LastUsedAt.Equal(eventTime) {
 		t.Fatalf("expected usage identity first/last usage times from seeded event, got %+v", identity)
+	}
+	items, _, err := repository.NewUsageIdentityReader(db).ListActiveUsageIdentitiesPage(context.Background(), repository.ListUsageIdentitiesPageRequest{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list usage identities: %v", err)
+	}
+	readIdentity := usageIdentitiesByIdentity(items)["auth-stat"]
+	if readIdentity.CanonicalValidAttempts != 1 || readIdentity.InputTokens != input || readIdentity.OutputTokens != output || readIdentity.TotalTokens != total {
+		t.Fatalf("expected canonical token stats from usage reader, got %+v", readIdentity)
 	}
 }
 
@@ -1431,12 +1670,12 @@ func pullThenProcessRedisInbox(t *testing.T, service *SyncService) (*servicedto.
 	return service.ProcessRedisUsageInbox(context.Background())
 }
 
-func equivalentRedisMessage(apiGroupKey, model string, timestamp time.Time, source, authIndex string, failed bool, latencyMS int64, tokens dto.TokenStats, requestID string) string {
+func equivalentRedisMessage(apiGroupKey, model string, timestamp time.Time, source, authIndex string, failed bool, latencyMS int64, _ dto.TokenStats, requestID string) string {
 	failedValue := "false"
 	if failed {
 		failedValue = "true"
 	}
-	return `{"timestamp":"` + timestamp.UTC().Format(time.RFC3339) + `","latency_ms":` + int64String(latencyMS) + `,"source":"` + source + `","auth_index":"` + authIndex + `","failed":` + failedValue + `,"api_key":"` + apiGroupKey + `","model":"` + model + `","request_id":"` + requestID + `","tokens":{"input_tokens":` + int64String(tokens.InputTokens) + `,"output_tokens":` + int64String(tokens.OutputTokens) + `,"reasoning_tokens":` + int64String(tokens.ReasoningTokens) + `,"cached_tokens":` + int64String(tokens.CachedTokens) + `,"total_tokens":` + int64String(tokens.TotalTokens) + `}}`
+	return `{"timestamp":"` + timestamp.UTC().Format(time.RFC3339) + `","latency_ms":` + int64String(latencyMS) + `,"source":"` + source + `","auth_index":"` + authIndex + `","failed":` + failedValue + `,"api_key":"` + apiGroupKey + `","model":"` + model + `","request_id":"` + requestID + `","accounting_version":2,"generate":true,"stream":true,"token_breakdown":{"schema_version":2,"quality":"complete","total_tokens":0,"input":{"total_tokens":0,"uncached_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0},"output":{"total_tokens":0,"non_reasoning_tokens":0,"reasoning_tokens":0},"unclassified_tokens":0}}`
 }
 
 func int64String(value int64) string {

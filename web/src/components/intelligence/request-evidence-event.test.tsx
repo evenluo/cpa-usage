@@ -12,21 +12,20 @@ const event: UsageEvent = {
   status_code: 200,
   executor_type: "openai",
   reasoning_effort: "high",
-  service_tier: "priority",
   source: "Codex",
   auth_index: "agent-codex",
   failed: false,
   latency_ms: 1_000,
   ttft_ms: 100,
-  output_tps: 42,
-  tokens: {
-    input_tokens: 50,
-    output_tokens: 42,
-    reasoning_tokens: 4,
-    cached_tokens: 0,
-    cache_read_tokens: 5,
-    cache_creation_tokens: 1,
-    total_tokens: 100,
+  attempt_facts: {
+    generate: true, stream: null, request_service_tier: "priority", response_service_tier: null, output_tps: 42,
+    accounting: {
+      state: "valid", quality: "complete",
+      total_tokens: 100,
+      input: { total_tokens: 50, uncached_tokens: 44, cache_read_tokens: 5, cache_write_tokens: 1 },
+      output: { total_tokens: 50, non_reasoning_tokens: 46, reasoning_tokens: 4 },
+      unclassified_tokens: 0,
+    },
   },
 }
 
@@ -51,13 +50,15 @@ describe("RequestEvidenceEvent", () => {
     render(<RequestEvidenceEvent event={event} label="Selected upstream attempt" detail />)
 
     expect(screen.getByText("Selected upstream attempt")).toBeInTheDocument()
+    expect(screen.getByText("Observed alias label")).toBeInTheDocument()
+    expect(screen.queryByText("Requested model")).not.toBeInTheDocument()
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
     expect(screen.getByText("gpt-5-requested")).toBeInTheDocument()
     expect(screen.getByText("gpt-5")).toBeInTheDocument()
     expect(screen.getByText("/v1/responses")).toBeInTheDocument()
     expect(screen.getByText("req-123")).toBeInTheDocument()
-    expect(screen.getByText("50")).toBeInTheDocument()
-    expect(screen.getByText("42")).toBeInTheDocument()
+    expect(screen.getAllByText("50")).toHaveLength(2)
+    expect(screen.getByText("42.0 tok/s")).toBeInTheDocument()
     expect(screen.getByText("4")).toBeInTheDocument()
     expect(screen.getByText("0")).toBeInTheDocument()
     expect(screen.getByText("5")).toBeInTheDocument()
@@ -65,6 +66,56 @@ describe("RequestEvidenceEvent", () => {
     expect(screen.getByText("200")).toBeInTheDocument()
     expect(screen.getByText("high")).toBeInTheDocument()
     expect(screen.getByText("priority")).toBeInTheDocument()
-    expect(screen.getByText("Generic cached tokens")).toBeInTheDocument()
+    expect(screen.queryByText("Accounting version")).not.toBeInTheDocument()
+    expect(screen.queryByText("Token schema version")).not.toBeInTheDocument()
+    expect(screen.queryByText("Generic cached tokens")).not.toBeInTheDocument()
+    expect(screen.getByText("Generate")).toBeInTheDocument()
+    expect(screen.getByText("Yes")).toBeInTheDocument()
+    expect(screen.getByText("Stream")).toBeInTheDocument()
+    expect(screen.getByText("Unknown")).toBeInTheDocument()
+  })
+
+  it("shows qualified canonical facts, independent tiers and explicit execution absence without estimating TPS", () => {
+    render(<RequestEvidenceEvent label="Selected attempt" detail event={{
+      ...event,
+      attempt_facts: {
+        generate: false, stream: null, request_service_tier: "priority", response_service_tier: "default", output_tps: null,
+        accounting: {
+          state: "valid", quality: "inconsistent",
+          total_tokens: 999,
+          input: { total_tokens: 100, uncached_tokens: 70, cache_read_tokens: 20, cache_write_tokens: 10 },
+          output: { total_tokens: 50, non_reasoning_tokens: 40, reasoning_tokens: 10 },
+          unclassified_tokens: 5,
+        },
+      },
+    }} />)
+    const value = (label: string) => screen.getByText(label).nextElementSibling
+    expect(value("Canonical accounting")).toHaveTextContent("Valid structure")
+    expect(value("Reported quality")).toHaveTextContent("inconsistent")
+    expect(value("Canonical total")).toHaveTextContent("999")
+    expect(value("Requested service tier")).toHaveTextContent("priority")
+    expect(value("Response service tier")).toHaveTextContent("default")
+    expect(value("Generate")).toHaveTextContent("No")
+    expect(value("Stream")).toHaveTextContent("Unknown")
+    expect(value("Output TPS")).toHaveTextContent("-")
+  })
+
+  it("does not synthesize canonical facts or response tier for historical evidence", () => {
+    render(<RequestEvidenceEvent event={{ ...event, attempt_facts: {
+      generate: null, stream: null, request_service_tier: null, response_service_tier: null, output_tps: null,
+      accounting: {
+        state: "absent", quality: null, total_tokens: null,
+        input: { total_tokens: null, uncached_tokens: null, cache_read_tokens: null, cache_write_tokens: null },
+        output: { total_tokens: null, non_reasoning_tokens: null, reasoning_tokens: null },
+        unclassified_tokens: null,
+      },
+    } }} label="Historical attempt" detail />)
+    for (const label of ["Requested service tier", "Response service tier", "Canonical total", "Reported quality"]) {
+      expect(screen.getByText(label).nextElementSibling).toHaveTextContent("-")
+    }
+    for (const label of ["Generate", "Stream"]) {
+      expect(screen.getByText(label).nextElementSibling).toHaveTextContent("Unknown")
+    }
+    expect(screen.getByText("Output TPS").nextElementSibling).toHaveTextContent("-")
   })
 })

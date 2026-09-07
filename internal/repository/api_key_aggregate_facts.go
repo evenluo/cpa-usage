@@ -11,22 +11,23 @@ import (
 // analytics ranking and Reference Data pagination. Caller policies stay outside
 // this row and its grouped query.
 type apiKeyAggregateFactRow struct {
-	Identity             string
-	Alias                string
-	Provider             string
-	RequestCount         int64
-	SuccessCount         int64
-	FailureCount         int64
-	InputTokens          int64
-	OutputTokens         int64
-	ReasoningTokens      int64
-	CachedTokens         int64
-	TotalTokens          int64
-	TotalCost            float64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
-	FirstUsedAt          string
-	LastUsedAt           string
+	Identity               string
+	Alias                  string
+	Provider               string
+	RequestCount           int64
+	SuccessCount           int64
+	FailureCount           int64
+	CanonicalValidAttempts int64
+	InputTokens            int64
+	OutputTokens           int64
+	ReasoningTokens        int64
+	CachedTokens           int64
+	TotalTokens            int64
+	TotalCost              float64
+	MissingPricingEvents   int64
+	PricedBillableEvents   int64
+	FirstUsedAt            string
+	LastUsedAt             string
 }
 
 func apiKeyAggregateFactsQuery(db *gorm.DB, scope dto.UsageTimeScope, source analyticsAggregateSource) *gorm.DB {
@@ -47,6 +48,7 @@ func apiKeyAggregateFactSelect(source analyticsAggregateSource) string {
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokensExpr) + `), 0) AS input_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokensExpr) + `), 0) AS output_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
@@ -62,18 +64,19 @@ func apiKeyAggregateFactSelect(source analyticsAggregateSource) string {
 func analyticsIdentityAggregateRowFromAPIKeyFact(row apiKeyAggregateFactRow) analyticsIdentityAggregateRow {
 	authTypeName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
 	return analyticsIdentityAggregateRow{
-		AuthType:             int(entities.UsageIdentityAuthTypeAIProvider),
-		Identity:             row.Identity,
-		Alias:                row.Alias,
-		AuthTypeName:         authTypeName,
-		Provider:             row.Provider,
-		RequestCount:         row.RequestCount,
-		SuccessCount:         row.SuccessCount,
-		FailureCount:         row.FailureCount,
-		TotalTokens:          row.TotalTokens,
-		TotalCost:            row.TotalCost,
-		MissingPricingEvents: row.MissingPricingEvents,
-		PricedBillableEvents: row.PricedBillableEvents,
-		LastUsedAt:           row.LastUsedAt,
+		AuthType:               int(entities.UsageIdentityAuthTypeAIProvider),
+		Identity:               row.Identity,
+		Alias:                  row.Alias,
+		AuthTypeName:           authTypeName,
+		Provider:               row.Provider,
+		RequestCount:           row.RequestCount,
+		SuccessCount:           row.SuccessCount,
+		FailureCount:           row.FailureCount,
+		CanonicalValidAttempts: row.CanonicalValidAttempts,
+		TotalTokens:            row.TotalTokens,
+		TotalCost:              row.TotalCost,
+		MissingPricingEvents:   row.MissingPricingEvents,
+		PricedBillableEvents:   row.PricedBillableEvents,
+		LastUsedAt:             row.LastUsedAt,
 	}
 }

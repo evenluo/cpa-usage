@@ -18,7 +18,8 @@ function trendPoint(overrides: Partial<TrendPoint> = {}): TrendPoint {
     input_tokens: 700,
     output_tokens: 400,
     reasoning_tokens: 80,
-    cached_tokens: 20,
+    cache_read_tokens: 20,
+    canonical_valid_attempts: 1,
     request_count: 3,
     success_count: 3,
     failure_count: 0,
@@ -107,7 +108,7 @@ describe("buildTrendSeriesConfig", () => {
       "inputTokens",
       "outputTokens",
       "reasoningTokens",
-      "cachedTokens",
+      "cacheReadTokens",
     ])
   })
 
@@ -132,7 +133,7 @@ describe("mapTrendChartRows", () => {
       inputTokens: 700,
       outputTokens: 400,
       reasoningTokens: 80,
-      cachedTokens: 20,
+      cacheReadTokens: 20,
       costStatus: "available",
     })
   })

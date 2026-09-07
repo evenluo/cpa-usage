@@ -1,6 +1,9 @@
 import type {
+  AccountingState,
+  AccountingSummary,
   AnalyticsCoreResponse,
   CacheReadShareState,
+  CanonicalComposition,
   CostStatus,
   HeatmapData,
   Insight,
@@ -31,7 +34,7 @@ export type TrendView = "cost-token" | "requests-token" | "tokens"
 
 export interface UsageKpiSparklineData {
   cost: Array<number | null>
-  tokens: number[]
+  tokens: Array<number | null>
   requests: number[]
   successRate: number[]
 }
@@ -54,6 +57,7 @@ export interface UsageDashboardViewModel {
   leaderboardSortLabel: string
   cacheReadShareCaption?: string
   cacheReadShareValue?: number
+  accountingCaption: string
   kpiData: UsageKpiSparklineData | null
 }
 
@@ -81,7 +85,7 @@ export function deriveKpiSparklineData(trend: TrendPoint[]): UsageKpiSparklineDa
   if (trend.length === 0) return null
   return {
     cost: trend.map((point) => (point.cost_status === "unavailable" ? null : point.total_cost)),
-    tokens: trend.map((point) => point.total_tokens),
+    tokens: trend.map((point) => point.canonical_valid_attempts > 0 ? point.total_tokens : null),
     requests: trend.map((point) => point.request_count),
     successRate: trend.map((point) => {
       const success = Math.max(point.request_count - point.failure_count, 0)
@@ -100,22 +104,50 @@ export function getLeaderboardRows(
 
 export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
   if (costStatus === "unavailable") return "Sort: Tokens"
-  if (costStatus === "partial") return "Sort: Cost partial"
+  if (costStatus === "partial") return "Sort: Local estimate incomplete"
   return "Sort: Cost"
 }
 
 export function getCacheReadShareCaption(state?: CacheReadShareState, coverage?: number): string | undefined {
   if (state === undefined) return undefined
-  if (state === "no_prompt_input") return "No prompt input"
+  if (state === "no_prompt_input") return "No canonical input"
   if (state === "no_cache_data") return "No exact cache data"
   const label = state === "available" ? "Exact" : "Partial"
   if (coverage === undefined) return label
-  return `${label} · covers ${coverage.toFixed(1)}% of prompt input`
+  return `${label} · covers ${coverage.toFixed(1)}% of canonical input`
 }
 
 export function getCacheReadShareValue(value?: number, state?: CacheReadShareState): number | undefined {
   if (state !== "available" && state !== "partial") return undefined
   return value
+}
+
+export const ACCOUNTING_STATE_LABELS: Record<AccountingState, string> = {
+  absent: "Canonical facts absent",
+  valid: "Valid structure",
+}
+
+export function getAccountingCaption(accounting: AccountingSummary): string {
+  if (accounting.coverage_pct === null) return "No attempts"
+  if (accounting.valid_attempts === 0) return "Canonical tokens unavailable"
+  const quality = accounting.valid_quality.complete === accounting.valid_attempts ? "complete quality" : "qualified quality"
+  return `Canonical: ${accounting.coverage_pct.toFixed(1)}% of attempts · ${quality}`
+}
+
+// Render the repository's disjoint canonical buckets without adding a subset
+// such as reasoning or cache tokens back into its parent total.
+export function getCanonicalTokenFields(composition: CanonicalComposition<number | null>): Array<[string, number | null]> {
+  return [
+    ["Canonical total", composition.total_tokens],
+    ["Canonical input total", composition.input.total_tokens],
+    ["Uncached input", composition.input.uncached_tokens],
+    ["Cache read input", composition.input.cache_read_tokens],
+    ["Cache write input", composition.input.cache_write_tokens],
+    ["Canonical output total", composition.output.total_tokens],
+    ["Non-reasoning output", composition.output.non_reasoning_tokens],
+    ["Reasoning output", composition.output.reasoning_tokens],
+    ["Unclassified tokens", composition.unclassified_tokens],
+  ]
 }
 
 export function getModelMixPresentation(costStatus?: CostStatus): {
@@ -126,7 +158,7 @@ export function getModelMixPresentation(costStatus?: CostStatus): {
     return { measure: "cost", costStateLabel: "By cost" }
   }
   if (costStatus === "partial") {
-    return { measure: "tokens", costStateLabel: "Cost partial, by tokens" }
+    return { measure: "tokens", costStateLabel: "Local estimate incomplete, by tokens" }
   }
   return { measure: "tokens", costStateLabel: "Cost unavailable, by tokens" }
 }
@@ -175,6 +207,9 @@ export function buildUsageDashboardViewModel(input: {
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
     cacheReadShareCaption: getCacheReadShareCaption(input.analytics?.summary?.cache_read_share_state, input.analytics?.summary?.cache_read_coverage),
     cacheReadShareValue: getCacheReadShareValue(input.analytics?.summary?.cache_read_share, input.analytics?.summary?.cache_read_share_state),
+    accountingCaption: input.analytics
+      ? getAccountingCaption(input.analytics.summary.accounting)
+      : "Canonical tokens unavailable",
     kpiData: deriveKpiSparklineData(trend),
   }
 }

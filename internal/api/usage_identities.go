@@ -36,60 +36,86 @@ type usageAPIKeysPageResponse struct {
 }
 
 type usageIdentityResponse struct {
-	ID                         uint                           `json:"id"`
-	Name                       string                         `json:"name"`
-	DisplayName                string                         `json:"displayName"`
-	Alias                      string                         `json:"alias"`
-	AuthType                   entities.UsageIdentityAuthType `json:"auth_type"`
-	AuthTypeName               string                         `json:"auth_type_name"`
-	Identity                   string                         `json:"identity"`
-	Type                       string                         `json:"type"`
-	Provider                   string                         `json:"provider"`
-	PlanType                   *string                        `json:"plan_type,omitempty"`
-	ActiveStart                *time.Time                     `json:"active_start,omitempty"`
-	ActiveUntil                *time.Time                     `json:"active_until,omitempty"`
-	TotalRequests              int64                          `json:"total_requests"`
-	SuccessCount               int64                          `json:"success_count"`
-	FailureCount               int64                          `json:"failure_count"`
-	InputTokens                int64                          `json:"input_tokens"`
-	OutputTokens               int64                          `json:"output_tokens"`
-	ReasoningTokens            int64                          `json:"reasoning_tokens"`
-	CachedTokens               int64                          `json:"cached_tokens"`
-	TotalTokens                int64                          `json:"total_tokens"`
-	TotalCost                  float64                        `json:"total_cost"`
-	CostAvailable              bool                           `json:"cost_available"`
-	LastAggregatedUsageEventID uint                           `json:"last_aggregated_usage_event_id"`
-	FirstUsedAt                *time.Time                     `json:"first_used_at,omitempty"`
-	LastUsedAt                 *time.Time                     `json:"last_used_at,omitempty"`
-	StatsUpdatedAt             *time.Time                     `json:"stats_updated_at,omitempty"`
-	IsDeleted                  bool                           `json:"is_deleted"`
-	Disabled                   bool                           `json:"disabled"`
-	CreatedAt                  time.Time                      `json:"created_at"`
-	UpdatedAt                  time.Time                      `json:"updated_at"`
-	DeletedAt                  *time.Time                     `json:"deleted_at,omitempty"`
+	ID                         uint                                   `json:"id"`
+	Name                       string                                 `json:"name"`
+	DisplayName                string                                 `json:"displayName"`
+	Alias                      string                                 `json:"alias"`
+	AuthType                   entities.UsageIdentityAuthType         `json:"auth_type"`
+	AuthTypeName               string                                 `json:"auth_type_name"`
+	Identity                   string                                 `json:"identity"`
+	Type                       string                                 `json:"type"`
+	Provider                   string                                 `json:"provider"`
+	PlanType                   *string                                `json:"plan_type,omitempty"`
+	ActiveStart                *time.Time                             `json:"active_start,omitempty"`
+	ActiveUntil                *time.Time                             `json:"active_until,omitempty"`
+	AuthFileStatus             *string                                `json:"status,omitempty"`
+	Unavailable                *bool                                  `json:"unavailable,omitempty"`
+	LastRefresh                *time.Time                             `json:"last_refresh,omitempty"`
+	NextRetryAfter             *time.Time                             `json:"next_retry_after,omitempty"`
+	MetadataObservedAt         *time.Time                             `json:"metadata_observed_at,omitempty"`
+	PassiveQuota               *passiveQuotaObservationResponse       `json:"passive_quota,omitempty"`
+	PassiveModelQuotas         []passiveModelQuotaObservationResponse `json:"passive_model_quotas,omitempty"`
+	TotalRequests              int64                                  `json:"total_requests"`
+	SuccessCount               int64                                  `json:"success_count"`
+	FailureCount               int64                                  `json:"failure_count"`
+	InputTokens                int64                                  `json:"input_tokens"`
+	OutputTokens               int64                                  `json:"output_tokens"`
+	ReasoningTokens            int64                                  `json:"reasoning_tokens"`
+	CacheReadTokens            int64                                  `json:"cache_read_tokens"`
+	TotalTokens                int64                                  `json:"total_tokens"`
+	CanonicalValidAttempts     int64                                  `json:"canonical_valid_attempts"`
+	TotalCost                  float64                                `json:"total_cost"`
+	CostAvailable              bool                                   `json:"cost_available"`
+	LastAggregatedUsageEventID uint                                   `json:"last_aggregated_usage_event_id"`
+	FirstUsedAt                *time.Time                             `json:"first_used_at,omitempty"`
+	LastUsedAt                 *time.Time                             `json:"last_used_at,omitempty"`
+	StatsUpdatedAt             *time.Time                             `json:"stats_updated_at,omitempty"`
+	IsDeleted                  bool                                   `json:"is_deleted"`
+	Disabled                   bool                                   `json:"disabled"`
+	CreatedAt                  time.Time                              `json:"created_at"`
+	UpdatedAt                  time.Time                              `json:"updated_at"`
+	DeletedAt                  *time.Time                             `json:"deleted_at,omitempty"`
+}
+
+type passiveQuotaObservationResponse struct {
+	Source      string                        `json:"source"`
+	Scope       string                        `json:"scope"`
+	ObservedAt  time.Time                     `json:"observed_at"`
+	ActiveLimit string                        `json:"active_limit,omitempty"`
+	Quota       []entities.PassiveQuotaMetric `json:"quota"`
+}
+
+type passiveModelQuotaObservationResponse struct {
+	Source      string                        `json:"source"`
+	Scope       string                        `json:"scope"`
+	Model       string                        `json:"model"`
+	ObservedAt  time.Time                     `json:"observed_at"`
+	ActiveLimit string                        `json:"active_limit,omitempty"`
+	Quota       []entities.PassiveQuotaMetric `json:"quota"`
 }
 
 type usageAPIKeyResponse struct {
-	ID              string     `json:"id"`
-	Identity        string     `json:"identity"`
-	DisplayName     string     `json:"displayName"`
-	Alias           string     `json:"alias"`
-	Provider        string     `json:"provider"`
-	AuthType        int        `json:"auth_type"`
-	AuthTypeName    string     `json:"auth_type_name"`
-	TotalRequests   int64      `json:"total_requests"`
-	SuccessCount    int64      `json:"success_count"`
-	FailureCount    int64      `json:"failure_count"`
-	InputTokens     int64      `json:"input_tokens"`
-	OutputTokens    int64      `json:"output_tokens"`
-	ReasoningTokens int64      `json:"reasoning_tokens"`
-	CachedTokens    int64      `json:"cached_tokens"`
-	TotalTokens     int64      `json:"total_tokens"`
-	TotalCost       float64    `json:"total_cost"`
-	CostAvailable   bool       `json:"cost_available"`
-	CostStatus      string     `json:"cost_status"`
-	FirstUsedAt     *time.Time `json:"first_used_at,omitempty"`
-	LastUsedAt      *time.Time `json:"last_used_at,omitempty"`
+	ID                     string     `json:"id"`
+	Identity               string     `json:"identity"`
+	DisplayName            string     `json:"displayName"`
+	Alias                  string     `json:"alias"`
+	Provider               string     `json:"provider"`
+	AuthType               int        `json:"auth_type"`
+	AuthTypeName           string     `json:"auth_type_name"`
+	TotalRequests          int64      `json:"total_requests"`
+	SuccessCount           int64      `json:"success_count"`
+	FailureCount           int64      `json:"failure_count"`
+	InputTokens            int64      `json:"input_tokens"`
+	OutputTokens           int64      `json:"output_tokens"`
+	ReasoningTokens        int64      `json:"reasoning_tokens"`
+	CacheReadTokens        int64      `json:"cache_read_tokens"`
+	TotalTokens            int64      `json:"total_tokens"`
+	CanonicalValidAttempts int64      `json:"canonical_valid_attempts"`
+	TotalCost              float64    `json:"total_cost"`
+	CostAvailable          bool       `json:"cost_available"`
+	CostStatus             string     `json:"cost_status"`
+	FirstUsedAt            *time.Time `json:"first_used_at,omitempty"`
+	LastUsedAt             *time.Time `json:"last_used_at,omitempty"`
 }
 
 type usageIdentityAliasResponse struct {
@@ -413,6 +439,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 	}
 	alias := aliases[service.UsageIdentityAliasKey{AuthType: item.AuthType, Identity: item.Identity}]
 	authTypeName, _ := item.AuthType.CanonicalName()
+	passiveQuota, passiveModelQuotas := mapPassiveQuotaObservations(item)
 
 	return usageIdentityResponse{
 		ID:                         item.ID,
@@ -427,14 +454,22 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		PlanType:                   item.PlanType,
 		ActiveStart:                item.ActiveStart,
 		ActiveUntil:                item.ActiveUntil,
+		AuthFileStatus:             item.AuthFileStatus,
+		Unavailable:                item.Unavailable,
+		LastRefresh:                item.LastRefresh,
+		NextRetryAfter:             item.NextRetryAfter,
+		MetadataObservedAt:         item.MetadataObservedAt,
+		PassiveQuota:               passiveQuota,
+		PassiveModelQuotas:         passiveModelQuotas,
 		TotalRequests:              item.TotalRequests,
 		SuccessCount:               item.SuccessCount,
 		FailureCount:               item.FailureCount,
 		InputTokens:                item.InputTokens,
 		OutputTokens:               item.OutputTokens,
 		ReasoningTokens:            item.ReasoningTokens,
-		CachedTokens:               item.CachedTokens,
+		CacheReadTokens:            item.CachedTokens,
 		TotalTokens:                item.TotalTokens,
+		CanonicalValidAttempts:     item.CanonicalValidAttempts,
 		TotalCost:                  item.TotalCost,
 		CostAvailable:              item.CostAvailable,
 		LastAggregatedUsageEventID: item.LastAggregatedUsageEventID,
@@ -449,6 +484,38 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 	}
 }
 
+func mapPassiveQuotaObservations(item entities.UsageIdentity) (*passiveQuotaObservationResponse, []passiveModelQuotaObservationResponse) {
+	if item.AuthType != entities.UsageIdentityAuthTypeAuthFile {
+		return nil, nil
+	}
+	var account *passiveQuotaObservationResponse
+	if item.PassiveQuota != nil && !item.PassiveQuota.ObservedAt.IsZero() && (len(item.PassiveQuota.Quota) > 0 || item.PassiveQuota.ActiveLimit != "") {
+		quota := item.PassiveQuota.Quota
+		if quota == nil {
+			quota = []entities.PassiveQuotaMetric{}
+		}
+		account = &passiveQuotaObservationResponse{
+			Source: "cpa_passive", Scope: "account", ObservedAt: item.PassiveQuota.ObservedAt,
+			ActiveLimit: item.PassiveQuota.ActiveLimit, Quota: quota,
+		}
+	}
+	models := make([]passiveModelQuotaObservationResponse, 0, len(item.PassiveModelQuotas))
+	for _, observation := range item.PassiveModelQuotas {
+		if strings.TrimSpace(observation.Model) == "" || observation.ObservedAt.IsZero() || (len(observation.Quota) == 0 && observation.ActiveLimit == "") {
+			continue
+		}
+		quota := observation.Quota
+		if quota == nil {
+			quota = []entities.PassiveQuotaMetric{}
+		}
+		models = append(models, passiveModelQuotaObservationResponse{
+			Source: "cpa_passive", Scope: "model", Model: observation.Model,
+			ObservedAt: observation.ObservedAt, ActiveLimit: observation.ActiveLimit, Quota: quota,
+		})
+	}
+	return account, models
+}
+
 func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse {
 	displayName := item.Identity
 	if strings.TrimSpace(item.Alias) != "" {
@@ -456,25 +523,26 @@ func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse 
 	}
 	authTypeName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
 	return usageAPIKeyResponse{
-		ID:              item.ID,
-		Identity:        item.Identity,
-		DisplayName:     displayName,
-		Alias:           item.Alias,
-		Provider:        item.Provider,
-		AuthType:        int(entities.UsageIdentityAuthTypeAIProvider),
-		AuthTypeName:    authTypeName,
-		TotalRequests:   item.TotalRequests,
-		SuccessCount:    item.SuccessCount,
-		FailureCount:    item.FailureCount,
-		InputTokens:     item.InputTokens,
-		OutputTokens:    item.OutputTokens,
-		ReasoningTokens: item.ReasoningTokens,
-		CachedTokens:    item.CachedTokens,
-		TotalTokens:     item.TotalTokens,
-		TotalCost:       item.TotalCost,
-		CostAvailable:   item.CostAvailable,
-		CostStatus:      item.CostStatus,
-		FirstUsedAt:     item.FirstUsedAt,
-		LastUsedAt:      item.LastUsedAt,
+		ID:                     item.ID,
+		Identity:               item.Identity,
+		DisplayName:            displayName,
+		Alias:                  item.Alias,
+		Provider:               item.Provider,
+		AuthType:               int(entities.UsageIdentityAuthTypeAIProvider),
+		AuthTypeName:           authTypeName,
+		TotalRequests:          item.TotalRequests,
+		SuccessCount:           item.SuccessCount,
+		FailureCount:           item.FailureCount,
+		InputTokens:            item.InputTokens,
+		OutputTokens:           item.OutputTokens,
+		ReasoningTokens:        item.ReasoningTokens,
+		CacheReadTokens:        item.CachedTokens,
+		TotalTokens:            item.TotalTokens,
+		CanonicalValidAttempts: item.CanonicalValidAttempts,
+		TotalCost:              item.TotalCost,
+		CostAvailable:          item.CostAvailable,
+		CostStatus:             item.CostStatus,
+		FirstUsedAt:            item.FirstUsedAt,
+		LastUsedAt:             item.LastUsedAt,
 	}
 }

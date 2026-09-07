@@ -11,6 +11,7 @@ import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfa
 import type { LeaderboardScope, TrendView } from "@/features/usage-intelligence/view-model"
 import type { AnalyticsCoreResponse, TimeGranularity } from "@/types/api"
 import { cn } from "@/lib/utils"
+import { CanonicalTokenComposition } from "./canonical-token-composition"
 
 interface DashboardChartsProps {
   surfaces: UsageDashboardSurfaces
@@ -53,7 +54,7 @@ export function DashboardCharts({
             <CardDescription>
               {trendView === "cost-token" && "Cost as filled area, tokens as dotted overlay"}
               {trendView === "requests-token" && "Attempts as filled area, tokens as dotted overlay"}
-              {trendView === "tokens" && "Total, input, output, reasoning, and cached tokens"}
+              {trendView === "tokens" && "Provider-reported total, input, output, reasoning, and cached scalars; subsets may overlap"}
             </CardDescription>
           </div>
           <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
@@ -94,6 +95,9 @@ export function DashboardCharts({
               <TrendChart data={surfaces.trend.data} granularity={coreAnalyticsData?.granularity ?? effectiveGranularity} mode={trendView} />
             </div>
           )}
+          {surfaces.core.status === "ready" && coreAnalyticsData ? (
+            <CanonicalTokenComposition accounting={coreAnalyticsData.summary.accounting} costStatus={coreAnalyticsData.summary.cost_status} />
+          ) : null}
         </CardContent>
       </Card>
 

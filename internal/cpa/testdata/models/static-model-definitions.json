@@ -1,0 +1,26 @@
+{
+  "channel": "codex",
+  "models": [
+    {
+      "id": "gpt-fixture-exact",
+      "display_name": "GPT Fixture Exact",
+      "context_length": 200000,
+      "max_completion_tokens": 64000,
+      "supportedInputModalities": ["TEXT", "IMAGE"],
+      "supportedOutputModalities": ["TEXT"],
+      "thinking": {
+        "min": 0,
+        "max": 32768,
+        "zero_allowed": false,
+        "dynamic_allowed": true,
+        "levels": ["low", "high"]
+      },
+      "config": {
+        "override_header": {
+          "authorization": "fixture-secret-must-not-be-retained"
+        }
+      },
+      "unknown_capability": true
+    }
+  ]
+}

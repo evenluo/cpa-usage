@@ -2,7 +2,7 @@ import { act } from "react"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
+import type { KeyIdentity, ModelSupportResponse, QuotaCacheResponse } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
 // Mock the useLiveCapacity hook
@@ -12,6 +12,15 @@ vi.mock("@/hooks/useQuota", async (importOriginal) => {
   return {
     ...original,
     useLiveCapacity: (...args: Parameters<typeof original.useLiveCapacity>) => mockUseLiveCapacity(...args),
+  }
+})
+
+const mockUseModelSupport = vi.fn()
+vi.mock("@/hooks/useModelSupport", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/hooks/useModelSupport")>()
+  return {
+    ...original,
+    useModelSupport: () => mockUseModelSupport(),
   }
 })
 
@@ -49,6 +58,7 @@ function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
     provider: "Codex",
     disabled: false,
     total_tokens: 0,
+    canonical_valid_attempts: 0,
     total_cost: 0,
     cost_available: false,
     last_used_at: null,
@@ -80,6 +90,14 @@ function setupMock(props: Partial<LiveCapacityReturn> = {}): LiveCapacityReturn 
   }
   const merged = { ...defaults, ...props }
   mockUseLiveCapacity.mockReturnValue(merged)
+  mockUseModelSupport.mockReturnValue({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    data: undefined,
+    isPending: false,
+    isError: false,
+    error: null,
+  })
   return merged
 }
 
@@ -110,6 +128,92 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("No auth-file accounts")).toBeInTheDocument()
   })
 
+  it("keeps a read error distinct from an empty account list", () => {
+    setupMock({ error: new Error("state read failed") })
+    render(<LiveCapacityCard provider="" />)
+    expect(screen.getByText("Failed to load live capacity")).toBeInTheDocument()
+    expect(screen.queryByText("No auth-file accounts")).not.toBeInTheDocument()
+  })
+
+  it("shows independent account states and source timing", () => {
+    setupMock({ identities: [identity({
+      disabled: true,
+      unavailable: true,
+      status: "error",
+      metadata_observed_at: "2026-09-07T08:00:00Z",
+      last_refresh: "2026-09-07T07:45:00Z",
+      next_retry_after: "2026-09-07T08:30:00Z",
+    })] })
+    render(<LiveCapacityCard provider="" />)
+
+    const availability = screen.getByRole("group", { name: "Account availability" })
+    expect(within(availability).getByText("Operator disabled")).toBeInTheDocument()
+    expect(within(availability).getByText("Temporarily unavailable")).toBeInTheDocument()
+    expect(within(availability).getByText("CPA status: Error")).toBeInTheDocument()
+    expect(within(availability).getByText(/Retry eligibility is not a recovery guarantee/)).toBeInTheDocument()
+
+    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    for (const label of ["CPA auth-file evidence", "Metadata observed", "Token refreshed", "Retry eligible", "Eligibility time only, not a recovery guarantee."]) {
+      expect(within(timing).getByText(label)).toBeInTheDocument()
+    }
+    for (const timestamp of ["2026-09-07T08:00:00Z", "2026-09-07T07:45:00Z", "2026-09-07T08:30:00Z"]) {
+      expect(timing.querySelector(`time[datetime='${timestamp}']`)).toBeInTheDocument()
+    }
+  })
+
+  it("renders account and model passive observations separately from a manual probe", () => {
+    setupMock({
+      identities: [identity({
+        disabled: true,
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          active_limit: "codex_bengalfox",
+          quota: [
+            { key: "primary", label: "5h", usedPercent: 25, allowed: false, resetAfterSeconds: 120, window: { seconds: 18_000 } },
+            { key: "credits", label: "Credits", remaining: 4.5, unit: "credits" },
+          ],
+        },
+        passive_model_quotas: [{
+          source: "cpa_passive",
+          scope: "model",
+          model: "gpt-5.3-codex",
+          observed_at: "2026-09-07T07:30:00Z",
+          quota: [{ key: "secondary", label: "Weekly", allowed: false, window: { seconds: 604_800 } }],
+        }],
+      })],
+      cachedQuota: {
+        items: [{ id: "codex-auth", cachedAt: "2026-09-07T09:00:00Z", quota: [{ key: "manual", label: "5h", usedPercent: 10 }] }],
+      },
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
+    expect(within(passive).getByText("Account")).toBeInTheDocument()
+    expect(within(passive).getByText("gpt-5.3-codex")).toBeInTheDocument()
+    expect(within(passive).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
+    expect(within(passive).getByText("25% used · Blocked")).toBeInTheDocument()
+    expect(within(passive).getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
+    expect(within(passive).getByText("4.5 credits left")).toBeInTheDocument()
+    expect(within(passive).getByText("Blocked")).toBeInTheDocument()
+    expect(within(passive).getByText("reported reset 2m")).toBeInTheDocument()
+    expect(passive.querySelector("time[datetime='2026-09-07T08:00:00Z']")).toBeInTheDocument()
+    expect(passive.querySelector("time[datetime='2026-09-07T07:30:00Z']")).toBeInTheDocument()
+    expect(screen.queryByText("Manual capacity probe")).not.toBeInTheDocument()
+    expect(screen.queryByText("10% used")).not.toBeInTheDocument()
+  })
+
+  it("does not present missing account state as active", () => {
+    setupMock({ identities: [identity({ status: undefined, unavailable: undefined })] })
+    render(<LiveCapacityCard provider="" />)
+    const availability = screen.getByRole("group", { name: "Account availability" })
+    expect(within(availability).getByText("CPA status: State not reported")).toBeInTheDocument()
+    expect(within(availability).queryByText("CPA status: Active")).not.toBeInTheDocument()
+    const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
+    expect(within(passive).getByText("No readable passive quota observation.")).toBeInTheDocument()
+  })
+
   it("renders tiles for each identity", () => {
     const identities = [
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
@@ -126,6 +230,104 @@ describe("LiveCapacityCard", () => {
 
     expect(screen.getByText("Codex Pro")).toBeInTheDocument()
     expect(screen.getByText("Alpha Codex")).toBeInTheDocument()
+  })
+
+  it("loads model support only after an explicit selected-scope action", async () => {
+    const user = userEvent.setup()
+    const identities = [
+      identity({ id: 1, identity: "codex-a", displayName: "Codex A" }),
+      identity({ id: 2, identity: "codex-b", displayName: "Codex B" }),
+    ]
+    setupMock({ identities })
+    const mutate = vi.fn()
+    mockUseModelSupport.mockReturnValue({ mutate, reset: vi.fn(), data: undefined, isPending: false, isError: false, error: null })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(mutate).not.toHaveBeenCalled()
+    await user.click(screen.getByRole("button", { name: "Select displayed" }))
+    await user.click(screen.getByRole("button", { name: "Load model support" }))
+
+    expect(mutate).toHaveBeenCalledTimes(1)
+    expect(mutate.mock.calls[0][0]).toEqual([1, 2])
+  })
+
+  it("clears only model-support state when the provider changes", async () => {
+    const user = userEvent.setup()
+    setupMock({ identities: [identity({ id: 1, identity: "codex-a", displayName: "Codex A" })] })
+    const reset = vi.fn()
+    mockUseModelSupport.mockReturnValue({ mutate: vi.fn(), reset, data: undefined, isPending: false, isError: false, error: null })
+    const view = render(<LiveCapacityCard provider="Codex" />)
+
+    await user.click(screen.getByRole("button", { name: "Select displayed" }))
+    expect(screen.getByText("support 1/12")).toBeInTheDocument()
+    reset.mockClear()
+
+    view.rerender(<LiveCapacityCard provider="Gemini" />)
+
+    await waitFor(() => expect(screen.getByText("support 0/12")).toBeInTheDocument())
+    expect(reset).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows partial registered support without a single-account conclusion", async () => {
+    const user = userEvent.setup()
+    const identities = [
+      identity({ id: 1, identity: "codex-a", displayName: "Codex A" }),
+      identity({ id: 2, identity: "codex-b", displayName: "Codex B" }),
+    ]
+    const data: ModelSupportResponse = {
+      scope_complete: false,
+      selected_count: 2,
+      loaded_count: 1,
+      accounts: [{
+        identity_id: 1,
+        auth_index: "codex-a",
+        display_name: "Codex A",
+        provider: "Codex",
+        channel: "codex",
+        disabled: false,
+        unavailable: null,
+        status: "loaded",
+        catalog_status: "loaded",
+        registered_models: [{
+          id: "gpt-exact",
+          definition_status: "available",
+          capability: { context_length: 200000, supported_input_modalities: ["TEXT", "IMAGE"], thinking: { zero_allowed: false } },
+        }],
+      }, {
+        identity_id: 2,
+        auth_index: "codex-b",
+        display_name: "Codex B",
+        provider: "Codex",
+        channel: "codex",
+        disabled: true,
+        unavailable: true,
+        status: "failed",
+        error_code: "upstream_error",
+        catalog_status: "loaded",
+        registered_models: [],
+      }],
+      models: [{
+        model_id: "gpt-exact",
+        observed_supporting_accounts: 1,
+        selected_accounts: 2,
+        single_registered_account_in_scope: null,
+      }],
+      limits: { max_accounts: 12, max_concurrency: 4, timeout_seconds: 15, max_upstream_requests: 36 },
+    }
+    setupMock({ identities })
+    const mutate = vi.fn((_ids: number[], options: { onSuccess?: () => void }) => options.onSuccess?.())
+    mockUseModelSupport.mockReturnValue({ mutate, reset: vi.fn(), data, isPending: false, isError: false, error: null })
+    render(<LiveCapacityCard provider="" />)
+
+    await user.click(screen.getByRole("button", { name: "Select displayed" }))
+    await user.click(screen.getByRole("button", { name: "Load model support" }))
+
+    expect(await screen.findByText("Partial selected scope")).toBeInTheDocument()
+    expect(screen.getByText("observed in 1/1 loaded accounts")).toBeInTheDocument()
+    expect(screen.queryByText(/1 registered account in this scope/)).not.toBeInTheDocument()
+    expect(screen.getByText("Failed accounts are unknown, not unsupported")).toBeInTheDocument()
+    expect(screen.getByText(/Context 200,000/)).toBeInTheDocument()
+    expect(screen.getByText(/zero not allowed/)).toBeInTheDocument()
   })
 
   it("visualizes probe freshness, subscription window, and additional quota rows", () => {
@@ -154,6 +356,7 @@ describe("LiveCapacityCard", () => {
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
     const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).getByText("Capacity probe evidence")).toBeInTheDocument()
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
     // Past subscription starts are hidden; only the end date remains.
@@ -442,9 +645,31 @@ describe("LiveCapacityCard", () => {
   it("filters tiles via provider chips and restores the full list on All", async () => {
     const user = userEvent.setup()
     const identities = [
-      identity({ identity: "codex-a", displayName: "Codex A", provider: "Codex", type: "codex" }),
+      identity({
+        identity: "codex-a",
+        displayName: "Codex A",
+        provider: "Codex",
+        type: "codex",
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [{ key: "codex-passive", label: "Codex passive evidence", allowed: true }],
+        },
+      }),
       identity({ identity: "codex-b", displayName: "Codex B", provider: "Codex", type: "codex" }),
-      identity({ identity: "claude-a", displayName: "Claude A", provider: "Claude", type: "claude" }),
+      identity({
+        identity: "claude-a",
+        displayName: "Claude A",
+        provider: "Claude",
+        type: "claude",
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [{ key: "claude-passive", label: "Claude passive evidence", allowed: true }],
+        },
+      }),
     ]
     const cachedQuota: QuotaCacheResponse = {
       items: [
@@ -466,11 +691,14 @@ describe("LiveCapacityCard", () => {
 
     await user.click(claudeChip)
     expect(screen.queryByText("Codex A")).not.toBeInTheDocument()
+    expect(screen.queryByText("Codex passive evidence")).not.toBeInTheDocument()
     expect(screen.getByText("Claude A")).toBeInTheDocument()
+    expect(screen.getByText("Claude passive evidence")).toBeInTheDocument()
     expect(claudeChip).toHaveAttribute("aria-pressed", "true")
 
     await user.click(allChip)
     expect(screen.getByText("Codex A")).toBeInTheDocument()
+    expect(screen.getByText("Codex passive evidence")).toBeInTheDocument()
     expect(screen.getByText("Claude A")).toBeInTheDocument()
   })
 
@@ -607,7 +835,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.getAllByText("Disabled")).toHaveLength(1)
     const amberBadge = screen.getAllByText("Disabled").find((el) => el.className.includes("bg-amber-500/10"))
     expect(amberBadge).toBeDefined()
-    expect(screen.getByText("Disabled in CPA — not routing requests")).toBeInTheDocument()
+    expect(screen.getByText("Operator disabled in CPA; capacity probes stay excluded until re-enabled.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Refresh Codex Auth" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Enable Codex Auth" })).toBeInTheDocument()
   })

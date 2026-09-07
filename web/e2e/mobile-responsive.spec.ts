@@ -6,6 +6,9 @@ test.beforeEach(async ({ page }) => {
 })
 
 test("mobile uses bottom navigation without the fixed desktop sidebar", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("cpa-theme", "light")
+  })
   await page.goto("/")
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
 
@@ -44,7 +47,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(chartLegend.getByText("Input", { exact: true })).toBeVisible()
   await expect(chartLegend.getByText("Output", { exact: true })).toBeVisible()
   await expect(chartLegend.getByText("Reasoning", { exact: true })).toBeVisible()
-  await expect(chartLegend.getByText("Cached", { exact: true })).toBeVisible()
+  await expect(chartLegend.getByText("Cache read", { exact: true })).toBeVisible()
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
   await expect(page.getByText("priced-model")).toBeVisible()
@@ -57,7 +60,9 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(accountTiming.getByText("Observed", { exact: true })).toBeVisible()
   await expect(accountTiming.getByText("Cache expires", { exact: true })).toBeVisible()
   await expect(accountTiming.getByText("Active until", { exact: true })).toBeVisible()
-  await expect(accountTiming.locator("time")).toHaveCount(3)
+  await expect(accountTiming.locator("time[datetime='2026-08-31T09:05:00Z']")).toBeVisible()
+  await expect(accountTiming.locator("time[datetime='2026-08-31T09:25:00Z']")).toBeVisible()
+  await expect(accountTiming.locator("time[datetime='2026-09-25T07:15:00Z']")).toBeVisible()
   await expect(page.getByText("Unsupported OpenAI")).toBeVisible()
   await expect(page.getByLabel("OpenAI", { exact: true }).getByText("OA", { exact: true })).toBeVisible()
   const codexLogoWell = page.locator('[aria-label="Codex"]')
@@ -74,7 +79,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(evidenceCard.getByText("48.3 tok/s", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("Latency", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("21.25s", { exact: true })).toBeVisible()
-  await expect(evidenceCard.getByText("Tokens", { exact: true })).toBeVisible()
+  await expect(evidenceCard.getByText("Canonical tokens", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("105.09K", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByRole("button", { name: /Show request evidence/ })).toHaveCount(0)
   await expectFixedOverviewCardHeights(page)
@@ -116,6 +121,10 @@ test("login and operations remain usable on small screens", async ({ page }) => 
 
   await page.goto("/operations")
   await expect(page.getByText("Operational Status")).toBeVisible()
+  await expect(page.getByText("Ingestion observations")).toBeVisible()
+  await expect(page.getByText(/Local observations only/)).toBeVisible()
+  await expect(page.getByText("12.5 events/min")).toBeVisible()
+  await expect(page.getByText("Runner idle")).toBeVisible()
   await page.getByRole("button", { name: "Trigger Sync" }).click()
   await expect(page.getByText("Sync triggered")).toBeVisible()
   await expectNoDocumentOverflow(page)

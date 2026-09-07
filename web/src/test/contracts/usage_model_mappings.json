@@ -1,0 +1,71 @@
+{
+  "window_start": "2026-09-06T12:00:00Z",
+  "window_end": "2026-09-07T12:00:00Z",
+  "total_attempts": 6,
+  "observed_alias_attempts": 5,
+  "missing_alias_attempts": 1,
+  "alias_coverage": 83.33333333333334,
+  "observed_total_cost": 1,
+  "observed_cost_available": false,
+  "observed_cost_status": "partial",
+  "mappings": [
+    {
+      "model_alias": "route-a",
+      "model": "actual-a",
+      "provider": "provider-a",
+      "attempt_count": 2,
+      "failure_count": 1,
+      "failure_share": 50,
+      "latency_sample_count": 1,
+      "mean_latency_ms": 100,
+      "total_cost": 1,
+      "cost_available": true,
+      "cost_status": "available",
+      "canonical_valid_attempts": 2
+    },
+    {
+      "model_alias": "route-a",
+      "model": "actual-b",
+      "provider": "provider-b",
+      "attempt_count": 1,
+      "failure_count": 1,
+      "failure_share": 100,
+      "latency_sample_count": 1,
+      "mean_latency_ms": 300,
+      "total_cost": 0,
+      "cost_available": false,
+      "cost_status": "unavailable",
+      "canonical_valid_attempts": 1
+    },
+    {
+      "model_alias": "actual-b",
+      "model": "actual-b",
+      "provider": "provider-b",
+      "attempt_count": 1,
+      "failure_count": 0,
+      "failure_share": 0,
+      "latency_sample_count": 1,
+      "mean_latency_ms": 200,
+      "total_cost": 0,
+      "cost_available": false,
+      "cost_status": "unavailable",
+      "canonical_valid_attempts": 1
+    },
+    {
+      "model_alias": "route-missing-provider",
+      "model": "actual-a",
+      "provider": "",
+      "attempt_count": 1,
+      "failure_count": 0,
+      "failure_share": 0,
+      "latency_sample_count": 0,
+      "mean_latency_ms": 0,
+      "total_cost": 0,
+      "cost_available": true,
+      "cost_status": "available",
+      "canonical_valid_attempts": 1
+    }
+  ],
+  "other_attempts": 0,
+  "canonical_valid_attempts": 6
+}

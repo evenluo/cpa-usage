@@ -19,12 +19,12 @@ func TestRedisUsageProcessorBatchMarksProcessedRows(t *testing.T) {
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{
 		{
 			QueueKey:   cpa.ManagementUsageQueueKey,
-			RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"processor-batch-1","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"processor-batch-1"}`),
 			PoppedAt:   fetchedAt,
 		},
 		{
 			QueueKey:   cpa.ManagementUsageQueueKey,
-			RawMessage: `{"timestamp":"2026-04-27T08:01:00Z","provider":"claude","model":"sonnet","request_id":"processor-batch-2","tokens":{"input_tokens":3,"output_tokens":4}}`,
+			RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:01:00Z","provider":"claude","model":"sonnet","request_id":"processor-batch-2"}`),
 			PoppedAt:   fetchedAt,
 		},
 	})
@@ -56,8 +56,8 @@ func TestRedisUsageProcessorPreservesAttemptsAndDedupesOnlyInboxReplay(t *testin
 	db := openSyncTestDatabase(t)
 	poppedAt := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
 	requestID := "shared-request"
-	failedAttempt := `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","executor_type":"claude","model":"sonnet","request_id":"shared-request","reasoning_effort":"high","service_tier":"priority","failed":true,"fail":{"status_code":429,"body":"do not persist"},"tokens":{"input_tokens":1,"cached_tokens":5,"cache_read_tokens":3,"cache_creation_tokens":2}}`
-	successAttempt := `{"timestamp":"2026-08-31T08:00:01Z","provider":"openai","model":"gpt-5","request_id":"shared-request","failed":false,"fail":{"status_code":200},"tokens":{"input_tokens":2,"output_tokens":3}}`
+	failedAttempt := withAccountingV2(t, `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","executor_type":"claude","model":"sonnet","request_id":"shared-request","reasoning_effort":"high","service_tier":"priority","failed":true,"fail":{"status_code":429,"body":"do not persist"}}`)
+	successAttempt := withAccountingV2(t, `{"timestamp":"2026-08-31T08:00:01Z","provider":"openai","model":"gpt-5","request_id":"shared-request","failed":false,"fail":{"status_code":200}}`)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{
 		{QueueKey: cpa.ManagementUsageQueueKey, RawMessage: failedAttempt, PoppedAt: poppedAt},
 		{QueueKey: cpa.ManagementUsageQueueKey, RawMessage: successAttempt, PoppedAt: poppedAt.Add(time.Second)},
@@ -90,8 +90,8 @@ func TestRedisUsageProcessorPreservesAttemptsAndDedupesOnlyInboxReplay(t *testin
 	if attempts[0].StatusCode != 429 || attempts[0].ExecutorType != "claude" || attempts[0].ReasoningEffort != "high" || attempts[0].ServiceTier != "priority" {
 		t.Fatalf("expected safe attempt metadata to persist, got %+v", attempts[0])
 	}
-	if attempts[0].CachedTokens != 5 || attempts[0].CacheReadTokens == nil || *attempts[0].CacheReadTokens != 3 || attempts[0].CacheCreationTokens == nil || *attempts[0].CacheCreationTokens != 2 {
-		t.Fatalf("expected exact cache fields and generic compatibility projection to persist, got %+v", attempts[0])
+	if attempts[0].CachedTokens != 0 || attempts[0].CacheReadTokens != nil || attempts[0].CacheCreationTokens != nil {
+		t.Fatalf("new attempt populated archival scalar tokens: %+v", attempts[0])
 	}
 
 	// Reprocessing the same persisted inbox row is a replay, not a fourth attempt.
@@ -112,68 +112,27 @@ func TestRedisUsageProcessorPreservesAttemptsAndDedupesOnlyInboxReplay(t *testin
 	assertUsageEventCount(t, db, 3)
 }
 
-func TestRedisUsageProcessorUpgradeRetryKeepsLegacyRequestIDIdentity(t *testing.T) {
-	db := openSyncTestDatabase(t)
-	poppedAt := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
-	rawMessage := `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"legacy-partial-write","tokens":{"input_tokens":1,"output_tokens":2}}`
-	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
-		QueueKey:   legacyManagementUsageQueueKey,
-		RawMessage: rawMessage,
-		PoppedAt:   poppedAt,
-	}})
-	if err != nil {
-		t.Fatalf("seed legacy inbox row: %v", err)
-	}
-	legacyEvent, _, err := DecodeRedisUsageMessage(rawMessage, poppedAt)
-	if err != nil {
-		t.Fatalf("decode legacy event: %v", err)
-	}
-	inserted, deduped, err := repository.InsertUsageEvents(db, []entities.UsageEvent{legacyEvent})
-	if err != nil || inserted != 1 || deduped != 0 {
-		t.Fatalf("seed legacy partial event write: inserted=%d deduped=%d err=%v", inserted, deduped, err)
-	}
-
-	result, err := newRedisUsageProcessor(db).process(context.Background(), poppedAt.Add(time.Minute))
-	if err != nil {
-		t.Fatalf("retry legacy inbox row after upgrade: %v", err)
-	}
-	if result.InsertedEvents != 0 || result.DedupedEvents != 1 {
-		t.Fatalf("expected legacy partial write to dedupe, got %+v", result)
-	}
-	assertUsageEventCount(t, db, 1)
-	assertProcessedRedisInboxRow(t, db, rows[0].ID, legacyEvent.EventKey, poppedAt.Add(time.Minute))
-}
-
-func TestRedisUsageProcessorUpgradeRetryKeepsLegacyBuiltIdentity(t *testing.T) {
+func TestRedisUsageProcessorRejectsUnsupportedQueuePayload(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	poppedAt := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)
 	rawMessage := `{"provider":"claude","model":"sonnet","tokens":{"input_tokens":1,"output_tokens":2}}`
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
-		QueueKey:   legacyManagementUsageQueueKey,
+		QueueKey:   cpa.ManagementUsageQueueKey,
 		RawMessage: rawMessage,
 		PoppedAt:   poppedAt,
 	}})
 	if err != nil {
 		t.Fatalf("seed legacy inbox row: %v", err)
 	}
-	legacyEvent, _, err := DecodeRedisUsageMessage(rawMessage, poppedAt)
-	if err != nil {
-		t.Fatalf("decode legacy event: %v", err)
-	}
-	inserted, deduped, err := repository.InsertUsageEvents(db, []entities.UsageEvent{legacyEvent})
-	if err != nil || inserted != 1 || deduped != 0 {
-		t.Fatalf("seed legacy partial event write: inserted=%d deduped=%d err=%v", inserted, deduped, err)
-	}
-
 	result, err := newRedisUsageProcessor(db).process(context.Background(), poppedAt.Add(time.Minute))
-	if err != nil {
-		t.Fatalf("retry legacy inbox row after upgrade: %v", err)
+	if err == nil || result == nil || result.Status != "completed_with_warnings" {
+		t.Fatalf("expected unsupported payload rejection, result=%+v err=%v", result, err)
 	}
-	if result.InsertedEvents != 0 || result.DedupedEvents != 1 {
-		t.Fatalf("expected legacy built identity to dedupe, got %+v", result)
+	var row entities.RedisUsageInbox
+	if err := db.First(&row, rows[0].ID).Error; err != nil || row.Status != repository.RedisUsageInboxStatusDecodeFailed {
+		t.Fatalf("expected decode_failed row, row=%+v err=%v", row, err)
 	}
-	assertUsageEventCount(t, db, 1)
-	assertProcessedRedisInboxRow(t, db, rows[0].ID, legacyEvent.EventKey, poppedAt.Add(time.Minute))
+	assertUsageEventCount(t, db, 0)
 }
 
 func TestRedisUsageProcessorRetriesOnlyProcessableRows(t *testing.T) {
@@ -182,17 +141,17 @@ func TestRedisUsageProcessorRetriesOnlyProcessableRows(t *testing.T) {
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{
 		{
 			QueueKey:   cpa.ManagementUsageQueueKey,
-			RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"processor-pending","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"processor-pending"}`),
 			PoppedAt:   fetchedAt,
 		},
 		{
 			QueueKey:   cpa.ManagementUsageQueueKey,
-			RawMessage: `{"timestamp":"2026-04-27T08:01:00Z","provider":"claude","model":"sonnet","request_id":"processor-retry","tokens":{"input_tokens":3,"output_tokens":4}}`,
+			RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:01:00Z","provider":"claude","model":"sonnet","request_id":"processor-retry"}`),
 			PoppedAt:   fetchedAt,
 		},
 		{
 			QueueKey:   cpa.ManagementUsageQueueKey,
-			RawMessage: `{"timestamp":"2026-04-27T08:02:00Z","provider":"claude","model":"sonnet","request_id":"processor-discarded","tokens":{"input_tokens":5,"output_tokens":6}}`,
+			RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:02:00Z","provider":"claude","model":"sonnet","request_id":"processor-discarded"}`),
 			PoppedAt:   fetchedAt,
 		},
 	})
@@ -340,7 +299,7 @@ func seedFallbackRedisInboxRow(t *testing.T, db *gorm.DB) (entities.RedisUsageIn
 	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"provider":"claude","model":"sonnet","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"provider":"claude","model":"sonnet"}`),
 		PoppedAt:   poppedAt,
 	}})
 	if err != nil {

@@ -96,18 +96,18 @@ func buildAnalyticsHeatmapFromAggregates(aggregates map[string]analyticsHeatmapA
 		for hour := 0; hour < 24; hour++ {
 			bucketStart, bucketEnd := localHourBucket(day, hour)
 			cell := dto.AnalyticsHeatmapCell{
-				Hour:          hour,
-				InRange:       analyticsHeatmapCellInRange(bucketStart.UTC(), bucketEnd.UTC(), windowStart, windowEnd),
-				BucketStart:   bucketStart.UTC(),
-				BucketEnd:     bucketEnd.UTC(),
-				CostAvailable: true,
-				CostStatus:    dto.CostStatusAvailable,
+				Hour:        hour,
+				InRange:     analyticsHeatmapCellInRange(bucketStart.UTC(), bucketEnd.UTC(), windowStart, windowEnd),
+				BucketStart: bucketStart.UTC(),
+				BucketEnd:   bucketEnd.UTC(),
+				CostStatus:  dto.CostStatusUnavailable,
 			}
 			if aggregate, ok := aggregates[analyticsHeatmapCellKey(row.Date, hour)]; ok {
 				cell.TotalTokens = aggregate.TotalTokens
 				cell.TotalCost = aggregate.TotalCost
 				cell.RequestCount = aggregate.RequestCount
 				cell.FailureCount = aggregate.FailureCount
+				cell.CanonicalValidAttempts = aggregate.CanonicalValidAttempts
 				cost := assessCostCompleteness(aggregate.MissingPricingEvents, aggregate.PricedBillableEvents)
 				cell.CostAvailable, cell.CostStatus = cost.Available, cost.Status
 			}
@@ -141,6 +141,7 @@ func addAnalyticsHeatmapAggregates(dst map[string]analyticsHeatmapAggregateRow, 
 		combined.RequestCount += row.RequestCount
 		combined.FailureCount += row.FailureCount
 		combined.TotalTokens += row.TotalTokens
+		combined.CanonicalValidAttempts += row.CanonicalValidAttempts
 		combined.TotalCost += row.TotalCost
 		combined.MissingPricingEvents += row.MissingPricingEvents
 		combined.PricedBillableEvents += row.PricedBillableEvents
@@ -170,6 +171,7 @@ func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.AnalyticsFilter, st
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events
@@ -194,6 +196,7 @@ func buildAnalyticsHeatmapAggregates(db *gorm.DB, filter dto.AnalyticsFilter, st
 		aggregate.RequestCount += row.RequestCount
 		aggregate.FailureCount += row.FailureCount
 		aggregate.TotalTokens += row.TotalTokens
+		aggregate.CanonicalValidAttempts += row.CanonicalValidAttempts
 		aggregate.TotalCost += row.TotalCost
 		aggregate.MissingPricingEvents += row.MissingPricingEvents
 		aggregate.PricedBillableEvents += row.PricedBillableEvents
@@ -212,6 +215,7 @@ func buildAnalyticsRollupHeatmapAggregates(db *gorm.DB, filter dto.AnalyticsFilt
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events
@@ -238,6 +242,7 @@ func buildAnalyticsRollupHeatmapAggregates(db *gorm.DB, filter dto.AnalyticsFilt
 		aggregate.RequestCount += row.RequestCount
 		aggregate.FailureCount += row.FailureCount
 		aggregate.TotalTokens += row.TotalTokens
+		aggregate.CanonicalValidAttempts += row.CanonicalValidAttempts
 		aggregate.TotalCost += row.TotalCost
 		aggregate.MissingPricingEvents += row.MissingPricingEvents
 		aggregate.PricedBillableEvents += row.PricedBillableEvents

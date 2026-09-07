@@ -30,23 +30,24 @@ type ListAPIKeyAliasTargetsRequest struct {
 }
 
 type APIKeyAliasTarget struct {
-	ID              string
-	Identity        string
-	Alias           string
-	Provider        string
-	TotalRequests   int64
-	SuccessCount    int64
-	FailureCount    int64
-	InputTokens     int64
-	OutputTokens    int64
-	ReasoningTokens int64
-	CachedTokens    int64
-	TotalTokens     int64
-	TotalCost       float64
-	CostAvailable   bool
-	CostStatus      string
-	FirstUsedAt     *time.Time
-	LastUsedAt      *time.Time
+	ID                     string
+	Identity               string
+	Alias                  string
+	Provider               string
+	TotalRequests          int64
+	SuccessCount           int64
+	FailureCount           int64
+	InputTokens            int64
+	OutputTokens           int64
+	ReasoningTokens        int64
+	CachedTokens           int64
+	TotalTokens            int64
+	CanonicalValidAttempts int64
+	TotalCost              float64
+	CostAvailable          bool
+	CostStatus             string
+	FirstUsedAt            *time.Time
+	LastUsedAt             *time.Time
 }
 
 type ListAPIKeyAliasTargetsResponse struct {
@@ -219,22 +220,23 @@ func (s *keyAliasService) ClearUsageIdentityAlias(ctx context.Context, id uint) 
 
 func mapAPIKeyAliasTarget(row repodto.APIKeyAliasTargetRecord) APIKeyAliasTarget {
 	return APIKeyAliasTarget{
-		ID:              redact.APIAlias(row.Identity),
-		Identity:        redact.APIKeyDisplayName(row.Identity),
-		Alias:           row.Alias,
-		Provider:        row.Provider,
-		TotalRequests:   row.RequestCount,
-		SuccessCount:    row.SuccessCount,
-		FailureCount:    row.FailureCount,
-		InputTokens:     row.InputTokens,
-		OutputTokens:    row.OutputTokens,
-		ReasoningTokens: row.ReasoningTokens,
-		CachedTokens:    row.CachedTokens,
-		TotalTokens:     row.TotalTokens,
-		TotalCost:       row.TotalCost,
-		CostAvailable:   row.CostAvailable,
-		CostStatus:      row.CostStatus,
-		FirstUsedAt:     row.FirstUsedAt,
-		LastUsedAt:      row.LastUsedAt,
+		ID:                     redact.APIAlias(row.Identity),
+		Identity:               redact.APIKeyDisplayName(row.Identity),
+		Alias:                  row.Alias,
+		Provider:               row.Provider,
+		TotalRequests:          row.RequestCount,
+		SuccessCount:           row.SuccessCount,
+		FailureCount:           row.FailureCount,
+		InputTokens:            row.InputTokens,
+		OutputTokens:           row.OutputTokens,
+		ReasoningTokens:        row.ReasoningTokens,
+		CachedTokens:           row.CachedTokens,
+		TotalTokens:            row.TotalTokens,
+		CanonicalValidAttempts: row.CanonicalValidAttempts,
+		TotalCost:              row.TotalCost,
+		CostAvailable:          row.CostAvailable,
+		CostStatus:             row.CostStatus,
+		FirstUsedAt:            row.FirstUsedAt,
+		LastUsedAt:             row.LastUsedAt,
 	}
 }

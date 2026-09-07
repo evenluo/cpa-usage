@@ -276,6 +276,20 @@ func addAnalyticsAggregateRow(dst *analyticsAggregateRow, src analyticsAggregate
 	dst.CacheSavingsIneligibleRows += src.CacheSavingsIneligibleRows
 	dst.MissingPricingEvents += src.MissingPricingEvents
 	dst.PricedBillableEvents += src.PricedBillableEvents
+	dst.AccountingAbsentAttempts += src.AccountingAbsentAttempts
+	dst.AccountingValidAttempts += src.AccountingValidAttempts
+	dst.AccountingValidCompleteAttempts += src.AccountingValidCompleteAttempts
+	dst.AccountingValidInconsistentAttempts += src.AccountingValidInconsistentAttempts
+	dst.AccountingValidUnclassifiedAttempts += src.AccountingValidUnclassifiedAttempts
+	dst.CanonicalTotalTokens += src.CanonicalTotalTokens
+	dst.CanonicalInputTokens += src.CanonicalInputTokens
+	dst.CanonicalUncachedTokens += src.CanonicalUncachedTokens
+	dst.CanonicalCacheReadTokens += src.CanonicalCacheReadTokens
+	dst.CanonicalCacheWriteTokens += src.CanonicalCacheWriteTokens
+	dst.CanonicalOutputTokens += src.CanonicalOutputTokens
+	dst.CanonicalNonReasoningTokens += src.CanonicalNonReasoningTokens
+	dst.CanonicalReasoningTokens += src.CanonicalReasoningTokens
+	dst.CanonicalUnclassifiedTokens += src.CanonicalUnclassifiedTokens
 }
 
 func analyticsRollupsWithPricingQuery(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {

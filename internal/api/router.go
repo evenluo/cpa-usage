@@ -62,6 +62,9 @@ type UsageProvider interface {
 	GetUsageOverview(context.Context, repodto.UsageOverviewFilter) (*repodto.UsageOverviewRecord, error)
 	GetRequestHealth(context.Context, repodto.UsageOverviewFilter) (*repodto.UsageOverviewHealthRecord, error)
 	ListUsageEvents(context.Context, repodto.UsageEventListFilter) (*repodto.UsageEventsPageRecord, error)
+	GetUsageFailureDistribution(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageFailureDistributionRecord, error)
+	GetUsageModelMappings(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageModelMappingDistributionRecord, error)
+	GetUsageAttemptPerformance(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageAttemptPerformanceRecord, error)
 	ListUsageEventFilterOptions(context.Context, repodto.UsageTimeScope) (*repodto.UsageEventFilterOptionsRecord, error)
 	GetUsageAnalysis(context.Context, repodto.UsageTimeScope) ([]repodto.UsageAnalysisAPIStatRecord, []repodto.UsageAnalysisModelStatRecord, error)
 }
@@ -80,6 +83,7 @@ type OptionalProviders struct {
 	KeyAlias       service.KeyAliasProvider
 	Quota          QuotaProvider
 	AccountStatus  AccountStatusProvider
+	ModelSupport   ModelSupportProvider
 	RollupBackfill RollupBackfillStatusProvider
 	Metrics        MetricsProvider
 }
@@ -128,7 +132,11 @@ func NewRouter(
 	registerUsageAnalysisRoute(protected, usageProvider)
 	registerAnalyticsRoutes(protected, optionalProviders.Analytics)
 	registerUsageEventsRoute(protected, usageProvider, optionalProviders.UsageIdentity, optionalProviders.KeyAlias)
+	registerUsageFailuresRoute(protected, usageProvider, optionalProviders.UsageIdentity)
+	registerUsageModelMappingsRoute(protected, usageProvider)
+	registerUsagePerformanceRoute(protected, usageProvider, optionalProviders.UsageIdentity)
 	registerUsageIdentityRoutes(protected, optionalProviders.UsageIdentity, optionalProviders.KeyAlias, optionalProviders.AccountStatus)
+	registerModelSupportRoute(protected, optionalProviders.ModelSupport)
 	registerPricingRoutes(protected, pricingProvider)
 	registerQuotaRoutes(protected, optionalProviders.Quota)
 
