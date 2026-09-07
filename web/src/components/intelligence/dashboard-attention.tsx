@@ -74,7 +74,7 @@ export function DashboardAttention({
       ) : null}
 
       {/* Section divider — fixed 24h diagnostics */}
-      <SectionDivider icon={Pin} label="Diagnostics · fixed 24h window, unaffected by the range picker" />
+      <SectionDivider icon={Pin} label="Diagnostics · fixed 24h" />
 
       {/* Attempt Health + Evidence — 24h fixed */}
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">

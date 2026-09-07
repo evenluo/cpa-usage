@@ -59,7 +59,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   const accountTiming = page.getByRole("group", { name: "Account and cache timing" })
   await expect(accountTiming.getByText("Observed", { exact: true })).toBeVisible()
   await expect(accountTiming.getByText("Cache expires", { exact: true })).toBeVisible()
-  await expect(accountTiming.getByText("Active until", { exact: true })).toBeVisible()
+  await expect(accountTiming.getByText("Ends", { exact: true })).toBeVisible()
   await expect(accountTiming.locator("time[datetime='2026-08-31T09:05:00Z']")).toBeVisible()
   await expect(accountTiming.locator("time[datetime='2026-08-31T09:25:00Z']")).toBeVisible()
   await expect(accountTiming.locator("time[datetime='2026-09-25T07:15:00Z']")).toBeVisible()

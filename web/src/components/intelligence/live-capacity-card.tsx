@@ -1,18 +1,14 @@
 import {
   AlertTriangle,
-  ArrowRight,
   CalendarDays,
-  CalendarRange,
   Clock,
   Eye,
   Gauge,
-  Hourglass,
   Loader2,
   ListChecks,
   Power,
   RefreshCw,
   Timer,
-  type LucideIcon,
 } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
@@ -254,7 +250,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
               <div className="space-y-2 border-t border-border/60 p-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span className="text-muted-foreground">
-                    Select an account set, then load registered support. This does not test current routing availability.
+                    Load registered model support for the selected accounts.
                   </span>
                   <div className="flex items-center gap-2">
                     <Button
@@ -596,7 +592,6 @@ function LiveCapacityAccountTile({
 
       {!row.disabled ? (
         <div className="mt-3 grid gap-2">
-          <p className="text-[10px] font-medium text-foreground/70">Manual capacity probe</p>
           <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} observedAt={row.observedAt} />
           <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} observedAt={row.observedAt} />
           {remainingMetrics.map((metric, index) => (
@@ -639,15 +634,15 @@ function PassiveQuotaEvidence({
     <div
       className="mt-3 rounded-md border border-terracotta-500/20 bg-terracotta-500/[0.025] p-2.5"
       role="group"
-      aria-label="CPA passive quota observation"
+      aria-label="Reported quota"
     >
       <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
         <Eye className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
-        <span>CPA passive quota observation</span>
+        <span>Reported quota</span>
       </div>
       <div className="mt-2 space-y-3">
         {!account && models.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground">No readable passive quota observation.</p>
+          <p className="text-[10px] text-muted-foreground">No passive quota data.</p>
         ) : null}
         {account ? <PassiveQuotaObservationSection label="Account" observation={account} /> : null}
         {models.length > 0 ? (
@@ -663,9 +658,6 @@ function PassiveQuotaEvidence({
           </details>
         ) : null}
       </div>
-      <p className="mt-2 text-[9px] leading-3 text-muted-foreground">
-        Latest provider watermark observed by CPA. No expiry or history is inferred; relative reset hints are anchored to the observation time.
-      </p>
     </div>
   )
 }
@@ -681,9 +673,6 @@ function ModelSupportCoveragePanel({ result }: { result: ModelSupportResponse })
         </Badge>
         <span className="text-xs text-muted-foreground">{result.loaded_count}/{result.selected_count} accounts loaded</span>
       </div>
-      <p className="mt-1 text-xs leading-5 text-muted-foreground">
-        Counts describe registry membership in this selected scope, not current routing availability or provider health.
-      </p>
       {result.models.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {result.models.map((model) => (
@@ -740,7 +729,7 @@ function PassiveQuotaObservationSection({
       </div>
       <div className="mt-1.5 grid gap-1.5">
         {observation.metrics.map((metric, index) => (
-          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} resetPrefix="reported reset" observedAt={observation.observedAt} />
+          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} observedAt={observation.observedAt} />
         ))}
       </div>
     </section>
@@ -757,10 +746,12 @@ function AccountModelSupportDetails({ account }: { account: AccountModelSupport 
   }
   return (
     <details className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5">
-      <summary className="cursor-pointer text-[11px] font-medium">
+      <summary
+        className="cursor-pointer text-[11px] font-medium"
+        title="Registered capability only; not current routing availability."
+      >
         Registered models ({account.registered_models.length})
       </summary>
-      <p className="mt-1 text-[10px] leading-4 text-muted-foreground">Registered capability only; not current routing availability.</p>
       {account.registered_models.length === 0 ? (
         <p className="mt-2 text-[11px] text-muted-foreground">CPA returned no registered models for this account.</p>
       ) : (
@@ -821,20 +812,22 @@ function definitionStatusLabel(status: RegisteredModelSupport["definition_status
 }
 
 function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
+  // row.disabled already has a header badge; this row only surfaces the
+  // remaining abnormal states.
+  const showAccountState = row.accountState.kind !== "active" && row.accountState.kind !== "not_reported"
+  if (row.unavailable !== true && !showAccountState) return null
   return (
-    <div className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5" role="group" aria-label="Account availability">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {row.disabled ? <Badge variant="amber" className="px-1.5 py-0 text-[10px] leading-4">Operator disabled</Badge> : null}
-        {row.unavailable === true ? <Badge variant="red" className="px-1.5 py-0 text-[10px] leading-4">Temporarily unavailable</Badge> : null}
-        <Badge variant={accountStateBadgeVariant(row.accountState.tone)} className="px-1.5 py-0 text-[10px] leading-4">
-          CPA status: {row.accountState.label}
+    <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Account availability">
+      {row.unavailable === true ? <Badge variant="red" className="px-1.5 py-0 text-[10px] leading-4">Unavailable</Badge> : null}
+      {showAccountState ? (
+        <Badge
+          variant={accountStateBadgeVariant(row.accountState.tone)}
+          className="px-1.5 py-0 text-[10px] leading-4"
+          title={row.accountState.explanation}
+        >
+          CPA: {row.accountState.label}
         </Badge>
-      </div>
-      <div className="mt-1.5 space-y-1 text-[11px] leading-4 text-muted-foreground">
-        {row.disabled ? <p>Operator disabled in CPA; capacity probes stay excluded until re-enabled.</p> : null}
-        {row.unavailable === true ? <p>CPA marked this account temporarily unavailable. Retry eligibility is not a recovery guarantee.</p> : null}
-        <p>{row.accountState.explanation}</p>
-      </div>
+      ) : null}
     </div>
   )
 }
@@ -862,14 +855,10 @@ function AccountTiming({
   activeUntil?: string | null
   cacheStale?: boolean
 }) {
-  const hasAuthFileEvidence = Boolean(metadataObservedAt || lastRefresh || nextRetryAfter)
-  const hasProbeWindow = Boolean(observedAt || expiresAt)
-  const hasBothProbeEndpoints = Boolean(observedAt && expiresAt)
   // activeStart arrives pre-filtered by buildLiveCapacityRows: it is only set
   // while the subscription start is still in the future.
   const activeRange = activeStart && activeUntil ? { start: activeStart, until: activeUntil } : null
   const singleActiveEndpoint = activeRange ? null : (activeUntil ?? activeStart ?? null)
-  const hasActiveWindow = Boolean(activeRange || singleActiveEndpoint)
 
   return (
     <div
@@ -877,131 +866,48 @@ function AccountTiming({
       role="group"
       aria-label="Account and cache timing"
     >
-      {hasAuthFileEvidence ? (
-        <div>
-          <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
-            <Eye className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
-            <span>CPA auth-file evidence</span>
-          </div>
-          <div className="mt-1.5 grid gap-1.5">
-            {metadataObservedAt ? <TimingLine label="Metadata observed" value={metadataObservedAt} /> : null}
-            {lastRefresh ? <TimingLine label="Token refreshed" value={lastRefresh} /> : null}
-            {nextRetryAfter ? <TimingLine label="Retry eligible" value={nextRetryAfter} /> : null}
-          </div>
-          {nextRetryAfter ? <p className="mt-1.5 text-[9px] leading-3 text-muted-foreground">Eligibility time only, not a recovery guarantee.</p> : null}
-        </div>
-      ) : null}
-
-      {hasProbeWindow ? (
-        <div className={cn(hasAuthFileEvidence && "mt-2 border-t border-border/60 pt-2")}>
-          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
-            <Gauge className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
-            <span>Capacity probe evidence</span>
-          </div>
-          <div className={cn("grid items-center gap-2", hasBothProbeEndpoints ? "grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]" : "grid-cols-1")}>
-            {observedAt ? <TimingEndpoint icon={Eye} label="Observed" value={observedAt} /> : null}
-            {hasBothProbeEndpoints ? <TimingConnector /> : null}
-            {expiresAt ? <TimingEndpoint icon={Hourglass} label="Cache expires" value={expiresAt} align={observedAt ? "end" : "start"} stale={cacheStale} /> : null}
-          </div>
-        </div>
-      ) : null}
-
-      {hasActiveWindow ? (
-        <div className={cn((hasAuthFileEvidence || hasProbeWindow) && "mt-2 border-t border-border/60 pt-2")}>
-          {activeRange ? (
-            <>
-              <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
-                <CalendarRange className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
-                <span>Account active</span>
-              </div>
-              <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
-                <TimingEndpoint label="Starts" value={activeRange.start} compact />
-                <TimingConnector />
-                <TimingEndpoint label="Ends" value={activeRange.until} align="end" compact />
-              </div>
-            </>
-          ) : singleActiveEndpoint ? (
-            <div className="flex items-center gap-1.5 text-[10px] text-foreground/70">
-              <CalendarRange className="h-3.5 w-3.5 shrink-0 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
-              <span className="font-medium">{activeUntil ? "Active until" : "Starts"}</span>
-              <time
-                className="ml-auto truncate font-medium text-foreground/90"
-                dateTime={singleActiveEndpoint}
-                title={singleActiveEndpoint}
-              >
-                {formatDate(singleActiveEndpoint)}
-              </time>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="grid gap-1.5">
+        {metadataObservedAt ? <TimingLine label="Metadata observed" value={metadataObservedAt} /> : null}
+        {lastRefresh ? <TimingLine label="Token refreshed" value={lastRefresh} /> : null}
+        {nextRetryAfter ? (
+          <TimingLine label="Retry eligible" value={nextRetryAfter} title="Eligibility time only, not a recovery guarantee." />
+        ) : null}
+        {observedAt ? <TimingLine label="Observed" value={observedAt} /> : null}
+        {expiresAt ? <TimingLine label="Cache expires" value={expiresAt} stale={cacheStale} /> : null}
+        {activeRange ? <TimingLine label="Starts" value={activeRange.start} /> : null}
+        {activeRange ? <TimingLine label="Ends" value={activeRange.until} /> : null}
+        {singleActiveEndpoint ? <TimingLine label={activeUntil ? "Ends" : "Starts"} value={singleActiveEndpoint} /> : null}
+      </div>
     </div>
   )
 }
 
-function TimingLine({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 items-center gap-2 text-[10px] text-foreground/70">
-      <span className="font-medium">{label}</span>
-      <time className="ml-auto truncate font-medium text-foreground/90" dateTime={value} title={value}>{formatDate(value)}</time>
-    </div>
-  )
-}
-
-function TimingEndpoint({
-  icon: Icon,
+function TimingLine({
   label,
   value,
-  align = "start",
-  compact = false,
+  title,
   stale = false,
 }: {
-  icon?: LucideIcon
   label: string
   value: string
-  align?: "start" | "end"
-  compact?: boolean
+  title?: string
   stale?: boolean
 }) {
   return (
-    <div className={cn("min-w-0", align === "end" && "text-right")}>
-      <div
-        className={cn(
-          "flex items-center gap-1.5 text-[10px] text-foreground/65",
-          align === "end" && "justify-end",
-        )}
+    <div className="flex min-w-0 items-center gap-2 text-[10px] text-foreground/70" title={title}>
+      <span className="font-medium">{label}</span>
+      {stale ? (
+        <span className="rounded-full bg-amber-500/15 px-1.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+          Stale
+        </span>
+      ) : null}
+      <time
+        className={cn("ml-auto truncate font-medium", stale ? "text-amber-700 dark:text-amber-300" : "text-foreground/90")}
+        dateTime={value}
+        title={value}
       >
-        {Icon ? (
-          <Icon
-            className={cn("h-3.5 w-3.5", stale ? "text-amber-600 dark:text-amber-400" : "text-terracotta-600 dark:text-terracotta-300")}
-            aria-hidden="true"
-          />
-        ) : null}
-        <span>{label}</span>
-        {stale ? (
-          <span className="rounded-full bg-amber-500/15 px-1.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-            Stale
-          </span>
-        ) : null}
-      </div>
-      <div
-        className={cn(
-          "mt-0.5 truncate font-medium",
-          compact ? "text-[10px]" : "text-[11px]",
-          stale ? "text-amber-700 dark:text-amber-300" : "text-foreground/90",
-        )}
-      >
-        <time dateTime={value} title={value}>{formatDate(value)}</time>
-      </div>
-    </div>
-  )
-}
-
-function TimingConnector() {
-  return (
-    <div className="flex w-7 items-center text-muted-foreground/55" aria-hidden="true">
-      <span className="h-px min-w-0 flex-1 bg-muted-foreground/35" />
-      <ArrowRight className="h-3 w-3 shrink-0 -ml-px" />
+        {formatDate(value)}
+      </time>
     </div>
   )
 }
@@ -1037,12 +943,10 @@ function PlanBadge({
 function MetricMeter({
   title,
   metric,
-  resetPrefix = "reset",
   observedAt,
 }: {
   title: string
   metric?: LiveCapacityMetric
-  resetPrefix?: string
   /** Observation time anchoring relative reset hints (resetAfterSeconds). */
   observedAt?: string
 }) {
@@ -1050,10 +954,14 @@ function MetricMeter({
   const countdown = metric ? resetCountdown(metric, observedAt) : undefined
   const resetText = countdown
     ? countdown.isDue
-      ? `${resetPrefix} due`
-      : `${resetPrefix} in ${countdown.relativeLabel}`
+      ? "reset due"
+      : `in ${countdown.relativeLabel}`
     : "-"
-  const resetTitle = countdown?.resetAt ? `${resetText} · ${formatDate(countdown.resetAt)}` : resetText
+  const resetTitle = [
+    resetText,
+    countdown?.isDue ? "Quota window reset has passed; waiting for the provider's next report" : null,
+    countdown?.resetAt ? formatDate(countdown.resetAt) : null,
+  ].filter((part): part is string => Boolean(part)).join(" · ")
   const WindowIcon = metric?.windowSeconds === FIVE_HOUR_WINDOW_SECONDS
     ? Timer
     : metric?.windowSeconds === WEEKLY_WINDOW_SECONDS

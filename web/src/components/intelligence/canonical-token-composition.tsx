@@ -13,26 +13,15 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
         <span className="mt-1 block">{getAccountingCaption(accounting)}</span>
       </summary>
       <div className="mt-3 space-y-3">
-        <p className="text-muted-foreground">Selected window and provider scope. Every token metric uses this canonical composition.</p>
-        <div>
-          <h3 className="font-medium">Metric Completeness · Accounting</h3>
-          <p className="mt-1 text-muted-foreground">
-            {accounting.valid_attempts.toLocaleString("en")} / {accounting.total_attempts.toLocaleString("en")} attempts have valid canonical structure.
-            {" "}Coverage counts attempts, not tokens; valid structure does not imply complete quality.
-          </p>
-          <p className="mt-1 text-muted-foreground">
-            Quality among {accounting.valid_attempts.toLocaleString("en")} valid attempts:
-            {" "}complete {accounting.valid_quality.complete.toLocaleString("en")},
-            {" "}inconsistent {accounting.valid_quality.inconsistent.toLocaleString("en")},
-            {" "}unclassified {accounting.valid_quality.unclassified.toLocaleString("en")}.
-          </p>
-          {excluded.length > 0 ? (
-            <p className="mt-1 text-muted-foreground">
-              Excluded from composition (of all {accounting.total_attempts.toLocaleString("en")} attempts):
-              {" "}{excluded.map((state) => `${ACCOUNTING_STATE_LABELS[state]} ${accounting.states[state].toLocaleString("en")}`).join("; ")}.
-            </p>
-          ) : null}
-        </div>
+        <p className="text-muted-foreground">
+          {accounting.valid_attempts.toLocaleString("en")} / {accounting.total_attempts.toLocaleString("en")} valid
+          {" · "}complete {accounting.valid_quality.complete.toLocaleString("en")}
+          {" · "}inconsistent {accounting.valid_quality.inconsistent.toLocaleString("en")}
+          {" · "}unclassified {accounting.valid_quality.unclassified.toLocaleString("en")}
+          {excluded.length > 0
+            ? ` · excluded: ${excluded.map((state) => `${ACCOUNTING_STATE_LABELS[state]} ${accounting.states[state].toLocaleString("en")}`).join("; ")}`
+            : ""}
+        </p>
         {hasComposition ? (
           <>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
@@ -43,12 +32,12 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
                 </div>
               ))}
             </dl>
-            <p className="text-muted-foreground">Input = uncached + cache read + cache write. Output = non-reasoning + reasoning. Total = input + output + unclassified. Sums include all valid qualities; inconsistent or unclassified quality remains qualified.</p>
+            <p className="text-muted-foreground">Input = uncached + cache read + cache write; output = non-reasoning + reasoning.</p>
           </>
         ) : (
           <p className="text-muted-foreground">Canonical totals unavailable. Missing historical facts cannot be reconstructed from scalar tokens.</p>
         )}
-        <p className="text-muted-foreground">Local cost estimate completeness: {costStatus}. Complete canonical rows price uncached and cache-write input at the prompt rate, cache-read input at the cache rate, and total output at the completion rate. This is not an upstream billing amount.</p>
+        <p className="text-muted-foreground">Local estimate ({costStatus}); not an upstream billing amount.</p>
       </div>
     </details>
   )

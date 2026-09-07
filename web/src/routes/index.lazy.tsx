@@ -37,36 +37,8 @@ function DashboardPage() {
         providerOptions={providerOptions}
       />
 
-      {/* Layer 1 — Account usage & capacity, live now */}
-      <LiveCapacityCard provider={loadPlan.fixedWindow.liveCapacity.provider} />
-
-      {/* Layer 2 — Needs attention, fixed 24h diagnostic window */}
-      <DashboardAttention
-        surfaces={surfaces}
-        requestEvidenceProvider={loadPlan.fixedWindow.requestEvidence.provider}
-        requestEvidenceData={dashboard.requestEvidenceData}
-        isRequestEvidenceLoading={dashboard.isRequestEvidenceLoading}
-        isRequestEvidenceRefreshing={dashboard.isRequestEvidenceRefreshing}
-        requestEvidenceError={dashboard.requestEvidenceError}
-        failureDistributionData={dashboard.failureDistributionData}
-        isFailureDistributionLoading={dashboard.isFailureDistributionLoading}
-        failureDistributionError={dashboard.failureDistributionError}
-        modelMappingsData={dashboard.modelMappingsData}
-        isModelMappingsLoading={dashboard.isModelMappingsLoading}
-        modelMappingsError={dashboard.modelMappingsError}
-        attemptPerformanceData={dashboard.attemptPerformanceData}
-        isAttemptPerformanceLoading={dashboard.isAttemptPerformanceLoading}
-        attemptPerformanceError={dashboard.attemptPerformanceError}
-        onRetryCore={dashboard.retryCore}
-        onRetryRequestHealth={dashboard.retryRequestHealth}
-        onRetryRequestEvidence={dashboard.retryRequestEvidence}
-        onRetryFailureDistribution={dashboard.retryFailureDistribution}
-        onRetryModelMappings={dashboard.retryModelMappings}
-        onRetryAttemptPerformance={dashboard.retryAttemptPerformance}
-      />
-
-      {/* Layer 3 — Trends & distribution over the selected analysis window */}
-      <SectionDivider icon={BarChart3} label="Analysis — follows the selected window" />
+      {/* Layer 1 — Trends & distribution over the selected analysis window */}
+      <SectionDivider icon={BarChart3} label="Analysis" />
 
       {surfaces.core.status === "error" ? (
         <Card>
@@ -158,6 +130,34 @@ function DashboardPage() {
         modelMixCostStateLabel={viewModel.modelMixCostStateLabel}
         onRetryCore={dashboard.retryCore}
         onRetryHeatmap={dashboard.retryHeatmap}
+      />
+
+      {/* Layer 2 — Account usage & capacity, live now */}
+      <LiveCapacityCard provider={loadPlan.fixedWindow.liveCapacity.provider} />
+
+      {/* Layer 3 — Needs attention, fixed 24h diagnostic window */}
+      <DashboardAttention
+        surfaces={surfaces}
+        requestEvidenceProvider={loadPlan.fixedWindow.requestEvidence.provider}
+        requestEvidenceData={dashboard.requestEvidenceData}
+        isRequestEvidenceLoading={dashboard.isRequestEvidenceLoading}
+        isRequestEvidenceRefreshing={dashboard.isRequestEvidenceRefreshing}
+        requestEvidenceError={dashboard.requestEvidenceError}
+        failureDistributionData={dashboard.failureDistributionData}
+        isFailureDistributionLoading={dashboard.isFailureDistributionLoading}
+        failureDistributionError={dashboard.failureDistributionError}
+        modelMappingsData={dashboard.modelMappingsData}
+        isModelMappingsLoading={dashboard.isModelMappingsLoading}
+        modelMappingsError={dashboard.modelMappingsError}
+        attemptPerformanceData={dashboard.attemptPerformanceData}
+        isAttemptPerformanceLoading={dashboard.isAttemptPerformanceLoading}
+        attemptPerformanceError={dashboard.attemptPerformanceError}
+        onRetryCore={dashboard.retryCore}
+        onRetryRequestHealth={dashboard.retryRequestHealth}
+        onRetryRequestEvidence={dashboard.retryRequestEvidence}
+        onRetryFailureDistribution={dashboard.retryFailureDistribution}
+        onRetryModelMappings={dashboard.retryModelMappings}
+        onRetryAttemptPerformance={dashboard.retryAttemptPerformance}
       />
     </div>
   )

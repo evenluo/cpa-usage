@@ -158,18 +158,18 @@ test("dashboard renders account capacity, diagnostics, and analysis layers", asy
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
   await expect(page.getByText("all-model")).toBeVisible()
-  // 信息层次契约：账户用量（首屏）→ 24h 固定诊断 → 选样窗口分析。
+  // 信息层次契约：选样窗口分析（首屏）→ 账户用量 → 24h 固定诊断。
   const layerTop = async (pattern: RegExp | string) => {
     const box = await page.getByText(pattern, { exact: typeof pattern === "string" }).first().boundingBox()
     return box?.y ?? Number.POSITIVE_INFINITY
   }
-  const liveCapacityTop = await layerTop("Live Capacity")
-  const diagnosticsTop = await layerTop(/Diagnostics · fixed 24h window/)
-  const analysisTop = await layerTop(/Analysis — follows the selected window/)
+  const analysisTop = await layerTop("Analysis")
   const trendTop = await layerTop("Trend Workbench")
-  expect(liveCapacityTop).toBeLessThan(diagnosticsTop)
-  expect(diagnosticsTop).toBeLessThan(analysisTop)
+  const liveCapacityTop = await layerTop("Live Capacity")
+  const diagnosticsTop = await layerTop("Diagnostics · fixed 24h")
   expect(analysisTop).toBeLessThan(trendTop)
+  expect(trendTop).toBeLessThan(liveCapacityTop)
+  expect(liveCapacityTop).toBeLessThan(diagnosticsTop)
   await expect(page.getByText("Needs attention", { exact: true })).toHaveCount(0)
   await expect(page.getByText("All providers metrics complete")).toHaveCount(0)
 })

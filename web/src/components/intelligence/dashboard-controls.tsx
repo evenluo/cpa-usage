@@ -123,12 +123,6 @@ export function DashboardControls({
               </button>
             </div>
           </div>
-
-          {/* Scope indicator */}
-          <span className="flex items-center justify-end gap-1 text-right text-[10px] text-muted-foreground/60">
-            <Clock className="h-3 w-3" />
-            Applies to KPIs, Trend & Leaderboard
-          </span>
         </div>
       </div>
     </>

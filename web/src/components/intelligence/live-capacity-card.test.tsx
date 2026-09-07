@@ -147,15 +147,17 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
 
     const availability = screen.getByRole("group", { name: "Account availability" })
-    expect(within(availability).getByText("Operator disabled")).toBeInTheDocument()
-    expect(within(availability).getByText("Temporarily unavailable")).toBeInTheDocument()
-    expect(within(availability).getByText("CPA status: Error")).toBeInTheDocument()
-    expect(within(availability).getByText(/Retry eligibility is not a recovery guarantee/)).toBeInTheDocument()
+    expect(within(availability).getByText("Unavailable")).toBeInTheDocument()
+    expect(within(availability).getByText("CPA: Error")).toBeInTheDocument()
 
     const timing = screen.getByRole("group", { name: "Account and cache timing" })
-    for (const label of ["CPA auth-file evidence", "Metadata observed", "Token refreshed", "Retry eligible", "Eligibility time only, not a recovery guarantee."]) {
+    for (const label of ["Metadata observed", "Token refreshed", "Retry eligible"]) {
       expect(within(timing).getByText(label)).toBeInTheDocument()
     }
+    expect(within(timing).getByText("Retry eligible").closest("div")).toHaveAttribute(
+      "title",
+      "Eligibility time only, not a recovery guarantee.",
+    )
     for (const timestamp of ["2026-09-07T08:00:00Z", "2026-09-07T07:45:00Z", "2026-09-07T08:30:00Z"]) {
       expect(timing.querySelector(`time[datetime='${timestamp}']`)).toBeInTheDocument()
     }
@@ -191,7 +193,7 @@ describe("LiveCapacityCard", () => {
       })
       render(<LiveCapacityCard provider="" />)
 
-      const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
+      const passive = screen.getByRole("group", { name: "Reported quota" })
       expect(within(passive).getByText("Account")).toBeInTheDocument()
       expect(within(passive).getByText("gpt-5.3-codex")).toBeInTheDocument()
       expect(within(passive).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
@@ -200,7 +202,7 @@ describe("LiveCapacityCard", () => {
       expect(within(passive).getByText("4.5 credits left")).toBeInTheDocument()
       expect(within(passive).getByText("Blocked")).toBeInTheDocument()
       // Frozen at the observation instant: the 120s relative reset reads as a countdown.
-      expect(within(passive).getByText("reported reset in 2m")).toBeInTheDocument()
+      expect(within(passive).getByText("in 2m")).toBeInTheDocument()
       const perModel = within(passive).getByText("Per-model quotas (1)")
       expect(perModel.closest("details")).not.toHaveAttribute("open")
       expect(passive.querySelector("time[datetime='2026-09-07T08:00:00Z']")).toBeInTheDocument()
@@ -215,11 +217,10 @@ describe("LiveCapacityCard", () => {
   it("does not present missing account state as active", () => {
     setupMock({ identities: [identity({ status: undefined, unavailable: undefined })] })
     render(<LiveCapacityCard provider="" />)
-    const availability = screen.getByRole("group", { name: "Account availability" })
-    expect(within(availability).getByText("CPA status: State not reported")).toBeInTheDocument()
-    expect(within(availability).queryByText("CPA status: Active")).not.toBeInTheDocument()
-    const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
-    expect(within(passive).getByText("No readable passive quota observation.")).toBeInTheDocument()
+    expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/^CPA:/)).not.toBeInTheDocument()
+    const passive = screen.getByRole("group", { name: "Reported quota" })
+    expect(within(passive).getByText("No passive quota data.")).toBeInTheDocument()
   })
 
   it("renders tiles for each identity", () => {
@@ -364,13 +365,11 @@ describe("LiveCapacityCard", () => {
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
     const timing = screen.getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).getByText("Capacity probe evidence")).toBeInTheDocument()
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
     // Past subscription starts are hidden; only the end date remains.
-    expect(within(timing).getByText("Active until")).toBeInTheDocument()
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
-    expect(within(timing).queryByText("Account active")).not.toBeInTheDocument()
     expect(timing.querySelectorAll("time")).toHaveLength(3)
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
@@ -480,9 +479,7 @@ describe("LiveCapacityCard", () => {
     const { container } = render(<LiveCapacityCard provider="" />)
 
     const timing = within(container).getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).getByText("Active until")).toBeInTheDocument()
-    expect(within(timing).queryByText("Account active")).not.toBeInTheDocument()
-    expect(within(timing).queryByText("Ends")).not.toBeInTheDocument()
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
     expect(timing.querySelectorAll("time")).toHaveLength(1)
     expect(timing.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
@@ -510,12 +507,11 @@ describe("LiveCapacityCard", () => {
     const { container } = render(<LiveCapacityCard provider="" />)
 
     const timing = within(container).getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).getByText("Account active")).toBeInTheDocument()
     expect(within(timing).getByText("Starts")).toBeInTheDocument()
     expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureStart}']`)).toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
-    expect(timing.querySelector("svg.lucide-arrow-right")).toBeInTheDocument()
+    expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
   })
 
   it("separates priority accounts from regular accounts with a divider", () => {
@@ -830,7 +826,7 @@ describe("LiveCapacityCard", () => {
     expect(mockToast.success).toHaveBeenCalledWith("Account enabled")
   })
 
-  it("renders a disabled account dimmed with an amber badge, a muted notice, and no refresh action", () => {
+  it("renders a disabled account dimmed with an amber badge and no refresh action", () => {
     const identities = [identity({ identity: "codex-auth", displayName: "Codex Auth", disabled: true })]
     const cachedQuota: QuotaCacheResponse = {
       items: [{ id: "codex-auth", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] }],
@@ -843,7 +839,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.getAllByText("Disabled")).toHaveLength(1)
     const amberBadge = screen.getAllByText("Disabled").find((el) => el.className.includes("bg-amber-500/10"))
     expect(amberBadge).toBeDefined()
-    expect(screen.getByText("Operator disabled in CPA; capacity probes stay excluded until re-enabled.")).toBeInTheDocument()
+    expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Refresh Codex Auth" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Enable Codex Auth" })).toBeInTheDocument()
   })

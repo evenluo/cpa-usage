@@ -52,9 +52,9 @@ export function DashboardCharts({
               <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
             </CardTitle>
             <CardDescription>
-              {trendView === "cost-token" && "Cost as filled area, tokens as dotted overlay"}
-              {trendView === "requests-token" && "Attempts as filled area, tokens as dotted overlay"}
-              {trendView === "tokens" && "Provider-reported total, input, output, reasoning, and cached scalars; subsets may overlap"}
+              {trendView === "cost-token" && "Cost area, tokens dotted overlay"}
+              {trendView === "requests-token" && "Attempts area, tokens dotted overlay"}
+              {trendView === "tokens" && "Provider-reported token scalars; subsets may overlap"}
             </CardDescription>
           </div>
           <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
@@ -104,7 +104,6 @@ export function DashboardCharts({
           <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <CardTitle>Model Mix</CardTitle>
-              <CardDescription>Share within the model breakdown returned for the selected window</CardDescription>
             </div>
             <Badge
               variant={modelMixMeasure === "cost" ? "terracotta" : "outline"}
@@ -136,9 +135,6 @@ export function DashboardCharts({
                 Key Leaderboard
                 <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
               </CardTitle>
-              <CardDescription>
-                {leaderboardScope === "api-key" ? "Top raw API keys" : "Top account keys"}
-              </CardDescription>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
               <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">

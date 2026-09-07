@@ -29,14 +29,14 @@ describe("Canonical token composition", () => {
     expect(summary.parentElement).not.toHaveAttribute("open")
     await user.click(summary)
     expect(summary.parentElement).toHaveAttribute("open")
-    expect(screen.getByText(/3 \/ 10 attempts have valid/)).toBeInTheDocument()
-    expect(screen.getByText(/Quality among 3 valid attempts: complete 1, inconsistent 1, unclassified 1/)).toBeInTheDocument()
+    expect(screen.getByText(/3 \/ 10 valid/)).toBeInTheDocument()
+    expect(screen.getByText(/complete 1 · inconsistent 1 · unclassified 1/)).toBeInTheDocument()
     expect(screen.getByText(/Canonical facts absent 7/)).toBeInTheDocument()
-    expect(screen.getByText(/Local cost estimate completeness: available/)).toBeInTheDocument()
+    expect(screen.getByText(/Local estimate \(available\)/)).toBeInTheDocument()
     expect(screen.getByText("Canonical total").nextElementSibling).toHaveTextContent("155")
     expect(screen.getByText("Canonical input total").nextElementSibling).toHaveTextContent("100")
     expect(screen.getByText("Canonical output total").nextElementSibling).toHaveTextContent("50")
-    expect(screen.getByText(/Input = uncached/)).toHaveTextContent("Total = input + output + unclassified")
+    expect(screen.getByText("Input = uncached + cache read + cache write; output = non-reasoning + reasoning.")).toBeInTheDocument()
   })
 
   it("keeps canonical-absent or empty windows unavailable instead of displaying zero canonical totals", () => {
