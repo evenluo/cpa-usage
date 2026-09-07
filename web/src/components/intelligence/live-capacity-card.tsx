@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   buildLiveCapacityRows,
+  capacityLayout,
   FIVE_HOUR_WINDOW_SECONDS,
   mergeCapacityEntries,
   mergeLiveCapacityRowOrder,
@@ -466,9 +467,7 @@ function LiveCapacityAccountTile({
           ? "Capacity constrained"
           : undefined
 
-  const visibleEntries = mergeCapacityEntries(row, { includeManualProbe: !row.disabled })
-  const mainEntries = visibleEntries.filter((entry) => entry.isBaseWindow || entry.windowRole === null)
-  const moreLimitEntries = visibleEntries.filter((entry) => !entry.isBaseWindow && entry.windowRole !== null)
+  const layout = capacityLayout(mergeCapacityEntries(row, { includeManualProbe: !row.disabled }), row.providerKind)
   const sharedObservation = Boolean(row.metadataObservedAt && row.observedAt && row.metadataObservedAt === row.observedAt)
   const timingLineCount =
     (sharedObservation ? 1 : (row.metadataObservedAt ? 1 : 0) + (row.observedAt ? 1 : 0)) +
@@ -476,7 +475,7 @@ function LiveCapacityAccountTile({
     (row.nextRetryAfter ? 1 : 0) +
     (row.expiresAt ? 1 : 0) +
     (row.activeStart ? 1 : 0)
-  const foldedCount = moreLimitEntries.length + row.passiveModelQuotas.length + timingLineCount
+  const foldedCount = layout.extras.length + row.passiveModelQuotas.length + timingLineCount
 
   return (
     <div
@@ -603,9 +602,26 @@ function LiveCapacityAccountTile({
         </div>
       </div>
 
-      {mainEntries.length > 0 ? (
+      {layout.hasWindowSkeleton ? (
         <div className="mt-3 grid gap-2">
-          {mainEntries.map((entry, index) => (
+          <MetricMeter
+            title="5h"
+            metric={layout.baseShort?.metric}
+            source={layout.baseShort?.source}
+            observedAt={layout.baseShort?.observedAt}
+            windowSeconds={FIVE_HOUR_WINDOW_SECONDS}
+          />
+          <MetricMeter
+            title="Weekly"
+            metric={layout.baseLong?.metric}
+            source={layout.baseLong?.source}
+            observedAt={layout.baseLong?.observedAt}
+            windowSeconds={WEEKLY_WINDOW_SECONDS}
+          />
+        </div>
+      ) : layout.main.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {layout.main.map((entry, index) => (
             <MetricMeter
               key={`${index}:${entry.metric.label}`}
               title={entry.metric.label}
@@ -621,11 +637,11 @@ function LiveCapacityAccountTile({
         <details className="mt-2 rounded-md border border-border/70 bg-muted/[0.12] px-2.5 py-1.5">
           <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">··· {foldedCount} more</summary>
           <div className="mt-2 space-y-3">
-            {moreLimitEntries.length > 0 ? (
+            {layout.extras.length > 0 ? (
               <section aria-label="More limits">
-                <p className="text-[10px] font-medium text-foreground/70">More limits ({moreLimitEntries.length})</p>
+                <p className="text-[10px] font-medium text-foreground/70">More limits ({layout.extras.length})</p>
                 <div className="mt-1.5 grid gap-1.5">
-                  {moreLimitEntries.map((entry, index) => (
+                  {layout.extras.map((entry, index) => (
                     <MetricMeter
                       key={`${index}:${entry.metric.label}`}
                       title={entry.metric.label}
@@ -954,14 +970,33 @@ function MetricMeter({
   metric,
   source = "probe",
   observedAt,
+  windowSeconds,
 }: {
   title: string
-  metric: LiveCapacityMetric
+  metric?: LiveCapacityMetric
   /** "reported" marks CPA passive observations, as opposed to manual probe readings. */
   source?: "probe" | "reported"
   /** Observation time anchoring relative reset hints (resetAfterSeconds). */
   observedAt?: string
+  /** Window length supplying the slot icon when no reading exists. */
+  windowSeconds?: number
 }) {
+  const WindowIcon = (metric?.windowSeconds ?? windowSeconds) === FIVE_HOUR_WINDOW_SECONDS
+    ? Timer
+    : (metric?.windowSeconds ?? windowSeconds) === WEEKLY_WINDOW_SECONDS
+      ? CalendarDays
+      : null
+
+  if (!metric) {
+    return (
+      <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">
+        {WindowIcon ? <WindowIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
+        <span className="truncate">{title}</span>
+        <span className="ml-auto shrink-0">No reading</span>
+      </div>
+    )
+  }
+
   const countdown = resetCountdown(metric, observedAt)
   const resetText = countdown
     ? countdown.isDue
@@ -976,11 +1011,6 @@ function MetricMeter({
       ].filter((part): part is string => Boolean(part)).join(" · ")
     : undefined
   const sourceLabel = source === "reported" ? "Reported by CPA" : "Manual probe"
-  const WindowIcon = metric.windowSeconds === FIVE_HOUR_WINDOW_SECONDS
-    ? Timer
-    : metric.windowSeconds === WEEKLY_WINDOW_SECONDS
-      ? CalendarDays
-      : null
 
   return (
     <div

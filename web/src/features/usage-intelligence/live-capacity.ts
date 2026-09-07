@@ -288,6 +288,34 @@ export function mergeCapacityEntries(row: LiveCapacityRow, options?: { includeMa
   return entries
 }
 
+export interface CapacityLayout {
+  /** True for providers whose cards render a fixed 5h/Weekly skeleton (claude, codex). */
+  hasWindowSkeleton: boolean
+  baseShort?: CapacityEntry
+  baseLong?: CapacityEntry
+  /** Surface rows for providers without a window skeleton. */
+  main: CapacityEntry[]
+  /** Folded rows: named limits, unknown-window base rows, and window-less pass-throughs. */
+  extras: CapacityEntry[]
+}
+
+export function capacityLayout(entries: CapacityEntry[], providerKind: ProviderKind): CapacityLayout {
+  if (providerKind === "claude" || providerKind === "codex") {
+    const layout: CapacityLayout = { hasWindowSkeleton: true, main: [], extras: [] }
+    for (const entry of entries) {
+      if (entry.isBaseWindow && entry.windowRole === "short") layout.baseShort = entry
+      else if (entry.isBaseWindow && entry.windowRole === "long") layout.baseLong = entry
+      else layout.extras.push(entry)
+    }
+    return layout
+  }
+  return {
+    hasWindowSkeleton: false,
+    main: entries.filter((entry) => entry.isBaseWindow || entry.windowRole === null),
+    extras: entries.filter((entry) => !entry.isBaseWindow && entry.windowRole !== null),
+  }
+}
+
 function capacityEntry(metric: LiveCapacityMetric, source: CapacityEntry["source"], observedAt?: string): CapacityEntry {
   const windowRole = capacityWindowRole(metric)
   return {
@@ -480,8 +508,8 @@ function valueLabel(row: QuotaRow): string {
   if (!measurement && typeof row.used === "number" && typeof row.limit === "number") measurement = `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
 
   let state = ""
-  if (typeof row.allowed === "boolean") state = row.allowed ? "Allowed" : "Blocked"
-  else if (typeof row.limitReached === "boolean") state = row.limitReached ? "Limit reached" : "Limit not reached"
+  if (row.allowed === false) state = "Blocked"
+  else if (row.limitReached === true) state = "Limit reached"
 
   if (measurement && state) return `${measurement} · ${state}`
   return measurement || state || "Measured"

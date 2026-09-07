@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
 import {
   buildLiveCapacityRows,
+  capacityLayout,
   isSupportedQuotaIdentity,
   mergeCapacityEntries,
   mergeLiveCapacityRowOrder,
@@ -968,5 +969,83 @@ describe("mergeCapacityEntries", () => {
     expect(entries[0]).toMatchObject({ source: "probe", isBaseWindow: true })
     expect(entries[1]).toMatchObject({ source: "reported", isBaseWindow: false, windowRole: "short" })
     expect(entries[1].metric.valueLabel).toBe("25% used")
+  })
+
+  it("omits the state suffix for healthy allowed and not-limit-reached rows", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [
+            { key: "a", label: "5h", usedPercent: 10, allowed: true, window: { seconds: 18_000 } },
+            { key: "b", label: "Weekly", usedPercent: 20, limitReached: false, window: { seconds: 604_800 } },
+          ],
+        },
+      })],
+    })
+
+    expect(rows[0].passiveQuota?.metrics.map((metric) => metric.valueLabel)).toEqual(["10% used", "20% used"])
+  })
+})
+
+describe("capacityLayout", () => {
+  it("slots base windows into a fixed skeleton and demotes unknown-window and pass-through rows", () => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [
+            { key: "window", label: "Window", usedPercent: 40 },
+            { key: "credits", label: "Credits", remaining: 0, hasCredits: false },
+          ],
+        },
+      })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          cachedAt: "2026-09-07T09:00:00Z",
+          quota: [
+            { key: "primary", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
+            { key: "secondary", label: "Weekly", usedPercent: 20, window: { seconds: 604_800 } },
+            { key: "spark", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 30 },
+          ],
+        }],
+      },
+    })[0]
+
+    const layout = capacityLayout(mergeCapacityEntries(row), "codex")
+    expect(layout.hasWindowSkeleton).toBe(true)
+    expect(layout.baseShort?.metric.label).toBe("5h")
+    expect(layout.baseLong?.metric.label).toBe("Weekly")
+    expect(layout.main).toEqual([])
+    expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["GPT-5.3-Codex-Spark 5h", "Window", "Credits"])
+  })
+
+  it("keeps the flat surface split for providers without a window skeleton", () => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({ provider: "Kimi", type: "kimi" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          cachedAt: "2026-09-07T09:00:00Z",
+          quota: [
+            { key: "primary", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
+            { key: "credits", label: "Credits", remaining: 5, unit: "credits" },
+            { key: "spark", label: "Spark 5h", usedPercent: 30 },
+          ],
+        }],
+      },
+    })[0]
+
+    const layout = capacityLayout(mergeCapacityEntries(row), "kimi")
+    expect(layout.hasWindowSkeleton).toBe(false)
+    expect(layout.baseShort).toBeUndefined()
+    expect(layout.baseLong).toBeUndefined()
+    expect(layout.main.map((entry) => entry.metric.label)).toEqual(["5h", "Credits"])
+    expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["Spark 5h"])
   })
 })

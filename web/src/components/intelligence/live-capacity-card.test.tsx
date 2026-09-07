@@ -193,21 +193,24 @@ describe("LiveCapacityCard", () => {
       })
       render(<LiveCapacityCard provider="" />)
 
-      // Reported meters render in the merged main list; probe readings stay hidden for a disabled account.
+      // The codex skeleton always shows 5h + Weekly; the reported 5h reading fills
+      // its slot, Weekly has no reading, and probe readings stay hidden for a disabled account.
       expect(screen.getByText("25% used · Blocked")).toBeInTheDocument()
       expect(screen.getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
-      expect(screen.getAllByTitle(/^Reported by CPA · observed /)).toHaveLength(3)
-      expect(screen.getByText("4.5 credits left")).toBeInTheDocument()
+      expect(screen.getByText("No reading")).toBeInTheDocument()
       expect(screen.queryByText("10% used")).not.toBeInTheDocument()
       // Frozen at the observation instant: the 120s relative reset reads as a countdown.
       expect(screen.getByText("in 2m")).toBeInTheDocument()
       // The active-limit chip moved to the tile title row.
       expect(screen.getByText("Active limit codex_bengalfox")).toBeInTheDocument()
-      // Model observations live behind the per-tile fold.
+      // Window-less reported rows and model observations live behind the per-tile fold.
       const fold = screen.getByText(/··· \d+ more/).closest("details")
       expect(fold).not.toHaveAttribute("open")
+      expect(within(fold as HTMLElement).getByText("4.5 credits left")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("Per-model quotas (1)")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("gpt-5.3-codex")).toBeInTheDocument()
+      // Reported meters: main 5h + folded Credits + folded model Weekly.
+      expect(screen.getAllByTitle(/^Reported by CPA · observed /)).toHaveLength(3)
     } finally {
       vi.useRealTimers()
     }
@@ -245,6 +248,8 @@ describe("LiveCapacityCard", () => {
       expect(screen.getByText("10% used")).toBeInTheDocument()
       expect(screen.queryByText("99% used")).not.toBeInTheDocument()
       expect(screen.queryByText("-")).not.toBeInTheDocument()
+      // The Weekly skeleton slot has no reading from either source.
+      expect(screen.getByText("No reading")).toBeInTheDocument()
       // Named additional limits and timing lines live behind the fold; a shared
       // metadata/probe observation time collapses to a single "Observed" line.
       const fold = screen.getByText("··· 3 more").closest("details")
