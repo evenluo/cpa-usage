@@ -23,6 +23,14 @@ type ModelsResult struct {
 	Payload    models.ModelsResponse
 }
 
+type AuthFileModelsResult struct {
+	Payload models.AuthFileModelsResponse
+}
+
+type StaticModelDefinitionsResult struct {
+	Payload models.StaticModelDefinitionsResponse
+}
+
 // AuthFilesResult 是 FetchAuthFiles 返回的 HTTP 包装，保留状态码、原始响应体和解析后的 DTO。
 type AuthFilesResult struct {
 	StatusCode int

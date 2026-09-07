@@ -11,6 +11,7 @@ import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfa
 import type { LeaderboardScope, TrendView } from "@/features/usage-intelligence/view-model"
 import type { AnalyticsCoreResponse, TimeGranularity } from "@/types/api"
 import { cn } from "@/lib/utils"
+import { CanonicalTokenComposition } from "./canonical-token-composition"
 
 interface DashboardChartsProps {
   surfaces: UsageDashboardSurfaces
@@ -53,7 +54,7 @@ export function DashboardCharts({
             <CardDescription>
               {trendView === "cost-token" && "Cost as filled area, tokens as dotted overlay"}
               {trendView === "requests-token" && "Attempts as filled area, tokens as dotted overlay"}
-              {trendView === "tokens" && "Total, input, output, reasoning, and cached tokens"}
+              {trendView === "tokens" && "Provider-reported total, input, output, reasoning, and cached scalars; subsets may overlap"}
             </CardDescription>
           </div>
           <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
@@ -94,6 +95,9 @@ export function DashboardCharts({
               <TrendChart data={surfaces.trend.data} granularity={coreAnalyticsData?.granularity ?? effectiveGranularity} mode={trendView} />
             </div>
           )}
+          {surfaces.core.status === "ready" && coreAnalyticsData ? (
+            <CanonicalTokenComposition accounting={coreAnalyticsData.summary.accounting} costStatus={coreAnalyticsData.summary.cost_status} />
+          ) : null}
         </CardContent>
       </Card>
 
@@ -158,7 +162,7 @@ export function DashboardCharts({
       {surfaces.insights.status === "loading" ? (
         <Skeleton className="h-24 w-full" />
       ) : surfaces.insights.status === "error" ? (
-        <div className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+        <div className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-red-500">
           <span>Failed to load attention signals</span>
           <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry attention signals</Button>
         </div>

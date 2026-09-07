@@ -1,9 +1,13 @@
 package api
 
 import (
+	"bytes"
+	"encoding/csv"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"cpa-usage/internal/entities"
 	"cpa-usage/internal/redact"
@@ -15,6 +19,7 @@ import (
 
 type usageEventsResponse struct {
 	Events     []usageEventPayload `json:"events"`
+	WindowEnd  string              `json:"window_end,omitempty"`
 	TotalCount int64               `json:"total_count"`
 	Page       int                 `json:"page"`
 	PageSize   int                 `json:"page_size"`
@@ -33,38 +38,82 @@ type usageEventFilterOptionsResponse struct {
 }
 
 type usageEventPayload struct {
-	ID              uint                   `json:"id,omitempty"`
-	Timestamp       string                 `json:"timestamp"`
-	Model           string                 `json:"model"`
-	ModelAlias      string                 `json:"model_alias,omitempty"`
-	Endpoint        string                 `json:"endpoint,omitempty"`
-	RequestID       string                 `json:"request_id,omitempty"`
-	Source          string                 `json:"source"`
-	SourceRaw       string                 `json:"source_raw,omitempty"`
-	SourceType      string                 `json:"source_type,omitempty"`
-	AuthIndex       string                 `json:"auth_index,omitempty"`
-	APIKeyAlias     string                 `json:"api_key_alias,omitempty"`
-	APIKeyDisplay   string                 `json:"api_key_display,omitempty"`
-	IsDelete        bool                   `json:"isDelete,omitempty"`
-	Failed          bool                   `json:"failed"`
-	StatusCode      *int                   `json:"status_code,omitempty"`
-	ExecutorType    string                 `json:"executor_type,omitempty"`
-	ReasoningEffort string                 `json:"reasoning_effort,omitempty"`
-	ServiceTier     string                 `json:"service_tier,omitempty"`
-	LatencyMS       int64                  `json:"latency_ms"`
-	TTFTMS          *int64                 `json:"ttft_ms"`
-	OutputTPS       *float64               `json:"output_tps"`
-	Tokens          usageEventTokenPayload `json:"tokens"`
+	ID              uint                     `json:"id,omitempty"`
+	Timestamp       string                   `json:"timestamp"`
+	Model           string                   `json:"model"`
+	ModelAlias      string                   `json:"model_alias,omitempty"`
+	Endpoint        string                   `json:"endpoint,omitempty"`
+	RequestID       string                   `json:"request_id,omitempty"`
+	Source          string                   `json:"source"`
+	SourceRaw       string                   `json:"source_raw,omitempty"`
+	SourceType      string                   `json:"source_type,omitempty"`
+	AuthIndex       string                   `json:"auth_index,omitempty"`
+	APIKeyAlias     string                   `json:"api_key_alias,omitempty"`
+	APIKeyDisplay   string                   `json:"api_key_display,omitempty"`
+	IsDelete        bool                     `json:"isDelete,omitempty"`
+	Failed          bool                     `json:"failed"`
+	StatusCode      *int                     `json:"status_code,omitempty"`
+	ExecutorType    string                   `json:"executor_type,omitempty"`
+	ReasoningEffort string                   `json:"reasoning_effort,omitempty"`
+	LatencyMS       int64                    `json:"latency_ms"`
+	TTFTMS          *int64                   `json:"ttft_ms"`
+	AttemptFacts    usageAttemptFactsPayload `json:"attempt_facts"`
 }
 
-type usageEventTokenPayload struct {
-	InputTokens         int64  `json:"input_tokens"`
-	OutputTokens        int64  `json:"output_tokens"`
-	ReasoningTokens     int64  `json:"reasoning_tokens"`
-	CachedTokens        int64  `json:"cached_tokens"`
-	CacheReadTokens     *int64 `json:"cache_read_tokens,omitempty"`
-	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
-	TotalTokens         int64  `json:"total_tokens"`
+const usageEventsCSVExportLimit = 5_000
+
+var usageEventsCSVHeader = []string{
+	"timestamp_utc",
+	"account",
+	"api_key_alias",
+	"api_key_traceability",
+	"actual_model",
+	"observed_model_alias",
+	"endpoint",
+	"request_id",
+	"result",
+	"status_code",
+	"latency_ms",
+	"ttft_ms",
+	"output_tps",
+	"canonical_input_tokens",
+	"canonical_output_tokens",
+	"canonical_reasoning_tokens",
+	"canonical_cache_read_tokens",
+	"canonical_cache_write_tokens",
+	"canonical_unclassified_tokens",
+	"canonical_total_tokens",
+}
+
+type usageAttemptFactsPayload struct {
+	Generate            *bool                         `json:"generate"`
+	Stream              *bool                         `json:"stream"`
+	RequestServiceTier  *string                       `json:"request_service_tier"`
+	ResponseServiceTier *string                       `json:"response_service_tier"`
+	OutputTPS           *float64                      `json:"output_tps"`
+	Accounting          usageAttemptAccountingPayload `json:"accounting"`
+}
+
+type usageAttemptAccountingPayload struct {
+	State              string                    `json:"state"`
+	Quality            *string                   `json:"quality"`
+	TotalTokens        *int64                    `json:"total_tokens"`
+	Input              usageAttemptInputPayload  `json:"input"`
+	Output             usageAttemptOutputPayload `json:"output"`
+	UnclassifiedTokens *int64                    `json:"unclassified_tokens"`
+}
+
+type usageAttemptInputPayload struct {
+	TotalTokens      *int64 `json:"total_tokens"`
+	UncachedTokens   *int64 `json:"uncached_tokens"`
+	CacheReadTokens  *int64 `json:"cache_read_tokens"`
+	CacheWriteTokens *int64 `json:"cache_write_tokens"`
+}
+
+type usageAttemptOutputPayload struct {
+	TotalTokens        *int64 `json:"total_tokens"`
+	NonReasoningTokens *int64 `json:"non_reasoning_tokens"`
+	ReasoningTokens    *int64 `json:"reasoning_tokens"`
 }
 
 func registerUsageEventsRoute(
@@ -97,15 +146,15 @@ func registerUsageEventsRoute(
 	})
 
 	router.GET("/usage/events", func(c *gin.Context) {
-		if usageProvider == nil {
-			page, totalPages := paginationMetadata(0, 1, repodto.DefaultUsageEventsLimit)
-			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, Page: page, PageSize: repodto.DefaultUsageEventsLimit, TotalPages: totalPages})
-			return
-		}
-
 		filter, err := parseUsageEventListFilterQuery(c.Request, time.Now().UTC())
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		windowEnd := usageEventResponseWindowEnd(filter)
+		if usageProvider == nil {
+			page, totalPages := paginationMetadata(0, 1, repodto.DefaultUsageEventsLimit)
+			c.JSON(http.StatusOK, usageEventsResponse{Events: []usageEventPayload{}, WindowEnd: windowEnd, Page: page, PageSize: repodto.DefaultUsageEventsLimit, TotalPages: totalPages})
 			return
 		}
 		if err := applyUsageEventsSourceFilter(&filter); err != nil {
@@ -133,12 +182,146 @@ func registerUsageEventsRoute(
 		page, totalPages := paginationMetadata(rows.TotalCount, rows.Page, rows.PageSize)
 		c.JSON(http.StatusOK, usageEventsResponse{
 			Events:     buildUsageEventsPayload(rows.Events, resolver, apiKeyAliases),
+			WindowEnd:  windowEnd,
 			TotalCount: rows.TotalCount,
 			Page:       page,
 			PageSize:   rows.PageSize,
 			TotalPages: totalPages,
 		})
 	})
+
+	router.GET("/usage/events/export", func(c *gin.Context) {
+		filter, err := parseUsageEventExportFilterQuery(c.Request, time.Now().UTC(), usageEventsCSVExportLimit)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if usageProvider == nil {
+			body, err := encodeUsageEventsCSV(nil)
+			if err != nil {
+				writeInternalError(c, "encode usage event export failed", err)
+				return
+			}
+			writeUsageEventsCSV(c, body)
+			return
+		}
+
+		rows, err := usageProvider.ListUsageEvents(c.Request.Context(), filter.repositoryFilter())
+		if err != nil {
+			writeInternalError(c, "list usage event export failed", err)
+			return
+		}
+		if rows.TotalCount > usageEventsCSVExportLimit || len(rows.Events) > usageEventsCSVExportLimit {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "request evidence export exceeds the 5000-row limit; narrow the current selection"})
+			return
+		}
+
+		identities, err := loadUsageResolutionData(c, usageIdentityProvider)
+		if err != nil {
+			writeInternalError(c, "load usage resolution data for export failed", err)
+			return
+		}
+		apiKeyAliases, err := loadUsageEventAPIKeyAliases(c, keyAliasProvider, rows.Events)
+		if err != nil {
+			writeInternalError(c, "load usage event aliases for export failed", err)
+			return
+		}
+		body, err := encodeUsageEventsCSV(buildUsageEventsCSVPayload(rows.Events, newUsageIdentityResolver(identities), apiKeyAliases))
+		if err != nil {
+			writeInternalError(c, "encode usage event export failed", err)
+			return
+		}
+		writeUsageEventsCSV(c, body)
+	})
+}
+
+func writeUsageEventsCSV(c *gin.Context, body []byte) {
+	c.Header("Content-Disposition", `attachment; filename="request-evidence.csv"`)
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", body)
+}
+
+func encodeUsageEventsCSV(events []usageEventPayload) ([]byte, error) {
+	var buffer bytes.Buffer
+	writer := csv.NewWriter(&buffer)
+	if err := writer.Write(usageEventsCSVHeader); err != nil {
+		return nil, err
+	}
+	for _, event := range events {
+		statusCode := ""
+		if event.StatusCode != nil {
+			statusCode = strconv.Itoa(*event.StatusCode)
+		}
+		if err := writer.Write([]string{
+			safeUsageEventsCSVText(event.Timestamp),
+			safeUsageEventsCSVText(event.Source),
+			safeUsageEventsCSVText(event.APIKeyAlias),
+			safeUsageEventsCSVText(event.APIKeyDisplay),
+			safeUsageEventsCSVText(event.Model),
+			safeUsageEventsCSVText(event.ModelAlias),
+			safeUsageEventsCSVText(event.Endpoint),
+			safeUsageEventsCSVText(event.RequestID),
+			usageEventsCSVResult(event.Failed),
+			statusCode,
+			strconv.FormatInt(event.LatencyMS, 10),
+			formatUsageEventsCSVInt(event.TTFTMS),
+			formatUsageEventsCSVFloat(event.AttemptFacts.OutputTPS),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Input.TotalTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Output.TotalTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Output.ReasoningTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Input.CacheReadTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Input.CacheWriteTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.UnclassifiedTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.TotalTokens),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
+}
+
+func usageEventsCSVResult(failed bool) string {
+	if failed {
+		return "failed"
+	}
+	return "success"
+}
+
+func formatUsageEventsCSVInt(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatInt(*value, 10)
+}
+
+func formatUsageEventsCSVFloat(value *float64) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatFloat(*value, 'f', -1, 64)
+}
+
+func safeUsageEventsCSVText(value string) string {
+	for _, character := range value {
+		if unicode.IsSpace(character) || unicode.IsControl(character) {
+			continue
+		}
+		if strings.ContainsRune("=+-@", character) {
+			return "'" + value
+		}
+		break
+	}
+	return value
+}
+
+func usageEventResponseWindowEnd(filter usageEventListFilter) string {
+	if filter.EndTime == nil {
+		return ""
+	}
+	return filter.EndTime.UTC().Format(time.RFC3339Nano)
 }
 
 func loadUsageEventAPIKeyAliases(c *gin.Context, keyAliasProvider service.KeyAliasProvider, rows []repodto.UsageEventRecord) (map[string]string, error) {
@@ -206,22 +389,52 @@ func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIden
 			StatusCode:      row.StatusCode,
 			ExecutorType:    row.ExecutorType,
 			ReasoningEffort: row.ReasoningEffort,
-			ServiceTier:     row.ServiceTier,
 			LatencyMS:       row.LatencyMS,
 			TTFTMS:          row.TTFTMS,
-			OutputTPS:       row.OutputTPS,
-			Tokens: usageEventTokenPayload{
-				InputTokens:         row.InputTokens,
-				OutputTokens:        row.OutputTokens,
-				ReasoningTokens:     row.ReasoningTokens,
-				CachedTokens:        row.CachedTokens,
-				CacheReadTokens:     row.CacheReadTokens,
-				CacheCreationTokens: row.CacheCreationTokens,
-				TotalTokens:         row.TotalTokens,
-			},
+			AttemptFacts:    mapUsageAttemptFactsPayload(row.AttemptFacts),
 		})
 	}
 	return payload
+}
+
+// buildUsageEventsCSVPayload retains the established display-safe event
+// projection, but does not carry the page-only fallback source/provider label
+// into a downloadable artifact when the account identity cannot be resolved.
+func buildUsageEventsCSVPayload(rows []repodto.UsageEventRecord, resolver usageIdentityResolver, apiKeyAliases map[string]string) []usageEventPayload {
+	payload := buildUsageEventsPayload(rows, resolver, apiKeyAliases)
+	for index, row := range rows {
+		if _, matched := resolver.resolveByAuthIndex(row.AuthIndex); !matched {
+			payload[index].Source = ""
+		}
+	}
+	return payload
+}
+
+func mapUsageAttemptFactsPayload(facts repodto.UsageAttemptFacts) usageAttemptFactsPayload {
+	return usageAttemptFactsPayload{
+		Generate:            facts.Generate,
+		Stream:              facts.Stream,
+		RequestServiceTier:  facts.RequestServiceTier,
+		ResponseServiceTier: facts.ResponseServiceTier,
+		OutputTPS:           facts.OutputTPS,
+		Accounting: usageAttemptAccountingPayload{
+			State:       facts.Accounting.State,
+			Quality:     facts.Accounting.Quality,
+			TotalTokens: facts.Accounting.TotalTokens,
+			Input: usageAttemptInputPayload{
+				TotalTokens:      facts.Accounting.Input.TotalTokens,
+				UncachedTokens:   facts.Accounting.Input.UncachedTokens,
+				CacheReadTokens:  facts.Accounting.Input.CacheReadTokens,
+				CacheWriteTokens: facts.Accounting.Input.CacheWriteTokens,
+			},
+			Output: usageAttemptOutputPayload{
+				TotalTokens:        facts.Accounting.Output.TotalTokens,
+				NonReasoningTokens: facts.Accounting.Output.NonReasoningTokens,
+				ReasoningTokens:    facts.Accounting.Output.ReasoningTokens,
+			},
+			UnclassifiedTokens: facts.Accounting.UnclassifiedTokens,
+		},
+	}
 }
 
 func usageEventPublicEndpoint(endpoint string) string {

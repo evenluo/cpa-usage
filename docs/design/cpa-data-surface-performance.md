@@ -1,6 +1,6 @@
 # CPA data-surface performance evidence
 
-Status: measured local acceptance evidence for the CPA data-surface expansion
+Status: historical pre-direct-cut measurements for the CPA data-surface expansion. These timings and sizes do not establish performance of the Accounting v2 direct cut; its current acceptance is recorded in PR #152.
 
 Measured: 2026-08-31
 

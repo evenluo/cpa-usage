@@ -103,11 +103,8 @@ func metricCompletenessSubject(summary dto.AnalyticsSummary, incompleteModels in
 	if summary.CostStatus != dto.CostStatusAvailable {
 		return "Cost " + summary.CostStatus
 	}
-	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoCacheData {
-		return "No cache data"
-	}
-	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoPromptInput {
-		return "No prompt input"
+	if subject, unavailable := cacheReadShareUnavailableSubject(summary.CacheReadShareState); unavailable {
+		return subject
 	}
 	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStatePartial {
 		return fmt.Sprintf("Cache %.1f%% covered", summary.CacheReadCoverage)
@@ -119,6 +116,19 @@ func metricCompletenessSubject(summary dto.AnalyticsSummary, incompleteModels in
 		return fmt.Sprintf("%d models", incompleteModels)
 	}
 	return "Incomplete"
+}
+
+// cacheReadShareUnavailableSubject maps the cache read share states where the
+// share cannot be computed to the subject label shared by the completeness and
+// cache efficiency insights.
+func cacheReadShareUnavailableSubject(state string) (string, bool) {
+	switch state {
+	case dto.AnalyticsCacheReadShareStateNoCacheData:
+		return "No cache data", true
+	case dto.AnalyticsCacheReadShareStateNoPromptInput:
+		return "No prompt input", true
+	}
+	return "", false
 }
 
 func cacheEfficiencyInsight(summary dto.AnalyticsSummary) dto.AnalyticsInsight {
@@ -133,21 +143,21 @@ func cacheEfficiencyInsight(summary dto.AnalyticsSummary) dto.AnalyticsInsight {
 		Count:       summary.CacheReadTokens,
 		CostStatus:  summary.CostStatus,
 	}
-	switch summary.CacheReadShareState {
-	case dto.AnalyticsCacheReadShareStatePartial:
+	if subject, unavailable := cacheReadShareUnavailableSubject(summary.CacheReadShareState); unavailable {
+		insight.Severity = "amber"
+		insight.Subject = subject
+		insight.MetricLabel = "Cache state"
+		if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoCacheData {
+			insight.Detail = "Cached-token evidence is unavailable for this range; reasoning tokens are not counted as cache reads."
+		} else {
+			insight.Detail = "Prompt input is zero for this range, so Cache Read Share has no denominator."
+		}
+		return insight
+	}
+	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStatePartial {
 		insight.Severity = "amber"
 		insight.Subject = fmt.Sprintf("%.1f%% prompt-input coverage", summary.CacheReadCoverage)
 		insight.Detail = "Cache Read Share is calculated only from prompt input with explicit provider cache-read facts."
-	case dto.AnalyticsCacheReadShareStateNoCacheData:
-		insight.Severity = "amber"
-		insight.Subject = "No cache data"
-		insight.MetricLabel = "Cache state"
-		insight.Detail = "Cached-token evidence is unavailable for this range; reasoning tokens are not counted as cache reads."
-	case dto.AnalyticsCacheReadShareStateNoPromptInput:
-		insight.Severity = "amber"
-		insight.Subject = "No prompt input"
-		insight.MetricLabel = "Cache state"
-		insight.Detail = "Prompt input is zero for this range, so Cache Read Share has no denominator."
 	}
 	return insight
 }

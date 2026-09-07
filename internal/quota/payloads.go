@@ -242,17 +242,27 @@ func parseKimiUsagePayload(response *apicall.Response) (*KimiUsagePayload, error
 			Scope:     stringField(limitObject, "scope"),
 			Detail:    detail,
 			Window:    parseKimiLimitWindow(objectField(limitObject, "window")),
-			Used:      floatField(limitObject, "used"),
-			Limit:     floatField(limitObject, "limit"),
-			Remaining: floatField(limitObject, "remaining"),
+			Used:      floatPtrField(limitObject, "used"),
+			Limit:     floatPtrField(limitObject, "limit"),
+			Remaining: floatPtrField(limitObject, "remaining"),
 			Duration:  intField(limitObject, "duration"),
-			TimeUnit:  stringField(limitObject, "timeUnit", "time_unit"),
+			TimeUnit:  normalizeKimiTimeUnit(stringField(limitObject, "timeUnit", "time_unit")),
 			ResetAt:   stringField(limitObject, "resetAt", "reset_at", "resetTime", "reset_time"),
 			ResetIn:   floatField(limitObject, "resetIn", "reset_in"),
 			TTL:       floatField(limitObject, "ttl"),
 		})
 		limit := &payload.Limits[len(payload.Limits)-1]
 		if detail != nil {
+			// 真实上游把 limits 的数字放在 detail 里（顶层只有 window）；顶层缺失时回落到 detail。
+			if limit.Used == nil {
+				limit.Used = detail.Used
+			}
+			if limit.Limit == nil {
+				limit.Limit = detail.Limit
+			}
+			if limit.Remaining == nil {
+				limit.Remaining = detail.Remaining
+			}
 			if limit.ResetAt == "" {
 				limit.ResetAt = detail.ResetAt
 			}
@@ -272,9 +282,9 @@ func parseKimiUsageDetail(object map[string]json.RawMessage) *KimiUsageDetail {
 		return nil
 	}
 	return &KimiUsageDetail{
-		Used:      floatField(object, "used"),
-		Limit:     floatField(object, "limit"),
-		Remaining: floatField(object, "remaining"),
+		Used:      floatPtrField(object, "used"),
+		Limit:     floatPtrField(object, "limit"),
+		Remaining: floatPtrField(object, "remaining"),
 		Name:      stringField(object, "name"),
 		Title:     stringField(object, "title"),
 		ResetAt:   stringField(object, "resetAt", "reset_at", "resetTime", "reset_time"),
@@ -289,8 +299,17 @@ func parseKimiLimitWindow(object map[string]json.RawMessage) *KimiLimitWindow {
 	}
 	return &KimiLimitWindow{
 		Duration: intField(object, "duration"),
-		TimeUnit: stringField(object, "timeUnit", "time_unit"),
+		TimeUnit: normalizeKimiTimeUnit(stringField(object, "timeUnit", "time_unit")),
 	}
+}
+
+// normalizeKimiTimeUnit 把上游 protobuf 风格的 TIME_UNIT_MINUTE 枚举规范成前端可识别的 minute。
+// 非枚举取值（minute、hours 等）原样保留。
+func normalizeKimiTimeUnit(unit string) string {
+	if rest, ok := strings.CutPrefix(unit, "TIME_UNIT_"); ok {
+		return strings.ToLower(rest)
+	}
+	return unit
 }
 
 func parseResponseObject(response *apicall.Response) (map[string]json.RawMessage, error) {

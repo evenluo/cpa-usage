@@ -7,8 +7,11 @@ import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
 import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
+import { FailureDistribution } from "@/components/intelligence/failure-distribution"
+import { ModelMappings } from "@/components/intelligence/model-mappings"
+import { AttemptPerformance } from "@/components/intelligence/attempt-performance"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
-import type { UsageEventsPage } from "@/types/api"
+import type { UsageAttemptPerformance, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
 
 interface DashboardFixedOverviewProps {
   surfaces: UsageDashboardSurfaces
@@ -18,9 +21,21 @@ interface DashboardFixedOverviewProps {
   isRequestEvidenceLoading: boolean
   isRequestEvidenceRefreshing: boolean
   requestEvidenceError: unknown
+  failureDistributionData?: UsageFailureDistribution
+  isFailureDistributionLoading: boolean
+  failureDistributionError: unknown
+  modelMappingsData?: UsageModelMappingDistribution
+  isModelMappingsLoading: boolean
+  modelMappingsError: unknown
+  attemptPerformanceData?: UsageAttemptPerformance
+  isAttemptPerformanceLoading: boolean
+  attemptPerformanceError: unknown
   onRetryHeatmap: () => void
   onRetryRequestHealth: () => void
   onRetryRequestEvidence: () => void
+  onRetryFailureDistribution: () => void
+  onRetryModelMappings: () => void
+  onRetryAttemptPerformance: () => void
 }
 
 export function DashboardFixedOverview({
@@ -31,9 +46,21 @@ export function DashboardFixedOverview({
   isRequestEvidenceLoading,
   isRequestEvidenceRefreshing,
   requestEvidenceError,
+  failureDistributionData,
+  isFailureDistributionLoading,
+  failureDistributionError,
+  modelMappingsData,
+  isModelMappingsLoading,
+  modelMappingsError,
+  attemptPerformanceData,
+  isAttemptPerformanceLoading,
+  attemptPerformanceError,
   onRetryHeatmap,
   onRetryRequestHealth,
   onRetryRequestEvidence,
+  onRetryFailureDistribution,
+  onRetryModelMappings,
+  onRetryAttemptPerformance,
 }: DashboardFixedOverviewProps) {
   return (
     <>
@@ -129,6 +156,29 @@ export function DashboardFixedOverview({
           onRetry={onRetryRequestEvidence}
         />
       </div>
+
+      <FailureDistribution
+        provider={requestEvidenceProvider}
+        data={failureDistributionData}
+        isLoading={isFailureDistributionLoading}
+        error={failureDistributionError}
+        onRetry={onRetryFailureDistribution}
+      />
+
+      <AttemptPerformance
+        provider={requestEvidenceProvider}
+        data={attemptPerformanceData}
+        isLoading={isAttemptPerformanceLoading}
+        error={attemptPerformanceError}
+        onRetry={onRetryAttemptPerformance}
+      />
+
+      <ModelMappings
+        data={modelMappingsData}
+        isLoading={isModelMappingsLoading}
+        error={modelMappingsError}
+        onRetry={onRetryModelMappings}
+      />
     </>
   )
 }

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"cpa-usage/internal/cpa"
 	"cpa-usage/internal/entities"
-	"cpa-usage/internal/repository/dto"
 )
 
 type RedisQueue interface {
@@ -22,6 +22,9 @@ func DecodeRedisUsageMessage(message string, fallbackTimestamp time.Time) (entit
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return entities.UsageEvent{}, nil, fmt.Errorf("decode redis usage message: %w", err)
 	}
+	if err := validateQueuedAccounting(payload.UsageAccountingFields); err != nil {
+		return entities.UsageEvent{}, nil, fmt.Errorf("decode redis usage message: %w", err)
+	}
 	return payload.toUsageEvent(fallbackTimestamp), raw, nil
 }
 
@@ -32,6 +35,9 @@ func DecodeRedisUsageMessage(message string, fallbackTimestamp time.Time) (entit
 func replaySafeRedisUsageMessage(message string) (string, error) {
 	var payload queuedUsageDetail
 	if err := json.Unmarshal([]byte(message), &payload); err != nil {
+		return redactedInvalidRedisUsageMessage(message), nil
+	}
+	if err := validateQueuedAccounting(payload.UsageAccountingFields); err != nil {
 		return redactedInvalidRedisUsageMessage(message), nil
 	}
 	compactQueuedUsageDetail(&payload)
@@ -52,52 +58,28 @@ func redactedInvalidRedisUsageMessage(message string) string {
 }
 
 type queuedUsageDetail struct {
-	Timestamp       *time.Time             `json:"timestamp,omitempty"`
-	LatencyMS       int64                  `json:"latency_ms,omitempty"`
-	TTFTMS          *int64                 `json:"ttft_ms,omitempty"`
-	Source          string                 `json:"source,omitempty"`
-	AuthIndex       string                 `json:"auth_index,omitempty"`
-	Tokens          *queuedUsageTokenStats `json:"tokens,omitempty"`
-	Failed          bool                   `json:"failed,omitempty"`
-	Fail            *queuedUsageFail       `json:"fail,omitempty"`
-	Provider        string                 `json:"provider,omitempty"`
-	ExecutorType    string                 `json:"executor_type,omitempty"`
-	Model           string                 `json:"model,omitempty"`
-	Alias           *string                `json:"alias,omitempty"`
-	Endpoint        string                 `json:"endpoint,omitempty"`
-	AuthType        string                 `json:"auth_type,omitempty"`
-	APIKey          string                 `json:"api_key,omitempty"`
-	RequestID       string                 `json:"request_id,omitempty"`
-	ReasoningEffort string                 `json:"reasoning_effort,omitempty"`
-	ServiceTier     string                 `json:"service_tier,omitempty"`
+	cpa.UsageAccountingFields
+	Timestamp       *time.Time       `json:"timestamp,omitempty"`
+	LatencyMS       int64            `json:"latency_ms,omitempty"`
+	TTFTMS          *int64           `json:"ttft_ms,omitempty"`
+	Source          string           `json:"source,omitempty"`
+	AuthIndex       string           `json:"auth_index,omitempty"`
+	Failed          bool             `json:"failed,omitempty"`
+	Fail            *queuedUsageFail `json:"fail,omitempty"`
+	Provider        string           `json:"provider,omitempty"`
+	ExecutorType    string           `json:"executor_type,omitempty"`
+	Model           string           `json:"model,omitempty"`
+	Alias           *string          `json:"alias,omitempty"`
+	Endpoint        string           `json:"endpoint,omitempty"`
+	AuthType        string           `json:"auth_type,omitempty"`
+	APIKey          string           `json:"api_key,omitempty"`
+	RequestID       string           `json:"request_id,omitempty"`
+	ReasoningEffort string           `json:"reasoning_effort,omitempty"`
+	ServiceTier     string           `json:"service_tier,omitempty"`
 }
 
 type queuedUsageFail struct {
 	StatusCode int `json:"status_code,omitempty"`
-}
-
-type queuedUsageTokenStats struct {
-	InputTokens         int64  `json:"input_tokens,omitempty"`
-	OutputTokens        int64  `json:"output_tokens,omitempty"`
-	ReasoningTokens     int64  `json:"reasoning_tokens,omitempty"`
-	CachedTokens        *int64 `json:"cached_tokens,omitempty"`
-	CacheReadTokens     *int64 `json:"cache_read_tokens,omitempty"`
-	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
-	TotalTokens         int64  `json:"total_tokens,omitempty"`
-}
-
-func (t queuedUsageTokenStats) compatibilityProjection() dto.TokenStats {
-	cachedTokens := int64(0)
-	if t.CachedTokens != nil {
-		cachedTokens = *t.CachedTokens
-	}
-	return dto.TokenStats{
-		InputTokens:     t.InputTokens,
-		OutputTokens:    t.OutputTokens,
-		ReasoningTokens: t.ReasoningTokens,
-		CachedTokens:    cachedTokens,
-		TotalTokens:     t.TotalTokens,
-	}
 }
 
 func compactQueuedUsageDetail(payload *queuedUsageDetail) {
@@ -106,9 +88,6 @@ func compactQueuedUsageDetail(payload *queuedUsageDetail) {
 	}
 	if payload.Fail != nil && payload.Fail.StatusCode == 0 {
 		payload.Fail = nil
-	}
-	if payload.Tokens != nil && payload.Tokens.isZero() {
-		payload.Tokens = nil
 	}
 	payload.Source = strings.TrimSpace(payload.Source)
 	payload.AuthIndex = strings.TrimSpace(payload.AuthIndex)
@@ -122,16 +101,6 @@ func compactQueuedUsageDetail(payload *queuedUsageDetail) {
 	payload.ReasoningEffort = strings.TrimSpace(payload.ReasoningEffort)
 	payload.ServiceTier = strings.TrimSpace(payload.ServiceTier)
 	payload.Alias = trimRedisOptionalString(payload.Alias)
-}
-
-func (t queuedUsageTokenStats) isZero() bool {
-	return t.InputTokens == 0 &&
-		t.OutputTokens == 0 &&
-		t.ReasoningTokens == 0 &&
-		t.CachedTokens == nil &&
-		t.CacheReadTokens == nil &&
-		t.CacheCreationTokens == nil &&
-		t.TotalTokens == 0
 }
 
 func normalizeRedisAuthType(value string) string {
@@ -161,8 +130,6 @@ func trimRedisOptionalString(value *string) *string {
 }
 
 func (d queuedUsageDetail) toUsageEvent(fallbackTimestamp time.Time) entities.UsageEvent {
-	queuedTokens := d.tokenStats()
-	tokens := normalizeTokens(queuedTokens.compatibilityProjection())
 	apiGroupKey := firstNonEmpty(d.APIKey, d.Provider, d.Endpoint, "unknown")
 	model := firstNonEmpty(d.Model, "unknown")
 	timestamp := fallbackTimestamp.UTC()
@@ -171,12 +138,11 @@ func (d queuedUsageDetail) toUsageEvent(fallbackTimestamp time.Time) entities.Us
 	}
 	source := strings.TrimSpace(d.Source)
 	authIndex := strings.TrimSpace(d.AuthIndex)
-	eventKey := strings.TrimSpace(d.RequestID)
-	if eventKey == "" {
-		eventKey = BuildEventKey(apiGroupKey, model, timestamp, source, authIndex, d.Failed, tokens)
-	}
 	return entities.UsageEvent{
-		EventKey:            eventKey,
+		UsageAccounting:     queuedAccountingFacts(d.UsageAccountingFields),
+		Generate:            d.Generate,
+		Stream:              d.Stream,
+		ResponseServiceTier: trimRedisOptionalString(d.ResponseServiceTier),
 		APIGroupKey:         apiGroupKey,
 		Provider:            strings.TrimSpace(d.Provider),
 		Endpoint:            strings.TrimSpace(d.Endpoint),
@@ -194,21 +160,7 @@ func (d queuedUsageDetail) toUsageEvent(fallbackTimestamp time.Time) entities.Us
 		ServiceTier:         strings.TrimSpace(d.ServiceTier),
 		LatencyMS:           max(d.LatencyMS, 0),
 		TTFTMS:              d.TTFTMS,
-		InputTokens:         tokens.InputTokens,
-		OutputTokens:        tokens.OutputTokens,
-		ReasoningTokens:     tokens.ReasoningTokens,
-		CachedTokens:        tokens.CachedTokens,
-		CacheReadTokens:     queuedTokens.CacheReadTokens,
-		CacheCreationTokens: queuedTokens.CacheCreationTokens,
-		TotalTokens:         tokens.TotalTokens,
 	}
-}
-
-func (d queuedUsageDetail) tokenStats() queuedUsageTokenStats {
-	if d.Tokens == nil {
-		return queuedUsageTokenStats{}
-	}
-	return *d.Tokens
 }
 
 func (d queuedUsageDetail) statusCode() int {

@@ -1,16 +1,53 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
-import { apiFetch } from "@/lib/api"
-import { fetchEvents } from "./useEvents"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { apiFetch, apiFetchBlob } from "@/lib/api"
+import { buildEventsExportPath, buildEventsPath, downloadUsageEventsCSV, fetchEvents } from "./useEvents"
 
-vi.mock("@/lib/api", () => ({ apiFetch: vi.fn() }))
+vi.mock("@/lib/api", () => ({ apiFetch: vi.fn(), apiFetchBlob: vi.fn() }))
 
 const mockedApiFetch = vi.mocked(apiFetch)
+const mockedApiFetchBlob = vi.mocked(apiFetchBlob)
 
 beforeEach(() => {
   mockedApiFetch.mockReset()
+  mockedApiFetchBlob.mockReset()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe("fetchEvents", () => {
+  it("serializes the shared diagnostic selection and frozen window", () => {
+    expect(buildEventsPath("24h", 10, "claude", 1, {
+      model: "sonnet", modelAlias: "sonnet-route", account: "auth-1", endpoint: "/v1/messages", status: "4xx",
+      requestId: "request-42", minLatencyMS: "500", windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
+    })).toBe("/usage/events?range=24h&page_size=10&page=1&provider=claude&model=sonnet&model_alias=sonnet-route&account=auth-1&endpoint=%2Fv1%2Fmessages&status=4xx&request_id=request-42&min_latency_ms=500&window_end=2026-09-07T12%3A00%3A00.123456789Z&result=failed")
+  })
+
+  it("builds an unpaginated CSV route from the same frozen selection", () => {
+    expect(buildEventsExportPath("24h", "claude", {
+      model: "sonnet", modelAlias: "sonnet-route", account: "auth-1", endpoint: "/v1/messages", status: "4xx",
+      requestId: "request-42", minLatencyMS: "500", windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
+    })).toBe("/usage/events/export?range=24h&provider=claude&model=sonnet&model_alias=sonnet-route&account=auth-1&endpoint=%2Fv1%2Fmessages&status=4xx&request_id=request-42&min_latency_ms=500&window_end=2026-09-07T12%3A00%3A00.123456789Z&result=failed")
+  })
+
+  it("downloads only after the protected CSV response succeeds", async () => {
+    const createObjectURL = vi.fn(() => "blob:request-evidence")
+    const revokeObjectURL = vi.fn()
+    const click = vi.fn()
+    const anchor = document.createElement("a")
+    vi.spyOn(anchor, "click").mockImplementation(click)
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL })
+    vi.spyOn(document, "createElement").mockReturnValue(anchor)
+    mockedApiFetchBlob.mockResolvedValueOnce(new Blob(["header\\n"], { type: "text/csv" }))
+
+    await downloadUsageEventsCSV("/usage/events/export?window_end=2026-09-07T12%3A00%3A00Z")
+
+    expect(mockedApiFetchBlob).toHaveBeenCalledWith("/usage/events/export?window_end=2026-09-07T12%3A00%3A00Z", { headers: { Accept: "text/csv" } })
+    expect(click).toHaveBeenCalledOnce()
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:request-evidence")
+  })
   it("accepts a populated page and the normalized empty page", async () => {
     const event = {
       timestamp: "2026-08-27T00:00:00Z",
@@ -19,8 +56,14 @@ describe("fetchEvents", () => {
       failed: false,
       latency_ms: 10,
       ttft_ms: 2,
-      output_tps: 100,
-      tokens: { output_tokens: 1, total_tokens: 2 },
+      attempt_facts: {
+        generate: true, stream: true, request_service_tier: null, response_service_tier: null, output_tps: 100,
+        accounting: {
+          state: "valid", quality: "complete", total_tokens: 2,
+          input: { total_tokens: 1, uncached_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0 },
+          output: { total_tokens: 1, non_reasoning_tokens: 1, reasoning_tokens: 0 }, unclassified_tokens: 0,
+        },
+      },
     }
     mockedApiFetch
       .mockResolvedValueOnce({ events: [event], total_count: 1, page: 1, page_size: 10, total_pages: 1 })
@@ -78,8 +121,14 @@ describe("fetchEvents", () => {
         failed: false,
         latency_ms: 10,
         ttft_ms: 2,
-        output_tps: 100,
-        tokens: { output_tokens: 1, total_tokens: 2 },
+        attempt_facts: {
+          generate: true, stream: true, request_service_tier: null, response_service_tier: null, output_tps: 100,
+          accounting: {
+            state: "valid", quality: "complete", total_tokens: 2,
+            input: { total_tokens: 1, uncached_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0 },
+            output: { total_tokens: 1, non_reasoning_tokens: 1, reasoning_tokens: 0 }, unclassified_tokens: 0,
+          },
+        },
       }],
       total_count: 2,
       page: 1,

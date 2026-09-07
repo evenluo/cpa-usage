@@ -50,22 +50,32 @@ func ParseUsageIdentityAuthType(name string) (UsageIdentityAuthType, bool) {
 
 // UsageIdentity 是从 CPA auth_files 和 provider config 同步出的 usage source 身份实体。
 type UsageIdentity struct {
-	ID           uint                  `gorm:"primaryKey;index:idx_usage_identities_auth_type_name_id,priority:3"`
-	Name         string                `gorm:"index:idx_usage_identities_auth_type_name_id,priority:2"`
-	AuthType     UsageIdentityAuthType `gorm:"uniqueIndex:uniq_usage_identities_type_identity;index:idx_usage_identities_auth_type_name_id,priority:1;index:idx_usage_identities_auth_type_type,priority:1"`
-	AuthTypeName string
-	Identity     string `gorm:"uniqueIndex:uniq_usage_identities_type_identity"`
-	Type         string `gorm:"column:type;index:idx_usage_identities_auth_type_type,priority:2"`
-	Provider     string
-	LookupKey    string
-	Prefix       string
-	BaseURL      string
-	AccountID    *string
-	ProjectID    *string
+	CanonicalValidAttempts int64                 `gorm:"-"`
+	ID                     uint                  `gorm:"primaryKey;index:idx_usage_identities_auth_type_name_id,priority:3"`
+	Name                   string                `gorm:"index:idx_usage_identities_auth_type_name_id,priority:2"`
+	AuthType               UsageIdentityAuthType `gorm:"uniqueIndex:uniq_usage_identities_type_identity;index:idx_usage_identities_auth_type_name_id,priority:1;index:idx_usage_identities_auth_type_type,priority:1"`
+	AuthTypeName           string
+	Identity               string `gorm:"uniqueIndex:uniq_usage_identities_type_identity"`
+	Type                   string `gorm:"column:type;index:idx_usage_identities_auth_type_type,priority:2"`
+	Provider               string
+	LookupKey              string
+	Prefix                 string
+	BaseURL                string
+	AccountID              *string
+	ProjectID              *string
 
 	ActiveStart *time.Time
 	ActiveUntil *time.Time
 	PlanType    *string
+	// AuthFileStatus is the bounded CPA auth lifecycle category observed by metadata sync.
+	// Nil means the source did not report a status; arbitrary status_message text is never stored.
+	AuthFileStatus     *string
+	Unavailable        *bool
+	LastRefresh        *time.Time
+	NextRetryAfter     *time.Time
+	MetadataObservedAt *time.Time
+	PassiveQuota       *PassiveQuotaObservation       `gorm:"serializer:json;type:text"`
+	PassiveModelQuotas []PassiveModelQuotaObservation `gorm:"serializer:json;type:text"`
 
 	TotalRequests   int64
 	SuccessCount    int64
@@ -85,6 +95,7 @@ type UsageIdentity struct {
 	CostAvailable bool    `gorm:"-"`
 
 	IsDeleted bool
+	Disabled  bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time

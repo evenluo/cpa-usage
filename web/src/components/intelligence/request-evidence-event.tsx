@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { formatCompact, formatDate } from "@/lib/format"
 import type { UsageEvent } from "@/types/api"
+import { ACCOUNTING_STATE_LABELS, getCanonicalTokenFields } from "@/features/usage-intelligence/view-model"
 
 interface RequestEvidenceEventProps {
   event: UsageEvent
@@ -11,6 +12,7 @@ interface RequestEvidenceEventProps {
 
 export function RequestEvidenceEvent({ event, label, syncState, detail = false }: RequestEvidenceEventProps) {
   const { keyLabel, keyTrace } = getRequestEventLabels(event)
+  const facts = event.attempt_facts
 
   return (
     <section
@@ -35,9 +37,9 @@ export function RequestEvidenceEvent({ event, label, syncState, detail = false }
         {event.endpoint ? `${event.endpoint} · ` : ""}{event.model || "Unknown model"} · {formatDate(event.timestamp)}
       </p>
       <div className="mt-3 grid min-w-0 grid-cols-3 gap-3">
-        <RequestMetric label="Output TPS" value={formatOutputTPS(event.output_tps)} />
+        <RequestMetric label="Output TPS" value={formatOutputTPS(facts.output_tps)} />
         <RequestMetric label="Latency" value={formatLatency(event.latency_ms)} />
-        <RequestMetric label="Tokens" value={formatCompact(event.tokens?.total_tokens ?? 0, 2)} />
+        <RequestMetric label="Canonical tokens" value={formatTokenCount(facts.accounting.total_tokens)} />
       </div>
       {detail ? <RequestEvidenceDetail event={event} /> : null}
     </section>
@@ -45,41 +47,50 @@ export function RequestEvidenceEvent({ event, label, syncState, detail = false }
 }
 
 function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
+  const facts = event.attempt_facts
+  const accounting = facts.accounting
   const fields = [
-    ["Requested model", event.model_alias || "-"],
+    ["Observed alias label", event.model_alias || "-"],
     ["Actual model", event.model || "-"],
     ["Endpoint", event.endpoint || "-"],
     ["Request ID", event.request_id || "-"],
     ["Status code", formatOptionalNumber(event.status_code)],
     ["Executor", event.executor_type || "-"],
     ["Reasoning effort", event.reasoning_effort || "-"],
-    ["Service tier", event.service_tier || "-"],
+    ["Requested service tier", facts.request_service_tier ?? "-"],
+    ["Response service tier", facts.response_service_tier ?? "-"],
+    ["Generate", formatOptionalBoolean(facts.generate)],
+    ["Stream", formatOptionalBoolean(facts.stream)],
     ["TTFT", event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms)],
-    ["Input tokens", formatTokenCount(event.tokens?.input_tokens)],
-    ["Output tokens", formatTokenCount(event.tokens?.output_tokens)],
-    ["Reasoning tokens", formatTokenCount(event.tokens?.reasoning_tokens)],
-    ["Generic cached tokens", formatTokenCount(event.tokens?.cached_tokens)],
-    ["Cache read tokens", formatTokenCount(event.tokens?.cache_read_tokens)],
-    ["Cache creation tokens", formatTokenCount(event.tokens?.cache_creation_tokens)],
+    ["Canonical accounting", ACCOUNTING_STATE_LABELS[accounting.state]],
+    ["Reported quality", accounting.quality ?? "-"],
+    ...getCanonicalTokenFields(accounting).map(([label, value]) => [label, formatTokenCount(value)]),
   ]
 
   return (
-    <dl className="mt-4 grid min-w-0 gap-x-4 gap-y-3 border-t border-terracotta-200 pt-3 sm:grid-cols-2 dark:border-terracotta-900/60">
-      {fields.map(([label, value]) => (
-        <div key={label} className="min-w-0">
-          <dt className="text-[10px] text-muted-foreground">{label}</dt>
-          <dd className="break-all text-xs font-medium">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="mt-4 border-t border-terracotta-200 pt-3 dark:border-terracotta-900/60">
+      <p className="mb-3 text-xs text-muted-foreground">Canonical values are upstream evidence; only valid structure enters composition, with quality qualified separately. Missing facts are shown as -. Output TPS uses complete canonical output for generating streaming attempts.</p>
+      <dl className="grid min-w-0 gap-x-4 gap-y-3 sm:grid-cols-2">
+        {fields.map(([label, value]) => (
+          <div key={label} className="min-w-0">
+            <dt className="text-[10px] text-muted-foreground">{label}</dt>
+            <dd className="break-all text-xs font-medium">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   )
 }
 
-function formatOptionalNumber(value: number | undefined): string {
+function formatOptionalBoolean(value: boolean | null | undefined): string {
+  return typeof value === "boolean" ? (value ? "Yes" : "No") : "Unknown"
+}
+
+function formatOptionalNumber(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "-"
 }
 
-function formatTokenCount(value: number | undefined): string {
+function formatTokenCount(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? formatCompact(value, 2) : "-"
 }
 

@@ -11,7 +11,11 @@ function withBasePath(path: string): string {
 }
 
 export function apiPath(path: string): string {
-  return withBasePath(`/api/v1${path}`)
+	return withBasePath(`/api/v1${path}`)
+}
+
+export function metricsPath(): string {
+	return withBasePath("/metrics")
 }
 
 const cpaStoragePrefix = "enc::v1::"
@@ -102,6 +106,31 @@ export async function apiFetch<T>(
   }
 
   return response.json() as Promise<T>
+}
+
+export async function apiFetchBlob(path: string, options?: RequestInit): Promise<Blob> {
+  const response = await fetch(apiPath(path), {
+    ...options,
+    headers: apiHeaders(options),
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "Unknown error")
+    throw new ApiError(response.status, text)
+  }
+
+  return response.blob()
+}
+
+export async function metricsFetch<T>(): Promise<T> {
+	const response = await fetch(metricsPath())
+
+	if (!response.ok) {
+		const text = await response.text().catch(() => "Unknown error")
+		throw new ApiError(response.status, text)
+	}
+
+	return response.json() as Promise<T>
 }
 
 export class ApiError extends Error {

@@ -23,16 +23,49 @@ type AnalyticsFilter struct {
 	Granularity    string
 }
 
+// UsageDiagnosticFilter is the shared fixed-window selection consumed by
+// failure aggregation and Request Evidence. Status and request-ID correlation
+// are canonicalized and bounded by the API layer before repository projection.
+type UsageDiagnosticFilter struct {
+	UsageTimeScope
+	Model        string
+	ModelAlias   string
+	Account      string
+	Endpoint     string
+	Status       string
+	RequestID    string
+	MinLatencyMS *int64
+}
+
 // UsageEventListFilter 是 Request Evidence 列表的查询条件。
 type UsageEventListFilter struct {
 	UsageTimeScope
-	Page      int
-	PageSize  int
-	Offset    int
-	Model     string
-	Source    string
-	AuthIndex string
-	Result    string
+	Page         int
+	PageSize     int
+	Offset       int
+	Model        string
+	ModelAlias   string
+	Account      string
+	Endpoint     string
+	Status       string
+	RequestID    string
+	MinLatencyMS *int64
+	Source       string
+	AuthIndex    string
+	Result       string
+}
+
+func (f UsageEventListFilter) DiagnosticFilter() UsageDiagnosticFilter {
+	return UsageDiagnosticFilter{
+		UsageTimeScope: f.UsageTimeScope,
+		Model:          f.Model,
+		ModelAlias:     f.ModelAlias,
+		Account:        f.Account,
+		Endpoint:       f.Endpoint,
+		Status:         f.Status,
+		RequestID:      f.RequestID,
+		MinLatencyMS:   f.MinLatencyMS,
+	}
 }
 
 const DefaultUsageEventsLimit = 100

@@ -74,6 +74,11 @@ func (result CodexResult) QuotaRows() []QuotaRow {
 	rows = appendCodexWindowQuotaRows(rows, "code_review_rate_limit", "Code Review 5h", "Code Review Weekly", "code_review", "", result.Usage.CodeReviewRateLimit)
 	for _, additional := range result.Usage.AdditionalRateLimits {
 		// 主限额之外的 code review / spark 等窗口也保留为 extra quota，避免丢失上游数据。
+		// 但 gpt-reserve（metered_feature=base_model_inference）是 OpenAI 的 banked-reset 预留池：
+		// 它的窗口 reset 每次都是 captured_at + 604800 的合成值，不度量任何真实消耗，直接丢弃。
+		if isCodexReservePool(additional) {
+			continue
+		}
 		metric := additional.MeteredFeature
 		if metric == "" {
 			metric = additional.LimitName
@@ -88,6 +93,12 @@ func (result CodexResult) QuotaRows() []QuotaRow {
 		}
 	}
 	return rows
+}
+
+// isCodexReservePool 识别 OpenAI banked-reset 预留池：上游 HTTP 路径给 limit_name=gpt-reserve，
+// websocket 路径等价数据的 metered_feature=base_model_inference，两种拼写都按同一池处理。
+func isCodexReservePool(additional CodexAdditionalRateLimit) bool {
+	return additional.LimitName == "gpt-reserve" || additional.MeteredFeature == "base_model_inference"
 }
 
 func appendCodexWindowQuotaRows(rows []QuotaRow, keyPrefix string, primaryLabel string, secondaryLabel string, scope string, metric string, info *CodexRateLimitInfo) []QuotaRow {
@@ -220,41 +231,46 @@ func (result AntigravityResult) QuotaRows() []QuotaRow {
 	return rows
 }
 
-// QuotaRows 先保留 Kimi 的 summary，再逐条展开 limits；两类结构不同但都转为统一的 quota rows。
+// QuotaRows 先保留 Kimi 的 summary（周配额），再逐条展开 limits；两类结构不同但都转为统一的 quota rows。
 func (result KimiResult) QuotaRows() []QuotaRow {
 	if result.Usage == nil {
 		return nil
 	}
+	// 顶层 usage 是周配额（周窗口），上游不携带 title，归一化时固定标注 Weekly 语义，
+	// 前端按窗口秒数归入 Weekly 槽位。
 	rows := make([]QuotaRow, 0, 1+len(result.Usage.Limits))
 	if isMeaningfulKimiDetail(result.Usage.Usage) {
-		rows = append(rows, kimiDetailQuotaRow("usage", "summary", "Usage", result.Usage.Usage))
+		rows = append(rows, kimiDetailQuotaRow("usage", "summary", "Weekly", result.Usage.Usage))
 	}
 	for index, limit := range result.Usage.Limits {
 		keyName := limit.Name
 		if keyName == "" {
 			keyName = fmt.Sprintf("%d", index)
 		}
-		label := firstNonEmpty(limit.Title, limit.Name, "Limit")
+		window := kimiWindow(limit)
+		label := firstNonEmpty(limit.Title, limit.Name, kimiWindowLabel(window), "Limit")
 		scope := firstNonEmpty(limit.Scope, "limit")
 		row := QuotaRow{
 			Key:       "limits." + keyName,
 			Label:     label,
 			Scope:     scope,
 			Metric:    limit.Name,
-			Used:      floatPtr(limit.Used),
-			Limit:     floatPtr(limit.Limit),
-			Remaining: floatPtr(limit.Remaining),
+			Used:      limit.Used,
+			Limit:     limit.Limit,
+			Remaining: limit.Remaining,
 			ResetAt:   firstNonEmpty(limit.ResetAt, resetAtFromKimiDetail(limit.Detail)),
+			Window:    window,
 		}
-		if limit.Limit > 0 {
-			row.UsedPercent = floatPtr(limit.Used / limit.Limit * 100)
+		if limit.Limit != nil && *limit.Limit > 0 {
+			if percent := kimiUsedPercent(limit.Used, limit.Remaining, *limit.Limit); percent != nil {
+				row.UsedPercent = percent
+			}
 		}
 		if limit.ResetIn != 0 {
 			row.ResetAfterSeconds = intPtr(int64(limit.ResetIn))
 		} else if limit.Detail != nil && limit.Detail.ResetIn != 0 {
 			row.ResetAfterSeconds = intPtr(int64(limit.Detail.ResetIn))
 		}
-		row.Window = kimiWindow(limit)
 		rows = append(rows, row)
 	}
 	return rows
@@ -266,13 +282,17 @@ func kimiDetailQuotaRow(key string, scope string, fallbackLabel string, detail *
 		Label:     firstNonEmpty(detail.Title, fallbackLabel),
 		Scope:     scope,
 		Metric:    detail.Name,
-		Used:      floatPtr(detail.Used),
-		Limit:     floatPtr(detail.Limit),
-		Remaining: floatPtr(detail.Remaining),
+		Used:      detail.Used,
+		Limit:     detail.Limit,
+		Remaining: detail.Remaining,
 		ResetAt:   detail.ResetAt,
+		// 顶层 usage 是周配额（周窗口），归一化时固定标注，前端按窗口秒数归入 Weekly 槽位。
+		Window: &QuotaWindow{Seconds: intPtr(kimiWeeklyWindowSeconds)},
 	}
-	if detail.Limit > 0 {
-		row.UsedPercent = floatPtr(detail.Used / detail.Limit * 100)
+	if detail.Limit != nil && *detail.Limit > 0 {
+		if percent := kimiUsedPercent(detail.Used, detail.Remaining, *detail.Limit); percent != nil {
+			row.UsedPercent = percent
+		}
 	}
 	if detail.ResetIn != 0 {
 		row.ResetAfterSeconds = intPtr(int64(detail.ResetIn))
@@ -280,11 +300,22 @@ func kimiDetailQuotaRow(key string, scope string, fallbackLabel string, detail *
 	return row
 }
 
+// kimiUsedPercent 优先用 used/limit；used 缺失时按 limit-remaining 推导（上游 used 可能不返回）。
+func kimiUsedPercent(used *float64, remaining *float64, limit float64) *float64 {
+	if used != nil {
+		return floatPtr(*used / limit * 100)
+	}
+	if remaining != nil {
+		return floatPtr((limit - *remaining) / limit * 100)
+	}
+	return nil
+}
+
 func isMeaningfulKimiDetail(detail *KimiUsageDetail) bool {
 	if detail == nil {
 		return false
 	}
-	return detail.Used != 0 || detail.Limit != 0 || detail.Remaining != 0 || detail.Name != "" || detail.Title != "" || detail.ResetAt != "" || detail.ResetIn != 0 || detail.TTL != 0
+	return detail.Used != nil || detail.Limit != nil || detail.Remaining != nil || detail.Name != "" || detail.Title != "" || detail.ResetAt != "" || detail.ResetIn != 0 || detail.TTL != 0
 }
 
 func resetAtFromKimiDetail(detail *KimiUsageDetail) string {
@@ -294,14 +325,51 @@ func resetAtFromKimiDetail(detail *KimiUsageDetail) string {
 	return detail.ResetAt
 }
 
+const kimiWeeklyWindowSeconds = 604_800
+
+var kimiWindowUnitSeconds = map[string]int64{
+	"second": 1,
+	"minute": 60,
+	"hour":   3_600,
+	"day":    86_400,
+	"week":   604_800,
+}
+
 func kimiWindow(limit KimiLimitItem) *QuotaWindow {
+	duration := limit.Duration
+	unit := limit.TimeUnit
 	if limit.Window != nil {
-		return &QuotaWindow{Duration: floatPtr(float64(limit.Window.Duration)), Unit: limit.Window.TimeUnit}
+		duration = limit.Window.Duration
+		unit = limit.Window.TimeUnit
 	}
-	if limit.Duration != 0 || limit.TimeUnit != "" {
-		return &QuotaWindow{Duration: floatPtr(float64(limit.Duration)), Unit: limit.TimeUnit}
+	if duration == 0 && unit == "" {
+		return nil
 	}
-	return nil
+	window := &QuotaWindow{Duration: floatPtr(float64(duration)), Unit: unit}
+	// 单位在解析层已规范化（TIME_UNIT_MINUTE → minute）；能换算就同时给出 seconds，
+	// 前端 findQuotaWindow 以 window.seconds 为准匹配 5h/Weekly 槽位。
+	if duration > 0 {
+		unitKey := strings.ToLower(strings.TrimSuffix(unit, "s"))
+		if unitSeconds, ok := kimiWindowUnitSeconds[unitKey]; ok {
+			window.Seconds = intPtr(duration * unitSeconds)
+		}
+	}
+	return window
+}
+
+// kimiWindowLabel 在上游没有 title/name 时按窗口长度给 limits 行一个语义标签（5h、Weekly），
+// 否则前端只能显示兜底的 "Limit"。
+func kimiWindowLabel(window *QuotaWindow) string {
+	if window == nil || window.Seconds == nil {
+		return ""
+	}
+	switch *window.Seconds {
+	case 18_000:
+		return "5h"
+	case kimiWeeklyWindowSeconds:
+		return "Weekly"
+	}
+	return ""
 }
 
 func firstNonEmpty(values ...string) string {

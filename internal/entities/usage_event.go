@@ -34,4 +34,9 @@ type UsageEvent struct {
 	CacheCreationTokens *int64 `gorm:"column:cache_creation_tokens"`
 	TotalTokens         int64
 	CreatedAt           time.Time
+
+	UsageAccounting     `gorm:"embedded"`
+	Generate            *bool
+	Stream              *bool
+	ResponseServiceTier *string
 }

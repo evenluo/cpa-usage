@@ -33,6 +33,7 @@ func openUsageReaderTestDatabase(t *testing.T, name string) *gorm.DB {
 func TestUsageReaderListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 	db := openUsageReaderTestDatabase(t, "usage-reader-events.db")
 	ttftMS := int64(1052)
+	generate, stream := true, true
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
 		EventKey:     "event-tps",
 		Model:        "gpt-5.6-sol",
@@ -41,6 +42,11 @@ func TestUsageReaderListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 		TTFTMS:       &ttftMS,
 		OutputTokens: 976,
 		TotalTokens:  105091,
+		Generate:     &generate,
+		Stream:       &stream,
+		UsageAccounting: completeUsageReaderTestAccounting(
+			104115, 976, 0, 0,
+		),
 	}}); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
@@ -57,8 +63,8 @@ func TestUsageReaderListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 	if event.TTFTMS == nil || *event.TTFTMS != 1052 {
 		t.Fatalf("expected ttft_ms 1052, got %+v", event.TTFTMS)
 	}
-	if event.OutputTPS == nil || math.Abs(*event.OutputTPS-48.33358094488189) > 0.000000001 {
-		t.Fatalf("expected output TPS 48.33358094488189, got %+v", event.OutputTPS)
+	if event.AttemptFacts.OutputTPS == nil || math.Abs(*event.AttemptFacts.OutputTPS-48.33358094488189) > 0.000000001 {
+		t.Fatalf("expected output TPS 48.33358094488189, got %+v", event.AttemptFacts.OutputTPS)
 	}
 }
 
@@ -67,12 +73,13 @@ func TestUsageReaderListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing.
 	zeroTTFT := int64(0)
 	equalTTFT := int64(21245)
 	validTTFT := int64(1052)
+	generate, stream := true, true
 	events := []entities.UsageEvent{
-		{EventKey: "missing-ttft", Model: "missing-ttft", Timestamp: time.Date(2026, 7, 14, 9, 7, 50, 0, time.UTC), LatencyMS: 21245, OutputTokens: 976},
-		{EventKey: "zero-ttft", Model: "zero-ttft", Timestamp: time.Date(2026, 7, 14, 9, 7, 51, 0, time.UTC), LatencyMS: 21245, TTFTMS: &zeroTTFT, OutputTokens: 976},
-		{EventKey: "inconsistent-duration", Model: "inconsistent-duration", Timestamp: time.Date(2026, 7, 14, 9, 7, 52, 0, time.UTC), LatencyMS: 21245, TTFTMS: &equalTTFT, OutputTokens: 976},
-		{EventKey: "zero-output", Model: "zero-output", Timestamp: time.Date(2026, 7, 14, 9, 7, 53, 0, time.UTC), LatencyMS: 21245, TTFTMS: &validTTFT},
-		{EventKey: "failed-valid", Model: "failed-valid", Timestamp: time.Date(2026, 7, 14, 9, 7, 54, 0, time.UTC), Failed: true, LatencyMS: 21245, TTFTMS: &validTTFT, OutputTokens: 976},
+		{EventKey: "missing-ttft", Model: "missing-ttft", Timestamp: time.Date(2026, 7, 14, 9, 7, 50, 0, time.UTC), LatencyMS: 21245, OutputTokens: 976, Generate: &generate, Stream: &stream, UsageAccounting: completeUsageReaderTestAccounting(0, 976, 0, 0)},
+		{EventKey: "zero-ttft", Model: "zero-ttft", Timestamp: time.Date(2026, 7, 14, 9, 7, 51, 0, time.UTC), LatencyMS: 21245, TTFTMS: &zeroTTFT, OutputTokens: 976, Generate: &generate, Stream: &stream, UsageAccounting: completeUsageReaderTestAccounting(0, 976, 0, 0)},
+		{EventKey: "inconsistent-duration", Model: "inconsistent-duration", Timestamp: time.Date(2026, 7, 14, 9, 7, 52, 0, time.UTC), LatencyMS: 21245, TTFTMS: &equalTTFT, OutputTokens: 976, Generate: &generate, Stream: &stream, UsageAccounting: completeUsageReaderTestAccounting(0, 976, 0, 0)},
+		{EventKey: "zero-output", Model: "zero-output", Timestamp: time.Date(2026, 7, 14, 9, 7, 53, 0, time.UTC), LatencyMS: 21245, TTFTMS: &validTTFT, Generate: &generate, Stream: &stream, UsageAccounting: completeUsageReaderTestAccounting(0, 0, 0, 0)},
+		{EventKey: "failed-valid", Model: "failed-valid", Timestamp: time.Date(2026, 7, 14, 9, 7, 54, 0, time.UTC), Failed: true, LatencyMS: 21245, TTFTMS: &validTTFT, OutputTokens: 976, Generate: &generate, Stream: &stream, UsageAccounting: completeUsageReaderTestAccounting(0, 976, 0, 0)},
 	}
 	if _, _, err := repository.InsertUsageEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
@@ -88,12 +95,12 @@ func TestUsageReaderListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing.
 		byModel[event.Model] = event
 	}
 	for _, model := range []string{"missing-ttft", "zero-ttft", "inconsistent-duration", "zero-output"} {
-		if byModel[model].OutputTPS != nil {
-			t.Fatalf("expected %s Output TPS to be unavailable, got %+v", model, byModel[model].OutputTPS)
+		if byModel[model].AttemptFacts.OutputTPS != nil {
+			t.Fatalf("expected %s Output TPS to be unavailable, got %+v", model, byModel[model].AttemptFacts.OutputTPS)
 		}
 	}
 	failedEvent := byModel["failed-valid"]
-	if !failedEvent.Failed || failedEvent.OutputTPS == nil || math.Abs(*failedEvent.OutputTPS-48.33358094488189) > 0.000000001 {
+	if !failedEvent.Failed || failedEvent.AttemptFacts.OutputTPS == nil || math.Abs(*failedEvent.AttemptFacts.OutputTPS-48.33358094488189) > 0.000000001 {
 		t.Fatalf("expected failed event with valid facts to retain Output TPS, got %+v", failedEvent)
 	}
 }
@@ -109,8 +116,8 @@ func TestUsageReaderGetUsageOverviewBuildsFilteredOverview(t *testing.T) {
 		t.Fatalf("UpsertModelPriceSetting returned error: %v", err)
 	}
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{
-		{EventKey: "event-1", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), InputTokens: 1000, OutputTokens: 500, CachedTokens: 100, ReasoningTokens: 50, TotalTokens: 1650},
-		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), InputTokens: 500, OutputTokens: 250, CachedTokens: 0, ReasoningTokens: 25, TotalTokens: 775},
+		{EventKey: "event-1", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 9, 0, 0, 0, time.UTC), UsageAccounting: completeUsageReaderTestAccounting(1000, 500, 50, 100)},
+		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), UsageAccounting: completeUsageReaderTestAccounting(500, 250, 25, 0)},
 	}); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
@@ -122,7 +129,7 @@ func TestUsageReaderGetUsageOverviewBuildsFilteredOverview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetUsageOverview returned error: %v", err)
 	}
-	if overview.Summary.RequestCount != 2 || overview.Summary.TokenCount != 2425 {
+	if overview.Summary.RequestCount != 2 || overview.Summary.TokenCount != 2250 {
 		t.Fatalf("expected overview summary counts, got %+v", overview.Summary)
 	}
 	if overview.Summary.WindowMinutes != 1440 {
@@ -133,6 +140,27 @@ func TestUsageReaderGetUsageOverviewBuildsFilteredOverview(t *testing.T) {
 	}
 	if math.Abs(overview.Series.Cost["2026-04-16T09:00:00Z"]-0.01023) > 0.000000001 || math.Abs(overview.Series.Cost["2026-04-16T10:00:00Z"]-0.00525) > 0.000000001 {
 		t.Fatalf("expected hourly cost series values, got %+v", overview.Series)
+	}
+}
+
+func completeUsageReaderTestAccounting(input int64, output int64, reasoning int64, cacheRead int64) entities.UsageAccounting {
+	quality := "complete"
+	uncached := input - cacheRead
+	nonReasoning := output - reasoning
+	total := input + output
+	zero := int64(0)
+	return entities.UsageAccounting{
+		AccountingState:             repository.AccountingValid,
+		TokenQuality:                &quality,
+		CanonicalTotalTokens:        &total,
+		CanonicalInputTokens:        &input,
+		CanonicalUncachedTokens:     &uncached,
+		CanonicalCacheReadTokens:    &cacheRead,
+		CanonicalCacheWriteTokens:   &zero,
+		CanonicalOutputTokens:       &output,
+		CanonicalNonReasoningTokens: &nonReasoning,
+		CanonicalReasoningTokens:    &reasoning,
+		CanonicalUnclassifiedTokens: &zero,
 	}
 }
 

@@ -57,21 +57,17 @@ func analyticsPositiveTokenSQLExpression(column string) string {
 	return "(CASE WHEN " + column + " > 0 THEN " + column + " ELSE 0 END)"
 }
 
-func analyticsMissingPricingSQLExpressionFor(inputColumn string, outputColumn string, cachedColumn string, countExpression string) string {
-	return `CASE
-		WHEN model_price_settings.id IS NULL
-			AND (` + inputColumn + ` > 0 OR ` + outputColumn + ` > 0 OR ` + cachedColumn + ` > 0)
-		THEN ` + countExpression + `
-		ELSE 0
-	END`
+func analyticsMissingPricingSQLExpressionFor(countExpression string, completeCountExpression string, completeZeroCountExpression string) string {
+	return `(` + countExpression + ` - CASE
+		WHEN model_price_settings.id IS NOT NULL THEN ` + completeCountExpression + `
+		ELSE ` + completeZeroCountExpression + `
+	END)`
 }
 
-func analyticsPricedBillableSQLExpressionFor(inputColumn string, outputColumn string, cachedColumn string, countExpression string) string {
+func analyticsPricedBillableSQLExpressionFor(completeCountExpression string, completeZeroCountExpression string) string {
 	return `CASE
-		WHEN model_price_settings.id IS NOT NULL
-			AND (` + inputColumn + ` > 0 OR ` + outputColumn + ` > 0 OR ` + cachedColumn + ` > 0)
-		THEN ` + countExpression + `
-		ELSE 0
+		WHEN model_price_settings.id IS NOT NULL THEN ` + completeCountExpression + `
+		ELSE ` + completeZeroCountExpression + `
 	END`
 }
 

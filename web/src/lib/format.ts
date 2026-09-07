@@ -12,14 +12,21 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`
 }
 
+const dateTimePartsFormat = new Intl.DateTimeFormat("en", {
+  month: "numeric",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+})
+
+/** Compact timestamp like "9/11 11:00" — numeric month/day, 24h clock. */
 export function formatDate(date: string | null): string {
   if (!date) return "Never"
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date))
+  const parts = dateTimePartsFormat.formatToParts(new Date(date))
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? ""
+  return `${part("month")}/${part("day")} ${part("hour")}:${part("minute")}`
 }
 
 export function formatComparison(
