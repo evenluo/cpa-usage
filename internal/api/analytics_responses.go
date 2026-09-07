@@ -55,95 +55,139 @@ type analyticsHeatmapResponse struct {
 }
 
 type analyticsSummaryPayload struct {
-	TotalCost             float64  `json:"total_cost"`
-	TotalTokens           int64    `json:"total_tokens"`
-	RequestCount          int64    `json:"request_count"`
-	SuccessCount          int64    `json:"success_count"`
-	FailureCount          int64    `json:"failure_count"`
-	InputTokens           int64    `json:"input_tokens"`
-	OutputTokens          int64    `json:"output_tokens"`
-	ReasoningTokens       int64    `json:"reasoning_tokens"`
-	CachedTokens          int64    `json:"cached_tokens"`
-	CacheReadTokens       int64    `json:"cache_read_tokens"`
-	SuccessRate           float64  `json:"success_rate"`
-	CostAvailable         bool     `json:"cost_available"`
-	CostStatus            string   `json:"cost_status"`
-	CacheReadShare        float64  `json:"cache_read_share"`
-	CacheReadCoverage     float64  `json:"cache_read_coverage"`
-	CacheReadShareState   string   `json:"cache_read_share_state"`
-	EstimatedCacheSavings *float64 `json:"estimated_cache_savings,omitempty"`
+	TotalCost             float64                           `json:"total_cost"`
+	TotalTokens           int64                             `json:"total_tokens"`
+	RequestCount          int64                             `json:"request_count"`
+	SuccessCount          int64                             `json:"success_count"`
+	FailureCount          int64                             `json:"failure_count"`
+	InputTokens           int64                             `json:"input_tokens"`
+	OutputTokens          int64                             `json:"output_tokens"`
+	ReasoningTokens       int64                             `json:"reasoning_tokens"`
+	CacheReadTokens       int64                             `json:"cache_read_tokens"`
+	CacheWriteTokens      int64                             `json:"cache_write_tokens"`
+	SuccessRate           float64                           `json:"success_rate"`
+	CostAvailable         bool                              `json:"cost_available"`
+	CostStatus            string                            `json:"cost_status"`
+	CacheReadShare        float64                           `json:"cache_read_share"`
+	CacheReadCoverage     float64                           `json:"cache_read_coverage"`
+	CacheReadShareState   string                            `json:"cache_read_share_state"`
+	EstimatedCacheSavings *float64                          `json:"estimated_cache_savings,omitempty"`
+	Accounting            analyticsAccountingSummaryPayload `json:"accounting"`
+}
+
+type analyticsAccountingSummaryPayload struct {
+	TotalAttempts int64                                  `json:"total_attempts"`
+	ValidAttempts int64                                  `json:"valid_attempts"`
+	CoveragePct   *float64                               `json:"coverage_pct"`
+	States        analyticsAccountingStatesPayload       `json:"states"`
+	ValidQuality  analyticsAccountingValidQualityPayload `json:"valid_quality"`
+	Composition   analyticsAccountingCompositionPayload  `json:"composition"`
+}
+
+type analyticsAccountingStatesPayload struct {
+	Absent int64 `json:"absent"`
+	Valid  int64 `json:"valid"`
+}
+
+type analyticsAccountingValidQualityPayload struct {
+	Complete     int64 `json:"complete"`
+	Inconsistent int64 `json:"inconsistent"`
+	Unclassified int64 `json:"unclassified"`
+}
+
+type analyticsAccountingCompositionPayload struct {
+	TotalTokens        int64                            `json:"total_tokens"`
+	Input              analyticsAccountingInputPayload  `json:"input"`
+	Output             analyticsAccountingOutputPayload `json:"output"`
+	UnclassifiedTokens int64                            `json:"unclassified_tokens"`
+}
+
+type analyticsAccountingInputPayload struct {
+	TotalTokens      int64 `json:"total_tokens"`
+	UncachedTokens   int64 `json:"uncached_tokens"`
+	CacheReadTokens  int64 `json:"cache_read_tokens"`
+	CacheWriteTokens int64 `json:"cache_write_tokens"`
+}
+
+type analyticsAccountingOutputPayload struct {
+	TotalTokens        int64 `json:"total_tokens"`
+	NonReasoningTokens int64 `json:"non_reasoning_tokens"`
+	ReasoningTokens    int64 `json:"reasoning_tokens"`
 }
 
 type analyticsTrendPoint struct {
-	Label           string    `json:"label"`
-	BucketStart     time.Time `json:"bucket_start"`
-	BucketEnd       time.Time `json:"bucket_end"`
-	TotalCost       float64   `json:"total_cost"`
-	TotalTokens     int64     `json:"total_tokens"`
-	InputTokens     int64     `json:"input_tokens"`
-	OutputTokens    int64     `json:"output_tokens"`
-	ReasoningTokens int64     `json:"reasoning_tokens"`
-	CachedTokens    int64     `json:"cached_tokens"`
-	RequestCount    int64     `json:"request_count"`
-	SuccessCount    int64     `json:"success_count"`
-	FailureCount    int64     `json:"failure_count"`
-	CostAvailable   bool      `json:"cost_available"`
-	CostStatus      string    `json:"cost_status"`
+	Label                  string    `json:"label"`
+	BucketStart            time.Time `json:"bucket_start"`
+	BucketEnd              time.Time `json:"bucket_end"`
+	TotalCost              float64   `json:"total_cost"`
+	TotalTokens            int64     `json:"total_tokens"`
+	InputTokens            int64     `json:"input_tokens"`
+	OutputTokens           int64     `json:"output_tokens"`
+	ReasoningTokens        int64     `json:"reasoning_tokens"`
+	CacheReadTokens        int64     `json:"cache_read_tokens"`
+	RequestCount           int64     `json:"request_count"`
+	SuccessCount           int64     `json:"success_count"`
+	FailureCount           int64     `json:"failure_count"`
+	CanonicalValidAttempts int64     `json:"canonical_valid_attempts"`
+	CostAvailable          bool      `json:"cost_available"`
+	CostStatus             string    `json:"cost_status"`
 }
 
 type analyticsKeyAliasTrendPoint struct {
-	Label         string  `json:"label"`
-	TotalCost     float64 `json:"total_cost"`
-	TotalTokens   int64   `json:"total_tokens"`
-	CostAvailable bool    `json:"cost_available"`
-	CostStatus    string  `json:"cost_status"`
+	Label                  string  `json:"label"`
+	TotalCost              float64 `json:"total_cost"`
+	TotalTokens            int64   `json:"total_tokens"`
+	CanonicalValidAttempts int64   `json:"canonical_valid_attempts"`
+	CostAvailable          bool    `json:"cost_available"`
+	CostStatus             string  `json:"cost_status"`
 }
 
 type analyticsKeyAliasRow struct {
-	Label         string                         `json:"label"`
-	Alias         string                         `json:"alias"`
-	Traceability  string                         `json:"traceability"`
-	Identity      string                         `json:"identity"`
-	AuthType      entities.UsageIdentityAuthType `json:"auth_type"`
-	AuthTypeName  string                         `json:"auth_type_name"`
-	Type          string                         `json:"type"`
-	Provider      string                         `json:"provider"`
-	IsDeleted     bool                           `json:"is_deleted"`
-	TotalCost     float64                        `json:"total_cost"`
-	TotalTokens   int64                          `json:"total_tokens"`
-	RequestCount  int64                          `json:"request_count"`
-	SuccessCount  int64                          `json:"success_count"`
-	FailureCount  int64                          `json:"failure_count"`
-	SuccessRate   float64                        `json:"success_rate"`
-	LastUsedAt    *time.Time                     `json:"last_used_at,omitempty"`
-	CostAvailable bool                           `json:"cost_available"`
-	CostStatus    string                         `json:"cost_status"`
-	Trend         []analyticsKeyAliasTrendPoint  `json:"trend"`
+	Label                  string                         `json:"label"`
+	Alias                  string                         `json:"alias"`
+	Traceability           string                         `json:"traceability"`
+	Identity               string                         `json:"identity"`
+	AuthType               entities.UsageIdentityAuthType `json:"auth_type"`
+	AuthTypeName           string                         `json:"auth_type_name"`
+	Type                   string                         `json:"type"`
+	Provider               string                         `json:"provider"`
+	IsDeleted              bool                           `json:"is_deleted"`
+	TotalCost              float64                        `json:"total_cost"`
+	TotalTokens            int64                          `json:"total_tokens"`
+	CanonicalValidAttempts int64                          `json:"canonical_valid_attempts"`
+	RequestCount           int64                          `json:"request_count"`
+	SuccessCount           int64                          `json:"success_count"`
+	FailureCount           int64                          `json:"failure_count"`
+	SuccessRate            float64                        `json:"success_rate"`
+	LastUsedAt             *time.Time                     `json:"last_used_at,omitempty"`
+	CostAvailable          bool                           `json:"cost_available"`
+	CostStatus             string                         `json:"cost_status"`
+	Trend                  []analyticsKeyAliasTrendPoint  `json:"trend"`
 }
 
 type analyticsModelRow struct {
-	Model                 string   `json:"model"`
-	Provider              string   `json:"provider"`
-	TotalCost             float64  `json:"total_cost"`
-	TotalTokens           int64    `json:"total_tokens"`
-	RequestCount          int64    `json:"request_count"`
-	SuccessCount          int64    `json:"success_count"`
-	FailureCount          int64    `json:"failure_count"`
-	InputTokens           int64    `json:"input_tokens"`
-	OutputTokens          int64    `json:"output_tokens"`
-	ReasoningTokens       int64    `json:"reasoning_tokens"`
-	CachedTokens          int64    `json:"cached_tokens"`
-	CacheReadTokens       int64    `json:"cache_read_tokens"`
-	SuccessRate           float64  `json:"success_rate"`
-	TotalLatencyMS        int64    `json:"total_latency_ms"`
-	LatencySampleCount    int64    `json:"latency_sample_count"`
-	AverageLatencyMS      float64  `json:"average_latency_ms"`
-	CostAvailable         bool     `json:"cost_available"`
-	CostStatus            string   `json:"cost_status"`
-	CacheReadShare        float64  `json:"cache_read_share"`
-	CacheReadCoverage     float64  `json:"cache_read_coverage"`
-	CacheReadShareState   string   `json:"cache_read_share_state"`
-	EstimatedCacheSavings *float64 `json:"estimated_cache_savings,omitempty"`
+	Model                  string   `json:"model"`
+	Provider               string   `json:"provider"`
+	TotalCost              float64  `json:"total_cost"`
+	TotalTokens            int64    `json:"total_tokens"`
+	RequestCount           int64    `json:"request_count"`
+	SuccessCount           int64    `json:"success_count"`
+	FailureCount           int64    `json:"failure_count"`
+	InputTokens            int64    `json:"input_tokens"`
+	OutputTokens           int64    `json:"output_tokens"`
+	ReasoningTokens        int64    `json:"reasoning_tokens"`
+	CacheReadTokens        int64    `json:"cache_read_tokens"`
+	CanonicalValidAttempts int64    `json:"canonical_valid_attempts"`
+	SuccessRate            float64  `json:"success_rate"`
+	TotalLatencyMS         int64    `json:"total_latency_ms"`
+	LatencySampleCount     int64    `json:"latency_sample_count"`
+	AverageLatencyMS       float64  `json:"average_latency_ms"`
+	CostAvailable          bool     `json:"cost_available"`
+	CostStatus             string   `json:"cost_status"`
+	CacheReadShare         float64  `json:"cache_read_share"`
+	CacheReadCoverage      float64  `json:"cache_read_coverage"`
+	CacheReadShareState    string   `json:"cache_read_share_state"`
+	EstimatedCacheSavings  *float64 `json:"estimated_cache_savings,omitempty"`
 }
 
 type analyticsInsight struct {
@@ -159,12 +203,13 @@ type analyticsInsight struct {
 }
 
 type analyticsProviderOption struct {
-	Provider      string  `json:"provider"`
-	RequestCount  int64   `json:"request_count"`
-	TotalTokens   int64   `json:"total_tokens"`
-	TotalCost     float64 `json:"total_cost"`
-	CostAvailable bool    `json:"cost_available"`
-	CostStatus    string  `json:"cost_status"`
+	Provider               string  `json:"provider"`
+	RequestCount           int64   `json:"request_count"`
+	TotalTokens            int64   `json:"total_tokens"`
+	CanonicalValidAttempts int64   `json:"canonical_valid_attempts"`
+	TotalCost              float64 `json:"total_cost"`
+	CostAvailable          bool    `json:"cost_available"`
+	CostStatus             string  `json:"cost_status"`
 }
 
 type analyticsComparisonPayload struct {
@@ -191,16 +236,17 @@ type analyticsHeatmapRow struct {
 }
 
 type analyticsHeatmapCell struct {
-	Hour          int       `json:"hour"`
-	InRange       bool      `json:"in_range"`
-	BucketStart   time.Time `json:"bucket_start"`
-	BucketEnd     time.Time `json:"bucket_end"`
-	TotalTokens   int64     `json:"total_tokens"`
-	TotalCost     float64   `json:"total_cost"`
-	RequestCount  int64     `json:"request_count"`
-	FailureCount  int64     `json:"failure_count"`
-	CostAvailable bool      `json:"cost_available"`
-	CostStatus    string    `json:"cost_status"`
+	Hour                   int       `json:"hour"`
+	InRange                bool      `json:"in_range"`
+	BucketStart            time.Time `json:"bucket_start"`
+	BucketEnd              time.Time `json:"bucket_end"`
+	TotalTokens            int64     `json:"total_tokens"`
+	TotalCost              float64   `json:"total_cost"`
+	RequestCount           int64     `json:"request_count"`
+	FailureCount           int64     `json:"failure_count"`
+	CanonicalValidAttempts int64     `json:"canonical_valid_attempts"`
+	CostAvailable          bool      `json:"cost_available"`
+	CostStatus             string    `json:"cost_status"`
 }
 
 func buildAnalyticsCoreResponse(filter analyticsFilter, snapshot *dto.AnalyticsSummarySnapshot) analyticsCoreResponse {
@@ -274,27 +320,28 @@ func buildAnalyticsSummaryResponse(filter analyticsFilter, snapshot *dto.Analyti
 	return response
 }
 
-// emptyAnalyticsSummaryPayload 是无数据时的响应默认值，保持既有 HTTP 契约不变。
+// emptyAnalyticsSummaryPayload marks local cost and canonical tokens unavailable when no observations exist.
 func emptyAnalyticsSummaryPayload() analyticsSummaryPayload {
 	return analyticsSummaryPayload{
-		CostAvailable:       true,
-		CostStatus:          dto.CostStatusAvailable,
+		CostAvailable:       false,
+		CostStatus:          dto.CostStatusUnavailable,
 		CacheReadShareState: dto.AnalyticsCacheReadShareStateNoPromptInput,
+		Accounting:          mapAnalyticsAccountingSummaryPayload(dto.AnalyticsAccountingSummary{}),
 	}
 }
 
 func mapAnalyticsSummaryPayload(summary dto.AnalyticsSummary) analyticsSummaryPayload {
 	return analyticsSummaryPayload{
 		TotalCost:             summary.TotalCost,
-		TotalTokens:           summary.TotalTokens,
+		TotalTokens:           summary.Accounting.Composition.TotalTokens,
 		RequestCount:          summary.RequestCount,
 		SuccessCount:          summary.SuccessCount,
 		FailureCount:          summary.FailureCount,
-		InputTokens:           summary.InputTokens,
-		OutputTokens:          summary.OutputTokens,
-		ReasoningTokens:       summary.ReasoningTokens,
-		CachedTokens:          summary.CachedTokens,
-		CacheReadTokens:       summary.CacheReadTokens,
+		InputTokens:           summary.Accounting.Composition.Input.TotalTokens,
+		OutputTokens:          summary.Accounting.Composition.Output.TotalTokens,
+		ReasoningTokens:       summary.Accounting.Composition.Output.ReasoningTokens,
+		CacheReadTokens:       summary.Accounting.Composition.Input.CacheReadTokens,
+		CacheWriteTokens:      summary.Accounting.Composition.Input.CacheWriteTokens,
 		SuccessRate:           summary.SuccessRate,
 		CostAvailable:         summary.CostAvailable,
 		CostStatus:            summary.CostStatus,
@@ -302,6 +349,39 @@ func mapAnalyticsSummaryPayload(summary dto.AnalyticsSummary) analyticsSummaryPa
 		CacheReadCoverage:     summary.CacheReadCoverage,
 		CacheReadShareState:   summary.CacheReadShareState,
 		EstimatedCacheSavings: summary.EstimatedCacheSavings,
+		Accounting:            mapAnalyticsAccountingSummaryPayload(summary.Accounting),
+	}
+}
+
+func mapAnalyticsAccountingSummaryPayload(accounting dto.AnalyticsAccountingSummary) analyticsAccountingSummaryPayload {
+	return analyticsAccountingSummaryPayload{
+		TotalAttempts: accounting.TotalAttempts,
+		ValidAttempts: accounting.ValidAttempts,
+		CoveragePct:   accounting.CoveragePct,
+		States: analyticsAccountingStatesPayload{
+			Absent: accounting.States.Absent,
+			Valid:  accounting.States.Valid,
+		},
+		ValidQuality: analyticsAccountingValidQualityPayload{
+			Complete:     accounting.ValidQuality.Complete,
+			Inconsistent: accounting.ValidQuality.Inconsistent,
+			Unclassified: accounting.ValidQuality.Unclassified,
+		},
+		Composition: analyticsAccountingCompositionPayload{
+			TotalTokens: accounting.Composition.TotalTokens,
+			Input: analyticsAccountingInputPayload{
+				TotalTokens:      accounting.Composition.Input.TotalTokens,
+				UncachedTokens:   accounting.Composition.Input.UncachedTokens,
+				CacheReadTokens:  accounting.Composition.Input.CacheReadTokens,
+				CacheWriteTokens: accounting.Composition.Input.CacheWriteTokens,
+			},
+			Output: analyticsAccountingOutputPayload{
+				TotalTokens:        accounting.Composition.Output.TotalTokens,
+				NonReasoningTokens: accounting.Composition.Output.NonReasoningTokens,
+				ReasoningTokens:    accounting.Composition.Output.ReasoningTokens,
+			},
+			UnclassifiedTokens: accounting.Composition.UnclassifiedTokens,
+		},
 	}
 }
 
@@ -309,20 +389,21 @@ func mapAnalyticsTrendPoints(points []dto.AnalyticsTrendPoint) []analyticsTrendP
 	result := make([]analyticsTrendPoint, 0, len(points))
 	for _, point := range points {
 		result = append(result, analyticsTrendPoint{
-			Label:           point.Label,
-			BucketStart:     point.BucketStart,
-			BucketEnd:       point.BucketEnd,
-			TotalCost:       point.TotalCost,
-			TotalTokens:     point.TotalTokens,
-			InputTokens:     point.InputTokens,
-			OutputTokens:    point.OutputTokens,
-			ReasoningTokens: point.ReasoningTokens,
-			CachedTokens:    point.CachedTokens,
-			RequestCount:    point.RequestCount,
-			SuccessCount:    point.SuccessCount,
-			FailureCount:    point.FailureCount,
-			CostAvailable:   point.CostAvailable,
-			CostStatus:      point.CostStatus,
+			Label:                  point.Label,
+			BucketStart:            point.BucketStart,
+			BucketEnd:              point.BucketEnd,
+			TotalCost:              point.TotalCost,
+			TotalTokens:            point.TotalTokens,
+			InputTokens:            point.InputTokens,
+			OutputTokens:           point.OutputTokens,
+			ReasoningTokens:        point.ReasoningTokens,
+			CacheReadTokens:        point.CachedTokens,
+			RequestCount:           point.RequestCount,
+			SuccessCount:           point.SuccessCount,
+			FailureCount:           point.FailureCount,
+			CanonicalValidAttempts: point.CanonicalValidAttempts,
+			CostAvailable:          point.CostAvailable,
+			CostStatus:             point.CostStatus,
 		})
 	}
 	return result
@@ -340,28 +421,28 @@ func mapAnalyticsModelRows(rows []dto.AnalyticsModelBreakdown) []analyticsModelR
 	result := make([]analyticsModelRow, 0, len(rows))
 	for _, row := range rows {
 		result = append(result, analyticsModelRow{
-			Model:                 row.Model,
-			Provider:              row.Provider,
-			TotalCost:             row.TotalCost,
-			TotalTokens:           row.TotalTokens,
-			RequestCount:          row.RequestCount,
-			SuccessCount:          row.SuccessCount,
-			FailureCount:          row.FailureCount,
-			InputTokens:           row.InputTokens,
-			OutputTokens:          row.OutputTokens,
-			ReasoningTokens:       row.ReasoningTokens,
-			CachedTokens:          row.CachedTokens,
-			CacheReadTokens:       row.CacheReadTokens,
-			SuccessRate:           row.SuccessRate,
-			TotalLatencyMS:        row.TotalLatencyMS,
-			LatencySampleCount:    row.LatencySampleCount,
-			AverageLatencyMS:      row.AverageLatencyMS,
-			CostAvailable:         row.CostAvailable,
-			CostStatus:            row.CostStatus,
-			CacheReadShare:        row.CacheReadShare,
-			CacheReadCoverage:     row.CacheReadCoverage,
-			CacheReadShareState:   row.CacheReadShareState,
-			EstimatedCacheSavings: row.EstimatedCacheSavings,
+			Model:                  row.Model,
+			Provider:               row.Provider,
+			TotalCost:              row.TotalCost,
+			TotalTokens:            row.TotalTokens,
+			RequestCount:           row.RequestCount,
+			SuccessCount:           row.SuccessCount,
+			FailureCount:           row.FailureCount,
+			InputTokens:            row.InputTokens,
+			OutputTokens:           row.OutputTokens,
+			ReasoningTokens:        row.ReasoningTokens,
+			CacheReadTokens:        row.CacheReadTokens,
+			CanonicalValidAttempts: row.CanonicalValidAttempts,
+			SuccessRate:            row.SuccessRate,
+			TotalLatencyMS:         row.TotalLatencyMS,
+			LatencySampleCount:     row.LatencySampleCount,
+			AverageLatencyMS:       row.AverageLatencyMS,
+			CostAvailable:          row.CostAvailable,
+			CostStatus:             row.CostStatus,
+			CacheReadShare:         row.CacheReadShare,
+			CacheReadCoverage:      row.CacheReadCoverage,
+			CacheReadShareState:    row.CacheReadShareState,
+			EstimatedCacheSavings:  row.EstimatedCacheSavings,
 		})
 	}
 	return result
@@ -389,12 +470,13 @@ func mapAnalyticsProviderOptions(options []dto.AnalyticsProviderOption) []analyt
 	result := make([]analyticsProviderOption, 0, len(options))
 	for _, option := range options {
 		result = append(result, analyticsProviderOption{
-			Provider:      option.Provider,
-			RequestCount:  option.RequestCount,
-			TotalTokens:   option.TotalTokens,
-			TotalCost:     option.TotalCost,
-			CostAvailable: option.CostAvailable,
-			CostStatus:    option.CostStatus,
+			Provider:               option.Provider,
+			RequestCount:           option.RequestCount,
+			TotalTokens:            option.TotalTokens,
+			CanonicalValidAttempts: option.CanonicalValidAttempts,
+			TotalCost:              option.TotalCost,
+			CostAvailable:          option.CostAvailable,
+			CostStatus:             option.CostStatus,
 		})
 	}
 	return result
@@ -418,16 +500,17 @@ func mapAnalyticsHeatmap(heatmap dto.AnalyticsHeatmap) analyticsHeatmapPayload {
 		cells := make([]analyticsHeatmapCell, 0, len(row.Cells))
 		for _, cell := range row.Cells {
 			cells = append(cells, analyticsHeatmapCell{
-				Hour:          cell.Hour,
-				InRange:       cell.InRange,
-				BucketStart:   cell.BucketStart,
-				BucketEnd:     cell.BucketEnd,
-				TotalTokens:   cell.TotalTokens,
-				TotalCost:     cell.TotalCost,
-				RequestCount:  cell.RequestCount,
-				FailureCount:  cell.FailureCount,
-				CostAvailable: cell.CostAvailable,
-				CostStatus:    cell.CostStatus,
+				Hour:                   cell.Hour,
+				InRange:                cell.InRange,
+				BucketStart:            cell.BucketStart,
+				BucketEnd:              cell.BucketEnd,
+				TotalTokens:            cell.TotalTokens,
+				TotalCost:              cell.TotalCost,
+				RequestCount:           cell.RequestCount,
+				FailureCount:           cell.FailureCount,
+				CanonicalValidAttempts: cell.CanonicalValidAttempts,
+				CostAvailable:          cell.CostAvailable,
+				CostStatus:             cell.CostStatus,
 			})
 		}
 		rows = append(rows, analyticsHeatmapRow{
@@ -451,32 +534,34 @@ func mapAnalyticsKeyAliasRow(row dto.AnalyticsKeyAliasBreakdown) analyticsKeyAli
 	trend := make([]analyticsKeyAliasTrendPoint, 0, len(row.Trend))
 	for _, point := range row.Trend {
 		trend = append(trend, analyticsKeyAliasTrendPoint{
-			Label:         point.Label,
-			TotalCost:     point.TotalCost,
-			TotalTokens:   point.TotalTokens,
-			CostAvailable: point.CostAvailable,
-			CostStatus:    point.CostStatus,
+			Label:                  point.Label,
+			TotalCost:              point.TotalCost,
+			TotalTokens:            point.TotalTokens,
+			CanonicalValidAttempts: point.CanonicalValidAttempts,
+			CostAvailable:          point.CostAvailable,
+			CostStatus:             point.CostStatus,
 		})
 	}
 	return analyticsKeyAliasRow{
-		Label:         row.Label,
-		Alias:         row.Alias,
-		Traceability:  row.Traceability,
-		Identity:      row.MaskedIdentity,
-		AuthType:      authType,
-		AuthTypeName:  row.AuthTypeName,
-		Type:          row.Type,
-		Provider:      row.Provider,
-		IsDeleted:     row.IsDeleted,
-		TotalCost:     row.TotalCost,
-		TotalTokens:   row.TotalTokens,
-		RequestCount:  row.RequestCount,
-		SuccessCount:  row.SuccessCount,
-		FailureCount:  row.FailureCount,
-		SuccessRate:   row.SuccessRate,
-		LastUsedAt:    row.LastUsedAt,
-		CostAvailable: row.CostAvailable,
-		CostStatus:    row.CostStatus,
-		Trend:         trend,
+		Label:                  row.Label,
+		Alias:                  row.Alias,
+		Traceability:           row.Traceability,
+		Identity:               row.MaskedIdentity,
+		AuthType:               authType,
+		AuthTypeName:           row.AuthTypeName,
+		Type:                   row.Type,
+		Provider:               row.Provider,
+		IsDeleted:              row.IsDeleted,
+		TotalCost:              row.TotalCost,
+		TotalTokens:            row.TotalTokens,
+		CanonicalValidAttempts: row.CanonicalValidAttempts,
+		RequestCount:           row.RequestCount,
+		SuccessCount:           row.SuccessCount,
+		FailureCount:           row.FailureCount,
+		SuccessRate:            row.SuccessRate,
+		LastUsedAt:             row.LastUsedAt,
+		CostAvailable:          row.CostAvailable,
+		CostStatus:             row.CostStatus,
+		Trend:                  trend,
 	}
 }

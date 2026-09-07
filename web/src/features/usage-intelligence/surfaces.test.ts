@@ -22,6 +22,7 @@ function viewModel(overrides: Partial<UsageDashboardViewModel> = {}): UsageDashb
     modelMixCostStateLabel: "Cost unavailable, by tokens",
     hasLeaderboardBreakdown: false,
     leaderboardSortLabel: "Sort: Cost",
+    accountingCaption: "Canonical accounting unavailable",
     kpiData: null,
     ...overrides,
   }
@@ -175,6 +176,7 @@ describe("buildUsageDashboardSurfaces", () => {
             bucket_start: "2026-05-18T00:00:00Z",
             bucket_end: "2026-05-18T01:00:00Z",
             total_tokens: 1,
+            canonical_valid_attempts: 1,
             total_cost: 0,
             request_count: 1,
             failure_count: 0,

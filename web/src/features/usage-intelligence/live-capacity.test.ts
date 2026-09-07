@@ -19,7 +19,9 @@ function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
     identity: "codex-auth",
     type: "codex",
     provider: "Codex",
+    disabled: false,
     total_tokens: 0,
+    canonical_valid_attempts: 0,
     total_cost: 0,
     cost_available: false,
     last_used_at: null,
@@ -112,9 +114,80 @@ describe("Live Capacity view model", () => {
       weekly: { valueLabel: "80% used", resetLabel: "2h", progress: 80, tone: "amber" },
       observedAt: "2026-08-31T01:00:00Z",
       expiresAt: "2026-08-31T01:05:00Z",
-      activeStart: "2026-08-01T00:00:00Z",
+      // Past subscription starts are suppressed; only the end date survives.
+      activeStart: null,
       activeUntil: "2026-09-01T00:00:00Z",
     })
+  })
+
+  it("prefers window.seconds over label-only rows regardless of array position", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [
+            { key: "legacy_5h", label: "5h", usedPercent: 10 },
+            { key: "rate_limit.primary_window", label: "Codex 5h", usedPercent: 25, window: { seconds: 18_000 } },
+            { key: "legacy_weekly", label: "Weekly", usedPercent: 20 },
+            { key: "rate_limit.secondary_window", label: "Spark Weekly", usedPercent: 80, window: { seconds: 604_800 } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].fiveHour).toMatchObject({ label: "Codex 5h", valueLabel: "25% used", windowSeconds: 18_000 })
+    expect(rows[0].weekly).toMatchObject({ label: "Spark Weekly", valueLabel: "80% used", windowSeconds: 604_800 })
+  })
+
+  it("derives metric window seconds from Kimi duration+unit windows", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "kimi-auth", provider: "Kimi", type: "kimi" })],
+      cachedQuota: {
+        items: [{
+          id: "kimi-auth",
+          quota: [
+            { key: "limits.hourly", label: "Hourly quota", usedPercent: 10, window: { duration: 5, unit: "hour" } },
+            { key: "limits.weekly", label: "Weekly quota", usedPercent: 20, window: { duration: 7, unit: "day" } },
+            { key: "limits.custom", label: "Custom quota", usedPercent: 30, window: { duration: 2, unit: "fortnight" } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].weekly).toMatchObject({ label: "Weekly quota", windowSeconds: 604_800 })
+    expect(rows[0].additionalMetrics.map((metric) => metric.windowSeconds)).toEqual([18_000, undefined])
+  })
+
+  it("slots normalized Kimi summary and limits rows into Weekly and 5h", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "kimi-auth", provider: "Kimi", type: "kimi" })],
+      cachedQuota: {
+        items: [{
+          id: "kimi-auth",
+          quota: [
+            { key: "usage", label: "Weekly", scope: "summary", usedPercent: 10.4, window: { seconds: 604_800 } },
+            { key: "limits.0", label: "5h", usedPercent: 69.5, window: { duration: 300, unit: "minute", seconds: 18_000 } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].fiveHour).toMatchObject({ label: "5h", valueLabel: "70% used", windowSeconds: 18_000 })
+    expect(rows[0].weekly).toMatchObject({ label: "Weekly", valueLabel: "10% used", windowSeconds: 604_800 })
+    expect(rows[0].additionalMetrics).toEqual([])
+  })
+
+  it("keeps the subscription start when it is still in the future", () => {
+    const futureStart = new Date(Date.now() + 7 * 86_400_000).toISOString()
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        identity: "codex-auth",
+        active_start: futureStart,
+      })],
+    })
+
+    expect(rows[0].activeStart).toBe(futureStart)
   })
 
   it("retains every additional quota row returned by the probe", () => {
@@ -150,8 +223,243 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows[0].status).toBe("no_cache")
-    expect(rows[0].statusLabel).toBe("No cached probe")
+    expect(rows[0].errorLabel).toBeUndefined()
     expect(rows[0].fiveHour).toBeUndefined()
+  })
+
+  it("keeps account availability evidence separate from quota-probe state", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        status: "error",
+        unavailable: true,
+        metadata_observed_at: "2026-09-07T08:00:00Z",
+        last_refresh: "2026-09-07T07:45:00Z",
+        next_retry_after: "2026-09-07T08:30:00Z",
+      })],
+      cachedQuota: { items: [] },
+    })
+
+    expect(rows[0]).toMatchObject({
+      status: "no_cache",
+      unavailable: true,
+      accountState: { kind: "error", label: "Error", tone: "red" },
+      metadataObservedAt: "2026-09-07T08:00:00Z",
+      lastRefresh: "2026-09-07T07:45:00Z",
+      nextRetryAfter: "2026-09-07T08:30:00Z",
+    })
+  })
+
+  it("keeps passive CPA observations separate from manual probe state and plan", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        identity: "codex-auth",
+        plan_type: "team",
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          active_limit: "codex_bengalfox",
+          quota: [
+            { key: "codex.rate_limit.primary", label: "5h", usedPercent: 99, planType: "pro", window: { seconds: 18_000 } },
+          ],
+        },
+        passive_model_quotas: [
+          {
+            source: "cpa_passive",
+            scope: "model",
+            model: "gpt-5.3-codex",
+            observed_at: "2026-09-07T07:30:00Z",
+            quota: [
+              { key: "codex.model.secondary", label: "Weekly", usedPercent: 80, window: { seconds: 604_800 } },
+            ],
+          },
+        ],
+      })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          cachedAt: "2026-09-07T09:00:00Z",
+          expiresAt: "2026-09-07T09:05:00Z",
+          quota: [{ key: "manual", label: "5h", usedPercent: 10, planType: "team" }],
+        }],
+      },
+    })
+
+    expect(rows[0]).toMatchObject({
+      planType: "team",
+      planLabel: "Team",
+      isPriorityAccount: false,
+      isConstrained: false,
+      observedAt: "2026-09-07T09:00:00Z",
+      expiresAt: "2026-09-07T09:05:00Z",
+      fiveHour: { valueLabel: "10% used" },
+      passiveQuota: {
+        source: "cpa_passive",
+        observedAt: "2026-09-07T08:00:00Z",
+        activeLimit: "codex_bengalfox",
+        metrics: [{ label: "5h", valueLabel: "99% used" }],
+      },
+      passiveModelQuotas: [{
+        model: "gpt-5.3-codex",
+        observedAt: "2026-09-07T07:30:00Z",
+        metrics: [{ label: "Weekly", valueLabel: "80% used" }],
+      }],
+    })
+  })
+
+  it("drops malformed or unsupported passive projections without inventing zero state", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({
+          identity: "unsupported",
+          provider: "Gemini",
+          type: "gemini-cli",
+          passive_quota: { source: "cpa_passive", scope: "account", observed_at: "2026-09-07T08:00:00Z", quota: [{ key: "bad", label: "Bad", usedPercent: 0 }] },
+        }),
+        identity({
+          identity: "malformed",
+          passive_quota: { source: "cpa_passive", scope: "account", observed_at: "bad-time", quota: [{ key: "bad", label: "Bad", usedPercent: 0 }] },
+          passive_model_quotas: [],
+        }),
+      ],
+    })
+
+    expect(rows.map((row) => [row.authIndex, row.passiveQuota, row.passiveModelQuotas])).toEqual([
+      ["malformed", undefined, []],
+      ["unsupported", undefined, []],
+    ])
+  })
+
+  it("preserves standalone limit state, zero-second reset and active-limit observations", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          active_limit: "codex_bengalfox",
+          quota: [
+            { key: "state", label: "Limit state", limitReached: true },
+            { key: "reset", label: "Retry hint", resetAfterSeconds: 0 },
+          ],
+        },
+        passive_model_quotas: [{
+          source: "cpa_passive",
+          scope: "model",
+          model: "gpt-5.3-codex",
+          observed_at: "2026-09-07T07:30:00Z",
+          active_limit: "model_limit",
+          quota: [],
+        }],
+      })],
+    })
+
+    expect(rows[0].passiveQuota).toMatchObject({
+      activeLimit: "codex_bengalfox",
+      metrics: [
+        { valueLabel: "Limit reached", tone: "red" },
+        { resetLabel: "0s" },
+      ],
+    })
+    expect(rows[0].passiveModelQuotas).toEqual([{
+      source: "cpa_passive",
+      model: "gpt-5.3-codex",
+      observedAt: "2026-09-07T07:30:00Z",
+      activeLimit: "model_limit",
+      metrics: [],
+    }])
+  })
+
+  it("keeps numeric limit state visible and does not mark unlimited credits exhausted", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: "2026-09-07T08:00:00Z",
+          quota: [
+            { key: "window", label: "Weekly", usedPercent: 53, allowed: false, limitReached: true },
+            { key: "credits", label: "Credits", remaining: 0, unit: "credits", hasCredits: false, unlimited: true },
+          ],
+        },
+      })],
+    })
+
+    expect(rows[0].passiveQuota?.metrics).toEqual([
+      expect.objectContaining({ valueLabel: "53% used · Blocked", tone: "red" }),
+      expect.objectContaining({ valueLabel: "Unlimited · No credits", tone: "muted" }),
+    ])
+  })
+
+  it("keeps missing account state and availability explicit", () => {
+    const rows = buildLiveCapacityRows({ identities: [identity({ status: undefined, unavailable: undefined })] })
+
+    expect(rows[0].unavailable).toBeNull()
+    expect(rows[0].accountState).toMatchObject({ kind: "not_reported", label: "State not reported", tone: "muted" })
+    expect(rows[0].accountState.kind).not.toBe("active")
+  })
+
+  it.each([
+    ["active", "Active", "green"],
+    ["pending", "Pending", "amber"],
+    ["refreshing", "Refreshing", "amber"],
+    ["error", "Error", "red"],
+    ["disabled", "Disabled state", "amber"],
+    ["unknown", "Unknown", "muted"],
+    ["other", "Other state", "muted"],
+  ] as const)("maps the bounded %s account status without provider text", (status, label, tone) => {
+    const rows = buildLiveCapacityRows({ identities: [identity({ status })] })
+    expect(rows[0].accountState).toMatchObject({ kind: status, label, tone })
+  })
+
+  it("builds a disabled row whose status wins over cached quota and task state", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ id: 42, identity: "codex-auth", disabled: true, unavailable: true, status: "error" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 25 }],
+        }],
+      },
+      taskStates: {
+        "codex-auth": { status: "running", taskId: "task-1" },
+      },
+    })
+
+    expect(rows[0]).toMatchObject({
+      id: 42,
+      disabled: true,
+      unavailable: true,
+      accountState: { kind: "error" },
+      status: "disabled",
+    })
+    expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
+  })
+
+  it("maps the disabled refresh rejection to a Disabled label", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      taskStates: {
+        "codex-auth": { status: "failed", error: "disabled" },
+      },
+    })
+
+    expect(rows[0].status).toBe("failed")
+    expect(rows[0].errorLabel).toBe("Disabled")
+  })
+
+  it("keeps disabled rows in base business order so the card can sink them at render time", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [
+        identity({ identity: "beta-codex", displayName: "Beta" }),
+        identity({ identity: "alpha-codex", displayName: "Alpha", disabled: true }),
+      ],
+    })
+
+    expect(rows.map((row) => [row.authIndex, row.status])).toEqual([
+      ["alpha-codex", "disabled"],
+      ["beta-codex", "no_cache"],
+    ])
   })
 
   it("uses identity plan type for initial priority before quota cache exists", () => {
@@ -233,7 +541,7 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows[0].status).toBe("failed")
-    expect(rows[0].statusLabel).toBe("Refresh unavailable")
+    expect(rows[0].errorLabel).toBe("Refresh unavailable")
   })
 
   it("marks a row refreshing immediately while refresh request is starting", () => {
@@ -251,7 +559,7 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows[0].status).toBe("refreshing")
-    expect(rows[0].statusLabel).toBe("Starting")
+    expect(rows[0].errorLabel).toBeUndefined()
     expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
   })
 
@@ -285,7 +593,7 @@ describe("Live Capacity view model", () => {
     expect(rows[0].status).toBe("cached")
     expect(rows[0].additionalMetrics[0]).toMatchObject({
       label: "gemini-2.5-pro_vertex",
-      valueLabel: "2% left",
+      valueLabel: "98% used",
       progress: 98,
       tone: "red",
     })
@@ -294,7 +602,7 @@ describe("Live Capacity view model", () => {
       valueLabel: "10 left",
     })
     expect(rows[0].isConstrained).toBe(true)
-    expect(rows[0].resetLabel).toContain("May 9")
+    expect(rows[0].resetLabel).toMatch(/^\d{1,2}\/\d{1,2} \d{2}:\d{2}$/)
   })
 
   it("treats remaining-only zero quota as constrained", () => {

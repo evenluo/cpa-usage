@@ -9,6 +9,7 @@ function heatmapCell(overrides: Partial<HeatmapCell> = {}): HeatmapCell {
     bucket_start: "2026-05-11T00:00:00Z",
     bucket_end: "2026-05-11T01:00:00Z",
     total_tokens: 100,
+    canonical_valid_attempts: 1,
     total_cost: 0.5,
     request_count: 2,
     failure_count: 0,

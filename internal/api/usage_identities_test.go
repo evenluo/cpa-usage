@@ -126,9 +126,17 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 	firstUsedAt := time.Date(2026, 5, 4, 8, 0, 0, 0, time.UTC)
 	lastUsedAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
 	statsUpdatedAt := time.Date(2026, 5, 4, 10, 0, 0, 0, time.UTC)
+	lastRefresh := time.Date(2026, 5, 4, 9, 30, 0, 0, time.UTC)
+	nextRetryAfter := time.Date(2026, 5, 4, 10, 45, 0, 0, time.UTC)
+	metadataObservedAt := time.Date(2026, 5, 4, 10, 30, 0, 0, time.UTC)
 	createdAt := time.Date(2026, 5, 3, 8, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, 5, 4, 10, 30, 0, 0, time.UTC)
 	deletedAt := time.Date(2026, 5, 4, 11, 0, 0, 0, time.UTC)
+	status := "error"
+	unavailable := true
+	passiveUsedPercent := float64(51)
+	passiveAllowed := true
+	passiveObservedAt := time.Date(2026, 5, 4, 8, 30, 0, 0, time.UTC)
 
 	activeIdentity := entities.UsageIdentity{
 		ID:                         1,
@@ -150,8 +158,22 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		FirstUsedAt:                &firstUsedAt,
 		LastUsedAt:                 &lastUsedAt,
 		StatsUpdatedAt:             &statsUpdatedAt,
-		CreatedAt:                  createdAt,
-		UpdatedAt:                  updatedAt,
+		AuthFileStatus:             &status,
+		Unavailable:                &unavailable,
+		LastRefresh:                &lastRefresh,
+		NextRetryAfter:             &nextRetryAfter,
+		MetadataObservedAt:         &metadataObservedAt,
+		PassiveQuota: &entities.PassiveQuotaObservation{
+			ObservedAt:  passiveObservedAt,
+			ActiveLimit: "codex_bengalfox",
+			Quota:       []entities.PassiveQuotaMetric{{Key: "codex.rate_limit.primary", Label: "5h", Scope: "account", UsedPercent: &passiveUsedPercent}},
+		},
+		PassiveModelQuotas: []entities.PassiveModelQuotaObservation{{
+			Model: "gpt-5.3-codex", ObservedAt: passiveObservedAt.Add(-time.Hour),
+			Quota: []entities.PassiveQuotaMetric{{Key: "codex.model.primary", Label: "5h", Scope: "model", Allowed: &passiveAllowed}},
+		}},
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 	deletedIdentity := entities.UsageIdentity{
 		ID:           2,
@@ -197,17 +219,65 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		`"input_tokens":100`,
 		`"output_tokens":200`,
 		`"reasoning_tokens":30`,
-		`"cached_tokens":40`,
+		`"cache_read_tokens":40`,
+		`"passive_quota":{"source":"cpa_passive","scope":"account","observed_at":"2026-05-04T08:30:00Z","active_limit":"codex_bengalfox","quota":[{"key":"codex.rate_limit.primary","label":"5h","scope":"account","usedPercent":51}]}`,
+		`"passive_model_quotas":[{"source":"cpa_passive","scope":"model","model":"gpt-5.3-codex","observed_at":"2026-05-04T07:30:00Z","quota":[{"key":"codex.model.primary","label":"5h","scope":"model","allowed":true}]}]`,
 		`"total_tokens":370`,
 		`"last_aggregated_usage_event_id":99`,
 		`"first_used_at":"2026-05-04T08:00:00Z"`,
 		`"last_used_at":"2026-05-04T09:00:00Z"`,
 		`"stats_updated_at":"2026-05-04T10:00:00Z"`,
+		`"status":"error"`,
+		`"unavailable":true`,
+		`"last_refresh":"2026-05-04T09:30:00Z"`,
+		`"next_retry_after":"2026-05-04T10:45:00Z"`,
+		`"metadata_observed_at":"2026-05-04T10:30:00Z"`,
 		`"is_deleted":false`,
 	} {
 		if !contains(body, expected) {
 			t.Fatalf("expected %s in response body: %s", expected, body)
 		}
+	}
+	for _, forbidden := range []string{"signals", "Authorization", "Retry-After"} {
+		if contains(body, forbidden) {
+			t.Fatalf("raw passive signal material %q must not be projected: %s", forbidden, body)
+		}
+	}
+}
+
+func TestUsageIdentitiesRoutePreservesMissingAvailabilityEvidence(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{UsageIdentity: usageIdentitiesStub{activeItems: []entities.UsageIdentity{{
+		ID: 1, Name: "Disk-only auth file", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-disk", Type: "codex", Provider: "Codex",
+	}}}})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/identities", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	for _, absent := range []string{`"status"`, `"unavailable"`, `"last_refresh"`, `"next_retry_after"`, `"metadata_observed_at"`, `"passive_quota"`, `"passive_model_quotas"`} {
+		if contains(body, absent) {
+			t.Fatalf("expected missing availability field %s to remain absent, got %s", absent, body)
+		}
+	}
+}
+
+func TestMapUsageIdentityResponsePreservesActiveLimitOnlyPassiveObservation(t *testing.T) {
+	observedAt := time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC)
+	got := mapUsageIdentityResponse(entities.UsageIdentity{
+		AuthType: entities.UsageIdentityAuthTypeAuthFile,
+		PassiveQuota: &entities.PassiveQuotaObservation{
+			ObservedAt: observedAt, ActiveLimit: "codex_bengalfox",
+		},
+	}, nil)
+	if got.PassiveQuota == nil || got.PassiveQuota.ActiveLimit != "codex_bengalfox" || !got.PassiveQuota.ObservedAt.Equal(observedAt) {
+		t.Fatalf("expected active-limit-only passive observation, got %+v", got.PassiveQuota)
+	}
+	if got.PassiveQuota.Quota == nil || len(got.PassiveQuota.Quota) != 0 {
+		t.Fatalf("expected stable empty quota array, got %+v", got.PassiveQuota.Quota)
 	}
 }
 
@@ -668,5 +738,79 @@ func TestUsageIdentityReplacesLegacyMetadataRoutes(t *testing.T) {
 		if resp.Code != http.StatusNotFound {
 			t.Fatalf("expected %s to return 404, got %d: %s", path, resp.Code, resp.Body.String())
 		}
+	}
+}
+
+type accountStatusStub struct {
+	gotID       uint
+	gotDisabled bool
+	err         error
+}
+
+func (s *accountStatusStub) SetIdentityDisabled(_ context.Context, id uint, disabled bool) error {
+	s.gotID = id
+	s.gotDisabled = disabled
+	return s.err
+}
+
+func TestSetUsageIdentityDisabledRouteTogglesAccount(t *testing.T) {
+	stub := &accountStatusStub{}
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{AccountStatus: stub})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/7/disabled", strings.NewReader(`{"disabled":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, resp.Body.String())
+	}
+	if stub.gotID != 7 || !stub.gotDisabled {
+		t.Fatalf("expected provider to receive id=7 disabled=true, got id=%d disabled=%v", stub.gotID, stub.gotDisabled)
+	}
+	if !contains(resp.Body.String(), `"disabled":true`) {
+		t.Fatalf("expected disabled in response body: %s", resp.Body.String())
+	}
+}
+
+func TestSetUsageIdentityDisabledRouteValidatesPayload(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{AccountStatus: &accountStatusStub{}})
+	for _, body := range []string{`{}`, `{"disabled":"yes"}`, `not-json`} {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/7/disabled", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		resp := httptest.NewRecorder()
+
+		router.ServeHTTP(resp, req)
+
+		if resp.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400 for body %s, got %d: %s", body, resp.Code, resp.Body.String())
+		}
+	}
+}
+
+func TestSetUsageIdentityDisabledRouteMapsServiceErrors(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		statusCode int
+	}{
+		{name: "identity missing", err: service.ErrUsageIdentityMissing, statusCode: http.StatusNotFound},
+		{name: "not auth file", err: service.ErrIdentityNotAuthFile, statusCode: http.StatusUnprocessableEntity},
+		{name: "missing in cpa", err: service.ErrAuthFileNotFoundInCPA, statusCode: http.StatusNotFound},
+		{name: "cpa failure", err: errors.New("cpa unavailable"), statusCode: http.StatusInternalServerError},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{AccountStatus: &accountStatusStub{err: testCase.err}})
+			req := httptest.NewRequest(http.MethodPut, "/api/v1/usage/identities/7/disabled", strings.NewReader(`{"disabled":true}`))
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+
+			router.ServeHTTP(resp, req)
+
+			if resp.Code != testCase.statusCode {
+				t.Fatalf("expected status %d, got %d: %s", testCase.statusCode, resp.Code, resp.Body.String())
+			}
+		})
 	}
 }

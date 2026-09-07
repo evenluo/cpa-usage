@@ -7,11 +7,11 @@ type costCompletenessAssessment struct {
 	Status    string
 }
 
-func assessCostCompleteness(missingPricingEvents int64, pricedBillableEvents int64) costCompletenessAssessment {
+func assessCostCompleteness(missingPricingEvents int64, knownCostAttempts int64) costCompletenessAssessment {
 	if missingPricingEvents == 0 {
 		return costCompletenessAssessment{Available: true, Status: dto.CostStatusAvailable}
 	}
-	if pricedBillableEvents > 0 {
+	if knownCostAttempts > 0 {
 		return costCompletenessAssessment{Status: dto.CostStatusPartial}
 	}
 	return costCompletenessAssessment{Status: dto.CostStatusUnavailable}

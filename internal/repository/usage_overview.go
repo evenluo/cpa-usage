@@ -63,7 +63,6 @@ func buildUsageOverviewFromEvents(events []entities.UsageEvent, filter dto.Usage
 		},
 		Summary: dto.UsageOverviewSummaryRecord{
 			WindowMinutes: windowMinutes,
-			CostAvailable: true,
 		},
 		Series:       newUsageOverviewSeriesRecord(),
 		HourlySeries: newUsageOverviewSeriesRecord(),
@@ -75,20 +74,20 @@ func buildUsageOverviewFromEvents(events []entities.UsageEvent, filter dto.Usage
 	}
 
 	var missingPricingEvents int64
-	var pricedBillableEvents int64
+	var knownCostAttempts int64
 	for _, event := range events {
 		_, hasPricing := pricingByModel[strings.TrimSpace(event.Model)]
-		if usageEventRequiresPricing(event) {
-			if hasPricing {
-				pricedBillableEvents++
-			} else {
-				missingPricingEvents++
-			}
+		if !usageEventHasCompleteAccounting(event) {
+			missingPricingEvents++
+		} else if !usageEventRequiresPricing(event) || hasPricing {
+			knownCostAttempts++
+		} else {
+			missingPricingEvents++
 		}
 		applyUsageEventToSnapshot(overview.Usage, event, false)
 		applyUsageEventToOverview(overview, event, bucketByDay, latestHourlyStart, pricingByModel)
 	}
-	overview.Summary.CostAvailable = assessCostCompleteness(missingPricingEvents, pricedBillableEvents).Available
+	overview.Summary.CostAvailable = assessCostCompleteness(missingPricingEvents, knownCostAttempts).Available
 	finalizeUsageOverview(overview, false)
 	return overview
 }
@@ -126,6 +125,7 @@ func buildUsageSnapshotFromEvents(events []entities.UsageEvent) *dto.StatisticsS
 func applyUsageEventToSnapshot(snapshot *dto.StatisticsSnapshot, event entities.UsageEvent, includeDetails bool) {
 	apiKey := normalizeUsageOverviewDimension(event.APIGroupKey)
 	modelName := normalizeUsageOverviewDimension(event.Model)
+	tokens, canonicalAvailable := usageEventCanonicalTokenStats(event)
 
 	apiSnapshot := snapshot.APIs[apiKey]
 	if apiSnapshot.Models == nil {
@@ -135,27 +135,27 @@ func applyUsageEventToSnapshot(snapshot *dto.StatisticsSnapshot, event entities.
 	modelSnapshot := apiSnapshot.Models[modelName]
 	if includeDetails {
 		detail := dto.RequestDetail{
-			Timestamp: event.Timestamp.UTC(),
-			LatencyMS: event.LatencyMS,
-			Source:    strings.TrimSpace(event.Source),
-			AuthIndex: strings.TrimSpace(event.AuthIndex),
-			Failed:    event.Failed,
-			Tokens: dto.TokenStats{
-				InputTokens:     event.InputTokens,
-				OutputTokens:    event.OutputTokens,
-				ReasoningTokens: event.ReasoningTokens,
-				CachedTokens:    event.CachedTokens,
-				TotalTokens:     event.TotalTokens,
-			},
+			Timestamp:                event.Timestamp.UTC(),
+			LatencyMS:                event.LatencyMS,
+			Source:                   strings.TrimSpace(event.Source),
+			AuthIndex:                strings.TrimSpace(event.AuthIndex),
+			Failed:                   event.Failed,
+			Tokens:                   tokens,
+			CanonicalTokensAvailable: canonicalAvailable,
 		}
 		modelSnapshot.Details = append(modelSnapshot.Details, detail)
 	}
 	modelSnapshot.TotalRequests++
-	modelSnapshot.TotalTokens += event.TotalTokens
+	modelSnapshot.TotalTokens += tokens.TotalTokens
 	apiSnapshot.TotalRequests++
-	apiSnapshot.TotalTokens += event.TotalTokens
+	apiSnapshot.TotalTokens += tokens.TotalTokens
 	snapshot.TotalRequests++
-	snapshot.TotalTokens += event.TotalTokens
+	snapshot.TotalTokens += tokens.TotalTokens
+	if canonicalAvailable {
+		modelSnapshot.CanonicalValidAttempts++
+		apiSnapshot.CanonicalValidAttempts++
+		snapshot.CanonicalValidAttempts++
+	}
 	if event.Failed {
 		modelSnapshot.FailureCount++
 		apiSnapshot.FailureCount++
@@ -170,8 +170,8 @@ func applyUsageEventToSnapshot(snapshot *dto.StatisticsSnapshot, event entities.
 	hourKey := event.Timestamp.UTC().Format("2006-01-02T15:00:00Z")
 	snapshot.RequestsByDay[dayKey]++
 	snapshot.RequestsByHour[hourKey]++
-	snapshot.TokensByDay[dayKey] += event.TotalTokens
-	snapshot.TokensByHour[hourKey] += event.TotalTokens
+	snapshot.TokensByDay[dayKey] += tokens.TotalTokens
+	snapshot.TokensByHour[hourKey] += tokens.TotalTokens
 
 	apiSnapshot.Models[modelName] = modelSnapshot
 	snapshot.APIs[apiKey] = apiSnapshot
@@ -194,27 +194,33 @@ func finalizeUsageSnapshot(snapshot *dto.StatisticsSnapshot, includeDetails bool
 
 func newUsageOverviewSeriesRecord() dto.UsageOverviewSeriesRecord {
 	return dto.UsageOverviewSeriesRecord{
-		Requests:        map[string]int64{},
-		Tokens:          map[string]int64{},
-		RPM:             map[string]float64{},
-		TPM:             map[string]float64{},
-		Cost:            map[string]float64{},
-		InputTokens:     map[string]int64{},
-		OutputTokens:    map[string]int64{},
-		CachedTokens:    map[string]int64{},
-		ReasoningTokens: map[string]int64{},
-		Models:          map[string]dto.UsageOverviewSeriesRecord{},
+		Requests:               map[string]int64{},
+		Tokens:                 map[string]int64{},
+		RPM:                    map[string]float64{},
+		TPM:                    map[string]float64{},
+		Cost:                   map[string]float64{},
+		CostStatus:             map[string]string{},
+		InputTokens:            map[string]int64{},
+		OutputTokens:           map[string]int64{},
+		CachedTokens:           map[string]int64{},
+		ReasoningTokens:        map[string]int64{},
+		CanonicalValidAttempts: map[string]int64{},
+		Models:                 map[string]dto.UsageOverviewSeriesRecord{},
 	}
 }
 
-func applyUsageEventToOverviewSeries(series *dto.UsageOverviewSeriesRecord, event entities.UsageEvent, cost float64, bucketKey string, bucketMinutes int64) {
+func applyUsageEventToOverviewSeries(series *dto.UsageOverviewSeriesRecord, event entities.UsageEvent, tokens dto.TokenStats, canonicalAvailable bool, cost float64, costStatus string, bucketKey string, bucketMinutes int64) {
+	series.CostStatus[bucketKey] = mergeUsageOverviewCostStatus(series.Requests[bucketKey], series.CostStatus[bucketKey], costStatus)
 	series.Requests[bucketKey]++
-	series.Tokens[bucketKey] += event.TotalTokens
+	series.Tokens[bucketKey] += tokens.TotalTokens
 	series.Cost[bucketKey] += cost
-	series.InputTokens[bucketKey] += event.InputTokens
-	series.OutputTokens[bucketKey] += event.OutputTokens
-	series.CachedTokens[bucketKey] += event.CachedTokens
-	series.ReasoningTokens[bucketKey] += event.ReasoningTokens
+	series.InputTokens[bucketKey] += tokens.InputTokens
+	series.OutputTokens[bucketKey] += tokens.OutputTokens
+	series.CachedTokens[bucketKey] += tokens.CachedTokens
+	series.ReasoningTokens[bucketKey] += tokens.ReasoningTokens
+	if canonicalAvailable {
+		series.CanonicalValidAttempts[bucketKey]++
+	}
 	series.RPM[bucketKey] = float64(series.Requests[bucketKey]) / float64(bucketMinutes)
 	series.TPM[bucketKey] = float64(series.Tokens[bucketKey]) / float64(bucketMinutes)
 
@@ -223,44 +229,71 @@ func applyUsageEventToOverviewSeries(series *dto.UsageOverviewSeriesRecord, even
 	if modelSeries.Requests == nil {
 		modelSeries = newUsageOverviewSeriesRecord()
 	}
+	modelSeries.CostStatus[bucketKey] = mergeUsageOverviewCostStatus(modelSeries.Requests[bucketKey], modelSeries.CostStatus[bucketKey], costStatus)
 	modelSeries.Requests[bucketKey]++
-	modelSeries.Tokens[bucketKey] += event.TotalTokens
+	modelSeries.Tokens[bucketKey] += tokens.TotalTokens
 	modelSeries.Cost[bucketKey] += cost
-	modelSeries.InputTokens[bucketKey] += event.InputTokens
-	modelSeries.OutputTokens[bucketKey] += event.OutputTokens
-	modelSeries.CachedTokens[bucketKey] += event.CachedTokens
-	modelSeries.ReasoningTokens[bucketKey] += event.ReasoningTokens
+	modelSeries.InputTokens[bucketKey] += tokens.InputTokens
+	modelSeries.OutputTokens[bucketKey] += tokens.OutputTokens
+	modelSeries.CachedTokens[bucketKey] += tokens.CachedTokens
+	modelSeries.ReasoningTokens[bucketKey] += tokens.ReasoningTokens
+	if canonicalAvailable {
+		modelSeries.CanonicalValidAttempts[bucketKey]++
+	}
 	modelSeries.RPM[bucketKey] = float64(modelSeries.Requests[bucketKey]) / float64(bucketMinutes)
 	modelSeries.TPM[bucketKey] = float64(modelSeries.Tokens[bucketKey]) / float64(bucketMinutes)
 	series.Models[modelName] = modelSeries
 }
 
+func mergeUsageOverviewCostStatus(existingRequests int64, existingStatus string, incomingStatus string) string {
+	if existingRequests == 0 {
+		return incomingStatus
+	}
+	if existingStatus == incomingStatus {
+		return existingStatus
+	}
+	return dto.CostStatusPartial
+}
+
 func usageEventRequiresPricing(event entities.UsageEvent) bool {
-	return event.InputTokens > 0 || event.OutputTokens > 0 || event.CachedTokens > 0
+	if !usageEventHasCompleteAccounting(event) {
+		return false
+	}
+	facts := InterpretUsageAttempt(event).Accounting
+	return optionalInt64Value(facts.Input.UncachedTokens) > 0 || optionalInt64Value(facts.Input.CacheWriteTokens) > 0 ||
+		optionalInt64Value(facts.Input.CacheReadTokens) > 0 || optionalInt64Value(facts.Output.TotalTokens) > 0
 }
 
 func applyUsageEventToOverview(overview *dto.UsageOverviewRecord, event entities.UsageEvent, bucketByDay bool, latestHourlyStart *time.Time, pricingByModel map[string]entities.ModelPriceSetting) {
-	overview.Summary.CachedTokens += event.CachedTokens
-	overview.Summary.ReasoningTokens += event.ReasoningTokens
+	tokens, canonicalAvailable := usageEventCanonicalTokenStats(event)
+	overview.Summary.CachedTokens += tokens.CachedTokens
+	overview.Summary.ReasoningTokens += tokens.ReasoningTokens
+	if canonicalAvailable {
+		overview.Summary.CanonicalValidAttempts++
+	}
 	if event.Failed {
 		overview.Health.TotalFailure++
 	} else {
 		overview.Health.TotalSuccess++
 	}
-	pricing := pricingByModel[strings.TrimSpace(event.Model)]
+	pricing, hasPricing := pricingByModel[strings.TrimSpace(event.Model)]
 	cost := calculateUsageEventCost(event, pricing)
+	costStatus := dto.CostStatusUnavailable
+	if usageEventHasCompleteAccounting(event) && (!usageEventRequiresPricing(event) || hasPricing) {
+		costStatus = dto.CostStatusAvailable
+	}
 	overview.Summary.TotalCost += cost
 
 	bucketKey, bucketMinutes := usageOverviewBucket(event.Timestamp.UTC(), bucketByDay)
-	applyUsageEventToOverviewSeries(&overview.Series, event, cost, bucketKey, bucketMinutes)
+	applyUsageEventToOverviewSeries(&overview.Series, event, tokens, canonicalAvailable, cost, costStatus, bucketKey, bucketMinutes)
 
 	hourKey, hourMinutes := usageOverviewBucket(event.Timestamp.UTC(), false)
 	if latestHourlyStart == nil || !event.Timestamp.UTC().Before(*latestHourlyStart) {
-		applyUsageEventToOverviewSeries(&overview.HourlySeries, event, cost, hourKey, hourMinutes)
+		applyUsageEventToOverviewSeries(&overview.HourlySeries, event, tokens, canonicalAvailable, cost, costStatus, hourKey, hourMinutes)
 	}
 
 	dayKey, dayMinutes := usageOverviewBucket(event.Timestamp.UTC(), true)
-	applyUsageEventToOverviewSeries(&overview.DailySeries, event, cost, dayKey, dayMinutes)
+	applyUsageEventToOverviewSeries(&overview.DailySeries, event, tokens, canonicalAvailable, cost, costStatus, dayKey, dayMinutes)
 	updateUsageOverviewHealthBlock(overview.Health.BlockDetails, event)
 }
 

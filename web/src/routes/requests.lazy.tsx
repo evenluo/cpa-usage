@@ -10,26 +10,51 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useEvents } from "@/hooks/useEvents"
+import { buildEventsExportPath, downloadUsageEventsCSV, useEvents } from "@/hooks/useEvents"
+import { ApiError } from "@/lib/api"
 import { formatCompact, formatDate } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { UsageEvent } from "@/types/api"
+import type { RequestsSearch } from "./requests"
 
 const PAGE_SIZE = 10
+
+function buildCorrelatedAttemptsSearch(provider: string, requestId: string, windowEnd: string): RequestsSearch {
+  return {
+    provider: provider.trim(),
+    model: "",
+    modelAlias: "",
+    account: "",
+    endpoint: "",
+    status: "",
+    requestId: requestId.trim(),
+    minLatencyMS: "",
+    windowEnd: windowEnd.trim(),
+    result: "",
+  }
+}
 
 export const Route = createLazyFileRoute("/requests")({
   component: RequestsRoute,
 })
 
 function RequestsRoute() {
-  const { provider, model, result } = Route.useSearch()
+  const { provider, model, modelAlias, account, endpoint, status, requestId, minLatencyMS = "", windowEnd, result } = Route.useSearch()
   const navigate = Route.useNavigate()
   return (
     <RequestsPage
       provider={provider}
       model={model}
+      modelAlias={modelAlias}
+      account={account}
+      endpoint={endpoint}
+      status={status}
+      requestId={requestId}
+      minLatencyMS={minLatencyMS}
+      windowEnd={windowEnd}
       result={result}
       onFiltersChange={(filters) => void navigate({ search: (current) => ({ ...current, ...filters }) })}
+      onCorrelatedAttempts={(search) => void navigate({ search })}
     />
   )
 }
@@ -37,21 +62,45 @@ function RequestsRoute() {
 export function RequestsPage({
   provider,
   model = "",
+  modelAlias = "",
+  account = "",
+  endpoint = "",
+  status = "",
+  requestId = "",
+  minLatencyMS = "",
+  windowEnd = "",
   result = "",
   onFiltersChange,
+  onCorrelatedAttempts,
 }: {
   provider: string
   model?: string
+  modelAlias?: string
+  account?: string
+  endpoint?: string
+  status?: string
+  requestId?: string
+  minLatencyMS?: string
+  windowEnd?: string
   result?: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed" }) => void
+  onFiltersChange?: (filters: { model: string; modelAlias?: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; minLatencyMS?: string; windowEnd?: string }) => void
+  onCorrelatedAttempts?: (search: RequestsSearch) => void
 }) {
   return (
     <ProviderScopedRequestsPage
-      key={`${provider}:${model}:${result}`}
+      key={`${provider}:${model}:${modelAlias}:${account}:${endpoint}:${status}:${requestId}:${minLatencyMS}:${windowEnd}:${result}`}
       provider={provider}
       model={model}
+      modelAlias={modelAlias}
+      account={account}
+      endpoint={endpoint}
+      status={status}
+      requestId={requestId}
+      minLatencyMS={minLatencyMS}
+      windowEnd={windowEnd}
       result={result}
       onFiltersChange={onFiltersChange}
+      onCorrelatedAttempts={onCorrelatedAttempts}
     />
   )
 }
@@ -59,18 +108,38 @@ export function RequestsPage({
 function ProviderScopedRequestsPage({
   provider,
   model,
+  modelAlias,
+  account,
+  endpoint,
+  status,
+  requestId,
+  minLatencyMS,
+  windowEnd,
   result,
   onFiltersChange,
+  onCorrelatedAttempts,
 }: {
   provider: string
   model: string
+  modelAlias: string
+  account: string
+  endpoint: string
+  status: string
+  requestId: string
+  minLatencyMS: string
+  windowEnd: string
   result: "" | "success" | "failed"
-  onFiltersChange?: (filters: { model: string; result: "" | "success" | "failed" }) => void
+  onFiltersChange?: (filters: { model: string; modelAlias?: string; result: "" | "success" | "failed"; account?: string; endpoint?: string; status?: string; requestId?: string; minLatencyMS?: string; windowEnd?: string }) => void
+  onCorrelatedAttempts?: (search: RequestsSearch) => void
 }) {
   const [page, setPage] = useState(1)
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null)
   const [modelDraft, setModelDraft] = useState(model)
-  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, { model, result })
+  const [exportError, setExportError] = useState("")
+  const [isExporting, setIsExporting] = useState(false)
+  const { data, isLoading, error, refetch } = useEvents("24h", PAGE_SIZE, provider, page, 60_000, {
+    model, modelAlias, account, endpoint, status, requestId, minLatencyMS, windowEnd, result,
+  })
   const hasCompleteData = data !== undefined
   const events = data?.events ?? []
   const selectedEvent = events.find((event) => requestEventKey(event) === selectedEventKey) ?? events[0]
@@ -79,6 +148,35 @@ function ProviderScopedRequestsPage({
   function changePage(nextPage: number) {
     setSelectedEventKey(null)
     setPage(nextPage)
+  }
+
+  async function downloadCSV() {
+    if (!data?.window_end) {
+      return
+    }
+    setExportError("")
+    setIsExporting(true)
+    try {
+      await downloadUsageEventsCSV(buildEventsExportPath("24h", provider, {
+        model,
+        modelAlias,
+        account,
+        endpoint,
+        status,
+        requestId,
+        minLatencyMS,
+        windowEnd: data.window_end,
+        result,
+      }))
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 422) {
+        setExportError("CSV export is limited to 5,000 matching requests. Narrow the filters and try again. No file was saved.")
+      } else {
+        setExportError("Failed to download request evidence CSV. No file was saved.")
+      }
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -103,8 +201,14 @@ function ProviderScopedRequestsPage({
           <Badge variant="terracotta" data-testid="request-provider-scope">
             Provider: {provider || "All providers"}
           </Badge>
+          <Button type="button" size="sm" variant="outline" disabled={!data?.window_end || isExporting} onClick={() => void downloadCSV()}>
+            {isExporting ? "Preparing CSV…" : "Download CSV"}
+          </Button>
         </div>
       </header>
+
+      <p className="text-xs text-muted-foreground">CSV export includes the full frozen selection, up to 5,000 matching requests.</p>
+      {exportError ? <p role="alert" className="text-sm text-red-500">{exportError}</p> : null}
 
       <form
         className="grid gap-3 rounded-lg border border-border bg-card p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
@@ -137,6 +241,35 @@ function ProviderScopedRequestsPage({
         <Button type="submit" variant="outline">Apply model</Button>
       </form>
 
+      {modelAlias || account || endpoint || status || minLatencyMS ? (
+        <div className="flex flex-wrap items-center gap-2" aria-label="Diagnostic filters">
+          {modelAlias ? <Badge variant="outline">Observed alias: {modelAlias}</Badge> : null}
+          {account ? <Badge variant="outline">Account: {account}</Badge> : null}
+          {endpoint ? <Badge variant="outline">Endpoint: {endpoint}</Badge> : null}
+          {status ? <Badge variant="outline">Status: {status.toUpperCase()}</Badge> : null}
+          {minLatencyMS ? <Badge variant="outline">Latency ≥ {minLatencyMS} ms</Badge> : null}
+          <Button type="button" size="sm" variant="ghost" onClick={() => onFiltersChange?.({ model, modelAlias: "", result, account: "", endpoint: "", status: "", minLatencyMS: "", windowEnd: "" })}>
+            Clear diagnostic filters
+          </Button>
+        </div>
+      ) : null}
+
+      {requestId ? (
+        <div className="space-y-2 rounded-lg border border-terracotta-200 bg-terracotta-50/70 p-3 text-xs text-terracotta-950 dark:border-terracotta-900/60 dark:bg-terracotta-950/20 dark:text-terracotta-100" aria-label="Correlation scope">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline" className="max-w-full truncate">Request ID: {requestId}</Badge>
+            <Button type="button" size="sm" variant="ghost" onClick={() => onFiltersChange?.({ model, result, requestId: "", windowEnd: "" })}>
+              Clear correlation
+            </Button>
+          </div>
+          <p>
+            Correlated attempts are distinct observed rows in this fixed 24-hour window and the visible provider scope.
+            {provider ? " Attempts for the same request ID under other providers are not included." : " All observed providers in the window are included."}{" "}
+            Historical data may omit attempts that were collapsed before attempt-grain persistence.
+          </p>
+        </div>
+      ) : null}
+
       {hasCompleteData && error ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
           <span>Request evidence refresh failed; showing the last complete page.</span>
@@ -152,7 +285,7 @@ function ProviderScopedRequestsPage({
       ) : !hasCompleteData && error ? (
         <Card>
           <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-sm text-red-500">
-            <span>Failed to load request evidence</span>
+            <span>{error instanceof ApiError && error.status === 400 ? "Invalid request evidence filters" : "Failed to load request evidence"}</span>
             <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>Retry request evidence</Button>
           </CardContent>
         </Card>
@@ -220,6 +353,16 @@ function ProviderScopedRequestsPage({
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <RequestEvidenceEvent event={selectedEvent} label="Selected upstream attempt" detail />
+              {selectedEvent.request_id && data?.window_end ? (
+                <Button
+                  type="button"
+                  className="mt-3 w-full"
+                  variant="outline"
+                  onClick={() => onCorrelatedAttempts?.(buildCorrelatedAttemptsSearch(provider, selectedEvent.request_id || "", data.window_end || ""))}
+                >
+                  View correlated attempts
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         </div>
@@ -261,9 +404,9 @@ function RequestListItem({
         </p>
       </div>
       <div className="min-w-0 text-right">
-        <p className="whitespace-nowrap text-sm font-medium">{formatOutputTPS(event.output_tps)}</p>
+        <p className="whitespace-nowrap text-sm font-medium">{formatOutputTPS(event.attempt_facts.output_tps)}</p>
         <p className="mt-0.5 whitespace-nowrap text-xs text-muted-foreground">
-          {formatCompact(event.tokens?.total_tokens ?? 0, 2)} · {event.failed ? "Failed" : "Success"}
+          {event.attempt_facts.accounting.total_tokens === null ? "Tokens unavailable" : `${formatCompact(event.attempt_facts.accounting.total_tokens, 2)} canonical`} · {event.failed ? "Failed" : "Success"}
         </p>
       </div>
     </button>

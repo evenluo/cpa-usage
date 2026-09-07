@@ -89,7 +89,7 @@ func TestBackfillUsageRollupsBatchProgressesAndResumes(t *testing.T) {
 		{EventKey: "event-10", Provider: "OpenAI", Model: "model", Timestamp: time.Date(2026, 7, 7, 10, 15, 0, 0, time.UTC), TotalTokens: 20},
 		{EventKey: "event-12", Provider: "OpenAI", Model: "model", Timestamp: time.Date(2026, 7, 7, 12, 15, 0, 0, time.UTC), TotalTokens: 30},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	if err := db.Where("1 = 1").Delete(&entities.UsageRollupHourly{}).Error; err != nil {
@@ -125,14 +125,14 @@ func TestBackfillUsageRollupsBatchProgressesAndResumes(t *testing.T) {
 	if len(rollups) != 3 {
 		t.Fatalf("expected rollups for three non-empty buckets, got %+v", rollups)
 	}
-	if rollups[0].TotalTokens != 10 || rollups[1].TotalTokens != 20 || rollups[2].TotalTokens != 30 {
+	if rollups[0].CanonicalTotalTokens != 10 || rollups[1].CanonicalTotalTokens != 20 || rollups[2].CanonicalTotalTokens != 30 {
 		t.Fatalf("unexpected rollup totals after backfill: %+v", rollups)
 	}
 }
 
 func TestBackfillUsageRollupsBatchRetriesFailedProgress(t *testing.T) {
 	db := openTestDatabase(t)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "event-12", Provider: "OpenAI", Model: "model", Timestamp: time.Date(2026, 7, 7, 12, 15, 0, 0, time.UTC), TotalTokens: 30},
 	}); err != nil {
 		t.Fatalf("insert events: %v", err)

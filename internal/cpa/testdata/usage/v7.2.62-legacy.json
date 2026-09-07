@@ -1,0 +1,34 @@
+{
+  "timestamp": "2026-09-07T08:00:00Z",
+  "latency_ms": 1200,
+  "ttft_ms": 200,
+  "source": "fixture-account",
+  "auth_index": "fixture-auth",
+  "provider": "openai",
+  "executor_type": "OpenAIExecutor",
+  "model": "fixture-model",
+  "alias": "fixture-alias",
+  "endpoint": "/v1/responses",
+  "auth_type": "auth_file",
+  "api_key": "fixture-key",
+  "request_id": "fixture-request",
+  "reasoning_effort": "high",
+  "service_tier": "auto",
+  "failed": false,
+  "fail": {
+    "status_code": 200,
+    "body": "SENSITIVE_FAILURE_BODY"
+  },
+  "response_headers": {
+    "X-Fixture": "SENSITIVE_HEADER"
+  },
+  "tokens": {
+    "input_tokens": 100,
+    "output_tokens": 30,
+    "reasoning_tokens": 12,
+    "cached_tokens": 40,
+    "cache_read_tokens": 40,
+    "cache_creation_tokens": 10,
+    "total_tokens": 130
+  }
+}

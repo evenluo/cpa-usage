@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ModelDistribution } from "@/types/api"
 import { ModelDistributionChart } from "./model-distribution"
@@ -9,6 +9,7 @@ vi.mock("recharts", () => ({
   PieChart: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Pie: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   Cell: () => null,
+  Sector: () => null,
 }))
 
 afterEach(cleanup)
@@ -22,8 +23,8 @@ function model(index: number): ModelDistribution {
     input_tokens: index * 500,
     output_tokens: index * 400,
     reasoning_tokens: index * 100,
-    cached_tokens: 0,
     cache_read_tokens: 0,
+    canonical_valid_attempts: 1,
     cache_read_share: 0,
     cache_read_coverage: 0,
     cache_read_share_state: "no_cache_data",
@@ -92,6 +93,60 @@ describe("ModelDistributionChart", () => {
     expect(screen.queryByText("$0.00", { exact: true })).not.toBeInTheDocument()
   })
 
+  it("excludes models with unavailable cost from the cost mix instead of fabricating a zero share", () => {
+    render(
+      <ModelDistributionChart
+        data={[
+          model(2),
+          { ...model(1), total_cost: 0, cost_available: false, cost_status: "unavailable" },
+        ]}
+        measure="cost"
+      />,
+    )
+
+    expect(screen.getByText("100.0%", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("marks the Other row cost share unavailable when any aggregated model lacks cost", () => {
+    render(
+      <ModelDistributionChart
+        data={[
+          ...[3, 4, 5, 6, 7].map(model),
+          model(2),
+          { ...model(1), total_cost: 0, cost_available: false, cost_status: "unavailable" },
+        ]}
+        measure="cost"
+      />,
+    )
+
+    expect(screen.getByText("Other shown models", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    // The unavailable Other row is excluded from the mix total: 7 / (7+6+5+4+3).
+    expect(screen.getByText("28.0%", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("moves the hovered row's share and name into the donut center", () => {
+    const { container } = render(<ModelDistributionChart data={[1, 2, 3].map(model)} measure="cost" />)
+
+    const center = () => container.querySelector(".pointer-events-none")?.textContent
+    expect(center()).toContain("3")
+    expect(center()).not.toContain("model-2")
+
+    const row = screen.getByText("model-2", { exact: true }).closest("div[class*='grid']")
+    expect(row).not.toBeNull()
+    fireEvent.mouseEnter(row!)
+    expect(center()).toContain("model-2")
+    // model-2 share: 2 / (3+2+1).
+    expect(center()).toContain("33.3%")
+
+    fireEvent.mouseLeave(row!)
+    expect(center()).toContain("3")
+    expect(center()).not.toContain("model-2")
+  })
+
   it("shows an explicit zero-value state instead of naming a leading model", () => {
     render(
       <ModelDistributionChart
@@ -103,5 +158,39 @@ describe("ModelDistributionChart", () => {
     expect(screen.getByText("No cost recorded for shown models", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("Leading shown model", { exact: true })).not.toBeInTheDocument()
     expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("reports cost as unavailable when no shown model has an available cost", () => {
+    render(
+      <ModelDistributionChart
+        data={[model(1), model(2)].map((row) => ({
+          ...row,
+          total_cost: 0,
+          cost_available: false,
+          cost_status: "unavailable",
+        }))}
+        measure="cost"
+      />,
+    )
+
+    expect(screen.getByText("Cost unavailable for shown models", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("No cost recorded for shown models", { exact: true })).not.toBeInTheDocument()
+  })
+
+  it("sorts by available value so an unavailable row with residual cost never leads", () => {
+    const { container } = render(
+      <ModelDistributionChart
+        data={[
+          { ...model(1), total_cost: 100, cost_available: false, cost_status: "unavailable" },
+          { ...model(2), total_cost: 5 },
+        ]}
+        measure="cost"
+      />,
+    )
+
+    // The leading block's model name is the only serif paragraph.
+    expect(container.querySelector("p.font-serif")?.textContent).toBe("model-2")
+    expect(screen.getByText("100.0%", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
   })
 })

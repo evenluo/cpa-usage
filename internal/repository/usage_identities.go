@@ -147,6 +147,24 @@ func GetUsageIdentityByID(ctx context.Context, db *gorm.DB, id uint) (entities.U
 	return identity, nil
 }
 
+// SetUsageIdentityDisabled 在 CPA 侧启停成功后同步本地身份的禁用标记，
+// 让看板立即反映最新状态而不必等待下一轮 metadata sync。
+func SetUsageIdentityDisabled(ctx context.Context, db *gorm.DB, id uint, disabled bool, now time.Time) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	result := db.WithContext(ctx).Model(&entities.UsageIdentity{}).
+		Where("id = ?", id).
+		Updates(map[string]any{"disabled": disabled, "updated_at": now})
+	if result.Error != nil {
+		return fmt.Errorf("set usage identity disabled: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("set usage identity disabled: identity %d not found", id)
+	}
+	return nil
+}
+
 func activeUsageIdentitiesQuery(db *gorm.DB, authType *entities.UsageIdentityAuthType) *gorm.DB {
 	// 把活跃条件和可选 auth_type 条件集中到一个查询构造器，避免 count/list 条件漂移。
 	query := db.Where("is_deleted = ?", false).
@@ -225,11 +243,6 @@ func AggregateUsageIdentityStats(ctx context.Context, db *gorm.DB, now time.Time
 				"total_requests":                 identity.TotalRequests + delta.TotalRequests,
 				"success_count":                  identity.SuccessCount + delta.SuccessCount,
 				"failure_count":                  identity.FailureCount + delta.FailureCount,
-				"input_tokens":                   identity.InputTokens + delta.InputTokens,
-				"output_tokens":                  identity.OutputTokens + delta.OutputTokens,
-				"reasoning_tokens":               identity.ReasoningTokens + delta.ReasoningTokens,
-				"cached_tokens":                  identity.CachedTokens + delta.CachedTokens,
-				"total_tokens":                   identity.TotalTokens + delta.TotalTokens,
 				"first_used_at":                  firstUsedAt,
 				"last_used_at":                   lastUsedAt,
 				"stats_updated_at":               now,
@@ -257,11 +270,6 @@ func aggregateUsageIdentityDelta(tx *gorm.DB, identity entities.UsageIdentity) (
 			COUNT(*) AS total_requests,
 			COALESCE(SUM(CASE WHEN failed THEN 0 ELSE 1 END), 0) AS success_count,
 			COALESCE(SUM(CASE WHEN failed THEN 1 ELSE 0 END), 0) AS failure_count,
-			COALESCE(SUM(input_tokens), 0) AS input_tokens,
-			COALESCE(SUM(output_tokens), 0) AS output_tokens,
-			COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
-			COALESCE(SUM(cached_tokens), 0) AS cached_tokens,
-			COALESCE(SUM(total_tokens), 0) AS total_tokens,
 			COALESCE(MAX(id), 0) AS max_usage_event_id`).
 		Where("id > ?", identity.LastAggregatedUsageEventID).
 		Scan(&delta).Error; err != nil {
@@ -311,11 +319,17 @@ type usageIdentityCostKey struct {
 }
 
 type usageIdentityCostAggregate struct {
-	AuthType             string `gorm:"column:auth_type"`
-	AuthIndex            string `gorm:"column:auth_index"`
-	TotalCost            float64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
+	AuthType               string `gorm:"column:auth_type"`
+	AuthIndex              string `gorm:"column:auth_index"`
+	InputTokens            int64
+	OutputTokens           int64
+	ReasoningTokens        int64
+	CachedTokens           int64
+	TotalTokens            int64
+	CanonicalValidAttempts int64
+	TotalCost              float64
+	MissingPricingEvents   int64
+	PricedBillableEvents   int64
 }
 
 func attachUsageIdentityCosts(ctx context.Context, db *gorm.DB, identities []entities.UsageIdentity) error {
@@ -324,7 +338,14 @@ func attachUsageIdentityCosts(ctx context.Context, db *gorm.DB, identities []ent
 	}
 
 	for index := range identities {
-		identities[index].CostAvailable = identities[index].AuthType.Valid()
+		identities[index].InputTokens = 0
+		identities[index].OutputTokens = 0
+		identities[index].ReasoningTokens = 0
+		identities[index].CachedTokens = 0
+		identities[index].TotalTokens = 0
+		identities[index].CanonicalValidAttempts = 0
+		identities[index].TotalCost = 0
+		identities[index].CostAvailable = false
 	}
 
 	identityIndexes := make(map[usageIdentityCostKey]int, len(identities))
@@ -361,6 +382,12 @@ func attachUsageIdentityCosts(ctx context.Context, db *gorm.DB, identities []ent
 		Select(`
 			usage_events.auth_type AS auth_type,
 			usage_events.auth_index AS auth_index,
+			COALESCE(SUM(` + source.inputTokensExpr + `), 0) AS input_tokens,
+			COALESCE(SUM(` + source.outputTokensExpr + `), 0) AS output_tokens,
+			COALESCE(SUM(` + source.reasoningTokensExpr + `), 0) AS reasoning_tokens,
+			COALESCE(SUM(` + source.cachedTokensExpr + `), 0) AS cached_tokens,
+			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
@@ -376,6 +403,12 @@ func attachUsageIdentityCosts(ctx context.Context, db *gorm.DB, identities []ent
 			continue
 		}
 		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+		identities[index].InputTokens = row.InputTokens
+		identities[index].OutputTokens = row.OutputTokens
+		identities[index].ReasoningTokens = row.ReasoningTokens
+		identities[index].CachedTokens = row.CachedTokens
+		identities[index].TotalTokens = row.TotalTokens
+		identities[index].CanonicalValidAttempts = row.CanonicalValidAttempts
 		identities[index].TotalCost = row.TotalCost
 		identities[index].CostAvailable = cost.Available
 	}
@@ -411,6 +444,10 @@ func normalizeUsageIdentities(identities []entities.UsageIdentity, authType enti
 		identity.AccountID = trimOptionalString(identity.AccountID)
 		identity.ProjectID = trimOptionalString(identity.ProjectID)
 		identity.PlanType = trimOptionalString(identity.PlanType)
+		identity.AuthFileStatus = trimOptionalString(identity.AuthFileStatus)
+		if len(identity.PassiveModelQuotas) == 0 {
+			identity.PassiveModelQuotas = nil
+		}
 		identity.IsDeleted = false
 		identity.DeletedAt = nil
 		normalized = append(normalized, identity)
@@ -493,21 +530,29 @@ func upsertUsageIdentities(tx *gorm.DB, identities []entities.UsageIdentity) err
 	if err := tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "auth_type"}, {Name: "identity"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"name":           gorm.Expr("excluded.name"),
-			"auth_type_name": gorm.Expr("excluded.auth_type_name"),
-			"type":           gorm.Expr("excluded.type"),
-			"provider":       gorm.Expr("excluded.provider"),
-			"lookup_key":     gorm.Expr("excluded.lookup_key"),
-			"prefix":         gorm.Expr("excluded.prefix"),
-			"base_url":       gorm.Expr("excluded.base_url"),
-			"account_id":     gorm.Expr("excluded.account_id"),
-			"project_id":     gorm.Expr("excluded.project_id"),
-			"active_start":   gorm.Expr("excluded.active_start"),
-			"active_until":   gorm.Expr("excluded.active_until"),
-			"plan_type":      gorm.Expr("excluded.plan_type"),
-			"is_deleted":     false,
-			"deleted_at":     nil,
-			"updated_at":     gorm.Expr("excluded.updated_at"),
+			"name":                 gorm.Expr("excluded.name"),
+			"auth_type_name":       gorm.Expr("excluded.auth_type_name"),
+			"type":                 gorm.Expr("excluded.type"),
+			"provider":             gorm.Expr("excluded.provider"),
+			"lookup_key":           gorm.Expr("excluded.lookup_key"),
+			"prefix":               gorm.Expr("excluded.prefix"),
+			"base_url":             gorm.Expr("excluded.base_url"),
+			"account_id":           gorm.Expr("excluded.account_id"),
+			"project_id":           gorm.Expr("excluded.project_id"),
+			"active_start":         gorm.Expr("excluded.active_start"),
+			"active_until":         gorm.Expr("excluded.active_until"),
+			"plan_type":            gorm.Expr("excluded.plan_type"),
+			"auth_file_status":     gorm.Expr("excluded.auth_file_status"),
+			"unavailable":          gorm.Expr("excluded.unavailable"),
+			"last_refresh":         gorm.Expr("excluded.last_refresh"),
+			"next_retry_after":     gorm.Expr("excluded.next_retry_after"),
+			"metadata_observed_at": gorm.Expr("excluded.metadata_observed_at"),
+			"passive_quota":        gorm.Expr("excluded.passive_quota"),
+			"passive_model_quotas": gorm.Expr("excluded.passive_model_quotas"),
+			"disabled":             gorm.Expr("excluded.disabled"),
+			"is_deleted":           false,
+			"deleted_at":           nil,
+			"updated_at":           gorm.Expr("excluded.updated_at"),
 		}),
 	}).CreateInBatches(&identities, insertBatchSize(entities.UsageIdentity{})).Error; err != nil {
 		return fmt.Errorf("upsert usage identities: %w", err)

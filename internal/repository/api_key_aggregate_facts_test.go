@@ -31,7 +31,7 @@ func TestAPIKeyAggregateFactsMatchAcrossAnalyticsRollupAndAliasTargets(t *testin
 		{EventKey: "unpriced", APIGroupKey: "sk-shared-123456", Provider: "OpenAI", Model: "missing", Timestamp: start.Add(25 * time.Minute), InputTokens: 10, TotalTokens: 10, Failed: true},
 		{EventKey: "negative", APIGroupKey: "sk-shared-123456", Provider: "OpenAI", Model: "missing", Timestamp: start.Add(45 * time.Minute), InputTokens: -10, TotalTokens: -10},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	filter := dto.AnalyticsFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end}, Range: "custom", Granularity: "hour"}

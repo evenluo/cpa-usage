@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { UsageEventsPage } from "@/types/api"
+import { ApiError } from "@/lib/api"
 
 vi.mock("@tanstack/react-router", () => ({
   createLazyFileRoute: () => (options: object) => ({
@@ -14,9 +15,11 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/hooks/useEvents", () => ({
   useEvents: vi.fn(),
+  buildEventsExportPath: vi.fn(() => "/usage/events/export?window_end=2026-09-07T12%3A00%3A00.123456789Z"),
+  downloadUsageEventsCSV: vi.fn(),
 }))
 
-import { useEvents } from "@/hooks/useEvents"
+import { buildEventsExportPath, downloadUsageEventsCSV, useEvents } from "@/hooks/useEvents"
 import { RequestsPage } from "./requests.lazy"
 
 afterEach(() => {
@@ -30,13 +33,21 @@ function eventsPage(page: number, provider: string): UsageEventsPage {
       id: page * 10 + index,
       timestamp: "2026-08-27T00:00:00Z",
       model: `${provider || "all"}-model-${index + 1}`,
+      request_id: `request-${index + 1}`,
       source: provider || "all",
       failed: false,
       latency_ms: 10,
       ttft_ms: 2,
-      output_tps: 100,
-      tokens: { output_tokens: 1, total_tokens: 2 },
+      attempt_facts: {
+        generate: true, stream: true, request_service_tier: null, response_service_tier: null, output_tps: 100,
+        accounting: {
+          state: "valid" as const, quality: "complete" as const, total_tokens: 2,
+          input: { total_tokens: 1, uncached_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0 },
+          output: { total_tokens: 1, non_reasoning_tokens: 1, reasoning_tokens: 0 }, unclassified_tokens: 0,
+        },
+      },
     })),
+    window_end: "2026-09-07T12:00:00.123456789Z",
     total_count: 20,
     page,
     page_size: 10,
@@ -83,7 +94,7 @@ describe("RequestsPage provider scope", () => {
 
     const calls = vi.mocked(useEvents).mock.calls
     const call = calls[calls.length - 1]
-    expect(call?.[5]).toEqual({ model: "gpt-5", result: "failed" })
+    expect(call?.[5]).toEqual({ model: "gpt-5", modelAlias: "", account: "", endpoint: "", status: "", requestId: "", minLatencyMS: "", windowEnd: "", result: "failed" })
     expect(screen.getByDisplayValue("gpt-5")).toBeInTheDocument()
     expect(screen.getByDisplayValue("Failed attempts")).toBeInTheDocument()
 
@@ -91,5 +102,112 @@ describe("RequestsPage provider scope", () => {
     await user.type(screen.getByLabelText("Actual model"), "claude-sonnet")
     await user.click(screen.getByRole("button", { name: "Apply model" }))
     expect(onFiltersChange).toHaveBeenCalledWith({ model: "claude-sonnet", result: "failed" })
+  })
+
+  it("passes the frozen diagnostic selection and clears page-local state when scope changes", async () => {
+    vi.mocked(useEvents).mockImplementation((_range, _pageSize, provider = "", page = 1) => ({
+      data: eventsPage(page, provider), isLoading: false, error: null, refetch: vi.fn(),
+    }) as never)
+    const onFiltersChange = vi.fn()
+    const { rerender } = render(
+      <RequestsPage
+        provider="claude"
+        modelAlias="sonnet-route"
+        account="auth-1"
+        endpoint="/v1/messages"
+        status="4xx"
+        minLatencyMS="500"
+        windowEnd="2026-09-07T12:00:00.123456789Z"
+        result="failed"
+        onFiltersChange={onFiltersChange}
+      />,
+    )
+
+    const diagnosticCalls = vi.mocked(useEvents).mock.calls
+    expect(diagnosticCalls[diagnosticCalls.length - 1]?.[5]).toEqual({
+      model: "", modelAlias: "sonnet-route", account: "auth-1", endpoint: "/v1/messages", status: "4xx", requestId: "", minLatencyMS: "500",
+      windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
+    })
+    expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Account: auth-1")
+    expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Observed alias: sonnet-route")
+    expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Latency ≥ 500 ms")
+
+    rerender(<RequestsPage provider="openai" status="500" result="failed" onFiltersChange={onFiltersChange} />)
+    const resetCalls = vi.mocked(useEvents).mock.calls
+    expect(resetCalls[resetCalls.length - 1]?.slice(0, 4)).toEqual(["24h", 10, "openai", 1])
+    expect(screen.getByRole("button", { name: "Select attempt 10" })).toHaveAttribute("aria-pressed", "true")
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear diagnostic filters" }))
+    expect(onFiltersChange).toHaveBeenCalledWith({ model: "", modelAlias: "", result: "failed", account: "", endpoint: "", status: "", minLatencyMS: "", windowEnd: "" })
+  })
+
+  it("replaces the current filters with a fixed correlated-attempt selection", async () => {
+    vi.mocked(useEvents).mockReturnValue({ data: eventsPage(1, "claude"), isLoading: false, error: null, refetch: vi.fn() } as never)
+    const onCorrelatedAttempts = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <RequestsPage
+        provider="claude"
+        model="sonnet"
+        modelAlias="sonnet-route"
+        account="auth-1"
+        endpoint="/v1/messages"
+        status="429"
+        minLatencyMS="500"
+        result="failed"
+        onCorrelatedAttempts={onCorrelatedAttempts}
+      />,
+    )
+
+    await user.click(screen.getByRole("button", { name: "View correlated attempts" }))
+    expect(onCorrelatedAttempts).toHaveBeenCalledWith({
+      provider: "claude", model: "", modelAlias: "", account: "", endpoint: "", status: "", requestId: "request-1", minLatencyMS: "",
+      windowEnd: "2026-09-07T12:00:00.123456789Z", result: "",
+    })
+  })
+
+  it("shows correlation limits and omits the action when request ID is missing", () => {
+    vi.mocked(useEvents).mockReturnValue({ data: eventsPage(1, "claude"), isLoading: false, error: null, refetch: vi.fn() } as never)
+    const { rerender } = render(<RequestsPage provider="claude" requestId="request-42" windowEnd="2026-09-07T12:00:00.123456789Z" />)
+    expect(screen.getByLabelText("Correlation scope")).toHaveTextContent("other providers are not included")
+    expect(screen.getByLabelText("Correlation scope")).toHaveTextContent("Historical data may omit attempts")
+
+    const missing = eventsPage(1, "claude")
+    missing.events = [{ ...missing.events[0], request_id: undefined }]
+    vi.mocked(useEvents).mockReturnValue({ data: missing, isLoading: false, error: null, refetch: vi.fn() } as never)
+    rerender(<RequestsPage provider="claude" />)
+    expect(screen.queryByRole("button", { name: "View correlated attempts" })).not.toBeInTheDocument()
+  })
+
+  it("distinguishes invalid filters, API failure, and an empty successful page", () => {
+    vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(400, "invalid status"), refetch: vi.fn() } as never)
+    const { rerender } = render(<RequestsPage provider="" status="broken" />)
+    expect(screen.getByText("Invalid request evidence filters")).toBeInTheDocument()
+
+    vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(500, "unavailable"), refetch: vi.fn() } as never)
+    rerender(<RequestsPage provider="" status="500" />)
+    expect(screen.getByText("Failed to load request evidence")).toBeInTheDocument()
+
+    vi.mocked(useEvents).mockReturnValue({ data: { ...eventsPage(1, ""), events: [], total_count: 0, total_pages: 1 }, isLoading: false, error: null, refetch: vi.fn() } as never)
+    rerender(<RequestsPage provider="" />)
+    expect(screen.getByText("No recent request evidence")).toBeInTheDocument()
+  })
+
+  it("states the export cap and reports an oversized selection without claiming that a file was saved", async () => {
+    vi.mocked(useEvents).mockReturnValue({ data: eventsPage(1, "claude"), isLoading: false, error: null, refetch: vi.fn() } as never)
+    vi.mocked(downloadUsageEventsCSV).mockRejectedValueOnce(new ApiError(422, "selection exceeds 5000-row limit"))
+    const user = userEvent.setup()
+    render(<RequestsPage provider="claude" modelAlias="route-a" requestId="request-42" minLatencyMS="500" result="failed" />)
+
+    await user.click(screen.getByRole("button", { name: "Download CSV" }))
+
+    expect(buildEventsExportPath).toHaveBeenCalledWith("24h", "claude", {
+      model: "", modelAlias: "route-a", account: "", endpoint: "", status: "", requestId: "request-42",
+      minLatencyMS: "500", windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
+    })
+    expect(downloadUsageEventsCSV).toHaveBeenCalledOnce()
+    expect(screen.getByText("CSV export includes the full frozen selection, up to 5,000 matching requests.")).toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("limited to 5,000 matching requests")
+    expect(screen.getByRole("alert")).toHaveTextContent("No file was saved")
   })
 })

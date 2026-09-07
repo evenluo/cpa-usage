@@ -20,11 +20,11 @@ func BenchmarkReplaySafeRedisUsageMessage(b *testing.B) {
 	}{
 		{
 			name:    "ordinary_attempt",
-			message: `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"attempt-001","tokens":{"input_tokens":123,"output_tokens":45,"total_tokens":168}}`,
+			message: `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"attempt-001","accounting_version":2,"generate":true,"stream":true,"token_breakdown":{"schema_version":2,"quality":"complete","total_tokens":0,"input":{"total_tokens":0,"uncached_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0},"output":{"total_tokens":0,"non_reasoning_tokens":0,"reasoning_tokens":0},"unclassified_tokens":0}}`,
 		},
 		{
 			name:    "failed_attempt_with_excluded_payload",
-			message: fmt.Sprintf(`{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"attempt-002","failed":true,"fail":{"status_code":429,"body":%q},"response_headers":{"set-cookie":%q},"tokens":{"input_tokens":123,"output_tokens":45,"total_tokens":168}}`, largeExcludedBody, largeExcludedBody),
+			message: fmt.Sprintf(`{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"attempt-002","failed":true,"fail":{"status_code":429,"body":%q},"response_headers":{"set-cookie":%q},"accounting_version":2,"generate":true,"stream":true,"token_breakdown":{"schema_version":2,"quality":"complete","total_tokens":0,"input":{"total_tokens":0,"uncached_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0},"output":{"total_tokens":0,"non_reasoning_tokens":0,"reasoning_tokens":0},"unclassified_tokens":0}}`, largeExcludedBody, largeExcludedBody),
 		},
 		{
 			name:    "invalid_attempt",

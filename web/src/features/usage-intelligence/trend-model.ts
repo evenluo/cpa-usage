@@ -24,7 +24,7 @@ export function buildTrendSeriesConfig(mode: TrendChartMode): TrendSeriesConfig 
       { key: "inputTokens", name: "Input", color: "#059669" },
       { key: "outputTokens", name: "Output", color: "#d97706" },
       { key: "reasoningTokens", name: "Reasoning", color: "#7c3aed" },
-      { key: "cachedTokens", name: "Cached", color: "#0891b2" },
+      { key: "cacheReadTokens", name: "Cache read", color: "#0891b2" },
     ],
   }
 }
@@ -33,11 +33,11 @@ export interface TrendChartRow {
   label: string
   cost: number | null
   requests: number
-  tokens: number
-  inputTokens: number
-  outputTokens: number
-  reasoningTokens: number
-  cachedTokens: number
+  tokens: number | null
+  inputTokens: number | null
+  outputTokens: number | null
+  reasoningTokens: number | null
+  cacheReadTokens: number | null
   costStatus: TrendPoint["cost_status"]
 }
 
@@ -46,11 +46,11 @@ export function mapTrendChartRows(points: TrendPoint[]): TrendChartRow[] {
     label: p.label,
     cost: p.cost_status === "unavailable" ? null : p.total_cost,
     requests: p.request_count,
-    tokens: p.total_tokens,
-    inputTokens: p.input_tokens,
-    outputTokens: p.output_tokens,
-    reasoningTokens: p.reasoning_tokens,
-    cachedTokens: p.cached_tokens,
+    tokens: p.canonical_valid_attempts > 0 ? p.total_tokens : null,
+    inputTokens: p.canonical_valid_attempts > 0 ? p.input_tokens : null,
+    outputTokens: p.canonical_valid_attempts > 0 ? p.output_tokens : null,
+    reasoningTokens: p.canonical_valid_attempts > 0 ? p.reasoning_tokens : null,
+    cacheReadTokens: p.canonical_valid_attempts > 0 ? p.cache_read_tokens : null,
     costStatus: p.cost_status,
   }))
 }

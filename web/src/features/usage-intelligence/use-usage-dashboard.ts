@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useEvents } from "@/hooks/useEvents"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
-import type { AnalyticsCoreResponse, TimeGranularity, TimeRange, UsageEventsPage } from "@/types/api"
+import { useFailureDistribution } from "@/hooks/useFailureDistribution"
+import { useModelMappings } from "@/hooks/useModelMappings"
+import { useAttemptPerformance } from "@/hooks/useAttemptPerformance"
+import type { AnalyticsCoreResponse, TimeGranularity, TimeRange, UsageAttemptPerformance, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
 import { buildUsageIntelligenceLoadPlan, type UsageIntelligenceLoadPlan } from "./load-plan"
 import { useVisibilityRefresh } from "./refresh"
 import { buildUsageDashboardSurfaces, type UsageDashboardSurfaces } from "./surfaces"
@@ -36,10 +39,22 @@ export interface UseUsageDashboardResult {
   isRequestEvidenceLoading: boolean
   isRequestEvidenceRefreshing: boolean
   requestEvidenceError: unknown
+  failureDistributionData?: UsageFailureDistribution
+  isFailureDistributionLoading: boolean
+  failureDistributionError: unknown
+  modelMappingsData?: UsageModelMappingDistribution
+  isModelMappingsLoading: boolean
+  modelMappingsError: unknown
+  attemptPerformanceData?: UsageAttemptPerformance
+  isAttemptPerformanceLoading: boolean
+  attemptPerformanceError: unknown
   retryCore: () => void
   retryHeatmap: () => void
   retryRequestHealth: () => void
   retryRequestEvidence: () => void
+  retryFailureDistribution: () => void
+  retryModelMappings: () => void
+  retryAttemptPerformance: () => void
   refreshDashboard: () => void
 }
 
@@ -122,10 +137,28 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     refetch: refetchRequestHealth,
     error: requestHealthError,
   } = useRequestHealth(fixedWindow.requestHealth.range, fixedWindow.requestHealth.provider)
+  const {
+    data: failureDistributionData,
+    isLoading: isFailureDistributionLoading,
+    refetch: refetchFailureDistribution,
+    error: failureDistributionError,
+  } = useFailureDistribution(fixedWindow.failureDistribution.provider)
+  const {
+    data: modelMappingsData,
+    isLoading: isModelMappingsLoading,
+    refetch: refetchModelMappings,
+    error: modelMappingsError,
+  } = useModelMappings(fixedWindow.modelMappings.provider)
+  const {
+    data: attemptPerformanceData,
+    isLoading: isAttemptPerformanceLoading,
+    refetch: refetchAttemptPerformance,
+    error: attemptPerformanceError,
+  } = useAttemptPerformance(fixedWindow.attemptPerformance.provider)
 
   const refreshDashboard = useCallback(() => {
-    void Promise.allSettled([refetchCoreAnalytics(), refetchRequestEvidence()])
-  }, [refetchCoreAnalytics, refetchRequestEvidence])
+    void Promise.allSettled([refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution(), refetchModelMappings(), refetchAttemptPerformance()])
+  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappings, refetchAttemptPerformance])
   useVisibilityRefresh(refreshDashboard)
 
   const viewModel = useMemo(
@@ -178,6 +211,15 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     isRequestEvidenceLoading,
     isRequestEvidenceRefreshing: isRequestEvidenceFetching && Boolean(requestEvidenceData),
     requestEvidenceError,
+    failureDistributionData,
+    isFailureDistributionLoading,
+    failureDistributionError,
+    modelMappingsData,
+    isModelMappingsLoading,
+    modelMappingsError,
+    attemptPerformanceData,
+    isAttemptPerformanceLoading,
+    attemptPerformanceError,
     retryCore: () => {
       void refetchCoreAnalytics()
     },
@@ -189,6 +231,15 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     },
     retryRequestEvidence: () => {
       void refetchRequestEvidence()
+    },
+    retryFailureDistribution: () => {
+      void refetchFailureDistribution()
+    },
+    retryModelMappings: () => {
+      void refetchModelMappings()
+    },
+    retryAttemptPerformance: () => {
+      void refetchAttemptPerformance()
     },
     refreshDashboard,
   }

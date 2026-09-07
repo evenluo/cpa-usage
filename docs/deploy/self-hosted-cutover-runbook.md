@@ -1,10 +1,22 @@
 # Self-Hosted CPA Usage Cutover Runbook
 
-Status: current migration-only runbook; not a routine Dokploy release procedure
+Status: current migration and Accounting v2 cutover runbook; routine releases remain owned by the release chain
 
 Routine release SoT: [Dokploy Release Chain](dokploy-release.md)
 
 Date:
+
+## Accounting v2 cutover
+
+For an existing published CPA Usage installation, use this section with the [Dokploy release chain](dokploy-release.md). The keeper-to-CPA-Usage migration below is a separate operation and is not required for this upgrade. The supported database source is published main, not an unpublished intermediate PR build.
+
+1. Prepare the intended CPA image before the maintenance window. Set its Dokploy `CLIPROXYAPI_IMAGE` to an explicit verified Accounting v2 tag or digest; the CPA compose template requires this setting. The tested contract is CPA v7.2.152, described in [CPA data contract](../design/cpa-data-contract.md). Verify that version's offline fixture or a non-production queue capture, including both versions, canonical buckets and explicit execution flags. Do not pop the production queue merely to inspect a payload.
+2. Before restarting CPA, pause ordinary requests and let in-flight requests finish. The published CPA queue is in memory: restarting it with unconsumed records loses those attempts. Keep the published consumer running and use its existing authenticated `POST /api/v1/sync` to process real queued work. Repeat at least one second apart until HTTP 200 reports `last_status: "empty"`, `sync_running: false`, and no `last_error`/`last_warning`. With traffic paused, this observes both an empty producer pop and finished local processing. Errors or warnings do not establish drainage.
+3. Through a read-only SQLite connection, confirm `SELECT COUNT(*) FROM redis_usage_inboxes WHERE status IN ('pending', 'process_failed');` returns zero. The published main UI does not expose this counter. Stop the published consumer and recheck the same query to close the observation/stop race. If nonzero, resume it and finish those rows before proceeding. Take a coherent offline copy of the database directory, including any WAL files, verify the copy with SQLite `PRAGMA integrity_check`, and retain it outside the live volume. Scheduled backups start after migrations and cannot supply this copy.
+4. Upgrade the independently managed CPA application to the prepared image, then deploy the integrated CPA Usage artifact through the [existing release chain](dokploy-release.md). Keep ordinary requests paused. Database migrations run before ingestion; the accounting migration refuses a processable inbox without deleting its rows. Historical raw events stay intact and their canonical facts remain absent. Canonical coverage starts with ingestion by the integrated consumer. The four migrations retain their existing transaction and ledger ownership.
+5. Verify exact deployed artifacts and terminal deployment results, run authenticated smoke, then send one controlled normal CPA request while ordinary traffic remains paused. Confirm its Request Evidence has valid canonical facts and newly produced messages do not increase the existing inbox `decode_failed` count. A healthy process alone does not prove successful ingestion. Resume ordinary requests after these checks pass. If cutover fails, stop the new consumer and inspect the explicit failure before any restore; never run the published binary against the migrated database as a rollback shortcut.
+
+These are operator steps, not production actions performed by this PR. CPA and CPA Usage are separate applications; deploying CPA Usage does not upgrade CPA.
 
 ## Goal
 
