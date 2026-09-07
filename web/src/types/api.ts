@@ -30,12 +30,12 @@ export interface UsageAttemptFacts {
   output_tps: number | null
   accounting: CanonicalComposition<number | null> & {
     state: AccountingState
-    quality: AccountingQuality | "unknown" | null
+    quality: AccountingQuality | null
   }
 }
 
 export interface AnalyticsSummary {
-  accounting?: AccountingSummary
+  accounting: AccountingSummary
   total_cost: number
   total_tokens: number
   request_count: number

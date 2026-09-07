@@ -46,7 +46,6 @@ describe("Canonical token composition", () => {
     expect(screen.queryByText("Canonical total")).not.toBeInTheDocument()
     expect(getAccountingCaption(unavailable)).toBe("Canonical tokens unavailable")
     expect(getAccountingCaption({ ...unavailable, total_attempts: 0, coverage_pct: null })).toBe("No attempts")
-    expect(getAccountingCaption()).toBe("Canonical tokens unavailable")
   })
 
   it("does not promote valid inconsistent quality or double-add the reasoning and cache subsets", () => {

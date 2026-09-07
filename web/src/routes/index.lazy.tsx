@@ -62,7 +62,7 @@ function DashboardPage() {
         />
         <KpiCard
           label="Tokens"
-          rawValue={(summary?.accounting?.valid_attempts ?? 0) > 0 ? summary?.total_tokens : undefined}
+          rawValue={summary && summary.accounting.valid_attempts > 0 ? summary.total_tokens : undefined}
           caption={viewModel.accountingCaption}
           formatter={(n) => formatCompact(n, 2)}
           sparkline={kpiData?.tokens}

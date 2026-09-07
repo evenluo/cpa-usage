@@ -127,8 +127,7 @@ export const ACCOUNTING_STATE_LABELS: Record<AccountingState, string> = {
   valid: "Valid structure",
 }
 
-export function getAccountingCaption(accounting?: AccountingSummary): string {
-  if (!accounting) return "Canonical tokens unavailable"
+export function getAccountingCaption(accounting: AccountingSummary): string {
   if (accounting.coverage_pct === null) return "No attempts"
   if (accounting.valid_attempts === 0) return "Canonical tokens unavailable"
   const quality = accounting.valid_quality.complete === accounting.valid_attempts ? "complete quality" : "qualified quality"
@@ -137,17 +136,17 @@ export function getAccountingCaption(accounting?: AccountingSummary): string {
 
 // Render the repository's disjoint canonical buckets without adding a subset
 // such as reasoning or cache tokens back into its parent total.
-export function getCanonicalTokenFields(composition?: CanonicalComposition<number | null>): Array<[string, number | null | undefined]> {
+export function getCanonicalTokenFields(composition: CanonicalComposition<number | null>): Array<[string, number | null]> {
   return [
-    ["Canonical total", composition?.total_tokens],
-    ["Canonical input total", composition?.input.total_tokens],
-    ["Uncached input", composition?.input.uncached_tokens],
-    ["Cache read input", composition?.input.cache_read_tokens],
-    ["Cache write input", composition?.input.cache_write_tokens],
-    ["Canonical output total", composition?.output.total_tokens],
-    ["Non-reasoning output", composition?.output.non_reasoning_tokens],
-    ["Reasoning output", composition?.output.reasoning_tokens],
-    ["Unclassified tokens", composition?.unclassified_tokens],
+    ["Canonical total", composition.total_tokens],
+    ["Canonical input total", composition.input.total_tokens],
+    ["Uncached input", composition.input.uncached_tokens],
+    ["Cache read input", composition.input.cache_read_tokens],
+    ["Cache write input", composition.input.cache_write_tokens],
+    ["Canonical output total", composition.output.total_tokens],
+    ["Non-reasoning output", composition.output.non_reasoning_tokens],
+    ["Reasoning output", composition.output.reasoning_tokens],
+    ["Unclassified tokens", composition.unclassified_tokens],
   ]
 }
 
@@ -208,7 +207,9 @@ export function buildUsageDashboardViewModel(input: {
     leaderboardSortLabel: getLeaderboardSortLabel(input.analytics?.summary?.cost_status),
     cacheReadShareCaption: getCacheReadShareCaption(input.analytics?.summary?.cache_read_share_state, input.analytics?.summary?.cache_read_coverage),
     cacheReadShareValue: getCacheReadShareValue(input.analytics?.summary?.cache_read_share, input.analytics?.summary?.cache_read_share_state),
-    accountingCaption: getAccountingCaption(input.analytics?.summary?.accounting),
+    accountingCaption: input.analytics
+      ? getAccountingCaption(input.analytics.summary.accounting)
+      : "Canonical tokens unavailable",
     kpiData: deriveKpiSparklineData(trend),
   }
 }

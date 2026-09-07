@@ -95,7 +95,7 @@ export function DashboardCharts({
               <TrendChart data={surfaces.trend.data} granularity={coreAnalyticsData?.granularity ?? effectiveGranularity} mode={trendView} />
             </div>
           )}
-          {surfaces.core.status === "ready" && coreAnalyticsData?.summary.accounting ? (
+          {surfaces.core.status === "ready" && coreAnalyticsData ? (
             <CanonicalTokenComposition accounting={coreAnalyticsData.summary.accounting} costStatus={coreAnalyticsData.summary.cost_status} />
           ) : null}
         </CardContent>

@@ -97,6 +97,19 @@ describe("Usage Intelligence view model", () => {
     const account = keyRow("Account")
     const analytics: AnalyticsCoreResponse = {
       summary: {
+        accounting: {
+          total_attempts: 2,
+          valid_attempts: 2,
+          coverage_pct: 100,
+          states: { valid: 2, absent: 0 },
+          valid_quality: { complete: 2, inconsistent: 0, unclassified: 0 },
+          composition: {
+            total_tokens: 20,
+            input: { total_tokens: 20, uncached_tokens: 15, cache_read_tokens: 5, cache_write_tokens: 0 },
+            output: { total_tokens: 0, non_reasoning_tokens: 0, reasoning_tokens: 0 },
+            unclassified_tokens: 0,
+          },
+        },
         total_cost: 10,
         total_tokens: 20,
         request_count: 2,
@@ -161,6 +174,19 @@ describe("Usage Intelligence view model", () => {
     const viewModel = buildUsageDashboardViewModel({
       analytics: {
         summary: {
+          accounting: {
+            total_attempts: 0,
+            valid_attempts: 0,
+            coverage_pct: null,
+            states: { valid: 0, absent: 0 },
+            valid_quality: { complete: 0, inconsistent: 0, unclassified: 0 },
+            composition: {
+              total_tokens: 0,
+              input: { total_tokens: 0, uncached_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
+              output: { total_tokens: 0, non_reasoning_tokens: 0, reasoning_tokens: 0 },
+              unclassified_tokens: 0,
+            },
+          },
           total_cost: 0,
           total_tokens: 0,
           request_count: 0,
