@@ -475,7 +475,11 @@ function LiveCapacityAccountTile({
     (row.nextRetryAfter ? 1 : 0) +
     (row.expiresAt ? 1 : 0) +
     (row.activeStart ? 1 : 0)
-  const foldedCount = layout.extras.length + row.passiveModelQuotas.length + timingLineCount
+  const foldedCount =
+    layout.extras.length +
+    row.passiveModelQuotas.length +
+    timingLineCount +
+    (row.passiveQuota?.activeLimit ? 1 : 0)
 
   return (
     <div
@@ -503,14 +507,6 @@ function LiveCapacityAccountTile({
             <p className="truncate font-medium leading-5" title={accountTitle}>{accountTitle}</p>
             {row.planLabel ? (
               <PlanBadge label={row.planLabel} tone={row.planTone} rawPlanType={row.planType} />
-            ) : null}
-            {row.passiveQuota?.activeLimit ? (
-              <span
-                className="min-w-0 truncate rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground"
-                title={row.passiveQuota.activeLimit}
-              >
-                Active limit {row.passiveQuota.activeLimit}
-              </span>
             ) : null}
             {row.disabled ? (
               <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Disabled</Badge>
@@ -637,6 +633,14 @@ function LiveCapacityAccountTile({
         <details className="mt-2 rounded-md border border-border/70 bg-muted/[0.12] px-2.5 py-1.5">
           <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">··· {foldedCount} more</summary>
           <div className="mt-2 space-y-3">
+            {row.passiveQuota?.activeLimit ? (
+              <p
+                className="text-[10px] text-muted-foreground"
+                title={`Reported by CPA · observed ${formatDate(row.passiveQuota.observedAt)}`}
+              >
+                Active limit {row.passiveQuota.activeLimit}
+              </p>
+            ) : null}
             {layout.extras.length > 0 ? (
               <section aria-label="More limits">
                 <p className="text-[10px] font-medium text-foreground/70">More limits ({layout.extras.length})</p>

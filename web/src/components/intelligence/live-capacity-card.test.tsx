@@ -191,7 +191,7 @@ describe("LiveCapacityCard", () => {
           items: [{ id: "codex-auth", cachedAt: "2026-09-07T09:00:00Z", quota: [{ key: "manual", label: "5h", usedPercent: 10 }] }],
         },
       })
-      render(<LiveCapacityCard provider="" />)
+      const { container } = render(<LiveCapacityCard provider="" />)
 
       // The codex skeleton always shows 5h + Weekly; the reported 5h reading fills
       // its slot, Weekly has no reading, and probe readings stay hidden for a disabled account.
@@ -201,16 +201,16 @@ describe("LiveCapacityCard", () => {
       expect(screen.queryByText("10% used")).not.toBeInTheDocument()
       // Frozen at the observation instant: the 120s relative reset reads as a countdown.
       expect(screen.getByText("in 2m")).toBeInTheDocument()
-      // The active-limit chip moved to the tile title row.
-      expect(screen.getByText("Active limit codex_bengalfox")).toBeInTheDocument()
-      // Window-less reported rows and model observations live behind the per-tile fold.
+      // Window-less reported rows, the active limit, and model observations live
+      // behind the per-tile fold.
       const fold = screen.getByText(/··· \d+ more/).closest("details")
       expect(fold).not.toHaveAttribute("open")
+      expect(within(fold as HTMLElement).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("4.5 credits left")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("Per-model quotas (1)")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("gpt-5.3-codex")).toBeInTheDocument()
       // Reported meters: main 5h + folded Credits + folded model Weekly.
-      expect(screen.getAllByTitle(/^Reported by CPA · observed /)).toHaveLength(3)
+      expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(3)
     } finally {
       vi.useRealTimers()
     }

@@ -155,9 +155,7 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   await expect(page.getByText("Unavailable", { exact: true }).first()).toBeVisible()
   await expect(page.getByText("Disabled", { exact: true }).first()).toBeVisible()
 
-  // One merged 5h meter: the newer reported reading replaces the stale probe cache,
-  // and the active-limit chip sits on the tile title row.
-  await expect(page.getByText("Active limit codex_primary")).toBeVisible()
+  // One merged 5h meter: the newer reported reading replaces the stale probe cache.
   await expect(page.getByText("25% used · Blocked")).toBeVisible()
   await expect(page.getByText("62% used")).toBeVisible()
   await expect(page.getByText("Stale", { exact: true }).first()).toBeVisible()
@@ -165,8 +163,9 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   // The subscription end stays on the card surface.
   await expect(page.locator("time[datetime='2026-09-25T07:15:00Z']")).toBeVisible()
 
-  // Per-model quotas and timing lines live behind the per-tile fold.
+  // The active limit, per-model quotas, and timing lines live behind the per-tile fold.
   await page.getByText(/··· \d+ more/).first().click()
+  await expect(page.getByText("Active limit codex_primary")).toBeVisible()
   await expect(page.getByText("Per-model quotas (1)")).toBeVisible()
   await expect(page.locator("time[datetime='2026-09-07T07:30:00Z']")).toBeVisible()
   const timing = page.getByRole("group", { name: "Account and cache timing" }).first()
