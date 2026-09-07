@@ -57,16 +57,6 @@ export const usageEvents = Array.from({ length: 11 }, (_, index) => ({
     failed: index === 2,
     latency_ms: index === 0 ? 21_245 : 240 + index,
     ttft_ms: index === 0 ? 1_052 : null,
-    output_tps: index === 0 ? 48.33358094488189 : null,
-    tokens: {
-      input_tokens: index === 0 ? 104_115 : null,
-      output_tokens: index === 0 ? 976 : null,
-      reasoning_tokens: index === 0 ? 100 : null,
-      cache_read_tokens: index === 0 ? 20 : null,
-      cache_write_tokens: index === 0 ? 0 : null,
-      unclassified_tokens: index === 0 ? 0 : null,
-      total_tokens: index === 0 ? 105_091 : null,
-    },
     attempt_facts: {
       generate: index === 0 ? true : null,
       stream: index === 0 ? true : null,
@@ -75,8 +65,6 @@ export const usageEvents = Array.from({ length: 11 }, (_, index) => ({
       output_tps: index === 0 ? 48.33358094488189 : null,
       accounting: index === 0 ? {
         state: "valid",
-        accounting_version: 2,
-        schema_version: 2,
         quality: "complete",
         total_tokens: 105_091,
         input: { total_tokens: 104_115, uncached_tokens: 104_095, cache_read_tokens: 20, cache_write_tokens: 0 },
@@ -84,8 +72,6 @@ export const usageEvents = Array.from({ length: 11 }, (_, index) => ({
         unclassified_tokens: 0,
       } : {
         state: "absent",
-        accounting_version: null,
-        schema_version: null,
         quality: null,
         total_tokens: null,
         input: { total_tokens: null, uncached_tokens: null, cache_read_tokens: null, cache_write_tokens: null },

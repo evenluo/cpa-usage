@@ -19,7 +19,6 @@ type analyticsAggregateRow struct {
 	MissingPricingEvents                int64
 	PricedBillableEvents                int64
 	AccountingAbsentAttempts            int64
-	AccountingInvalidAttempts           int64
 	AccountingValidAttempts             int64
 	AccountingValidCompleteAttempts     int64
 	AccountingValidInconsistentAttempts int64

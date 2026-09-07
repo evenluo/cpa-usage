@@ -141,7 +141,7 @@ func benchmarkRedisUsageMessages(uniqueRequestIDs int, attemptsPerRequest int) [
 			failed = "true"
 			failure = `,"fail":{"status_code":429,"body":"excluded failure body"},"response_headers":{"set-cookie":"excluded"}`
 		}
-		messages = append(messages, fmt.Sprintf(`{"timestamp":"2026-08-31T08:%02d:%02dZ","latency_ms":%d,"ttft_ms":%d,"source":"source-%03d","auth_index":"auth-%04d","provider":"provider-%02d","executor_type":"executor-%d","model":"model-%03d","auth_type":"apikey","api_key":"sk-bench-%04d","request_id":"request-%04d","reasoning_effort":"high","service_tier":"priority","failed":%s%s,"tokens":{"input_tokens":%d,"output_tokens":%d,"reasoning_tokens":%d,"cached_tokens":%d,"cache_read_tokens":%d,"cache_creation_tokens":%d,"total_tokens":%d},"accounting_version":2,"generate":true,"stream":true,"token_breakdown":{"schema_version":2,"quality":"complete","total_tokens":0,"input":{"total_tokens":0,"uncached_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0},"output":{"total_tokens":0,"non_reasoning_tokens":0,"reasoning_tokens":0},"unclassified_tokens":0}}`,
+		messages = append(messages, fmt.Sprintf(`{"timestamp":"2026-08-31T08:%02d:%02dZ","latency_ms":%d,"ttft_ms":%d,"source":"source-%03d","auth_index":"auth-%04d","provider":"provider-%02d","executor_type":"executor-%d","model":"model-%03d","auth_type":"apikey","api_key":"sk-bench-%04d","request_id":"request-%04d","reasoning_effort":"high","service_tier":"priority","failed":%s%s,"tokens":{"input_tokens":%d,"output_tokens":%d,"reasoning_tokens":%d,"cached_tokens":%d,"cache_read_tokens":%d,"cache_creation_tokens":%d,"total_tokens":%d},"accounting_version":2,"generate":true,"stream":true,"token_breakdown":{"schema_version":2,"quality":"complete","total_tokens":%d,"input":{"total_tokens":%d,"uncached_tokens":%d,"cache_read_tokens":%d,"cache_write_tokens":%d},"output":{"total_tokens":%d,"non_reasoning_tokens":%d,"reasoning_tokens":%d},"unclassified_tokens":0}}`,
 			(messageIndex/60)%60,
 			messageIndex%60,
 			100+messageIndex%1_000,
@@ -163,6 +163,14 @@ func benchmarkRedisUsageMessages(uniqueRequestIDs int, attemptsPerRequest int) [
 			messageIndex%100,
 			messageIndex%50,
 			150+messageIndex%1_300,
+			150+messageIndex%1_000+messageIndex%300+messageIndex%80,
+			100+messageIndex%1_000,
+			100+messageIndex%1_000-messageIndex%100-messageIndex%50,
+			messageIndex%100,
+			messageIndex%50,
+			50+messageIndex%300+messageIndex%80,
+			50+messageIndex%300,
+			messageIndex%80,
 		))
 	}
 	return messages

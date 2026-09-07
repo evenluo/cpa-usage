@@ -13,7 +13,6 @@ func addUsageRollupAccountingFieldsMigration(tx *gorm.DB) error {
 	}
 	columns := []string{
 		"accounting_absent_attempts",
-		"accounting_invalid_attempts",
 		"accounting_valid_attempts",
 		"accounting_valid_complete_attempts",
 		"accounting_valid_inconsistent_attempts",
@@ -47,5 +46,34 @@ func addUsageRollupAccountingFieldsMigration(tx *gorm.DB) error {
 	if err := tx.Exec("UPDATE usage_rollups_hourly SET accounting_absent_attempts = request_count").Error; err != nil {
 		return fmt.Errorf("initialize historical accounting absence: %w", err)
 	}
+	for _, column := range []string{
+		"input_tokens",
+		"billable_prompt_tokens",
+		"output_tokens",
+		"reasoning_tokens",
+		"cached_tokens",
+		"cache_read_tokens",
+		"cache_read_observed_input_tokens",
+		"total_tokens",
+	} {
+		present, err := usageRollupColumnExists(tx, column)
+		if err != nil {
+			return err
+		}
+		if !present {
+			continue
+		}
+		if err := tx.Exec("ALTER TABLE usage_rollups_hourly DROP COLUMN " + column).Error; err != nil {
+			return fmt.Errorf("drop inactive usage_rollups_hourly.%s column: %w", column, err)
+		}
+	}
 	return nil
+}
+
+func usageRollupColumnExists(tx *gorm.DB, column string) (bool, error) {
+	var count int64
+	if err := tx.Raw("SELECT COUNT(*) FROM pragma_table_info('usage_rollups_hourly') WHERE name = ?", column).Scan(&count).Error; err != nil {
+		return false, fmt.Errorf("inspect usage_rollups_hourly.%s column: %w", column, err)
+	}
+	return count != 0, nil
 }

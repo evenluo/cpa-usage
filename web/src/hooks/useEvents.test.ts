@@ -56,8 +56,14 @@ describe("fetchEvents", () => {
       failed: false,
       latency_ms: 10,
       ttft_ms: 2,
-      output_tps: 100,
-      tokens: { output_tokens: 1, total_tokens: 2 },
+      attempt_facts: {
+        generate: true, stream: true, request_service_tier: null, response_service_tier: null, output_tps: 100,
+        accounting: {
+          state: "valid", quality: "complete", total_tokens: 2,
+          input: { total_tokens: 1, uncached_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0 },
+          output: { total_tokens: 1, non_reasoning_tokens: 1, reasoning_tokens: 0 }, unclassified_tokens: 0,
+        },
+      },
     }
     mockedApiFetch
       .mockResolvedValueOnce({ events: [event], total_count: 1, page: 1, page_size: 10, total_pages: 1 })
@@ -115,8 +121,14 @@ describe("fetchEvents", () => {
         failed: false,
         latency_ms: 10,
         ttft_ms: 2,
-        output_tps: 100,
-        tokens: { output_tokens: 1, total_tokens: 2 },
+        attempt_facts: {
+          generate: true, stream: true, request_service_tier: null, response_service_tier: null, output_tps: 100,
+          accounting: {
+            state: "valid", quality: "complete", total_tokens: 2,
+            input: { total_tokens: 1, uncached_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0 },
+            output: { total_tokens: 1, non_reasoning_tokens: 1, reasoning_tokens: 0 }, unclassified_tokens: 0,
+          },
+        },
       }],
       total_count: 2,
       page: 1,

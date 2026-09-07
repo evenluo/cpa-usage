@@ -3,7 +3,7 @@ export type TimeRange = "today" | "yesterday" | "24h" | "7d" | "30d"
 export type CostStatus = "available" | "partial" | "unavailable"
 export type CacheReadShareState = "available" | "partial" | "no_cache_data" | "no_prompt_input"
 
-export type AccountingState = "absent" | "invalid" | "valid"
+export type AccountingState = "absent" | "valid"
 export type AccountingQuality = "complete" | "inconsistent" | "unclassified"
 
 export interface CanonicalComposition<T = number> {
@@ -30,8 +30,6 @@ export interface UsageAttemptFacts {
   output_tps: number | null
   accounting: CanonicalComposition<number | null> & {
     state: AccountingState
-    accounting_version: number | null
-    schema_version: number | null
     quality: AccountingQuality | "unknown" | null
   }
 }
@@ -408,7 +406,7 @@ export interface APIKeyAliasTargetPage {
 }
 
 export interface UsageEvent {
-  attempt_facts?: UsageAttemptFacts
+  attempt_facts: UsageAttemptFacts
   id?: number
   timestamp: string
   model: string
@@ -418,7 +416,6 @@ export interface UsageEvent {
   status_code?: number
   executor_type?: string
   reasoning_effort?: string
-  service_tier?: string
   source: string
   auth_index?: string
   api_key_alias?: string
@@ -426,16 +423,6 @@ export interface UsageEvent {
   failed: boolean
   latency_ms: number
   ttft_ms: number | null
-  output_tps: number | null
-  tokens: {
-    input_tokens: number | null
-    output_tokens: number | null
-    reasoning_tokens: number | null
-    cache_read_tokens: number | null
-    cache_write_tokens: number | null
-    unclassified_tokens: number | null
-    total_tokens: number | null
-  }
 }
 
 export interface UsageEventsPage {

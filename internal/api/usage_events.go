@@ -55,12 +55,9 @@ type usageEventPayload struct {
 	StatusCode      *int                     `json:"status_code,omitempty"`
 	ExecutorType    string                   `json:"executor_type,omitempty"`
 	ReasoningEffort string                   `json:"reasoning_effort,omitempty"`
-	ServiceTier     string                   `json:"service_tier,omitempty"`
 	LatencyMS       int64                    `json:"latency_ms"`
 	TTFTMS          *int64                   `json:"ttft_ms"`
-	OutputTPS       *float64                 `json:"output_tps"`
 	AttemptFacts    usageAttemptFactsPayload `json:"attempt_facts"`
-	Tokens          usageEventTokenPayload   `json:"tokens"`
 }
 
 const usageEventsCSVExportLimit = 5_000
@@ -99,8 +96,6 @@ type usageAttemptFactsPayload struct {
 
 type usageAttemptAccountingPayload struct {
 	State              string                    `json:"state"`
-	AccountingVersion  *int64                    `json:"accounting_version"`
-	SchemaVersion      *int64                    `json:"schema_version"`
 	Quality            *string                   `json:"quality"`
 	TotalTokens        *int64                    `json:"total_tokens"`
 	Input              usageAttemptInputPayload  `json:"input"`
@@ -119,16 +114,6 @@ type usageAttemptOutputPayload struct {
 	TotalTokens        *int64 `json:"total_tokens"`
 	NonReasoningTokens *int64 `json:"non_reasoning_tokens"`
 	ReasoningTokens    *int64 `json:"reasoning_tokens"`
-}
-
-type usageEventTokenPayload struct {
-	InputTokens        *int64 `json:"input_tokens"`
-	OutputTokens       *int64 `json:"output_tokens"`
-	ReasoningTokens    *int64 `json:"reasoning_tokens"`
-	CacheReadTokens    *int64 `json:"cache_read_tokens"`
-	CacheWriteTokens   *int64 `json:"cache_write_tokens"`
-	UnclassifiedTokens *int64 `json:"unclassified_tokens"`
-	TotalTokens        *int64 `json:"total_tokens"`
 }
 
 func registerUsageEventsRoute(
@@ -279,14 +264,14 @@ func encodeUsageEventsCSV(events []usageEventPayload) ([]byte, error) {
 			statusCode,
 			strconv.FormatInt(event.LatencyMS, 10),
 			formatUsageEventsCSVInt(event.TTFTMS),
-			formatUsageEventsCSVFloat(event.OutputTPS),
-			formatUsageEventsCSVInt(event.Tokens.InputTokens),
-			formatUsageEventsCSVInt(event.Tokens.OutputTokens),
-			formatUsageEventsCSVInt(event.Tokens.ReasoningTokens),
-			formatUsageEventsCSVInt(event.Tokens.CacheReadTokens),
-			formatUsageEventsCSVInt(event.Tokens.CacheWriteTokens),
-			formatUsageEventsCSVInt(event.Tokens.UnclassifiedTokens),
-			formatUsageEventsCSVInt(event.Tokens.TotalTokens),
+			formatUsageEventsCSVFloat(event.AttemptFacts.OutputTPS),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Input.TotalTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Output.TotalTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Output.ReasoningTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Input.CacheReadTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Input.CacheWriteTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.UnclassifiedTokens),
+			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.TotalTokens),
 		}); err != nil {
 			return nil, err
 		}
@@ -404,20 +389,9 @@ func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIden
 			StatusCode:      row.StatusCode,
 			ExecutorType:    row.ExecutorType,
 			ReasoningEffort: row.ReasoningEffort,
-			ServiceTier:     row.ServiceTier,
 			LatencyMS:       row.LatencyMS,
 			TTFTMS:          row.TTFTMS,
-			OutputTPS:       row.AttemptFacts.OutputTPS,
 			AttemptFacts:    mapUsageAttemptFactsPayload(row.AttemptFacts),
-			Tokens: usageEventTokenPayload{
-				InputTokens:        row.AttemptFacts.Accounting.Input.TotalTokens,
-				OutputTokens:       row.AttemptFacts.Accounting.Output.TotalTokens,
-				ReasoningTokens:    row.AttemptFacts.Accounting.Output.ReasoningTokens,
-				CacheReadTokens:    row.AttemptFacts.Accounting.Input.CacheReadTokens,
-				CacheWriteTokens:   row.AttemptFacts.Accounting.Input.CacheWriteTokens,
-				UnclassifiedTokens: row.AttemptFacts.Accounting.UnclassifiedTokens,
-				TotalTokens:        row.AttemptFacts.Accounting.TotalTokens,
-			},
 		})
 	}
 	return payload
@@ -444,11 +418,9 @@ func mapUsageAttemptFactsPayload(facts repodto.UsageAttemptFacts) usageAttemptFa
 		ResponseServiceTier: facts.ResponseServiceTier,
 		OutputTPS:           facts.OutputTPS,
 		Accounting: usageAttemptAccountingPayload{
-			State:             facts.Accounting.State,
-			AccountingVersion: facts.Accounting.AccountingVersion,
-			SchemaVersion:     facts.Accounting.SchemaVersion,
-			Quality:           facts.Accounting.Quality,
-			TotalTokens:       facts.Accounting.TotalTokens,
+			State:       facts.Accounting.State,
+			Quality:     facts.Accounting.Quality,
+			TotalTokens: facts.Accounting.TotalTokens,
 			Input: usageAttemptInputPayload{
 				TotalTokens:      facts.Accounting.Input.TotalTokens,
 				UncachedTokens:   facts.Accounting.Input.UncachedTokens,

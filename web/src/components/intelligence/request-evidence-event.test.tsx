@@ -12,31 +12,20 @@ const event: UsageEvent = {
   status_code: 200,
   executor_type: "openai",
   reasoning_effort: "high",
-  service_tier: "priority",
   source: "Codex",
   auth_index: "agent-codex",
   failed: false,
   latency_ms: 1_000,
   ttft_ms: 100,
-  output_tps: 42,
   attempt_facts: {
     generate: true, stream: null, request_service_tier: "priority", response_service_tier: null, output_tps: 42,
     accounting: {
-      state: "valid", accounting_version: 2, schema_version: 2, quality: "complete",
+      state: "valid", quality: "complete",
       total_tokens: 100,
       input: { total_tokens: 50, uncached_tokens: 44, cache_read_tokens: 5, cache_write_tokens: 1 },
       output: { total_tokens: 50, non_reasoning_tokens: 46, reasoning_tokens: 4 },
       unclassified_tokens: 0,
     },
-  },
-  tokens: {
-    input_tokens: 50,
-    output_tokens: 42,
-    reasoning_tokens: 4,
-    cache_read_tokens: 5,
-    cache_write_tokens: 1,
-    unclassified_tokens: 0,
-    total_tokens: 100,
   },
 }
 
@@ -77,6 +66,8 @@ describe("RequestEvidenceEvent", () => {
     expect(screen.getByText("200")).toBeInTheDocument()
     expect(screen.getByText("high")).toBeInTheDocument()
     expect(screen.getByText("priority")).toBeInTheDocument()
+    expect(screen.queryByText("Accounting version")).not.toBeInTheDocument()
+    expect(screen.queryByText("Token schema version")).not.toBeInTheDocument()
     expect(screen.queryByText("Generic cached tokens")).not.toBeInTheDocument()
     expect(screen.getByText("Generate")).toBeInTheDocument()
     expect(screen.getByText("Yes")).toBeInTheDocument()
@@ -84,14 +75,13 @@ describe("RequestEvidenceEvent", () => {
     expect(screen.getByText("Unknown")).toBeInTheDocument()
   })
 
-  it("shows reported invalid canonical facts, independent tiers and explicit execution absence without estimating TPS", () => {
+  it("shows qualified canonical facts, independent tiers and explicit execution absence without estimating TPS", () => {
     render(<RequestEvidenceEvent label="Selected attempt" detail event={{
       ...event,
-      output_tps: null,
       attempt_facts: {
         generate: false, stream: null, request_service_tier: "priority", response_service_tier: "default", output_tps: null,
         accounting: {
-          state: "invalid", accounting_version: 2, schema_version: 2, quality: "inconsistent",
+          state: "valid", quality: "inconsistent",
           total_tokens: 999,
           input: { total_tokens: 100, uncached_tokens: 70, cache_read_tokens: 20, cache_write_tokens: 10 },
           output: { total_tokens: 50, non_reasoning_tokens: 40, reasoning_tokens: 10 },
@@ -100,7 +90,7 @@ describe("RequestEvidenceEvent", () => {
       },
     }} />)
     const value = (label: string) => screen.getByText(label).nextElementSibling
-    expect(value("Canonical accounting")).toHaveTextContent("Invalid canonical facts")
+    expect(value("Canonical accounting")).toHaveTextContent("Valid structure")
     expect(value("Reported quality")).toHaveTextContent("inconsistent")
     expect(value("Canonical total")).toHaveTextContent("999")
     expect(value("Requested service tier")).toHaveTextContent("priority")
@@ -111,14 +101,21 @@ describe("RequestEvidenceEvent", () => {
   })
 
   it("does not synthesize canonical facts or response tier for historical evidence", () => {
-    render(<RequestEvidenceEvent event={{ ...event, output_tps: null, attempt_facts: undefined }} label="Historical attempt" detail />)
-    for (const label of ["Response service tier", "Canonical total", "Accounting version", "Reported quality"]) {
+    render(<RequestEvidenceEvent event={{ ...event, attempt_facts: {
+      generate: null, stream: null, request_service_tier: null, response_service_tier: null, output_tps: null,
+      accounting: {
+        state: "absent", quality: null, total_tokens: null,
+        input: { total_tokens: null, uncached_tokens: null, cache_read_tokens: null, cache_write_tokens: null },
+        output: { total_tokens: null, non_reasoning_tokens: null, reasoning_tokens: null },
+        unclassified_tokens: null,
+      },
+    } }} label="Historical attempt" detail />)
+    for (const label of ["Requested service tier", "Response service tier", "Canonical total", "Reported quality"]) {
       expect(screen.getByText(label).nextElementSibling).toHaveTextContent("-")
     }
     for (const label of ["Generate", "Stream"]) {
       expect(screen.getByText(label).nextElementSibling).toHaveTextContent("Unknown")
     }
-    expect(screen.getByText("Requested service tier").nextElementSibling).toHaveTextContent("priority")
     expect(screen.getByText("Output TPS").nextElementSibling).toHaveTextContent("-")
   })
 })

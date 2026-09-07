@@ -12,6 +12,7 @@ interface RequestEvidenceEventProps {
 
 export function RequestEvidenceEvent({ event, label, syncState, detail = false }: RequestEvidenceEventProps) {
   const { keyLabel, keyTrace } = getRequestEventLabels(event)
+  const facts = event.attempt_facts
 
   return (
     <section
@@ -36,9 +37,9 @@ export function RequestEvidenceEvent({ event, label, syncState, detail = false }
         {event.endpoint ? `${event.endpoint} · ` : ""}{event.model || "Unknown model"} · {formatDate(event.timestamp)}
       </p>
       <div className="mt-3 grid min-w-0 grid-cols-3 gap-3">
-        <RequestMetric label="Output TPS" value={formatOutputTPS(event.output_tps)} />
+        <RequestMetric label="Output TPS" value={formatOutputTPS(facts.output_tps)} />
         <RequestMetric label="Latency" value={formatLatency(event.latency_ms)} />
-        <RequestMetric label="Canonical tokens" value={formatTokenCount(event.tokens?.total_tokens)} />
+        <RequestMetric label="Canonical tokens" value={formatTokenCount(facts.accounting.total_tokens)} />
       </div>
       {detail ? <RequestEvidenceDetail event={event} /> : null}
     </section>
@@ -47,7 +48,7 @@ export function RequestEvidenceEvent({ event, label, syncState, detail = false }
 
 function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
   const facts = event.attempt_facts
-  const accounting = facts?.accounting
+  const accounting = facts.accounting
   const fields = [
     ["Observed alias label", event.model_alias || "-"],
     ["Actual model", event.model || "-"],
@@ -56,15 +57,13 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
     ["Status code", formatOptionalNumber(event.status_code)],
     ["Executor", event.executor_type || "-"],
     ["Reasoning effort", event.reasoning_effort || "-"],
-    ["Requested service tier", facts?.request_service_tier ?? event.service_tier ?? "-"],
-    ["Response service tier", facts?.response_service_tier ?? "-"],
-    ["Generate", formatOptionalBoolean(facts?.generate)],
-    ["Stream", formatOptionalBoolean(facts?.stream)],
+    ["Requested service tier", facts.request_service_tier ?? "-"],
+    ["Response service tier", facts.response_service_tier ?? "-"],
+    ["Generate", formatOptionalBoolean(facts.generate)],
+    ["Stream", formatOptionalBoolean(facts.stream)],
     ["TTFT", event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms)],
-    ["Canonical accounting", accounting ? ACCOUNTING_STATE_LABELS[accounting.state] : "Unavailable"],
-    ["Accounting version", formatOptionalNumber(accounting?.accounting_version)],
-    ["Token schema version", formatOptionalNumber(accounting?.schema_version)],
-    ["Reported quality", accounting?.quality ?? "-"],
+    ["Canonical accounting", ACCOUNTING_STATE_LABELS[accounting.state]],
+    ["Reported quality", accounting.quality ?? "-"],
     ...getCanonicalTokenFields(accounting).map(([label, value]) => [label, formatTokenCount(value)]),
   ]
 

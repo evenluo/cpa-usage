@@ -11,13 +11,10 @@ type UsageAttemptFacts struct {
 	OutputTPS           *float64
 }
 
-// UsageAccountingRecord retains typed reported facts even when unavailable.
-// Consumers may aggregate canonical buckets only when State == "valid", and
-// must still qualify Quality. Structural validity does not imply completeness.
+// UsageAccountingRecord is either a valid canonical observation or historical
+// absence. Admission rejects malformed canonical facts before persistence.
 type UsageAccountingRecord struct {
 	State              string
-	AccountingVersion  *int64
-	SchemaVersion      *int64
 	Quality            *string
 	TotalTokens        *int64
 	Input              UsageTokenInput

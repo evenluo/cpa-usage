@@ -425,7 +425,7 @@ func TestListUsageEventsWithFilterAppliesProviderScope(t *testing.T) {
 	if page.TotalCount != 1 || len(page.Events) != 1 {
 		t.Fatalf("expected one codex event, got %+v", page)
 	}
-	if page.Events[0].Provider != "codex" || page.Events[0].TotalTokens != 10 {
+	if page.Events[0].Provider != "codex" || page.Events[0].AttemptFacts.Accounting.TotalTokens == nil || *page.Events[0].AttemptFacts.Accounting.TotalTokens != 10 {
 		t.Fatalf("unexpected provider-scoped event: %+v", page.Events[0])
 	}
 	if !reflect.DeepEqual(page.Models, []string{"claude-sonnet"}) {

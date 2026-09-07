@@ -104,9 +104,8 @@ func mapAnalyticsAccountingSummary(row analyticsAggregateRow) dto.AnalyticsAccou
 		TotalAttempts: row.RequestCount,
 		ValidAttempts: row.AccountingValidAttempts,
 		States: dto.AnalyticsAccountingStates{
-			Absent:  row.AccountingAbsentAttempts,
-			Invalid: row.AccountingInvalidAttempts,
-			Valid:   row.AccountingValidAttempts,
+			Absent: row.AccountingAbsentAttempts,
+			Valid:  row.AccountingValidAttempts,
 		},
 		ValidQuality: dto.AnalyticsAccountingValidQuality{
 			Complete:     row.AccountingValidCompleteAttempts,

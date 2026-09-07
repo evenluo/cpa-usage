@@ -290,15 +290,13 @@ func performanceAccountingWithOutput(quality string, output int64) entities.Usag
 	nonReasoning := output * 3 / 5
 	reasoning := output - nonReasoning
 	return entities.UsageAccounting{
-		AccountingVersion: performanceInt64Pointer(2), TokenSchemaVersion: performanceInt64Pointer(2), TokenQuality: &quality,
+		TokenQuality:         &quality,
 		CanonicalTotalTokens: performanceInt64Pointer(100 + output), CanonicalInputTokens: performanceInt64Pointer(100), CanonicalUncachedTokens: performanceInt64Pointer(50), CanonicalCacheReadTokens: performanceInt64Pointer(40), CanonicalCacheWriteTokens: performanceInt64Pointer(10),
 		CanonicalOutputTokens: performanceInt64Pointer(output), CanonicalNonReasoningTokens: performanceInt64Pointer(nonReasoning), CanonicalReasoningTokens: performanceInt64Pointer(reasoning), CanonicalUnclassifiedTokens: performanceInt64Pointer(0),
 	}
 }
 
 func setPerformanceAttemptAccounting(attempt *usagePerformanceAttempt, accounting entities.UsageAccounting) {
-	attempt.AccountingVersion = accounting.AccountingVersion
-	attempt.TokenSchemaVersion = accounting.TokenSchemaVersion
 	attempt.TokenQuality = accounting.TokenQuality
 	attempt.CanonicalTotalTokens = accounting.CanonicalTotalTokens
 	attempt.CanonicalInputTokens = accounting.CanonicalInputTokens

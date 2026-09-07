@@ -150,9 +150,8 @@ func analyticsRollupsAccountingAggregateSource() analyticsAccountingAggregateSou
 	return analyticsAccountingAggregateSource{
 		stateAttemptsExpr: func(state string) string {
 			columns := map[string]string{
-				AccountingAbsent:  "accounting_absent_attempts",
-				AccountingInvalid: "accounting_invalid_attempts",
-				AccountingValid:   "accounting_valid_attempts",
+				AccountingAbsent: "accounting_absent_attempts",
+				AccountingValid:  "accounting_valid_attempts",
 			}
 			return "usage_rollups_hourly." + columns[state]
 		},
@@ -237,7 +236,6 @@ func analyticsAccountingSummarySelect(source analyticsAccountingAggregateSource)
 	token := source.validTokenExpr
 	return `
 			COALESCE(SUM(` + state(AccountingAbsent) + `), 0) AS accounting_absent_attempts,
-			COALESCE(SUM(` + state(AccountingInvalid) + `), 0) AS accounting_invalid_attempts,
 			COALESCE(SUM(` + quality("complete") + `), 0) AS accounting_valid_complete_attempts,
 			COALESCE(SUM(` + quality("inconsistent") + `), 0) AS accounting_valid_inconsistent_attempts,
 			COALESCE(SUM(` + quality("unclassified") + `), 0) AS accounting_valid_unclassified_attempts,

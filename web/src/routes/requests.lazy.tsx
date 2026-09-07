@@ -404,9 +404,9 @@ function RequestListItem({
         </p>
       </div>
       <div className="min-w-0 text-right">
-        <p className="whitespace-nowrap text-sm font-medium">{formatOutputTPS(event.output_tps)}</p>
+        <p className="whitespace-nowrap text-sm font-medium">{formatOutputTPS(event.attempt_facts.output_tps)}</p>
         <p className="mt-0.5 whitespace-nowrap text-xs text-muted-foreground">
-          {event.tokens?.total_tokens === null || event.tokens?.total_tokens === undefined ? "Tokens unavailable" : `${formatCompact(event.tokens.total_tokens, 2)} canonical`} · {event.failed ? "Failed" : "Success"}
+          {event.attempt_facts.accounting.total_tokens === null ? "Tokens unavailable" : `${formatCompact(event.attempt_facts.accounting.total_tokens, 2)} canonical`} · {event.failed ? "Failed" : "Success"}
         </p>
       </div>
     </button>

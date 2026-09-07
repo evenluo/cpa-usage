@@ -189,8 +189,6 @@ func applyUsageAccountingToHourlyRollup(rollup *entities.UsageRollupHourly, even
 	switch event.AccountingState {
 	case AccountingAbsent:
 		rollup.AccountingAbsentAttempts++
-	case AccountingInvalid:
-		rollup.AccountingInvalidAttempts++
 	case AccountingValid:
 		rollup.AccountingValidAttempts++
 		switch optionalStringValue(event.TokenQuality) {

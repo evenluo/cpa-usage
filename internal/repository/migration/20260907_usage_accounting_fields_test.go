@@ -37,21 +37,14 @@ func TestUsageAccountingMigrationPreservesHistoricalFacts(t *testing.T) {
 	if !reflect.DeepEqual(event.UsageAccounting, entities.UsageAccounting{AccountingState: "absent"}) || event.Generate != nil || event.Stream != nil || event.ResponseServiceTier != nil {
 		t.Fatalf("historical evidence fabricated: %+v", event)
 	}
-	fresh, err := gorm.Open(sqlite.Open(testSQLiteDSN(filepath.Join(t.TempDir(), "fresh.db"))), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer closeOpenedDatabase(t, fresh)
-	if err := fresh.AutoMigrate(&entities.UsageEvent{}); err != nil {
-		t.Fatal(err)
-	}
-	upgradedShape, freshShape := loadUsageAttemptColumnShapes(t, db), loadUsageAttemptColumnShapes(t, fresh)
-	for name, shape := range upgradedShape {
-		if name == "id" || name == "event_key" || name == "input_tokens" || name == "output_tokens" || name == "cached_tokens" || name == "total_tokens" || name == "service_tier" {
-			continue
+	for _, column := range []string{"accounting_version", "token_schema_version"} {
+		if db.Migrator().HasColumn("usage_events", column) {
+			t.Fatalf("upgrade persisted fixed protocol field usage_events.%s", column)
 		}
-		if shape != freshShape[name] {
-			t.Fatalf("fresh/upgraded constraint mismatch for %s: %+v %+v", name, shape, freshShape[name])
+	}
+	for _, column := range []string{"accounting_state", "token_quality", "canonical_total_tokens", "generate", "stream", "response_service_tier"} {
+		if !db.Migrator().HasColumn("usage_events", column) {
+			t.Fatalf("expected usage_events.%s", column)
 		}
 	}
 }
@@ -78,7 +71,7 @@ func TestAccountingUpgradeRequiresPublishedConsumerToDrainInbox(t *testing.T) {
 			if (err != nil) != blocked {
 				t.Fatalf("status %s: err=%v", status, err)
 			}
-			if db.Migrator().HasColumn("usage_events", "accounting_version") == blocked {
+			if db.Migrator().HasColumn("usage_events", "accounting_state") == blocked {
 				t.Fatalf("unexpected schema mutation for status %s", status)
 			}
 			var retained int64

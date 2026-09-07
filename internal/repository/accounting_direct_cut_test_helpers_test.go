@@ -21,7 +21,7 @@ func canonicalUsageTestEvents(events []entities.UsageEvent) []entities.UsageEven
 }
 
 func canonicalUsageTestEvent(event entities.UsageEvent) entities.UsageEvent {
-	if UsageAccountingState(event.UsageAccounting) != AccountingAbsent {
+	if usageAccountingState(event.UsageAccounting) != AccountingAbsent {
 		return event
 	}
 	input := max(event.InputTokens, int64(0))
@@ -44,11 +44,8 @@ func canonicalUsageTestEvent(event entities.UsageEvent) entities.UsageEvent {
 	uncached := input - cacheRead
 	zero := int64(0)
 	total := input + output
-	version := int64(2)
 	quality := "complete"
 	event.UsageAccounting = entities.UsageAccounting{
-		AccountingVersion:           &version,
-		TokenSchemaVersion:          &version,
 		TokenQuality:                &quality,
 		CanonicalTotalTokens:        &total,
 		CanonicalInputTokens:        &input,

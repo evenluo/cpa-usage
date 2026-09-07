@@ -23,9 +23,7 @@ func addUsageAccountingFieldsMigration(tx *gorm.DB) error {
 		}
 	}
 	columns := []struct{ name, definition string }{
-		{"accounting_version", "INTEGER"},
 		{"accounting_state", "TEXT NOT NULL DEFAULT 'absent'"},
-		{"token_schema_version", "INTEGER"},
 		{"token_quality", "TEXT"},
 		{"canonical_total_tokens", "INTEGER"},
 		{"canonical_input_tokens", "INTEGER"},

@@ -9,7 +9,7 @@ const accounting: AccountingSummary = {
   total_attempts: 10,
   valid_attempts: 3,
   coverage_pct: 30,
-  states: { valid: 3, absent: 6, invalid: 1 },
+  states: { valid: 3, absent: 7 },
   valid_quality: { complete: 1, inconsistent: 1, unclassified: 1 },
   composition: {
     total_tokens: 155,
@@ -31,7 +31,7 @@ describe("Canonical token composition", () => {
     expect(summary.parentElement).toHaveAttribute("open")
     expect(screen.getByText(/3 \/ 10 attempts have valid/)).toBeInTheDocument()
     expect(screen.getByText(/Quality among 3 valid attempts: complete 1, inconsistent 1, unclassified 1/)).toBeInTheDocument()
-    expect(screen.getByText(/Canonical facts absent 6/)).toHaveTextContent("Invalid canonical facts 1")
+    expect(screen.getByText(/Canonical facts absent 7/)).toBeInTheDocument()
     expect(screen.getByText(/Local cost estimate completeness: available/)).toBeInTheDocument()
     expect(screen.getByText("Canonical total").nextElementSibling).toHaveTextContent("155")
     expect(screen.getByText("Canonical input total").nextElementSibling).toHaveTextContent("100")

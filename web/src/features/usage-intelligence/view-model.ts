@@ -124,7 +124,6 @@ export function getCacheReadShareValue(value?: number, state?: CacheReadShareSta
 
 export const ACCOUNTING_STATE_LABELS: Record<AccountingState, string> = {
   absent: "Canonical facts absent",
-  invalid: "Invalid canonical facts",
   valid: "Valid structure",
 }
 

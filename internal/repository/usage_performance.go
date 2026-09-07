@@ -151,8 +151,6 @@ type usagePerformanceAttempt struct {
 	TTFTMS                      *int64  `gorm:"column:ttft_ms"`
 	Generate                    *bool   `gorm:"column:generate"`
 	Stream                      *bool   `gorm:"column:stream"`
-	AccountingVersion           *int64  `gorm:"column:accounting_version"`
-	TokenSchemaVersion          *int64  `gorm:"column:token_schema_version"`
 	TokenQuality                *string `gorm:"column:token_quality"`
 	CanonicalTotalTokens        *int64  `gorm:"column:canonical_total_tokens"`
 	CanonicalInputTokens        *int64  `gorm:"column:canonical_input_tokens"`
@@ -166,7 +164,7 @@ type usagePerformanceAttempt struct {
 }
 
 const usagePerformanceAttemptColumns = `failed, latency_ms, ttft_ms, generate, stream,
-	accounting_version, token_schema_version, token_quality,
+	token_quality,
 	canonical_total_tokens, canonical_input_tokens, canonical_uncached_tokens, canonical_cache_read_tokens,
 	canonical_cache_write_tokens, canonical_output_tokens, canonical_non_reasoning_tokens,
 	canonical_reasoning_tokens, canonical_unclassified_tokens`
@@ -219,8 +217,6 @@ func (attempt usagePerformanceAttempt) entity() entities.UsageEvent {
 		Generate:  attempt.Generate,
 		Stream:    attempt.Stream,
 		UsageAccounting: entities.UsageAccounting{
-			AccountingVersion:           attempt.AccountingVersion,
-			TokenSchemaVersion:          attempt.TokenSchemaVersion,
 			TokenQuality:                attempt.TokenQuality,
 			CanonicalTotalTokens:        attempt.CanonicalTotalTokens,
 			CanonicalInputTokens:        attempt.CanonicalInputTokens,

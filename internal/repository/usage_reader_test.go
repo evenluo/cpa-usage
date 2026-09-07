@@ -63,8 +63,8 @@ func TestUsageReaderListUsageEventsDerivesOutputTPSFromTTFT(t *testing.T) {
 	if event.TTFTMS == nil || *event.TTFTMS != 1052 {
 		t.Fatalf("expected ttft_ms 1052, got %+v", event.TTFTMS)
 	}
-	if event.OutputTPS == nil || math.Abs(*event.OutputTPS-48.33358094488189) > 0.000000001 {
-		t.Fatalf("expected output TPS 48.33358094488189, got %+v", event.OutputTPS)
+	if event.AttemptFacts.OutputTPS == nil || math.Abs(*event.AttemptFacts.OutputTPS-48.33358094488189) > 0.000000001 {
+		t.Fatalf("expected output TPS 48.33358094488189, got %+v", event.AttemptFacts.OutputTPS)
 	}
 }
 
@@ -95,12 +95,12 @@ func TestUsageReaderListUsageEventsLeavesInvalidOutputTPSUnavailable(t *testing.
 		byModel[event.Model] = event
 	}
 	for _, model := range []string{"missing-ttft", "zero-ttft", "inconsistent-duration", "zero-output"} {
-		if byModel[model].OutputTPS != nil {
-			t.Fatalf("expected %s Output TPS to be unavailable, got %+v", model, byModel[model].OutputTPS)
+		if byModel[model].AttemptFacts.OutputTPS != nil {
+			t.Fatalf("expected %s Output TPS to be unavailable, got %+v", model, byModel[model].AttemptFacts.OutputTPS)
 		}
 	}
 	failedEvent := byModel["failed-valid"]
-	if !failedEvent.Failed || failedEvent.OutputTPS == nil || math.Abs(*failedEvent.OutputTPS-48.33358094488189) > 0.000000001 {
+	if !failedEvent.Failed || failedEvent.AttemptFacts.OutputTPS == nil || math.Abs(*failedEvent.AttemptFacts.OutputTPS-48.33358094488189) > 0.000000001 {
 		t.Fatalf("expected failed event with valid facts to retain Output TPS, got %+v", failedEvent)
 	}
 }
@@ -144,16 +144,13 @@ func TestUsageReaderGetUsageOverviewBuildsFilteredOverview(t *testing.T) {
 }
 
 func completeUsageReaderTestAccounting(input int64, output int64, reasoning int64, cacheRead int64) entities.UsageAccounting {
-	version := int64(2)
 	quality := "complete"
 	uncached := input - cacheRead
 	nonReasoning := output - reasoning
 	total := input + output
 	zero := int64(0)
 	return entities.UsageAccounting{
-		AccountingVersion:           &version,
 		AccountingState:             repository.AccountingValid,
-		TokenSchemaVersion:          &version,
 		TokenQuality:                &quality,
 		CanonicalTotalTokens:        &total,
 		CanonicalInputTokens:        &input,

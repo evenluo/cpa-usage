@@ -135,7 +135,14 @@ func InsertUsageEvents(db *gorm.DB, events []entities.UsageEvent) (int, int, err
 	}
 
 	for i := range events {
-		events[i].AccountingState = UsageAccountingState(events[i].UsageAccounting)
+		if accountingFactsAbsent(events[i].UsageAccounting) {
+			events[i].AccountingState = AccountingAbsent
+			continue
+		}
+		if err := ValidateUsageAccounting(events[i].UsageAccounting); err != nil {
+			return 0, 0, fmt.Errorf("validate usage event %q accounting: %w", events[i].EventKey, err)
+		}
+		events[i].AccountingState = AccountingValid
 	}
 
 	inserted := 0

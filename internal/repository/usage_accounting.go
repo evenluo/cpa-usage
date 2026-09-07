@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"fmt"
 	"math"
 	"strings"
 
@@ -9,9 +10,8 @@ import (
 )
 
 const (
-	AccountingAbsent  = "absent"
-	AccountingInvalid = "invalid"
-	AccountingValid   = "valid"
+	AccountingAbsent = "absent"
+	AccountingValid  = "valid"
 )
 
 // InterpretUsageAttempt is the single per-attempt accounting/throughput seam.
@@ -19,11 +19,9 @@ const (
 func InterpretUsageAttempt(event entities.UsageEvent) dto.UsageAttemptFacts {
 	facts := dto.UsageAttemptFacts{
 		Accounting: dto.UsageAccountingRecord{
-			State:             UsageAccountingState(event.UsageAccounting),
-			AccountingVersion: event.AccountingVersion,
-			SchemaVersion:     event.TokenSchemaVersion,
-			Quality:           event.TokenQuality,
-			TotalTokens:       event.CanonicalTotalTokens,
+			State:       usageAccountingState(event.UsageAccounting),
+			Quality:     event.TokenQuality,
+			TotalTokens: event.CanonicalTotalTokens,
 			Input: dto.UsageTokenInput{
 				TotalTokens:      event.CanonicalInputTokens,
 				UncachedTokens:   event.CanonicalUncachedTokens,
@@ -54,41 +52,52 @@ func InterpretUsageAttempt(event entities.UsageEvent) dto.UsageAttemptFacts {
 	return facts
 }
 
-func UsageAccountingState(f entities.UsageAccounting) string {
+func usageAccountingState(f entities.UsageAccounting) string {
 	if accountingFactsAbsent(f) {
 		return AccountingAbsent
-	}
-	if f.AccountingVersion == nil || *f.AccountingVersion != 2 || f.TokenSchemaVersion == nil || *f.TokenSchemaVersion != 2 || f.TokenQuality == nil {
-		return AccountingInvalid
-	}
-	switch *f.TokenQuality {
-	case "complete", "inconsistent", "unclassified":
-	default:
-		return AccountingInvalid
-	}
-	values := []*int64{f.CanonicalTotalTokens, f.CanonicalInputTokens, f.CanonicalUncachedTokens, f.CanonicalCacheReadTokens, f.CanonicalCacheWriteTokens, f.CanonicalOutputTokens, f.CanonicalNonReasoningTokens, f.CanonicalReasoningTokens, f.CanonicalUnclassifiedTokens}
-	for _, value := range values {
-		if value == nil {
-			return AccountingInvalid
-		}
-	}
-	for _, value := range values {
-		if *value < 0 {
-			return AccountingInvalid
-		}
-	}
-	if !accountingSumEquals(*f.CanonicalInputTokens, *f.CanonicalUncachedTokens, *f.CanonicalCacheReadTokens, *f.CanonicalCacheWriteTokens) ||
-		!accountingSumEquals(*f.CanonicalOutputTokens, *f.CanonicalNonReasoningTokens, *f.CanonicalReasoningTokens) ||
-		!accountingSumEquals(*f.CanonicalTotalTokens, *f.CanonicalInputTokens, *f.CanonicalOutputTokens, *f.CanonicalUnclassifiedTokens) ||
-		(*f.TokenQuality == "complete" && *f.CanonicalUnclassifiedTokens != 0) {
-		return AccountingInvalid
 	}
 	return AccountingValid
 }
 
+// ValidateUsageAccounting is the single canonical bucket/quality validator.
+// Historical all-nil facts are handled separately as absence by admission.
+func ValidateUsageAccounting(f entities.UsageAccounting) error {
+	if f.TokenQuality == nil {
+		return fmt.Errorf("token quality is required")
+	}
+	switch *f.TokenQuality {
+	case "complete", "inconsistent", "unclassified":
+	default:
+		return fmt.Errorf("unsupported token quality %q", *f.TokenQuality)
+	}
+	values := []*int64{f.CanonicalTotalTokens, f.CanonicalInputTokens, f.CanonicalUncachedTokens, f.CanonicalCacheReadTokens, f.CanonicalCacheWriteTokens, f.CanonicalOutputTokens, f.CanonicalNonReasoningTokens, f.CanonicalReasoningTokens, f.CanonicalUnclassifiedTokens}
+	for _, value := range values {
+		if value == nil {
+			return fmt.Errorf("all canonical token buckets are required")
+		}
+	}
+	for _, value := range values {
+		if *value < 0 {
+			return fmt.Errorf("canonical token buckets must be nonnegative")
+		}
+	}
+	if !accountingSumEquals(*f.CanonicalInputTokens, *f.CanonicalUncachedTokens, *f.CanonicalCacheReadTokens, *f.CanonicalCacheWriteTokens) {
+		return fmt.Errorf("canonical input buckets do not sum to input total")
+	}
+	if !accountingSumEquals(*f.CanonicalOutputTokens, *f.CanonicalNonReasoningTokens, *f.CanonicalReasoningTokens) {
+		return fmt.Errorf("canonical output buckets do not sum to output total")
+	}
+	if !accountingSumEquals(*f.CanonicalTotalTokens, *f.CanonicalInputTokens, *f.CanonicalOutputTokens, *f.CanonicalUnclassifiedTokens) {
+		return fmt.Errorf("canonical input, output, and unclassified buckets do not sum to total")
+	}
+	if *f.TokenQuality == "complete" && *f.CanonicalUnclassifiedTokens != 0 {
+		return fmt.Errorf("complete accounting cannot contain unclassified tokens")
+	}
+	return nil
+}
+
 func accountingFactsAbsent(f entities.UsageAccounting) bool {
-	return f.AccountingVersion == nil && f.TokenSchemaVersion == nil && f.TokenQuality == nil &&
-		f.CanonicalTotalTokens == nil && f.CanonicalInputTokens == nil && f.CanonicalUncachedTokens == nil &&
+	return f.TokenQuality == nil && f.CanonicalTotalTokens == nil && f.CanonicalInputTokens == nil && f.CanonicalUncachedTokens == nil &&
 		f.CanonicalCacheReadTokens == nil && f.CanonicalCacheWriteTokens == nil && f.CanonicalOutputTokens == nil &&
 		f.CanonicalNonReasoningTokens == nil && f.CanonicalReasoningTokens == nil && f.CanonicalUnclassifiedTokens == nil
 }

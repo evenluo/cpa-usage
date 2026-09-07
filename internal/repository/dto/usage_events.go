@@ -19,34 +19,25 @@ type UsageEventFilterOptionsRecord struct {
 
 // UsageEventRecord 是单条 usage event 的查询结果。
 type UsageEventRecord struct {
-	AttemptFacts        UsageAttemptFacts
-	ID                  uint
-	Timestamp           time.Time
-	APIGroupKey         string
-	APIKeyIdentity      string
-	Model               string
-	ModelAlias          string
-	Endpoint            string
-	RequestID           string
-	AuthType            string
-	Provider            string
-	Source              string
-	AuthIndex           string
-	Failed              bool
-	StatusCode          *int
-	ExecutorType        string
-	ReasoningEffort     string
-	ServiceTier         string
-	LatencyMS           int64
-	TTFTMS              *int64
-	OutputTPS           *float64
-	InputTokens         int64
-	OutputTokens        int64
-	ReasoningTokens     int64
-	CachedTokens        int64
-	CacheReadTokens     *int64
-	CacheCreationTokens *int64
-	TotalTokens         int64
+	AttemptFacts    UsageAttemptFacts
+	ID              uint
+	Timestamp       time.Time
+	APIGroupKey     string
+	APIKeyIdentity  string
+	Model           string
+	ModelAlias      string
+	Endpoint        string
+	RequestID       string
+	AuthType        string
+	Provider        string
+	Source          string
+	AuthIndex       string
+	Failed          bool
+	StatusCode      *int
+	ExecutorType    string
+	ReasoningEffort string
+	LatencyMS       int64
+	TTFTMS          *int64
 }
 
 const UsageFailureBreakdownLimit = 8

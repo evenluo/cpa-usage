@@ -26,17 +26,11 @@ func TestAnalyticsAccountingRawRollupParityForHistoricalCanonicalAndMixedWindows
 	mixedStart := start.Add(2 * time.Hour)
 	events = append(events,
 		entities.UsageEvent{EventKey: "mixed-absent", Provider: "provider", Model: "model", Timestamp: mixedStart.Add(time.Minute)},
-		entities.UsageEvent{EventKey: "mixed-malformed", Provider: "provider", Model: "model", Timestamp: mixedStart.Add(2 * time.Minute), UsageAccounting: entities.UsageAccounting{TokenQuality: accountingStringPointer("complete")}},
-		entities.UsageEvent{EventKey: "mixed-unsupported-version", Provider: "provider", Model: "model", Timestamp: mixedStart.Add(3 * time.Minute), UsageAccounting: entities.UsageAccounting{AccountingVersion: accountingInt64Pointer(3)}},
-		entities.UsageEvent{EventKey: "mixed-unsupported-schema", Provider: "provider", Model: "model", Timestamp: mixedStart.Add(4 * time.Minute), UsageAccounting: entities.UsageAccounting{AccountingVersion: accountingInt64Pointer(2), TokenSchemaVersion: accountingInt64Pointer(3)}},
-		entities.UsageEvent{EventKey: "mixed-missing", Provider: "provider", Model: "model", Timestamp: mixedStart.Add(5 * time.Minute), UsageAccounting: entities.UsageAccounting{AccountingVersion: accountingInt64Pointer(2)}},
-		entities.UsageEvent{EventKey: "mixed-unknown-quality", Provider: "provider", Model: "model", Timestamp: mixedStart.Add(6 * time.Minute), UsageAccounting: entities.UsageAccounting{AccountingVersion: accountingInt64Pointer(2), TokenSchemaVersion: accountingInt64Pointer(2), TokenQuality: accountingStringPointer("future")}},
-		entities.UsageEvent{EventKey: "mixed-invalid", Provider: "provider", Model: "model", Timestamp: mixedStart.Add(7 * time.Minute), UsageAccounting: invalidAnalyticsAccounting()},
 	)
 	for index, quality := range []string{"complete", "inconsistent", "unclassified"} {
 		events = append(events, accountingAnalyticsEvent(
 			"mixed-valid-"+quality,
-			mixedStart.Add(time.Duration(8+index)*time.Minute),
+			mixedStart.Add(time.Duration(2+index)*time.Minute),
 			validAnalyticsAccounting(quality),
 		))
 	}
@@ -51,9 +45,9 @@ func TestAnalyticsAccountingRawRollupParityForHistoricalCanonicalAndMixedWindows
 	})
 	assertAnalyticsAccountingParity(t, db, start.Add(time.Hour), start.Add(2*time.Hour-time.Nanosecond), expectedValidAnalyticsAccountingSummary(3))
 	mixedExpected := expectedValidAnalyticsAccountingSummary(3)
-	mixedExpected.TotalAttempts = 10
-	mixedExpected.CoveragePct = accountingFloat64Pointer(30)
-	mixedExpected.States = dto.AnalyticsAccountingStates{Absent: 1, Invalid: 6, Valid: 3}
+	mixedExpected.TotalAttempts = 4
+	mixedExpected.CoveragePct = accountingFloat64Pointer(75)
+	mixedExpected.States = dto.AnalyticsAccountingStates{Absent: 1, Valid: 3}
 	assertAnalyticsAccountingParity(t, db, mixedStart, mixedStart.Add(time.Hour-time.Nanosecond), mixedExpected)
 
 	var factsBefore []entities.UsageEvent
@@ -61,7 +55,7 @@ func TestAnalyticsAccountingRawRollupParityForHistoricalCanonicalAndMixedWindows
 		t.Fatalf("load raw accounting facts before backfill: %v", err)
 	}
 	if err := db.Model(&entities.UsageRollupHourly{}).Where("1 = 1").Updates(map[string]any{
-		"accounting_absent_attempts": 0, "accounting_invalid_attempts": 0, "accounting_valid_attempts": 0,
+		"accounting_absent_attempts": 0, "accounting_valid_attempts": 0,
 		"accounting_valid_complete_attempts": 0, "accounting_valid_inconsistent_attempts": 0,
 		"accounting_valid_unclassified_attempts": 0, "canonical_total_tokens": 0,
 		"canonical_input_tokens": 0, "canonical_uncached_tokens": 0,
@@ -195,20 +189,13 @@ func validAnalyticsAccounting(quality string) entities.UsageAccounting {
 		total = 135
 	}
 	return entities.UsageAccounting{
-		AccountingVersion:  accountingInt64Pointer(2),
-		TokenSchemaVersion: accountingInt64Pointer(2), TokenQuality: accountingStringPointer(quality),
+		TokenQuality:         accountingStringPointer(quality),
 		CanonicalTotalTokens: accountingInt64Pointer(total), CanonicalInputTokens: accountingInt64Pointer(100),
 		CanonicalUncachedTokens: accountingInt64Pointer(50), CanonicalCacheReadTokens: accountingInt64Pointer(40),
 		CanonicalCacheWriteTokens: accountingInt64Pointer(10), CanonicalOutputTokens: accountingInt64Pointer(30),
 		CanonicalNonReasoningTokens: accountingInt64Pointer(18), CanonicalReasoningTokens: accountingInt64Pointer(12),
 		CanonicalUnclassifiedTokens: accountingInt64Pointer(unclassified),
 	}
-}
-
-func invalidAnalyticsAccounting() entities.UsageAccounting {
-	accounting := validAnalyticsAccounting("complete")
-	accounting.CanonicalUncachedTokens = accountingInt64Pointer(51)
-	return accounting
 }
 
 func expectedValidAnalyticsAccountingSummary(attempts int64) dto.AnalyticsAccountingSummary {

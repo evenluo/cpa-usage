@@ -85,9 +85,8 @@ type analyticsAccountingSummaryPayload struct {
 }
 
 type analyticsAccountingStatesPayload struct {
-	Absent  int64 `json:"absent"`
-	Invalid int64 `json:"invalid"`
-	Valid   int64 `json:"valid"`
+	Absent int64 `json:"absent"`
+	Valid  int64 `json:"valid"`
 }
 
 type analyticsAccountingValidQualityPayload struct {
@@ -360,9 +359,8 @@ func mapAnalyticsAccountingSummaryPayload(accounting dto.AnalyticsAccountingSumm
 		ValidAttempts: accounting.ValidAttempts,
 		CoveragePct:   accounting.CoveragePct,
 		States: analyticsAccountingStatesPayload{
-			Absent:  accounting.States.Absent,
-			Invalid: accounting.States.Invalid,
-			Valid:   accounting.States.Valid,
+			Absent: accounting.States.Absent,
+			Valid:  accounting.States.Valid,
 		},
 		ValidQuality: analyticsAccountingValidQualityPayload{
 			Complete:     accounting.ValidQuality.Complete,

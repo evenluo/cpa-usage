@@ -1416,7 +1416,7 @@ func TestSyncMetadataAggregatesUsageIdentityStatsAfterUpsert(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	eventTime := time.Date(2026, 5, 4, 8, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
-	version, input, output, total, zero := int64(2), int64(11), int64(13), int64(24), int64(0)
+	input, output, total, zero := int64(11), int64(13), int64(24), int64(0)
 	quality := "complete"
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
 		EventKey:  "auth-stat-event",
@@ -1425,8 +1425,6 @@ func TestSyncMetadataAggregatesUsageIdentityStatsAfterUpsert(t *testing.T) {
 		Model:     "sonnet",
 		Timestamp: eventTime,
 		UsageAccounting: entities.UsageAccounting{
-			AccountingVersion:           &version,
-			TokenSchemaVersion:          &version,
 			TokenQuality:                &quality,
 			CanonicalTotalTokens:        &total,
 			CanonicalInputTokens:        &input,

@@ -102,6 +102,14 @@ if [[ -z "$server_id" ]]; then
 fi
 
 jq -r '.env // ""' "$source_json" > "$tmpdir/source.env"
+# Validate the source environment before any external write. Keep resolved
+# configuration and secret-bearing parser diagnostics out of command output.
+if ! env -u CLIPROXYAPI_IMAGE docker compose --env-file "$tmpdir/source.env" \
+  -f deploy/dokploy/cpa-cliproxyapi.compose.yml config --quiet >"$tmpdir/source-validation.log" 2>&1; then
+  echo "Source CPA compose is invalid; set CLIPROXYAPI_IMAGE to a verified Accounting v2 producer image and check its Dokploy environment before migration" >&2
+  exit 2
+fi
+
 migrate_env_file "$tmpdir/source.env" "$tmpdir/cpa-usage.env"
 
 if [[ -z "$cpa_usage_compose_id" ]]; then

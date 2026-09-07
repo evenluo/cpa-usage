@@ -87,11 +87,9 @@ func TestKeyAliasServiceManagesRawAPIKeyAliasesByOpaqueID(t *testing.T) {
 	defer closeTestDatabase(t, db)
 
 	now := time.Date(2026, 5, 18, 8, 0, 0, 0, time.UTC)
-	version, million, zero := int64(2), int64(1_000_000), int64(0)
+	million, zero := int64(1_000_000), int64(0)
 	quality := "complete"
 	canonicalUsage := entities.UsageAccounting{
-		AccountingVersion:           &version,
-		TokenSchemaVersion:          &version,
 		TokenQuality:                &quality,
 		CanonicalTotalTokens:        &million,
 		CanonicalInputTokens:        &million,

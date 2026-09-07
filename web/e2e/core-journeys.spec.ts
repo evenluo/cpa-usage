@@ -55,7 +55,7 @@ function analyticsCoreFor(url: URL): Record<string, unknown> {
         total_attempts: pointCount,
         valid_attempts: pointCount,
         coverage_pct: 100,
-        states: { absent: 0, invalid: 0, valid: pointCount },
+        states: { absent: 0, valid: pointCount },
         valid_quality: { complete: pointCount, inconsistent: 0, unclassified: 0 },
         composition: {
           total_tokens: 100_000 + pointCount,

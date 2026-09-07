@@ -11,7 +11,7 @@ func TestAccountingSumsRejectOverflowAndInvalidQuality(t *testing.T) {
 	ptr := func(v int64) *int64 { return &v }
 	quality := "complete"
 	valid := entities.UsageAccounting{
-		AccountingVersion: ptr(2), TokenSchemaVersion: ptr(2), TokenQuality: &quality,
+		TokenQuality:         &quality,
 		CanonicalTotalTokens: ptr(130), CanonicalInputTokens: ptr(100), CanonicalUncachedTokens: ptr(50), CanonicalCacheReadTokens: ptr(40), CanonicalCacheWriteTokens: ptr(10),
 		CanonicalOutputTokens: ptr(30), CanonicalNonReasoningTokens: ptr(18), CanonicalReasoningTokens: ptr(12), CanonicalUnclassifiedTokens: ptr(0),
 	}
@@ -39,12 +39,18 @@ func TestAccountingSumsRejectOverflowAndInvalidQuality(t *testing.T) {
 			f.CanonicalUnclassifiedTokens = ptr(1)
 			f.CanonicalTotalTokens = ptr(131)
 		}},
+		{"missing quality", func(f *entities.UsageAccounting) { f.TokenQuality = nil }},
+		{"unknown quality", func(f *entities.UsageAccounting) {
+			quality := "future"
+			f.TokenQuality = &quality
+		}},
+		{"missing bucket", func(f *entities.UsageAccounting) { f.CanonicalCacheWriteTokens = nil }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			facts := valid
 			test.change(&facts)
-			if state := InterpretUsageAttempt(entities.UsageEvent{UsageAccounting: facts}).Accounting.State; state != AccountingInvalid {
-				t.Fatalf("expected invalid, got %s", state)
+			if err := ValidateUsageAccounting(facts); err == nil {
+				t.Fatal("expected invalid canonical accounting to be rejected")
 			}
 		})
 	}
@@ -64,16 +70,17 @@ func TestAccountingSumsRejectOverflowAndInvalidQuality(t *testing.T) {
 
 func TestAccountingDirectCutDistinguishesHistoricalAbsenceAndRequiresExplicitStreamingGeneration(t *testing.T) {
 	ptr := func(v int64) *int64 { return &v }
-	if state := UsageAccountingState(entities.UsageAccounting{}); state != AccountingAbsent {
+	if state := usageAccountingState(entities.UsageAccounting{}); state != AccountingAbsent {
 		t.Fatalf("historical row state: got %s want %s", state, AccountingAbsent)
 	}
-	if state := UsageAccountingState(entities.UsageAccounting{AccountingVersion: ptr(2)}); state != AccountingInvalid {
-		t.Fatalf("partial canonical row state: got %s want %s", state, AccountingInvalid)
+	partialQuality := "complete"
+	if err := ValidateUsageAccounting(entities.UsageAccounting{TokenQuality: &partialQuality}); err == nil {
+		t.Fatal("partial canonical accounting must be rejected before interpretation")
 	}
 
 	quality := "complete"
 	valid := entities.UsageAccounting{
-		AccountingVersion: ptr(2), TokenSchemaVersion: ptr(2), TokenQuality: &quality,
+		TokenQuality:         &quality,
 		CanonicalTotalTokens: ptr(130), CanonicalInputTokens: ptr(100), CanonicalUncachedTokens: ptr(50), CanonicalCacheReadTokens: ptr(40), CanonicalCacheWriteTokens: ptr(10),
 		CanonicalOutputTokens: ptr(30), CanonicalNonReasoningTokens: ptr(18), CanonicalReasoningTokens: ptr(12), CanonicalUnclassifiedTokens: ptr(0),
 	}
@@ -92,5 +99,23 @@ func TestAccountingDirectCutDistinguishesHistoricalAbsenceAndRequiresExplicitStr
 		if got := InterpretUsageAttempt(event).OutputTPS; got != nil {
 			t.Fatalf("non-generating or non-streaming attempt produced TPS: %v", got)
 		}
+	}
+}
+
+func TestInsertUsageEventsRejectsPartialCanonicalAccountingWithoutPersistingItAsAbsent(t *testing.T) {
+	db := openTestDatabase(t)
+	quality := "complete"
+	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+		{EventKey: "historical", UsageAccounting: entities.UsageAccounting{}},
+		{EventKey: "partial", UsageAccounting: entities.UsageAccounting{TokenQuality: &quality}},
+	}); err == nil {
+		t.Fatal("expected the batch containing partial canonical accounting to be rejected")
+	}
+	var count int64
+	if err := db.Model(&entities.UsageEvent{}).Count(&count).Error; err != nil {
+		t.Fatalf("count usage events: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("rejected batch persisted %d usage events", count)
 	}
 }

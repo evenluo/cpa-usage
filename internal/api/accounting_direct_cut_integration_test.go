@@ -100,12 +100,16 @@ func TestAccountingDirectCutAcrossIntakeAnalyticsEvidenceAndExport(t *testing.T)
 	window := "range=24h&window_end=2026-09-07T09:00:00Z"
 	var evidence struct {
 		Events []struct {
-			RequestID string   `json:"request_id"`
-			OutputTPS *float64 `json:"output_tps"`
-			Tokens    struct {
-				Total  *int64 `json:"total_tokens"`
-				Output *int64 `json:"output_tokens"`
-			} `json:"tokens"`
+			RequestID    string `json:"request_id"`
+			AttemptFacts struct {
+				OutputTPS  *float64 `json:"output_tps"`
+				Accounting struct {
+					Total  *int64 `json:"total_tokens"`
+					Output struct {
+						Total *int64 `json:"total_tokens"`
+					} `json:"output"`
+				} `json:"accounting"`
+			} `json:"attempt_facts"`
 		} `json:"events"`
 	}
 	if err := json.Unmarshal(get("/api/v1/usage/events?"+window).Body.Bytes(), &evidence); err != nil {
@@ -116,10 +120,10 @@ func TestAccountingDirectCutAcrossIntakeAnalyticsEvidenceAndExport(t *testing.T)
 	}
 	for _, row := range evidence.Events {
 		if row.RequestID == event.RequestID {
-			if row.Tokens.Total == nil || *row.Tokens.Total != 142 || row.Tokens.Output == nil || *row.Tokens.Output != 42 || row.OutputTPS == nil || *row.OutputTPS != 42 {
+			if row.AttemptFacts.Accounting.Total == nil || *row.AttemptFacts.Accounting.Total != 142 || row.AttemptFacts.Accounting.Output.Total == nil || *row.AttemptFacts.Accounting.Output.Total != 42 || row.AttemptFacts.OutputTPS == nil || *row.AttemptFacts.OutputTPS != 42 {
 				t.Fatalf("evidence uses another token unit: %+v", row)
 			}
-		} else if row.Tokens.Total != nil || row.OutputTPS != nil {
+		} else if row.AttemptFacts.Accounting.Total != nil || row.AttemptFacts.OutputTPS != nil {
 			t.Fatalf("historical absence became a scalar fallback: %+v", row)
 		}
 	}

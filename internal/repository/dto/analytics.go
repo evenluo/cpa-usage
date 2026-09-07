@@ -40,9 +40,8 @@ type AnalyticsAccountingSummary struct {
 }
 
 type AnalyticsAccountingStates struct {
-	Absent  int64
-	Invalid int64
-	Valid   int64
+	Absent int64
+	Valid  int64
 }
 
 type AnalyticsAccountingValidQuality struct {

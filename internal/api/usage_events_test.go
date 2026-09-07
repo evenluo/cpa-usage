@@ -36,8 +36,7 @@ func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T
 			Input:              dto.UsageTokenInput{TotalTokens: &canonicalInput, CacheReadTokens: &canonicalCacheRead, CacheWriteTokens: &canonicalCacheWrite},
 			Output:             dto.UsageTokenOutput{TotalTokens: &canonicalOutput, ReasoningTokens: &canonicalReasoning},
 			UnclassifiedTokens: &canonicalUnclassified,
-		}}, InputTokens: 1, OutputTokens: 2, ReasoningTokens: 3,
-		CachedTokens: 4, TotalTokens: 10,
+		}},
 	}}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{
 		UsageIdentity: usageIdentitiesStub{items: []entities.UsageIdentity{{
@@ -168,7 +167,10 @@ func BenchmarkEncodeUsageEventsCSVAtLimit(b *testing.B) {
 		events[index] = usageEventPayload{
 			Timestamp: "2026-09-07T12:00:00Z", Source: "Account", APIKeyAlias: "Key Alias", APIKeyDisplay: "sk-a***********z",
 			Model: "model", ModelAlias: "route", Endpoint: "/v1/messages", RequestID: "request", LatencyMS: 100,
-			Tokens: usageEventTokenPayload{InputTokens: testInt64Pointer(1), OutputTokens: testInt64Pointer(2), TotalTokens: testInt64Pointer(3)},
+			AttemptFacts: usageAttemptFactsPayload{Accounting: usageAttemptAccountingPayload{
+				Input:  usageAttemptInputPayload{TotalTokens: testInt64Pointer(1)},
+				Output: usageAttemptOutputPayload{TotalTokens: testInt64Pointer(2)}, TotalTokens: testInt64Pointer(3),
+			}},
 		}
 	}
 	b.ReportMetric(float64(len(events)), "export_rows")
@@ -327,10 +329,7 @@ func (s *usageEventsStub) GetUsageAnalysis(context.Context, dto.UsageTimeScope) 
 func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	ttftMS := int64(1052)
 	outputTPS := 48.33358094488189
-	staleOutputTPS := 999.0
 	statusCode := 200
-	cacheReadTokens := int64(1)
-	cacheCreationTokens := int64(3)
 	canonicalInput := int64(10)
 	canonicalUncached := int64(6)
 	canonicalOutput := int64(4)
@@ -338,7 +337,6 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	canonicalReasoning := int64(2)
 	canonicalZero := int64(0)
 	canonicalTotal := int64(14)
-	accountingVersion := int64(2)
 	quality := "complete"
 	generate := true
 	stream := false
@@ -348,37 +346,28 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 		AttemptFacts: dto.UsageAttemptFacts{
 			Generate: &generate, Stream: &stream, RequestServiceTier: &requestTier, ResponseServiceTier: &responseTier, OutputTPS: &outputTPS,
 			Accounting: dto.UsageAccountingRecord{
-				State: "valid", AccountingVersion: &accountingVersion, SchemaVersion: &accountingVersion, Quality: &quality, TotalTokens: &canonicalTotal,
+				State: "valid", Quality: &quality, TotalTokens: &canonicalTotal,
 				Input:              dto.UsageTokenInput{TotalTokens: &canonicalInput, UncachedTokens: &canonicalUncached, CacheReadTokens: &canonicalZero, CacheWriteTokens: &canonicalOutput},
 				Output:             dto.UsageTokenOutput{TotalTokens: &canonicalOutput, NonReasoningTokens: &canonicalNonReasoning, ReasoningTokens: &canonicalReasoning},
 				UnclassifiedTokens: &canonicalZero,
 			},
 		},
-		ID:                  42,
-		Timestamp:           time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
-		Model:               "claude-sonnet",
-		ModelAlias:          "claude-sonnet-requested",
-		Endpoint:            "/v1/messages?api_key=secret",
-		RequestID:           "request-42",
-		StatusCode:          &statusCode,
-		ExecutorType:        "openai",
-		ReasoningEffort:     "high",
-		ServiceTier:         "priority",
-		AuthType:            "apikey",
-		Provider:            "OpenAI Mirror",
-		Source:              "sk-provider-key",
-		AuthIndex:           "2",
-		Failed:              false,
-		LatencyMS:           21245,
-		TTFTMS:              &ttftMS,
-		OutputTPS:           &staleOutputTPS,
-		InputTokens:         10,
-		OutputTokens:        976,
-		ReasoningTokens:     2,
-		CachedTokens:        1,
-		CacheReadTokens:     &cacheReadTokens,
-		CacheCreationTokens: &cacheCreationTokens,
-		TotalTokens:         105091,
+		ID:              42,
+		Timestamp:       time.Date(2026, 4, 22, 11, 0, 0, 0, time.UTC),
+		Model:           "claude-sonnet",
+		ModelAlias:      "claude-sonnet-requested",
+		Endpoint:        "/v1/messages?api_key=secret",
+		RequestID:       "request-42",
+		StatusCode:      &statusCode,
+		ExecutorType:    "openai",
+		ReasoningEffort: "high",
+		AuthType:        "apikey",
+		Provider:        "OpenAI Mirror",
+		Source:          "sk-provider-key",
+		AuthIndex:       "2",
+		Failed:          false,
+		LatencyMS:       21245,
+		TTFTMS:          &ttftMS,
 	}}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events?range=24h", nil)
@@ -411,12 +400,13 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	if !contains(body, `"ttft_ms":1052`) || !contains(body, `"output_tps":48.33358094488189`) {
 		t.Fatalf("expected TTFT and Output TPS in response body: %s", body)
 	}
-	if contains(body, `"output_tps":999`) {
-		t.Fatalf("expected HTTP projection to use AttemptFacts Output TPS, got %s", body)
+	if strings.Count(body, `"output_tps":`) != 1 || contains(body, `"tokens":`) || contains(body, `"service_tier":`) {
+		t.Fatalf("expected AttemptFacts to be the only TPS/token/tier projection, got %s", body)
 	}
 	for _, fact := range []string{
 		`"attempt_facts":{`, `"generate":true`, `"stream":false`, `"request_service_tier":"priority"`, `"response_service_tier":"default"`,
-		`"accounting":{"state":"valid"`, `"accounting_version":2`, `"schema_version":2`, `"quality":"complete"`,
+		`"accounting":{"state":"valid"`, `"quality":"complete"`,
+		`"total_tokens":14`,
 		`"input":{"total_tokens":10,"uncached_tokens":6,"cache_read_tokens":0,"cache_write_tokens":4}`,
 		`"output":{"total_tokens":4,"non_reasoning_tokens":2,"reasoning_tokens":2}`, `"unclassified_tokens":0`,
 	} {
@@ -430,12 +420,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	if contains(body, "api_key=secret") {
 		t.Fatalf("expected endpoint query to stay hidden: %s", body)
 	}
-	for _, token := range []string{`"input_tokens":10`, `"output_tokens":4`, `"reasoning_tokens":2`, `"cache_read_tokens":0`, `"cache_write_tokens":4`, `"unclassified_tokens":0`, `"total_tokens":14`} {
-		if !contains(body, token) {
-			t.Fatalf("expected complete token evidence %s in response body: %s", token, body)
-		}
-	}
-	for _, evidence := range []string{`"status_code":200`, `"executor_type":"openai"`, `"reasoning_effort":"high"`, `"service_tier":"priority"`} {
+	for _, evidence := range []string{`"status_code":200`, `"executor_type":"openai"`, `"reasoning_effort":"high"`} {
 		if !contains(body, evidence) {
 			t.Fatalf("expected attempt evidence %s in response body: %s", evidence, body)
 		}
@@ -481,8 +466,6 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 		Timestamp:    time.Date(2026, 4, 22, 11, 1, 0, 0, time.UTC),
 		Model:        "historical-model",
 		LatencyMS:    21245,
-		OutputTokens: 976,
-		TotalTokens:  105091,
 	}}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/events", nil)
@@ -494,15 +477,15 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"ttft_ms":null`) || !contains(body, `"output_tps":null`) {
+	if !contains(body, `"ttft_ms":null`) || strings.Count(body, `"output_tps":null`) != 1 {
 		t.Fatalf("expected missing TTFT and Output TPS to remain null: %s", body)
 	}
 	if !contains(body, `"attempt_facts":{"generate":null,"stream":null,"request_service_tier":null,"response_service_tier":null,"output_tps":null,"accounting":{"state":"absent"`) ||
-		!contains(body, `"accounting_version":null`) || !contains(body, `"schema_version":null`) || !contains(body, `"quality":null`) || !contains(body, `"unclassified_tokens":null`) {
+		!contains(body, `"quality":null`) || !contains(body, `"unclassified_tokens":null`) {
 		t.Fatalf("expected absent attempt facts to remain explicit nulls: %s", body)
 	}
-	if !contains(body, `"tokens":{"input_tokens":null,"output_tokens":null,"reasoning_tokens":null,"cache_read_tokens":null,"cache_write_tokens":null,"unclassified_tokens":null,"total_tokens":null}`) {
-		t.Fatalf("expected historical scalar tokens to remain unavailable: %s", body)
+	if contains(body, `"tokens":`) || contains(body, `"accounting_version"`) || contains(body, `"schema_version"`) {
+		t.Fatalf("expected no duplicate token or version projection: %s", body)
 	}
 }
 
