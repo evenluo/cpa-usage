@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import {
   buildLiveCapacityRows,
   FIVE_HOUR_WINDOW_SECONDS,
+  mergeCapacityEntries,
   mergeLiveCapacityRowOrder,
   orderLiveCapacityRows,
   resetCountdown,
@@ -452,9 +453,6 @@ function LiveCapacityAccountTile({
     }
   }
 
-  const primaryMetric = row.fiveHour ?? row.additionalMetrics[0]
-  const secondaryMetric = row.weekly ?? row.additionalMetrics.find((metric) => metric !== primaryMetric)
-  const remainingMetrics = row.additionalMetrics.filter((metric) => metric !== primaryMetric && metric !== secondaryMetric)
   const isRowRefreshing = row.status === "refreshing"
   const hasAttention = row.isConstrained || row.status === "failed" || row.unavailable === true || row.accountState.kind === "error"
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
@@ -467,6 +465,18 @@ function LiveCapacityAccountTile({
         : row.isConstrained
           ? "Capacity constrained"
           : undefined
+
+  const visibleEntries = mergeCapacityEntries(row, { includeManualProbe: !row.disabled })
+  const mainEntries = visibleEntries.filter((entry) => entry.isBaseWindow || entry.windowRole === null)
+  const moreLimitEntries = visibleEntries.filter((entry) => !entry.isBaseWindow && entry.windowRole !== null)
+  const sharedObservation = Boolean(row.metadataObservedAt && row.observedAt && row.metadataObservedAt === row.observedAt)
+  const timingLineCount =
+    (sharedObservation ? 1 : (row.metadataObservedAt ? 1 : 0) + (row.observedAt ? 1 : 0)) +
+    (row.lastRefresh ? 1 : 0) +
+    (row.nextRetryAfter ? 1 : 0) +
+    (row.expiresAt ? 1 : 0) +
+    (row.activeStart ? 1 : 0)
+  const foldedCount = moreLimitEntries.length + row.passiveModelQuotas.length + timingLineCount
 
   return (
     <div
@@ -495,8 +505,19 @@ function LiveCapacityAccountTile({
             {row.planLabel ? (
               <PlanBadge label={row.planLabel} tone={row.planTone} rawPlanType={row.planType} />
             ) : null}
+            {row.passiveQuota?.activeLimit ? (
+              <span
+                className="min-w-0 truncate rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground"
+                title={row.passiveQuota.activeLimit}
+              >
+                Active limit {row.passiveQuota.activeLimit}
+              </span>
+            ) : null}
             {row.disabled ? (
               <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Disabled</Badge>
+            ) : null}
+            {row.isCacheStale ? (
+              <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Stale</Badge>
             ) : null}
           </div>
           <button
@@ -582,82 +603,75 @@ function LiveCapacityAccountTile({
         </div>
       </div>
 
-      {/* Hero first: per-account usage meters with reset countdowns are the
-          operator's primary scan target; state and timing evidence follow. */}
-      <PassiveQuotaEvidence
-        supported={row.providerKind === "claude" || row.providerKind === "codex"}
-        account={row.passiveQuota}
-        models={row.passiveModelQuotas}
-      />
-
-      {!row.disabled ? (
+      {mainEntries.length > 0 ? (
         <div className="mt-3 grid gap-2">
-          <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} observedAt={row.observedAt} />
-          <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} observedAt={row.observedAt} />
-          {remainingMetrics.map((metric, index) => (
-            <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} observedAt={row.observedAt} />
+          {mainEntries.map((entry, index) => (
+            <MetricMeter
+              key={`${index}:${entry.metric.label}`}
+              title={entry.metric.label}
+              metric={entry.metric}
+              source={entry.source}
+              observedAt={entry.observedAt}
+            />
           ))}
         </div>
+      ) : null}
+
+      {foldedCount > 0 ? (
+        <details className="mt-2 rounded-md border border-border/70 bg-muted/[0.12] px-2.5 py-1.5">
+          <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">··· {foldedCount} more</summary>
+          <div className="mt-2 space-y-3">
+            {moreLimitEntries.length > 0 ? (
+              <section aria-label="More limits">
+                <p className="text-[10px] font-medium text-foreground/70">More limits ({moreLimitEntries.length})</p>
+                <div className="mt-1.5 grid gap-1.5">
+                  {moreLimitEntries.map((entry, index) => (
+                    <MetricMeter
+                      key={`${index}:${entry.metric.label}`}
+                      title={entry.metric.label}
+                      metric={entry.metric}
+                      source={entry.source}
+                      observedAt={entry.observedAt}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {row.passiveModelQuotas.length > 0 ? (
+              <section aria-label="Per-model quotas">
+                <p className="text-[10px] font-medium text-foreground/70">Per-model quotas ({row.passiveModelQuotas.length})</p>
+                <div className="mt-1.5 space-y-3">
+                  {row.passiveModelQuotas.map((observation) => (
+                    <PassiveQuotaObservationSection key={`${observation.model}:${observation.observedAt}`} label={observation.model} observation={observation} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {timingLineCount > 0 ? (
+              <AccountTiming
+                metadataObservedAt={row.metadataObservedAt}
+                lastRefresh={row.lastRefresh}
+                nextRetryAfter={row.nextRetryAfter}
+                observedAt={row.observedAt}
+                expiresAt={row.expiresAt}
+                activeStart={row.activeStart}
+                cacheStale={row.isCacheStale}
+              />
+            ) : null}
+          </div>
+        </details>
       ) : null}
 
       <AccountAvailabilitySummary row={row} />
 
       {modelSupport ? <AccountModelSupportDetails account={modelSupport} /> : null}
 
-      {row.metadataObservedAt || row.lastRefresh || row.nextRetryAfter || row.observedAt || row.expiresAt || row.activeStart || row.activeUntil ? (
-        <AccountTiming
-          metadataObservedAt={row.metadataObservedAt}
-          lastRefresh={row.lastRefresh}
-          nextRetryAfter={row.nextRetryAfter}
-          observedAt={row.observedAt}
-          expiresAt={row.expiresAt}
-          activeStart={row.activeStart}
-          activeUntil={row.activeUntil}
-          cacheStale={row.isCacheStale}
-        />
+      {row.activeUntil ? (
+        <div className="mt-2 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+          <span>Ends</span>
+          <time dateTime={row.activeUntil} title={row.activeUntil}>{formatDate(row.activeUntil)}</time>
+        </div>
       ) : null}
-    </div>
-  )
-}
-
-function PassiveQuotaEvidence({
-  supported,
-  account,
-  models,
-}: {
-  supported: boolean
-  account?: LiveCapacityPassiveObservation
-  models: LiveCapacityRow["passiveModelQuotas"]
-}) {
-  if (!supported) return null
-  return (
-    <div
-      className="mt-3 rounded-md border border-terracotta-500/20 bg-terracotta-500/[0.025] p-2.5"
-      role="group"
-      aria-label="Reported quota"
-    >
-      <div className="flex items-center gap-1.5 text-[10px] font-medium text-foreground/70">
-        <Eye className="h-3.5 w-3.5 text-terracotta-600 dark:text-terracotta-300" aria-hidden="true" />
-        <span>Reported quota</span>
-      </div>
-      <div className="mt-2 space-y-3">
-        {!account && models.length === 0 ? (
-          <p className="text-[10px] text-muted-foreground">No passive quota data.</p>
-        ) : null}
-        {account ? <PassiveQuotaObservationSection label="Account" observation={account} /> : null}
-        {models.length > 0 ? (
-          <details className="rounded border border-border/50 bg-background/40 px-2 py-1.5">
-            <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">
-              Per-model quotas ({models.length})
-            </summary>
-            <div className="mt-2 space-y-3">
-              {models.map((observation) => (
-                <PassiveQuotaObservationSection key={`${observation.model}:${observation.observedAt}`} label={observation.model} observation={observation} />
-              ))}
-            </div>
-          </details>
-        ) : null}
-      </div>
     </div>
   )
 }
@@ -729,7 +743,7 @@ function PassiveQuotaObservationSection({
       </div>
       <div className="mt-1.5 grid gap-1.5">
         {observation.metrics.map((metric, index) => (
-          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} observedAt={observation.observedAt} />
+          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} source="reported" observedAt={observation.observedAt} />
         ))}
       </div>
     </section>
@@ -843,7 +857,6 @@ function AccountTiming({
   observedAt,
   expiresAt,
   activeStart,
-  activeUntil,
   cacheStale = false,
 }: {
   metadataObservedAt?: string | null
@@ -852,32 +865,28 @@ function AccountTiming({
   observedAt?: string | null
   expiresAt?: string | null
   activeStart?: string | null
-  activeUntil?: string | null
   cacheStale?: boolean
 }) {
   // activeStart arrives pre-filtered by buildLiveCapacityRows: it is only set
   // while the subscription start is still in the future.
-  const activeRange = activeStart && activeUntil ? { start: activeStart, until: activeUntil } : null
-  const singleActiveEndpoint = activeRange ? null : (activeUntil ?? activeStart ?? null)
+  const sharedObservation = metadataObservedAt && observedAt && metadataObservedAt === observedAt ? observedAt : null
 
   return (
-    <div
-      className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5"
-      role="group"
-      aria-label="Account and cache timing"
-    >
-      <div className="grid gap-1.5">
-        {metadataObservedAt ? <TimingLine label="Metadata observed" value={metadataObservedAt} /> : null}
-        {lastRefresh ? <TimingLine label="Token refreshed" value={lastRefresh} /> : null}
-        {nextRetryAfter ? (
-          <TimingLine label="Retry eligible" value={nextRetryAfter} title="Eligibility time only, not a recovery guarantee." />
-        ) : null}
-        {observedAt ? <TimingLine label="Observed" value={observedAt} /> : null}
-        {expiresAt ? <TimingLine label="Cache expires" value={expiresAt} stale={cacheStale} /> : null}
-        {activeRange ? <TimingLine label="Starts" value={activeRange.start} /> : null}
-        {activeRange ? <TimingLine label="Ends" value={activeRange.until} /> : null}
-        {singleActiveEndpoint ? <TimingLine label={activeUntil ? "Ends" : "Starts"} value={singleActiveEndpoint} /> : null}
-      </div>
+    <div className="grid gap-1.5" role="group" aria-label="Account and cache timing">
+      {sharedObservation ? (
+        <TimingLine label="Observed" value={sharedObservation} title="Auth-file metadata and capacity probe share this observation time." />
+      ) : (
+        <>
+          {metadataObservedAt ? <TimingLine label="Metadata observed" value={metadataObservedAt} /> : null}
+          {observedAt ? <TimingLine label="Observed" value={observedAt} /> : null}
+        </>
+      )}
+      {lastRefresh ? <TimingLine label="Token refreshed" value={lastRefresh} /> : null}
+      {nextRetryAfter ? (
+        <TimingLine label="Retry eligible" value={nextRetryAfter} title="Eligibility time only, not a recovery guarantee." />
+      ) : null}
+      {expiresAt ? <TimingLine label="Cache expires" value={expiresAt} stale={cacheStale} /> : null}
+      {activeStart ? <TimingLine label="Starts" value={activeStart} /> : null}
     </div>
   )
 }
@@ -943,63 +952,74 @@ function PlanBadge({
 function MetricMeter({
   title,
   metric,
+  source = "probe",
   observedAt,
 }: {
   title: string
-  metric?: LiveCapacityMetric
+  metric: LiveCapacityMetric
+  /** "reported" marks CPA passive observations, as opposed to manual probe readings. */
+  source?: "probe" | "reported"
   /** Observation time anchoring relative reset hints (resetAfterSeconds). */
   observedAt?: string
 }) {
-  const progress = metric?.progress ?? null
-  const countdown = metric ? resetCountdown(metric, observedAt) : undefined
+  const countdown = resetCountdown(metric, observedAt)
   const resetText = countdown
     ? countdown.isDue
       ? "reset due"
       : `in ${countdown.relativeLabel}`
-    : "-"
-  const resetTitle = [
-    resetText,
-    countdown?.isDue ? "Quota window reset has passed; waiting for the provider's next report" : null,
-    countdown?.resetAt ? formatDate(countdown.resetAt) : null,
-  ].filter((part): part is string => Boolean(part)).join(" · ")
-  const WindowIcon = metric?.windowSeconds === FIVE_HOUR_WINDOW_SECONDS
+    : null
+  const resetTitle = countdown
+    ? [
+        resetText,
+        countdown.isDue ? "Quota window reset has passed; waiting for the provider's next report" : null,
+        countdown.resetAt ? formatDate(countdown.resetAt) : null,
+      ].filter((part): part is string => Boolean(part)).join(" · ")
+    : undefined
+  const sourceLabel = source === "reported" ? "Reported by CPA" : "Manual probe"
+  const WindowIcon = metric.windowSeconds === FIVE_HOUR_WINDOW_SECONDS
     ? Timer
-    : metric?.windowSeconds === WEEKLY_WINDOW_SECONDS
+    : metric.windowSeconds === WEEKLY_WINDOW_SECONDS
       ? CalendarDays
       : null
 
   return (
-    <div className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2">
+    <div
+      className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2"
+      title={observedAt ? `${sourceLabel} · observed ${formatDate(observedAt)}` : sourceLabel}
+    >
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
           {WindowIcon ? <WindowIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
+          {source === "reported" ? <Eye className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
           <span className="truncate">{title}</span>
         </span>
-        <span className="truncate font-medium">{metric?.valueLabel ?? "-"}</span>
+        <span className="truncate font-medium">{metric.valueLabel}</span>
       </div>
       <div
         className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
-        aria-label={metric ? `${title}: ${metric.valueLabel}` : `${title}: no capacity reading`}
+        aria-label={`${title}: ${metric.valueLabel}`}
       >
-        {progress !== null ? (
+        {metric.progress !== null ? (
           <div
-            className={cn("h-full rounded-full transition-[width,background-color] duration-500", metricToneClasses(metric?.tone).bar)}
-            style={{ width: `${progress}%` }}
+            className={cn("h-full rounded-full transition-[width,background-color] duration-500", metricToneClasses(metric.tone).bar)}
+            style={{ width: `${metric.progress}%` }}
           />
         ) : null}
       </div>
-      <div
-        className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-xs font-semibold", metricToneClasses(metric?.tone).reset)}
-        title={resetTitle}
-      >
-        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span className="truncate">{resetText}</span>
-        {countdown?.resetAt ? (
-          <time className="ml-auto shrink-0 text-[10px] font-normal text-muted-foreground" dateTime={countdown.resetAt}>
-            {formatDate(countdown.resetAt)}
-          </time>
-        ) : null}
-      </div>
+      {resetText ? (
+        <div
+          className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-xs font-semibold", metricToneClasses(metric.tone).reset)}
+          title={resetTitle}
+        >
+          <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span className="truncate">{resetText}</span>
+          {countdown?.resetAt ? (
+            <time className="ml-auto shrink-0 text-[10px] font-normal text-muted-foreground" dateTime={countdown.resetAt}>
+              {formatDate(countdown.resetAt)}
+            </time>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -3,6 +3,7 @@ import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
 import {
   buildLiveCapacityRows,
   isSupportedQuotaIdentity,
+  mergeCapacityEntries,
   mergeLiveCapacityRowOrder,
   orderLiveCapacityRows,
   providerKindFromIdentity,
@@ -387,7 +388,7 @@ describe("Live Capacity view model", () => {
 
     expect(rows[0].passiveQuota?.metrics).toEqual([
       expect.objectContaining({ valueLabel: "53% used · Blocked", tone: "red" }),
-      expect.objectContaining({ valueLabel: "Unlimited · No credits", tone: "muted" }),
+      expect.objectContaining({ valueLabel: "No credits", tone: "muted" }),
     ])
   })
 
@@ -842,5 +843,130 @@ describe("metric reset pass-through", () => {
 
     expect(rows[0].fiveHour?.resetAt).toBe("2026-09-07T14:13:00Z")
     expect(rows[0].weekly?.resetAfterSeconds).toBe(7200)
+  })
+})
+
+describe("mergeCapacityEntries", () => {
+  function rowWithProbeAndPassive(input: {
+    probeQuota: QuotaCacheResponse["items"][number]["quota"]
+    probeCachedAt: string
+    passiveQuota?: KeyIdentity["passive_quota"]
+  }) {
+    return buildLiveCapacityRows({
+      identities: [identity({ passive_quota: input.passiveQuota ?? null })],
+      cachedQuota: { items: [{ id: "codex-auth", cachedAt: input.probeCachedAt, quota: input.probeQuota }] },
+    })[0]
+  }
+
+  it("keeps the newer probe reading when both sources report the same base window", () => {
+    const row = rowWithProbeAndPassive({
+      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeQuota: [{ key: "manual", label: "5h", usedPercent: 10 }],
+      passiveQuota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T08:00:00Z",
+        quota: [{ key: "passive", label: "5h", usedPercent: 99, window: { seconds: 18_000 } }],
+      },
+    })
+
+    const entries = mergeCapacityEntries(row)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ source: "probe", observedAt: "2026-09-07T09:00:00Z", isBaseWindow: true, windowRole: "short" })
+    expect(entries[0].metric.valueLabel).toBe("10% used")
+  })
+
+  it("lets a newer reported reading replace an older probe reading of the same window", () => {
+    const row = rowWithProbeAndPassive({
+      probeCachedAt: "2026-09-07T07:00:00Z",
+      probeQuota: [{ key: "manual", label: "Weekly", usedPercent: 10, window: { seconds: 604_800 } }],
+      passiveQuota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T08:00:00Z",
+        quota: [{ key: "passive", label: "Weekly", usedPercent: 80 }],
+      },
+    })
+
+    const entries = mergeCapacityEntries(row)
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ source: "reported", observedAt: "2026-09-07T08:00:00Z", isBaseWindow: true, windowRole: "long" })
+    expect(entries[0].metric.valueLabel).toBe("80% used")
+  })
+
+  it("prefers the probe reading when both sources share an observation time", () => {
+    const row = rowWithProbeAndPassive({
+      probeCachedAt: "2026-09-07T08:00:00Z",
+      probeQuota: [{ key: "manual", label: "5h", usedPercent: 10, window: { seconds: 18_000 } }],
+      passiveQuota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T08:00:00Z",
+        quota: [{ key: "passive", label: "5h", usedPercent: 99, window: { seconds: 18_000 } }],
+      },
+    })
+
+    const entries = mergeCapacityEntries(row)
+    expect(entries).toHaveLength(1)
+    expect(entries[0].source).toBe("probe")
+  })
+
+  it("never merges an unknown-window row into a short or long window row", () => {
+    const row = rowWithProbeAndPassive({
+      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeQuota: [{ key: "manual", label: "5h", usedPercent: 10 }],
+      passiveQuota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T08:00:00Z",
+        quota: [{ key: "passive", label: "Window", usedPercent: 40 }],
+      },
+    })
+
+    expect(mergeCapacityEntries(row).map((entry) => [entry.metric.label, entry.source, entry.windowRole])).toEqual([
+      ["5h", "probe", "short"],
+      ["Window", "reported", "unknown"],
+    ])
+  })
+
+  it("passes rows without window semantics through unmerged", () => {
+    const row = rowWithProbeAndPassive({
+      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeQuota: [{ key: "credits", label: "Credits", remaining: 5, unit: "credits" }],
+      passiveQuota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T08:00:00Z",
+        quota: [{ key: "credits", label: "Credits", remaining: 0, hasCredits: false }],
+      },
+    })
+
+    const entries = mergeCapacityEntries(row)
+    expect(entries.map((entry) => [entry.source, entry.metric.valueLabel, entry.windowRole])).toEqual([
+      ["probe", "5 credits left", null],
+      ["reported", "No credits", null],
+    ])
+  })
+
+  it("classifies named additional limits as non-base and merges matching label stems", () => {
+    const row = rowWithProbeAndPassive({
+      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeQuota: [
+        { key: "primary", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
+        { key: "spark-primary", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 20 },
+      ],
+      passiveQuota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T09:30:00Z",
+        quota: [{ key: "spark", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 25, window: { seconds: 18_000 } }],
+      },
+    })
+
+    const entries = mergeCapacityEntries(row)
+    expect(entries).toHaveLength(2)
+    expect(entries[0]).toMatchObject({ source: "probe", isBaseWindow: true })
+    expect(entries[1]).toMatchObject({ source: "reported", isBaseWindow: false, windowRole: "short" })
+    expect(entries[1].metric.valueLabel).toBe("25% used")
   })
 })

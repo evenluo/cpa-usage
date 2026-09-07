@@ -155,15 +155,24 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   await expect(page.getByText("Unavailable", { exact: true }).first()).toBeVisible()
   await expect(page.getByText("Disabled", { exact: true }).first()).toBeVisible()
 
-  const passive = page.getByRole("group", { name: "Reported quota" })
-  await expect(passive.locator("time[datetime='2026-09-07T08:00:00Z']")).toBeVisible()
-  // Per-model observations are folded by default; expand to inspect them.
-  await passive.getByText(/Per-model quotas/).click()
-  await expect(passive.locator("time[datetime='2026-09-07T07:30:00Z']")).toBeVisible()
+  // One merged 5h meter: the newer reported reading replaces the stale probe cache,
+  // and the active-limit chip sits on the tile title row.
+  await expect(page.getByText("Active limit codex_primary")).toBeVisible()
+  await expect(page.getByText("25% used · Blocked")).toBeVisible()
+  await expect(page.getByText("62% used")).toBeVisible()
+  await expect(page.getByText("Stale", { exact: true }).first()).toBeVisible()
   await expect(page.getByText("Manual capacity probe")).toHaveCount(0)
+  // The subscription end stays on the card surface.
+  await expect(page.locator("time[datetime='2026-09-25T07:15:00Z']")).toBeVisible()
+
+  // Per-model quotas and timing lines live behind the per-tile fold.
+  await page.getByText(/··· \d+ more/).first().click()
+  await expect(page.getByText("Per-model quotas (1)")).toBeVisible()
+  await expect(page.locator("time[datetime='2026-09-07T07:30:00Z']")).toBeVisible()
   const timing = page.getByRole("group", { name: "Account and cache timing" }).first()
   await expect(timing.locator("time[datetime='2026-08-31T09:05:00Z']")).toBeVisible()
   await expect(timing.locator("time[datetime='2026-08-31T09:25:00Z']")).toBeVisible()
+  await expect(timing.locator("time[datetime='2026-09-07T08:00:00Z']")).toBeVisible()
 
   expect(requests.filter((request) => request.path === "/quota/refresh")).toHaveLength(0)
   expect(requests.filter((request) => request.path === "/usage/identities/model-support")).toHaveLength(0)

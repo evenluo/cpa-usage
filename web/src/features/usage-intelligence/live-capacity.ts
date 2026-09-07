@@ -77,6 +77,17 @@ export interface LiveCapacityMetric {
   windowSeconds?: number
 }
 
+export type CapacityWindowRole = "short" | "long" | "unknown"
+
+export interface CapacityEntry {
+  metric: LiveCapacityMetric
+  source: "probe" | "reported"
+  observedAt?: string
+  /** Window role driving the merge key; null for rows without window semantics (credits, retry hints). */
+  windowRole: CapacityWindowRole | null
+  isBaseWindow: boolean
+}
+
 const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
   antigravity: "Antigravity",
   claude: "Claude",
@@ -241,6 +252,77 @@ function isPastTimestamp(value: string | null | undefined): boolean {
   return time !== undefined && time <= Date.now()
 }
 
+export function mergeCapacityEntries(row: LiveCapacityRow, options?: { includeManualProbe?: boolean }): CapacityEntry[] {
+  const candidates: CapacityEntry[] = []
+  // Disabled accounts never surface manual-probe readings: merging must happen
+  // after that exclusion so a winning probe entry cannot swallow the reported one.
+  if (options?.includeManualProbe ?? true) {
+    for (const metric of [row.fiveHour, row.weekly, ...row.additionalMetrics]) {
+      if (metric) candidates.push(capacityEntry(metric, "probe", row.observedAt))
+    }
+  }
+  for (const metric of row.passiveQuota?.metrics ?? []) {
+    candidates.push(capacityEntry(metric, "reported", row.passiveQuota?.observedAt))
+  }
+
+  const entries: CapacityEntry[] = []
+  const mergeIndexByKey = new Map<string, number>()
+  for (const entry of candidates) {
+    const key = capacityMergeKey(entry)
+    if (key === null) {
+      entries.push(entry)
+      continue
+    }
+    const existingIndex = mergeIndexByKey.get(key)
+    if (existingIndex === undefined) {
+      mergeIndexByKey.set(key, entries.length)
+      entries.push(entry)
+      continue
+    }
+    // Probe candidates iterate first, so keeping the incumbent on equal
+    // observation times is what prefers probe over reported.
+    const existingTime = parseTime(entries[existingIndex].observedAt) ?? Number.NEGATIVE_INFINITY
+    const candidateTime = parseTime(entry.observedAt) ?? Number.NEGATIVE_INFINITY
+    if (candidateTime > existingTime) entries[existingIndex] = entry
+  }
+  return entries
+}
+
+function capacityEntry(metric: LiveCapacityMetric, source: CapacityEntry["source"], observedAt?: string): CapacityEntry {
+  const windowRole = capacityWindowRole(metric)
+  return {
+    metric,
+    source,
+    observedAt,
+    windowRole,
+    isBaseWindow: capacityLabelStem(metric.label) === "base",
+  }
+}
+
+function capacityMergeKey(entry: CapacityEntry): string | null {
+  if (entry.windowRole === null) return null
+  return `${capacityLabelStem(entry.metric.label)}|${entry.windowRole}`
+}
+
+const WINDOW_LABEL_SUFFIX = /\s+(5h|weekly|window)$/i
+
+function capacityLabelStem(label: string): string {
+  const normalized = label.trim().toLowerCase()
+  if (normalized === "5h" || normalized === "weekly" || normalized === "window") return "base"
+  return normalized.replace(WINDOW_LABEL_SUFFIX, "")
+}
+
+function capacityWindowRole(metric: LiveCapacityMetric): CapacityWindowRole | null {
+  if (metric.windowSeconds === FIVE_HOUR_WINDOW_SECONDS) return "short"
+  if (metric.windowSeconds === WEEKLY_WINDOW_SECONDS) return "long"
+  const label = metric.label.trim().toLowerCase()
+  if (label.includes("5h")) return "short"
+  if (label.includes("weekly")) return "long"
+  if (metric.windowSeconds !== undefined) return "unknown"
+  if (label === "window" || label.endsWith(" window")) return "unknown"
+  return null
+}
+
 export function mergeLiveCapacityRowOrder(currentOrder: string[], rows: LiveCapacityRow[]): string[] {
   const rowAuthIndexes = new Set(rows.map((row) => row.authIndex))
   const nextOrder = currentOrder.filter((authIndex) => rowAuthIndexes.has(authIndex))
@@ -383,6 +465,10 @@ function progressFromQuotaRow(row: QuotaRow): number | null {
 }
 
 function valueLabel(row: QuotaRow): string {
+  // Credit state is a boolean provider fact; pairing it with a raw remaining
+  // count ("0 credits left · No credits") reads as a duplicate statement.
+  if (typeof row.hasCredits === "boolean") return row.hasCredits ? "Credits available" : "No credits"
+
   let measurement = ""
   if (row.unlimited === true) measurement = "Unlimited"
   else if (typeof row.usedPercent === "number") measurement = `${Math.round(row.usedPercent)}% used`
@@ -396,7 +482,6 @@ function valueLabel(row: QuotaRow): string {
   let state = ""
   if (typeof row.allowed === "boolean") state = row.allowed ? "Allowed" : "Blocked"
   else if (typeof row.limitReached === "boolean") state = row.limitReached ? "Limit reached" : "Limit not reached"
-  else if (typeof row.hasCredits === "boolean") state = row.hasCredits ? "Credits available" : "No credits"
 
   if (measurement && state) return `${measurement} · ${state}`
   return measurement || state || "Measured"

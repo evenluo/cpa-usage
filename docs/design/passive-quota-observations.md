@@ -35,3 +35,5 @@ Unknown signal names, non-string values, control characters, oversized values, i
 ## Read-model semantics
 
 The identity projection emits only normalized `passive_quota` and `passive_model_quotas`, each with `source=cpa_passive`, explicit scope and original observation time. Passive data does not alter identity status, unavailable/disabled state, plan ordering, manual probe status, `next_retry_after`, or refresh eligibility. It has no inferred expiry or local history.
+
+The dashboard display layer may union passive and manual-probe readings per window (newer observation wins) as long as each meter keeps its own source and observation time in the tooltip; this merging never writes back or changes the backend semantics above.

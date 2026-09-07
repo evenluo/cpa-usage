@@ -193,22 +193,67 @@ describe("LiveCapacityCard", () => {
       })
       render(<LiveCapacityCard provider="" />)
 
-      const passive = screen.getByRole("group", { name: "Reported quota" })
-      expect(within(passive).getByText("Account")).toBeInTheDocument()
-      expect(within(passive).getByText("gpt-5.3-codex")).toBeInTheDocument()
-      expect(within(passive).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
-      expect(within(passive).getByText("25% used · Blocked")).toBeInTheDocument()
-      expect(within(passive).getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
-      expect(within(passive).getByText("4.5 credits left")).toBeInTheDocument()
-      expect(within(passive).getByText("Blocked")).toBeInTheDocument()
-      // Frozen at the observation instant: the 120s relative reset reads as a countdown.
-      expect(within(passive).getByText("in 2m")).toBeInTheDocument()
-      const perModel = within(passive).getByText("Per-model quotas (1)")
-      expect(perModel.closest("details")).not.toHaveAttribute("open")
-      expect(passive.querySelector("time[datetime='2026-09-07T08:00:00Z']")).toBeInTheDocument()
-      expect(passive.querySelector("time[datetime='2026-09-07T07:30:00Z']")).toBeInTheDocument()
-      expect(screen.queryByText("Manual capacity probe")).not.toBeInTheDocument()
+      // Reported meters render in the merged main list; probe readings stay hidden for a disabled account.
+      expect(screen.getByText("25% used · Blocked")).toBeInTheDocument()
+      expect(screen.getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
+      expect(screen.getAllByTitle(/^Reported by CPA · observed /)).toHaveLength(3)
+      expect(screen.getByText("4.5 credits left")).toBeInTheDocument()
       expect(screen.queryByText("10% used")).not.toBeInTheDocument()
+      // Frozen at the observation instant: the 120s relative reset reads as a countdown.
+      expect(screen.getByText("in 2m")).toBeInTheDocument()
+      // The active-limit chip moved to the tile title row.
+      expect(screen.getByText("Active limit codex_bengalfox")).toBeInTheDocument()
+      // Model observations live behind the per-tile fold.
+      const fold = screen.getByText(/··· \d+ more/).closest("details")
+      expect(fold).not.toHaveAttribute("open")
+      expect(within(fold as HTMLElement).getByText("Per-model quotas (1)")).toBeInTheDocument()
+      expect(within(fold as HTMLElement).getByText("gpt-5.3-codex")).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("merges probe and reported windows into one list and folds named limits and timing away", () => {
+    vi.useFakeTimers({ now: new Date("2026-09-07T12:00:00Z") })
+    try {
+      setupMock({
+        identities: [identity({
+          metadata_observed_at: "2026-09-07T09:00:00Z",
+          passive_quota: {
+            source: "cpa_passive",
+            scope: "account",
+            observed_at: "2026-09-07T08:00:00Z",
+            quota: [{ key: "passive-5h", label: "5h", usedPercent: 99, window: { seconds: 18_000 } }],
+          },
+        })],
+        cachedQuota: {
+          items: [{
+            id: "codex-auth",
+            cachedAt: "2026-09-07T09:00:00Z",
+            expiresAt: "2026-09-07T13:00:00Z",
+            quota: [
+              { key: "manual-5h", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
+              { key: "spark", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 20 },
+            ],
+          }],
+        },
+      })
+      render(<LiveCapacityCard provider="" />)
+
+      // One merged 5h meter: the newer probe reading wins, with no reset placeholder.
+      expect(screen.getAllByLabelText(/^5h: /)).toHaveLength(1)
+      expect(screen.getByText("10% used")).toBeInTheDocument()
+      expect(screen.queryByText("99% used")).not.toBeInTheDocument()
+      expect(screen.queryByText("-")).not.toBeInTheDocument()
+      // Named additional limits and timing lines live behind the fold; a shared
+      // metadata/probe observation time collapses to a single "Observed" line.
+      const fold = screen.getByText("··· 3 more").closest("details")
+      expect(fold).not.toHaveAttribute("open")
+      expect(within(fold as HTMLElement).getByText("More limits (1)")).toBeInTheDocument()
+      expect(within(fold as HTMLElement).getByText("GPT-5.3-Codex-Spark 5h")).toBeInTheDocument()
+      expect(within(fold as HTMLElement).getByText("Observed")).toBeInTheDocument()
+      expect(within(fold as HTMLElement).queryByText("Metadata observed")).not.toBeInTheDocument()
+      expect(within(fold as HTMLElement).getByText("Cache expires")).toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
@@ -219,8 +264,7 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
     expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
     expect(screen.queryByText(/^CPA:/)).not.toBeInTheDocument()
-    const passive = screen.getByRole("group", { name: "Reported quota" })
-    expect(within(passive).getByText("No passive quota data.")).toBeInTheDocument()
+    expect(screen.queryByText(/··· \d+ more/)).not.toBeInTheDocument()
   })
 
   it("renders tiles for each identity", () => {
@@ -361,19 +405,20 @@ describe("LiveCapacityCard", () => {
       }],
     }
     setupMock({ identities, cachedQuota })
-    render(<LiveCapacityCard provider="" />)
+    const { container } = render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
     const timing = screen.getByRole("group", { name: "Account and cache timing" })
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
-    // Past subscription starts are hidden; only the end date remains.
-    expect(within(timing).getByText("Ends")).toBeInTheDocument()
-    expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
-    expect(timing.querySelectorAll("time")).toHaveLength(3)
+    expect(timing.querySelectorAll("time")).toHaveLength(2)
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
-    expect(timing.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
+    // Past subscription starts are hidden; only the end date remains, as a
+    // bottom line outside the fold.
+    expect(screen.getByText("Ends")).toBeInTheDocument()
+    expect(screen.queryByText("Starts")).not.toBeInTheDocument()
+    expect(container.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
   })
 
   it("renders a single cache-expiry endpoint without a connector when observedAt is missing", () => {
@@ -461,7 +506,7 @@ describe("LiveCapacityCard", () => {
     await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Auth index copied"))
   })
 
-  it("renders a single account-active endpoint without a connector when active start is missing", () => {
+  it("renders the subscription end as a bottom line when the active start is missing", () => {
     const identities = [identity({
       identity: "codex-pro",
       displayName: "Codex Pro",
@@ -478,12 +523,10 @@ describe("LiveCapacityCard", () => {
     setupMock({ identities, cachedQuota })
     const { container } = render(<LiveCapacityCard provider="" />)
 
-    const timing = within(container).getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).getByText("Ends")).toBeInTheDocument()
-    expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
-    expect(timing.querySelectorAll("time")).toHaveLength(1)
-    expect(timing.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
-    expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
+    expect(screen.getByText("Ends")).toBeInTheDocument()
+    expect(screen.queryByText("Starts")).not.toBeInTheDocument()
+    expect(screen.queryByRole("group", { name: "Account and cache timing" })).not.toBeInTheDocument()
+    expect(container.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
   })
 
   it("shows both subscription endpoints when the active start is still in the future", () => {
@@ -508,10 +551,9 @@ describe("LiveCapacityCard", () => {
 
     const timing = within(container).getByRole("group", { name: "Account and cache timing" })
     expect(within(timing).getByText("Starts")).toBeInTheDocument()
-    expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureStart}']`)).toBeInTheDocument()
-    expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
-    expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
+    expect(within(container).getByText("Ends")).toBeInTheDocument()
+    expect(container.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
   })
 
   it("separates priority accounts from regular accounts with a divider", () => {
