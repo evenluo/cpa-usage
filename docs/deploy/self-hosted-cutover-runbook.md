@@ -18,6 +18,20 @@ For an existing published CPA Usage installation, use this section with the [Dok
 
 These are operator steps, not production actions performed by this PR. CPA and CPA Usage are separate applications; deploying CPA Usage does not upgrade CPA.
 
+### Correct existing cache-column constraints
+
+Some existing installations have `usage_events.cache_read_tokens` and `cache_creation_tokens` declared `NOT NULL DEFAULT 0`. Accounting v2 intake leaves these archival scalar fields absent and writes canonical buckets instead. Such installations reject otherwise valid messages with `NOT NULL constraint failed: usage_events.cache_read_tokens` (or `cache_creation_tokens`), then mark them `discarded` after five processing failures. A healthy process does not establish successful ingestion.
+
+The forward migration `20260907_make_usage_event_cache_columns_nullable` corrects these two columns to the existing nullable entity contract. It preserves historical values, event IDs, indexes, triggers, table constraints and the autoincrement high-water mark in the existing migration transaction. Already-nullable databases need no table rebuild. This is a compatible schema correction; it does not change canonical accounting, infer historical tokens, or upgrade CPA.
+
+For an affected installation:
+
+1. Take a coherent SQLite backup outside the live volume, restrict its permissions, and verify `PRAGMA integrity_check` before releasing the correction through the existing release chain.
+2. Verify the exact deployed consumer image and migration ledger, check both columns have `notnull = 0` in `PRAGMA table_info(usage_events)`, and confirm new v2 attempts reach `usage_events` with valid canonical facts.
+3. Before recovery, take another coherent backup and record the exact retained inbox IDs for this constraint failure. Confirm their persisted JSON still contains the supported v2 envelope. Do not reset unrelated `discarded` or `decode_failed` rows.
+4. In one operator-controlled transaction, return only those identified constraint-failure rows that remain `discarded` to `pending`, reset their processing attempt count and error, and let the existing consumer process them. Preserve each row's ID, payload and `popped_at`; these own deterministic replay and the `redis-inbox:<id>` event key. No producer queue pop is needed for recovery.
+5. Match every selected ID to its canonical usage event, check affected hourly aggregates and authenticated dashboard reads, and confirm fresh traffic continues to ingest without this failure. Failure rows are retained for only seven days; a deployment alone does not retry discarded rows. Records no longer present in the inbox or a verified backup cannot be reconstructed by this procedure.
+
 ## Goal
 
 Move a self-hosted CPA Usage deployment to this repository's `cpa-usage` service while preserving usage history and avoiding plaintext secrets in git.
