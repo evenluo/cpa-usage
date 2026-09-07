@@ -1,0 +1,62 @@
+{
+  "timestamp": "2026-09-07T08:00:00Z",
+  "latency_ms": 1200,
+  "ttft_ms": 200,
+  "source": "fixture-account",
+  "auth_index": "fixture-auth",
+  "provider": "claude",
+  "executor_type": "ClaudeExecutor",
+  "model": "fixture-model",
+  "alias": "fixture-alias",
+  "endpoint": "/v1/responses",
+  "auth_type": "auth_file",
+  "api_key": "fixture-key",
+  "request_id": "fixture-request",
+  "reasoning_effort": "high",
+  "service_tier": "auto",
+  "failed": false,
+  "fail": {
+    "status_code": 200,
+    "body": "SENSITIVE_FAILURE_BODY"
+  },
+  "response_headers": {
+    "X-Fixture": "SENSITIVE_HEADER"
+  },
+  "tokens": {
+    "input_tokens": 100,
+    "output_tokens": 30,
+    "reasoning_tokens": 12,
+    "cached_tokens": 40,
+    "cache_read_tokens": 40,
+    "cache_creation_tokens": 10,
+    "total_tokens": 180,
+    "cache_read_tokens_present": true
+  },
+  "accounting_version": 2,
+  "generate": true,
+  "stream": true,
+  "response_service_tier": "default",
+  "access_token_sha256": "SENSITIVE_TOKEN_HASH",
+  "client_ip": "SENSITIVE_IP",
+  "x_forwarded_for": "SENSITIVE_XFF",
+  "user_agent": "SENSITIVE_UA",
+  "session_id": "DEFERRED_SESSION",
+  "parent_session_id": "DEFERRED_PARENT",
+  "token_breakdown": {
+    "schema_version": 2,
+    "quality": "complete",
+    "total_tokens": 180,
+    "input": {
+      "total_tokens": 150,
+      "uncached_tokens": 100,
+      "cache_read_tokens": 40,
+      "cache_write_tokens": 10
+    },
+    "output": {
+      "total_tokens": 30,
+      "non_reasoning_tokens": 18,
+      "reasoning_tokens": 12
+    },
+    "unclassified_tokens": 0
+  }
+}

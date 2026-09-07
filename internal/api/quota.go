@@ -49,6 +49,8 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "quota identity not found"})
 			case errors.Is(err, quota.ErrUnsupportedType):
 				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "quota identity type is unsupported"})
+			case errors.Is(err, quota.ErrIdentityDisabled):
+				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "quota identity is disabled"})
 			case errors.Is(err, quota.ErrProviderInput):
 				c.JSON(http.StatusUnprocessableEntity, gin.H{"error": quotaProviderInputErrorMessage(err)})
 			default:

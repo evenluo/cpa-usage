@@ -730,11 +730,11 @@ func TestUsageIdentityListActivePageIncludesCalculatedCost(t *testing.T) {
 		t.Fatalf("upsert pricing: %v", err)
 	}
 	events := []entities.UsageEvent{
-		{EventKey: "priced-1", APIGroupKey: "group", AuthType: "apikey", AuthIndex: "authidx-priced", Model: "priced-model", Timestamp: now, InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 100_000, TotalTokens: 1_600_000},
+		{EventKey: "priced-1", APIGroupKey: "group", AuthType: "apikey", AuthIndex: "authidx-priced", Model: "priced-model", Timestamp: now, InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 100_000, CacheReadTokens: accountingInt64Pointer(100_000), TotalTokens: 1_600_000},
 		{EventKey: "free-unpriced", APIGroupKey: "group", AuthType: "apikey", AuthIndex: "authidx-priced", Model: "unpriced-zero", Timestamp: now, TotalTokens: 0},
 		{EventKey: "unpriced-1", APIGroupKey: "group", AuthType: "apikey", AuthIndex: "authidx-unpriced", Model: "unpriced-model", Timestamp: now, InputTokens: 1, TotalTokens: 1},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 
@@ -751,6 +751,26 @@ func TestUsageIdentityListActivePageIncludesCalculatedCost(t *testing.T) {
 	}
 	if byIdentity["authidx-unpriced"].CostAvailable {
 		t.Fatalf("expected unpriced identity cost to be unavailable, got %+v", byIdentity["authidx-unpriced"])
+	}
+}
+
+func TestUsageIdentityListDoesNotExposeArchivalTokenScalarsWithoutCanonicalEvents(t *testing.T) {
+	db := openTestDatabase(t)
+	identity := entities.UsageIdentity{
+		Identity: "archival-only", Name: "Archival Only", AuthType: entities.UsageIdentityAuthTypeAIProvider,
+		TotalRequests: 7, InputTokens: 100, OutputTokens: 200, ReasoningTokens: 50, CachedTokens: 25, TotalTokens: 325,
+	}
+	if err := db.Create(&identity).Error; err != nil {
+		t.Fatalf("seed archival identity: %v", err)
+	}
+
+	items, _, err := ListActiveUsageIdentitiesPage(context.Background(), db, ListUsageIdentitiesPageRequest{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list identities: %v", err)
+	}
+	got := usageIdentitiesByIdentity(items)[identity.Identity]
+	if got.InputTokens != 0 || got.OutputTokens != 0 || got.ReasoningTokens != 0 || got.CachedTokens != 0 || got.TotalTokens != 0 || got.CanonicalValidAttempts != 0 || got.TotalCost != 0 || got.CostAvailable {
+		t.Fatalf("archival-only token and cost fields must remain unavailable, got %+v", got)
 	}
 }
 
@@ -782,7 +802,7 @@ func TestUsageIdentityCalculatedCostPreservesEventGrainTokenSemantics(t *testing
 		{EventKey: "negative-unpriced", AuthType: "apikey", AuthIndex: "negative-unpriced", Model: "missing", Timestamp: now, InputTokens: -1},
 		{EventKey: "zero-rate", AuthType: "apikey", AuthIndex: "zero-rate", Model: "zero-rate", Timestamp: now, InputTokens: 1},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 
@@ -889,8 +909,11 @@ func TestUsageIdentityAggregateStatsForAuthFileUsesOAuthAuthIndex(t *testing.T) 
 	if err := db.First(&got, identity.ID).Error; err != nil {
 		t.Fatalf("load usage identity: %v", err)
 	}
-	if got.TotalRequests != 2 || got.SuccessCount != 1 || got.FailureCount != 1 || got.InputTokens != 15 || got.OutputTokens != 26 || got.ReasoningTokens != 10 || got.CachedTokens != 12 || got.TotalTokens != 63 {
+	if got.TotalRequests != 2 || got.SuccessCount != 1 || got.FailureCount != 1 {
 		t.Fatalf("expected aggregated auth stats, got %+v", got)
+	}
+	if got.InputTokens != 0 || got.OutputTokens != 0 || got.ReasoningTokens != 0 || got.CachedTokens != 0 || got.TotalTokens != 0 {
+		t.Fatalf("archival identity token columns must not be maintained, got %+v", got)
 	}
 	if got.FirstUsedAt == nil || !got.FirstUsedAt.Equal(first) || got.LastUsedAt == nil || !got.LastUsedAt.Equal(last) || got.StatsUpdatedAt == nil || !got.StatsUpdatedAt.Equal(now) {
 		t.Fatalf("expected usage timestamps first=%s last=%s updated=%s, got %+v", first, last, now, got)
@@ -928,7 +951,7 @@ func TestUsageIdentityAggregateStatsForAIProviderUsesAPIKeyAuthIndexNotProvider(
 	if err := db.First(&got, identity.ID).Error; err != nil {
 		t.Fatalf("load usage identity: %v", err)
 	}
-	if got.TotalRequests != 2 || got.SuccessCount != 1 || got.FailureCount != 1 || got.InputTokens != 12 || got.OutputTokens != 14 || got.ReasoningTokens != 16 || got.CachedTokens != 18 || got.TotalTokens != 60 {
+	if got.TotalRequests != 2 || got.SuccessCount != 1 || got.FailureCount != 1 {
 		t.Fatalf("expected provider stats matched by auth index, got %+v", got)
 	}
 	if got.LastAggregatedUsageEventID != events[1].ID {
@@ -971,7 +994,7 @@ func TestUsageIdentityAggregateStatsSecondRunOnlyIncludesEventsAfterCursor(t *te
 	if err := db.First(&got, identity.ID).Error; err != nil {
 		t.Fatalf("load usage identity: %v", err)
 	}
-	if got.TotalRequests != 3 || got.SuccessCount != 2 || got.FailureCount != 1 || got.InputTokens != 60 || got.OutputTokens != 5 || got.TotalTokens != 65 {
+	if got.TotalRequests != 3 || got.SuccessCount != 2 || got.FailureCount != 1 {
 		t.Fatalf("expected second aggregation to include only new event once, got %+v", got)
 	}
 	if got.LastAggregatedUsageEventID != newEvent.ID || got.StatsUpdatedAt == nil || !got.StatsUpdatedAt.Equal(secondNow) {
@@ -1010,7 +1033,7 @@ func TestUsageIdentityAggregateStatsLateTimestampWithLargerIDStillAggregates(t *
 	if err := db.First(&got, identity.ID).Error; err != nil {
 		t.Fatalf("load usage identity: %v", err)
 	}
-	if got.TotalRequests != 2 || got.SuccessCount != 1 || got.FailureCount != 1 || got.InputTokens != 30 || got.TotalTokens != 30 {
+	if got.TotalRequests != 2 || got.SuccessCount != 1 || got.FailureCount != 1 {
 		t.Fatalf("expected late timestamp event with larger DB id aggregated, got %+v", got)
 	}
 	if got.FirstUsedAt == nil || !got.FirstUsedAt.Equal(earlierLateTime) || got.LastUsedAt == nil || !got.LastUsedAt.Equal(initialTime) || got.LastAggregatedUsageEventID != lateEvent.ID {
@@ -1042,7 +1065,7 @@ func TestUsageIdentityAggregateStatsUsesDatabaseIDNotRequestIDOrdering(t *testin
 	if err := db.First(&got, identity.ID).Error; err != nil {
 		t.Fatalf("load usage identity: %v", err)
 	}
-	if got.TotalRequests != 2 || got.InputTokens != 30 || got.TotalTokens != 30 || got.LastAggregatedUsageEventID != events[1].ID {
+	if got.TotalRequests != 2 || got.LastAggregatedUsageEventID != events[1].ID {
 		t.Fatalf("expected unordered request_id values aggregated by DB id, got %+v", got)
 	}
 }
@@ -1073,7 +1096,7 @@ func TestUsageIdentityAggregateStatsDeletedIdentityStillAggregates(t *testing.T)
 	if !got.IsDeleted || got.DeletedAt == nil || !got.DeletedAt.Equal(deletedAt) {
 		t.Fatalf("expected deleted state preserved, got %+v", got)
 	}
-	if got.TotalRequests != 1 || got.SuccessCount != 1 || got.FailureCount != 0 || got.InputTokens != 10 || got.OutputTokens != 5 || got.TotalTokens != 15 || got.LastAggregatedUsageEventID != event.ID {
+	if got.TotalRequests != 1 || got.SuccessCount != 1 || got.FailureCount != 0 || got.LastAggregatedUsageEventID != event.ID {
 		t.Fatalf("expected deleted identity to aggregate matching event, got %+v", got)
 	}
 }

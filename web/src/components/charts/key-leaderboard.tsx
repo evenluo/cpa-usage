@@ -6,14 +6,19 @@ interface KeyLeaderboardProps {
 }
 
 export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
-  const hasCost = data.some((row) => row.cost_available)
+  const hasAvailableCost = (row: KeyAliasBreakdown) => row.cost_available && row.cost_status === "available"
   const sorted = [...data].sort((a, b) => {
-    if (hasCost) return b.total_cost - a.total_cost
-    return b.total_tokens - a.total_tokens
+    const aHasCost = hasAvailableCost(a)
+    const bHasCost = hasAvailableCost(b)
+    if (aHasCost !== bHasCost) return bHasCost ? 1 : -1
+    if (aHasCost && bHasCost) return b.total_cost - a.total_cost
+    const aTokens = a.canonical_valid_attempts > 0 ? a.total_tokens : 0
+    const bTokens = b.canonical_valid_attempts > 0 ? b.total_tokens : 0
+    return bTokens - aTokens
   })
   const rows = sorted.slice(0, 5)
-  const totalCost = data.reduce((sum, row) => sum + row.total_cost, 0)
-  const totalTokens = data.reduce((sum, row) => sum + row.total_tokens, 0)
+  const totalCost = data.reduce((sum, row) => sum + (hasAvailableCost(row) ? row.total_cost : 0), 0)
+  const totalTokens = data.reduce((sum, row) => sum + (row.canonical_valid_attempts > 0 ? row.total_tokens : 0), 0)
 
   if (rows.length === 0) {
     return (
@@ -26,8 +31,8 @@ export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
   return (
     <div className="space-y-2">
       {rows.map((row, i) => {
-        const costPct = totalCost > 0 ? (row.total_cost / totalCost) * 100 : 0
-        const tokenPct = totalTokens > 0 ? (row.total_tokens / totalTokens) * 100 : 0
+        const costPct = hasAvailableCost(row) && totalCost > 0 ? (row.total_cost / totalCost) * 100 : null
+        const tokenPct = row.canonical_valid_attempts > 0 && totalTokens > 0 ? (row.total_tokens / totalTokens) * 100 : null
         const label = row.alias || row.label || row.traceability || row.identity
 
         return (
@@ -47,14 +52,14 @@ export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
             <div className="w-full text-left sm:w-auto sm:min-w-[156px] sm:text-right">
               <div className="flex flex-wrap items-baseline gap-2 sm:justify-end">
                 <span className="text-sm font-semibold">
-                  {row.cost_available ? formatCost(row.total_cost) : "Cost n/a"}
+                  {hasAvailableCost(row) ? formatCost(row.total_cost) : "Cost n/a"}
                 </span>
                 <span className="text-[11px] font-medium text-blue-700">
-                  {formatCompact(row.total_tokens, 1)} tokens
+                  {row.canonical_valid_attempts > 0 ? `${formatCompact(row.total_tokens, 1)} canonical tokens` : "Tokens n/a"}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                {costPct.toFixed(1)}% cost · {formatCompact(row.request_count, 0)} attempts · {tokenPct.toFixed(1)}% tokens
+                {costPct === null ? "cost n/a" : `${costPct.toFixed(1)}% cost`} · {formatCompact(row.request_count, 0)} attempts · {tokenPct === null ? "tokens n/a" : `${tokenPct.toFixed(1)}% tokens`}
               </p>
             </div>
           </div>

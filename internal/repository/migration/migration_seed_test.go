@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-const redisUsageInboxStatusPending = "pending"
+const redisUsageInboxStatusDecodeFailed = "decode_failed"
 
 func seedAIProviderAuthIndexMigrationDatabase(t *testing.T, dbPath string) {
 	t.Helper()
@@ -490,7 +490,7 @@ func seedLegacyRedisUsageTables(t *testing.T, dbPath string) {
 		{hash: "hash-2", rawMessage: `{"provider":" fallback-provider ","endpoint":" /fallback ","auth_type":" OAuth ","request_id":" req-fallback "}`, status: redisUsageInboxStatusProcessed, usageEventKey: "missing-key", processedAt: &now},
 		{hash: "hash-3", rawMessage: `{"provider":" overwrite-provider ","endpoint":" /overwrite ","auth_type":" api_key ","request_id":" overwrite-request "}`, status: redisUsageInboxStatusProcessed, usageEventKey: "existing-key", processedAt: &now},
 		{hash: "hash-4", rawMessage: `{"provider":" blank-provider ","endpoint":" /blank ","auth_type":" OAuth ","request_id":" req-blank-fallback "}`, status: redisUsageInboxStatusProcessed, usageEventKey: "", processedAt: &now},
-		{hash: "hash-5", rawMessage: `{"provider":"pending-provider","request_id":"pending-key"}`, status: redisUsageInboxStatusPending, usageEventKey: "pending-key"},
+		{hash: "hash-5", rawMessage: `{"provider":"pending-provider","request_id":"pending-key"}`, status: redisUsageInboxStatusDecodeFailed, usageEventKey: "pending-key"},
 	}
 	for _, inbox := range inboxes {
 		if err := db.Exec(

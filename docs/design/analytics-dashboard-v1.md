@@ -63,8 +63,8 @@ The analytics page should be compact, not a long report. It should have one prim
    - Failure concentration
    - Cache read share warning or improvement
    - Reasoning token share when relevant
-   - First-stage placement is a right-side vertical insight rail, not a horizontal chip strip.
-   - Right-side rail ordering should lead with **Metric Completeness** warnings, then cache efficiency, top cost key, token spike, and failure cluster.
+   - Shipped placement is a full-width conditional `Needs attention` strip, not a right-side rail or horizontal chip strip; it renders only warning-level (amber) insights.
+   - Strip ordering leads with **Metric Completeness** warnings, then failure cluster — the only two warning-level (amber) insight types that reach the strip. Top cost key, token spike, and reasoning tokens are informational (green/violet/blue) and never reach the strip; the cache efficiency insight can also be amber but stays hidden because the Cache KPI owns that presentation.
 
 4. **Breakdowns**
    - Key Alias
@@ -252,7 +252,7 @@ The signature module should feel like a premium data cockpit rather than a decor
 
 - Cost and token movement should be visible in the same analytical region.
 - **Cache Read Share** should appear as an efficiency rail around the main trend, using `cached_tokens / input_tokens` over provider-normalized prompt input tokens.
-- Deterministic insights should sit in a right-side vertical rail next to the main trend so status cards do not reduce the chart's vertical space.
+- Deterministic insights ship as a full-width conditional `Needs attention` strip rather than a right-side vertical rail; because it renders only when warning-level insights exist, it does not permanently reduce the chart's vertical space.
 - The insight rail should use **Metric Completeness** for pricing-missing, cost-partial, cache-data-unavailable, and zero-denominator states; avoid describing these as data truth or event validity problems.
 - In the compact UI, the card title can be `Completeness`; reserve the full **Metric Completeness** term for documentation, tooltips, or expanded detail.
 - The module may use stronger chart styling, richer hover states, and subtle motion than surrounding cards.
@@ -299,7 +299,7 @@ The first implementation stage is not a front-end-only reskin. It should include
 In scope:
 
 - Add real cache efficiency fields to analytics summary and model breakdown responses.
-- Replace the current horizontal deterministic insight strip with a right-side vertical insight rail.
+- Replace the horizontal deterministic insight strip with a full-width conditional `Needs attention` strip that renders only warning-level insights (shipped in PR #132 as `InsightRail` in `web/src/components/charts/insight-rail.tsx`).
 - Upgrade the combined **Cost and Token Trend** into the first-screen signature module.
 - Add the **Cache Read Share** KPI with exact, partial, and unavailable observation states; pricing completeness independently controls whether estimated savings is available.
 - Keep the breakdown area as a single active workbench with a compact segmented control.

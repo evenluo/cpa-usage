@@ -30,7 +30,8 @@ interface HeatmapTooltip {
 
 function cellTooltipLabel(fc: FlatCell): string {
   if (!fc.cell) return ""
-  return `${fc.dateLabel} ${fc.hour}:00 · ${formatCompact(fc.cell.total_tokens, 1)}t · ${fc.cell.request_count}a · ${cellCostLabel(fc.cell)}`
+  const tokens = fc.cell.canonical_valid_attempts > 0 ? `${formatCompact(fc.cell.total_tokens, 1)} canonical tokens` : "tokens n/a"
+  return `${fc.dateLabel} ${fc.hour}:00 · ${tokens} · ${fc.cell.request_count}a · ${cellCostLabel(fc.cell)}`
 }
 
 export function Heatmap({ data }: HeatmapProps) {
@@ -142,7 +143,7 @@ export function Heatmap({ data }: HeatmapProps) {
                         />
                       )
                     }
-                    const intensity = fc.cell.in_range
+                    const intensity = fc.cell.in_range && fc.cell.canonical_valid_attempts > 0
                       ? Math.min(fc.cell.total_tokens / maxTokens, 1)
                       : 0
                     const alpha = fc.cell.in_range ? 0.1 + intensity * 0.85 : 0.04
@@ -184,7 +185,7 @@ export function Heatmap({ data }: HeatmapProps) {
                   )
                 }
 
-                const intensity = fc.cell.in_range
+                const intensity = fc.cell.in_range && fc.cell.canonical_valid_attempts > 0
                   ? Math.min(fc.cell.total_tokens / maxTokens, 1)
                   : 0
                 const alpha = fc.cell.in_range ? 0.1 + intensity * 0.85 : 0.04

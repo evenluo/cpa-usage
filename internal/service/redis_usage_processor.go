@@ -48,7 +48,7 @@ func (p redisUsageProcessor) processRows(ctx context.Context, inboxRows []entiti
 			decodeErrs = append(decodeErrs, decodeErr)
 			continue
 		}
-		event.EventKey = redisUsageInboxEventKey(row, event.EventKey)
+		event.EventKey = redisUsageAttemptEventKey(row.ID)
 		validRows = append(validRows, row)
 		events = append(events, event)
 	}
@@ -132,24 +132,6 @@ func (p redisUsageProcessor) persistEvents(ctx context.Context, events []entitie
 // while separate rows preserve byte-identical provider attempts independently.
 func redisUsageAttemptEventKey(inboxID uint) string {
 	return "redis-inbox:" + strconv.FormatUint(uint64(inboxID), 10)
-}
-
-const legacyManagementUsageQueueKey = "queue"
-
-// redisUsageInboxEventKey keeps the old event identity only for processable
-// inbox rows created before CPA's queue key changed from "queue" to "usage".
-// Such a row may already have committed its legacy-keyed event before a crash
-// prevented the separate processed mark. New "usage" rows always use inbox
-// identity so separate upstream attempts remain distinct.
-//
-// Remove this adapter only when every supported upgrade path proves that its
-// database cannot contain a processable legacy "queue" row. Pending rows have
-// no time-based cleanup boundary.
-func redisUsageInboxEventKey(row entities.RedisUsageInbox, decodedEventKey string) string {
-	if row.QueueKey == legacyManagementUsageQueueKey {
-		return decodedEventKey
-	}
-	return redisUsageAttemptEventKey(row.ID)
 }
 
 func markRedisInboxRowsProcessFailed(db *gorm.DB, rows []entities.RedisUsageInbox, err error) {

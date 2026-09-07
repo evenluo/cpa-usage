@@ -22,9 +22,79 @@ const (
 )
 
 var (
-	requestEvidenceBenchmarkResult *dto.UsageEventsPageRecord
-	usageAttemptBenchmarkInserted  int
+	requestEvidenceBenchmarkResult     *dto.UsageEventsPageRecord
+	failureDistributionBenchmarkResult *dto.UsageFailureDistributionRecord
+	attemptPerformanceBenchmarkResult  *dto.UsageAttemptPerformanceRecord
+	usageAttemptBenchmarkInserted      int
 )
+
+// BenchmarkUsageAttemptPerformanceHighCardinality measures exact fixed-window
+// percentile assembly and the independent provider/model/account statements on
+// the deterministic 65,536-attempt fixture. Setup remains outside the timer.
+func BenchmarkUsageAttemptPerformanceHighCardinality(b *testing.B) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(b, requestEvidencePerformanceEventCount)
+	if err := db.Exec(`UPDATE usage_events SET
+		ttft_ms = CASE WHEN latency_ms > 1 THEN latency_ms / 2 ELSE 1 END,
+		generate = 1, stream = 1,
+		output_tokens = CASE WHEN output_tokens > 0 THEN output_tokens ELSE 1 END`).Error; err != nil {
+		b.Fatalf("prepare attempt performance execution facts: %v", err)
+	}
+	windowEnd := fixture.end
+	windowStart := windowEnd.Add(-24 * time.Hour)
+	expectedAttempts := int64(0)
+	for _, event := range fixture.events {
+		if !event.Timestamp.Before(windowStart) && !event.Timestamp.After(windowEnd) {
+			expectedAttempts++
+		}
+	}
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &windowStart, EndTime: &windowEnd}}
+	warm, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
+	if err != nil {
+		b.Fatalf("warm attempt performance benchmark: %v", err)
+	}
+	if warm.TotalAttempts != expectedAttempts || len(warm.Providers.Items) != dto.UsagePerformanceBreakdownLimit || warm.Providers.Items[0].StreamingOutputTPS.SampleCount == 0 {
+		b.Fatalf("benchmark fixture did not exercise exact percentile breakdowns: %+v", warm)
+	}
+	b.ReportMetric(float64(expectedAttempts), "window_attempts")
+	b.ReportMetric(float64(dto.UsagePerformanceBreakdownLimit), "top_n_limit")
+	b.ReportMetric(float64(warm.Providers.Items[0].StreamingOutputTPS.SampleCount), "valid_tps_samples")
+	b.ReportMetric(float64(runtime.GOMAXPROCS(0)), "gomaxprocs")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for benchmarkIndex := 0; benchmarkIndex < b.N; benchmarkIndex++ {
+		result, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
+		if err != nil {
+			b.Fatalf("build attempt performance benchmark: %v", err)
+		}
+		attemptPerformanceBenchmarkResult = result
+	}
+}
+
+// BenchmarkUsageFailureDistributionHighCardinality measures all bounded Top-N
+// breakdown queries over the deterministic 65,536-attempt fixture.
+func BenchmarkUsageFailureDistributionHighCardinality(b *testing.B) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(b, requestEvidencePerformanceEventCount)
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &fixture.start, EndTime: &fixture.end}}
+	warm, err := BuildUsageFailureDistributionWithFilter(context.Background(), db, filter)
+	if err != nil {
+		b.Fatalf("warm failure distribution benchmark: %v", err)
+	}
+	if warm.TotalFailures == 0 || len(warm.Providers.Items) != dto.UsageFailureBreakdownLimit || len(warm.Models.Items) != dto.UsageFailureBreakdownLimit {
+		b.Fatalf("benchmark fixture did not exercise bounded breakdowns: %+v", warm)
+	}
+	b.ReportMetric(requestEvidencePerformanceEventCount, "fixture_attempts")
+	b.ReportMetric(float64(warm.TotalFailures), "matching_failures")
+	b.ReportMetric(float64(dto.UsageFailureBreakdownLimit), "top_n_limit")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for benchmarkIndex := 0; benchmarkIndex < b.N; benchmarkIndex++ {
+		result, err := BuildUsageFailureDistributionWithFilter(context.Background(), db, filter)
+		if err != nil {
+			b.Fatalf("build failure distribution benchmark: %v", err)
+		}
+		failureDistributionBenchmarkResult = result
+	}
+}
 
 // BenchmarkListUsageEventsHighCardinalityCombinedFilters measures Request
 // Evidence's count, model-options, and page queries together at the same
@@ -67,6 +137,44 @@ func BenchmarkListUsageEventsHighCardinalityCombinedFilters(b *testing.B) {
 		result, err := ListUsageEventsWithFilter(context.Background(), db, filter)
 		if err != nil {
 			b.Fatalf("list request evidence benchmark: %v", err)
+		}
+		requestEvidenceBenchmarkResult = result
+	}
+}
+
+// BenchmarkListUsageEventsExportCapHighCardinality measures the repository
+// work performed by a bounded CSV export before its 5,000-row cap rejects an
+// oversized full selection. The fixture is intentionally larger than the cap,
+// and the cap+1 materialization makes the query and allocation boundary
+// observable without writing a CSV file.
+func BenchmarkListUsageEventsExportCapHighCardinality(b *testing.B) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(b, requestEvidencePerformanceEventCount)
+	filter := dto.UsageEventListFilter{
+		UsageTimeScope: dto.UsageTimeScope{
+			StartTime: &fixture.start,
+			EndTime:   &fixture.end,
+		},
+		Page:     1,
+		PageSize: 5_001,
+	}
+
+	warm, err := ListUsageEventsWithFilter(context.Background(), db, filter)
+	if err != nil {
+		b.Fatalf("warm bounded export query: %v", err)
+	}
+	if warm.TotalCount <= 5_000 || len(warm.Events) != 5_001 {
+		b.Fatalf("benchmark fixture did not exercise cap+1 export boundary: total=%d rows=%d", warm.TotalCount, len(warm.Events))
+	}
+
+	b.ReportMetric(requestEvidencePerformanceEventCount, "fixture_events")
+	b.ReportMetric(float64(warm.TotalCount), "matching_events")
+	b.ReportMetric(float64(len(warm.Events)), "bounded_rows")
+	b.ReportAllocs()
+	b.ResetTimer()
+	for benchmarkIndex := 0; benchmarkIndex < b.N; benchmarkIndex++ {
+		result, err := ListUsageEventsWithFilter(context.Background(), db, filter)
+		if err != nil {
+			b.Fatalf("list bounded export query: %v", err)
 		}
 		requestEvidenceBenchmarkResult = result
 	}
@@ -138,6 +246,37 @@ func TestRequestEvidenceQueryPlansAvoidFullScans(t *testing.T) {
 		  AND failed = ?
 		ORDER BY timestamp DESC, id DESC
 		LIMIT 100`, fixture.start, fixture.end, target.Provider, target.Model, target.Failed)
+}
+
+func TestFailureDistributionQueryPlansUseBoundedTimeIndex(t *testing.T) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(t, 4_096)
+	queries := []struct {
+		name string
+		sql  string
+	}{
+		{name: "failure total", sql: `EXPLAIN QUERY PLAN SELECT COUNT(*) FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1`},
+		{name: "status family", sql: `EXPLAIN QUERY PLAN SELECT status_code / 100, COUNT(*) FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1 GROUP BY status_code / 100 ORDER BY COUNT(*) DESC LIMIT 8`},
+		{name: "endpoint", sql: `EXPLAIN QUERY PLAN SELECT TRIM(endpoint), COUNT(*) FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1 GROUP BY TRIM(endpoint) ORDER BY COUNT(*) DESC LIMIT 8`},
+		{name: "frozen evidence", sql: `EXPLAIN QUERY PLAN SELECT id FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ? AND failed = 1 AND status_code >= 400 AND status_code < 500
+			ORDER BY timestamp DESC, id DESC LIMIT 10`},
+	}
+	for _, query := range queries {
+		assertUsageEventsQueryPlanUsesSearch(t, db, query.name, query.sql, fixture.start, fixture.end)
+	}
+}
+
+func TestAttemptPerformanceDimensionPlansUseBoundedTimeIndex(t *testing.T) {
+	db, fixture := prepareRequestEvidencePerformanceFixture(t, 4_096)
+	for _, dimension := range []string{"provider", "model", "auth_index"} {
+		query := fmt.Sprintf(`EXPLAIN QUERY PLAN SELECT %s, latency_ms, ttft_ms, output_tokens
+			FROM usage_events INDEXED BY idx_usage_events_timestamp_id
+			WHERE timestamp >= ? AND timestamp <= ?`, dimension)
+		assertUsageEventsQueryPlanUsesSearch(t, db, "attempt performance "+dimension, query, fixture.start, fixture.end)
+	}
 }
 
 func assertUsageEventsQueryPlanUsesSearch(t *testing.T, db *gorm.DB, name string, query string, args ...any) {

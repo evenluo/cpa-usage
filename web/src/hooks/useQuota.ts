@@ -236,16 +236,26 @@ export function useLiveCapacity(provider: string) {
     },
   })
 
-  const refresh = useCallback((authIndex?: string) => {
-    const requestedAuthIndexes = authIndex ? [authIndex] : visibleAuthIndexes
+  const disabledAuthIndexes = useMemo(
+    () => new Set(identities.filter((identity) => identity.disabled === true).map((identity) => identity.identity)),
+    [identities],
+  )
+
+  const refresh = useCallback((target?: string | string[]) => {
+    const requestedAuthIndexes = (target === undefined
+      ? visibleAuthIndexes
+      : Array.isArray(target)
+        ? target
+        : [target]
+    ).filter((authIndex) => !disabledAuthIndexes.has(authIndex))
     const authIndexes = selectRefreshAuthIndexes({
       requestedAuthIndexes,
       taskStates,
-      limit: authIndex ? 1 : QUOTA_REFRESH_LIMIT,
+      limit: typeof target === "string" ? 1 : QUOTA_REFRESH_LIMIT,
     })
     if (authIndexes.length === 0) return
     refreshMutation.mutate(authIndexes)
-  }, [refreshMutation, taskStates, visibleAuthIndexes])
+  }, [refreshMutation, taskStates, visibleAuthIndexes, disabledAuthIndexes])
 
   useQuery({
     queryKey: [

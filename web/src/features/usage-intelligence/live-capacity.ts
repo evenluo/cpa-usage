@@ -1,11 +1,21 @@
-import type { KeyIdentity, QuotaCacheResponse, QuotaRow } from "@/types/api"
+import { formatDate } from "@/lib/format"
+import type { KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaCacheResponse, QuotaRow, QuotaWindow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
-export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported"
+export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported" | "disabled"
 export type ProviderKind = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unsupported"
 export type LiveCapacityPlanTone = "priority" | "ordinary" | "none"
+export type LiveCapacityAccountStateTone = "green" | "amber" | "red" | "muted"
+
+export interface LiveCapacityAccountState {
+  kind: NonNullable<KeyIdentity["status"]> | "not_reported"
+  label: string
+  explanation: string
+  tone: LiveCapacityAccountStateTone
+}
 
 export interface LiveCapacityRow {
+  id: number
   authIndex: string
   provider: string
   providerKind: ProviderKind
@@ -14,8 +24,12 @@ export interface LiveCapacityRow {
   name: string
   alias: string
   displayName: string
+  disabled: boolean
+  unavailable: boolean | null
+  accountState: LiveCapacityAccountState
   status: LiveCapacityStatus
-  statusLabel: string
+  /** Humanized refresh-failure label for the attention tooltip; only set for failed rows. */
+  errorLabel?: string
   error?: string
   fiveHour?: LiveCapacityMetric
   weekly?: LiveCapacityMetric
@@ -27,10 +41,29 @@ export interface LiveCapacityRow {
   priorityLabel?: string
   isPriorityAccount: boolean
   isConstrained: boolean
+  /** True while cached quota is shown past its expiresAt — the reading is stale. */
+  isCacheStale: boolean
   observedAt?: string
   expiresAt?: string
+  metadataObservedAt?: string | null
+  lastRefresh?: string | null
+  nextRetryAfter?: string | null
+  passiveQuota?: LiveCapacityPassiveObservation
+  passiveModelQuotas: LiveCapacityPassiveModelObservation[]
+  /** Subscription start, exposed only while still in the future. */
   activeStart?: string | null
   activeUntil?: string | null
+}
+
+export interface LiveCapacityPassiveObservation {
+  source: "cpa_passive"
+  observedAt: string
+  activeLimit?: string
+  metrics: LiveCapacityMetric[]
+}
+
+export interface LiveCapacityPassiveModelObservation extends LiveCapacityPassiveObservation {
+  model: string
 }
 
 export interface LiveCapacityMetric {
@@ -39,6 +72,8 @@ export interface LiveCapacityMetric {
   resetLabel: string
   progress: number | null
   tone: "green" | "amber" | "red" | "muted"
+  /** Window length in seconds; derived from window.seconds (Codex) or duration+unit (Kimi). */
+  windowSeconds?: number
 }
 
 const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
@@ -83,23 +118,29 @@ export function buildLiveCapacityRows(input: {
       const resolvedPlanType = planType(quotaRows, identity.plan_type)
       const planDisplay = planDisplayFor(providerKind, resolvedPlanType)
       const priorityLabel = planDisplay.tone === "priority" ? planDisplay.label : undefined
+      const passiveQuota = passiveAccountObservation(providerKind, identity.passive_quota)
+      const passiveModelQuotas = passiveModelObservations(providerKind, identity.passive_model_quotas)
 
       let status: LiveCapacityStatus = activeQuota ? "cached" : "no_cache"
-      let statusLabel = activeQuota ? "cached" : "No cached probe"
       let error: string | undefined
-      if (!supported) {
+      let errorLabel: string | undefined
+      if (identity.disabled) {
+        status = "disabled"
+      } else if (!supported) {
         status = "unsupported"
-        statusLabel = "Unsupported"
       } else if (taskState?.status === "starting" || taskState?.status === "queued" || taskState?.status === "running") {
         status = "refreshing"
-        statusLabel = taskState.status === "starting" ? "Starting" : taskState.status === "queued" ? "Queued" : "Refreshing"
       } else if (taskState?.status === "failed") {
         status = "failed"
-        statusLabel = rejectionLabel(taskState.error)
+        errorLabel = rejectionLabel(taskState.error)
         error = taskState.error
       }
 
+      const observedAt = taskState?.status === "completed" ? taskState.cachedAt : cachedQuota?.cachedAt
+      const expiresAt = taskState?.status === "completed" ? taskState.expiresAt : cachedQuota?.expiresAt
+
       return {
+        id: identity.id,
         authIndex: identity.identity,
         provider: identity.provider,
         providerKind,
@@ -108,8 +149,11 @@ export function buildLiveCapacityRows(input: {
         name: identity.name,
         alias: identity.alias,
         displayName: identity.displayName,
+        disabled: identity.disabled === true,
+        unavailable: identity.unavailable ?? null,
+        accountState: accountStateFromIdentity(identity.status),
         status,
-        statusLabel,
+        errorLabel,
         error,
         fiveHour: fiveHour ? metricFromQuotaRow(fiveHour) : undefined,
         weekly: weekly ? metricFromQuotaRow(weekly) : undefined,
@@ -121,13 +165,82 @@ export function buildLiveCapacityRows(input: {
         priorityLabel,
         isPriorityAccount: Boolean(priorityLabel),
         isConstrained,
-        observedAt: taskState?.status === "completed" ? taskState.cachedAt : cachedQuota?.cachedAt,
-        expiresAt: taskState?.status === "completed" ? taskState.expiresAt : cachedQuota?.expiresAt,
-        activeStart: identity.active_start,
+        observedAt,
+        expiresAt,
+        metadataObservedAt: identity.metadata_observed_at,
+        lastRefresh: identity.last_refresh,
+        nextRetryAfter: identity.next_retry_after,
+        passiveQuota,
+        passiveModelQuotas,
+        isCacheStale: status === "cached" && isPastTimestamp(expiresAt),
+        // active_start only carries signal while still in the future (the
+        // subscription is not yet effective); past starts are display noise.
+        activeStart: isFutureTimestamp(identity.active_start) ? identity.active_start : null,
         activeUntil: identity.active_until,
       }
     })
     .sort(compareLiveCapacityRows)
+}
+
+function passiveAccountObservation(providerKind: ProviderKind, observation: PassiveQuotaObservation | null | undefined): LiveCapacityPassiveObservation | undefined {
+  if (!supportsPassiveQuota(providerKind) || observation?.source !== "cpa_passive" || observation.scope !== "account" || !validObservationTime(observation.observed_at)) {
+    return undefined
+  }
+  const metrics = observation.quota.map(metricFromQuotaRow)
+  if (metrics.length === 0 && !observation.active_limit) return undefined
+  return { source: observation.source, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }
+}
+
+function passiveModelObservations(providerKind: ProviderKind, observations: PassiveModelQuotaObservation[] | null | undefined): LiveCapacityPassiveModelObservation[] {
+  if (!supportsPassiveQuota(providerKind)) return []
+  return (observations ?? []).flatMap((observation) => {
+    const model = observation.model.trim()
+    if (observation.source !== "cpa_passive" || observation.scope !== "model" || !model || !validObservationTime(observation.observed_at)) return []
+    const metrics = observation.quota.map(metricFromQuotaRow)
+    if (metrics.length === 0 && !observation.active_limit) return []
+    return [{ source: observation.source, model, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }]
+  })
+}
+
+function supportsPassiveQuota(providerKind: ProviderKind): boolean {
+  return providerKind === "claude" || providerKind === "codex"
+}
+
+function validObservationTime(value: string): boolean {
+  return value.trim() !== "" && Number.isFinite(new Date(value).getTime())
+}
+
+export function accountStateFromIdentity(status: KeyIdentity["status"]): LiveCapacityAccountState {
+  switch (status) {
+    case "active":
+      return { kind: status, label: "Active", explanation: "CPA observed this auth file as active.", tone: "green" }
+    case "pending":
+      return { kind: status, label: "Pending", explanation: "CPA observed this auth file waiting for an external action.", tone: "amber" }
+    case "refreshing":
+      return { kind: status, label: "Refreshing", explanation: "CPA observed this auth file refreshing its authentication state.", tone: "amber" }
+    case "error":
+      return { kind: status, label: "Error", explanation: "CPA observed an error state for this auth file.", tone: "red" }
+    case "disabled":
+      return { kind: status, label: "Disabled state", explanation: "CPA reported a disabled lifecycle state for this auth file.", tone: "amber" }
+    case "unknown":
+      return { kind: status, label: "Unknown", explanation: "CPA reported that this auth-file state is unknown.", tone: "muted" }
+    case "other":
+      return { kind: status, label: "Other state", explanation: "CPA reported another bounded auth-file state.", tone: "muted" }
+    default:
+      return { kind: "not_reported", label: "State not reported", explanation: "CPA did not report an auth-file state in this observation.", tone: "muted" }
+  }
+}
+
+function isFutureTimestamp(value: string | null | undefined): boolean {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) && time > Date.now()
+}
+
+function isPastTimestamp(value: string | null | undefined): boolean {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) && time <= Date.now()
 }
 
 export function mergeLiveCapacityRowOrder(currentOrder: string[], rows: LiveCapacityRow[]): string[] {
@@ -200,13 +313,42 @@ function formatPlanType(planTypeValue: string): string {
     .join(" ")
 }
 
+export const FIVE_HOUR_WINDOW_SECONDS = 18_000
+export const WEEKLY_WINDOW_SECONDS = 604_800
+
 function findQuotaWindow(rows: QuotaRow[], kind: "5h" | "weekly"): QuotaRow | undefined {
-  return rows.find((row) => {
-    const label = (row.label ?? "").toLowerCase()
-    const seconds = row.window?.seconds
-    if (kind === "5h") return seconds === 18_000 || label === "5h" || label.includes("5h")
-    return seconds === 604_800 || label === "weekly" || label.includes("weekly") || label.includes("7d")
-  })
+  const seconds = kind === "5h" ? FIVE_HOUR_WINDOW_SECONDS : WEEKLY_WINDOW_SECONDS
+  // window.seconds is authoritative (the backend derives labels from it), so
+  // rows that carry it win over label-only rows regardless of array position;
+  // label matching is the fallback for providers that omit window entirely.
+  return (
+    rows.find((row) => row.window?.seconds === seconds) ??
+    rows.find((row) => {
+      const label = (row.label ?? "").toLowerCase()
+      if (kind === "5h") return label === "5h" || label.includes("5h")
+      return label === "weekly" || label.includes("weekly") || label.includes("7d")
+    })
+  )
+}
+
+const WINDOW_UNIT_SECONDS: Record<string, number> = {
+  second: 1,
+  minute: 60,
+  hour: 3_600,
+  day: 86_400,
+  week: 604_800,
+}
+
+/** Codex reports window.seconds directly; Kimi reports duration+unit. */
+function quotaWindowSeconds(window: QuotaWindow | undefined): number | undefined {
+  if (!window) return undefined
+  if (typeof window.seconds === "number" && window.seconds > 0) return window.seconds
+  if (typeof window.duration === "number" && window.duration > 0 && window.unit) {
+    const unit = window.unit.trim().toLowerCase().replace(/s$/, "")
+    const unitSeconds = WINDOW_UNIT_SECONDS[unit]
+    if (unitSeconds) return window.duration * unitSeconds
+  }
+  return undefined
 }
 
 function metricFromQuotaRow(row: QuotaRow): LiveCapacityMetric {
@@ -217,6 +359,7 @@ function metricFromQuotaRow(row: QuotaRow): LiveCapacityMetric {
     resetLabel: resetLabel(row),
     progress,
     tone: toneFromProgress(row, progress),
+    windowSeconds: quotaWindowSeconds(row.window),
   }
 }
 
@@ -241,13 +384,23 @@ function progressFromQuotaRow(row: QuotaRow): number | null {
 }
 
 function valueLabel(row: QuotaRow): string {
-  if (typeof row.remainingFraction === "number") return `${Math.round(row.remainingFraction * 100)}% left`
-  if (typeof row.usedPercent === "number") return `${Math.round(row.usedPercent)}% used`
-  if (typeof row.remaining === "number" && typeof row.limit === "number") return `${formatQuotaNumber(row.remaining)} / ${formatQuotaNumber(row.limit)} left`
-  if (typeof row.remaining === "number") return `${formatQuotaNumber(row.remaining)} left`
-  if (typeof row.used === "number" && typeof row.limit === "number") return `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
-  if (typeof row.allowed === "boolean") return row.allowed ? "Allowed" : "Blocked"
-  return "Measured"
+  let measurement = ""
+  if (row.unlimited === true) measurement = "Unlimited"
+  else if (typeof row.usedPercent === "number") measurement = `${Math.round(row.usedPercent)}% used`
+  else if (typeof row.remainingFraction === "number") measurement = `${Math.round((1 - row.remainingFraction) * 100)}% used`
+  if (typeof row.remaining === "number" && typeof row.limit === "number" && row.limit > 0) {
+    measurement ||= `${formatQuotaNumber(Math.max(0, row.limit - row.remaining))} / ${formatQuotaNumber(row.limit)} used`
+  }
+  if (!measurement && typeof row.remaining === "number") measurement = `${formatQuotaNumber(row.remaining)}${row.unit ? ` ${row.unit}` : ""} left`
+  if (!measurement && typeof row.used === "number" && typeof row.limit === "number") measurement = `${formatQuotaNumber(row.used)} / ${formatQuotaNumber(row.limit)} used`
+
+  let state = ""
+  if (typeof row.allowed === "boolean") state = row.allowed ? "Allowed" : "Blocked"
+  else if (typeof row.limitReached === "boolean") state = row.limitReached ? "Limit reached" : "Limit not reached"
+  else if (typeof row.hasCredits === "boolean") state = row.hasCredits ? "Credits available" : "No credits"
+
+  if (measurement && state) return `${measurement} · ${state}`
+  return measurement || state || "Measured"
 }
 
 function toneFromProgress(row: QuotaRow, progress: number | null): LiveCapacityMetric["tone"] {
@@ -268,26 +421,21 @@ function isConstrainedQuotaRow(row: QuotaRow | undefined): boolean {
 }
 
 function isRemainingExhausted(row: QuotaRow): boolean {
-  return typeof row.remaining === "number" && row.remaining <= 0
+  return row.unlimited !== true && typeof row.remaining === "number" && row.remaining <= 0
 }
 
 function resetLabel(...rows: Array<QuotaRow | undefined>): string {
-  const row = rows.find((item) => item?.resetAt || item?.resetAfterSeconds)
+  const row = rows.find((item) => item?.resetAt || typeof item?.resetAfterSeconds === "number")
   if (!row) return "-"
   if (row.resetAt) return formatResetDate(row.resetAt)
-  if (row.resetAfterSeconds) return formatResetDuration(row.resetAfterSeconds)
+  if (typeof row.resetAfterSeconds === "number") return formatResetDuration(row.resetAfterSeconds)
   return "-"
 }
 
 function formatResetDate(value: string): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date)
+  return formatDate(value)
 }
 
 function formatResetDuration(seconds: number): string {
@@ -315,6 +463,8 @@ function rejectionLabel(code: string): string {
       return "Not auth-file"
     case "not_found":
       return "Not found"
+    case "disabled":
+      return "Disabled"
     case "duplicate":
       return "Already refreshing"
     case "invalid":

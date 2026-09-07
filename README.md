@@ -133,6 +133,7 @@ Deployment verification has two distinct levels: `make verify-dokploy-compose` i
 
 - [Project contract](docs/project/contract.md): repository positioning, compatibility rules, naming rules, documentation rules, shared contribution invariants, and risk-matched verification policy.
 - [Project layout](docs/project/layout.md): current backend package ownership, frontend ownership, and documentation source-of-truth boundaries.
+- [CPA data contract](docs/design/cpa-data-contract.md): supported producer fields, canonical direct cut, SQLite upgrades, and release evidence boundaries.
 - [Domain glossary](CONTEXT.md): product vocabulary for Usage Intelligence, Reference Data, Operations Console, Request Evidence, Cost Rates, and Key Aliases.
 - [Architecture decisions](docs/adr/): accepted architecture decisions.
 - [Contributing](CONTRIBUTING.md): local setup, development entrypoints, PR verification, and project boundaries.

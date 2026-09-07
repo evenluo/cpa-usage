@@ -15,10 +15,13 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 	if db == nil {
 		return nil, fmt.Errorf("database is nil")
 	}
+	if strings.TrimSpace(filter.RequestID) != "" && (filter.StartTime == nil || filter.EndTime == nil) {
+		return nil, fmt.Errorf("request ID correlation requires bounded start and end times")
+	}
 	db = db.WithContext(ctx)
 
 	// 第一步：应用列表筛选，统计分页总数。
-	baseQuery := queryUsageEvents(db)
+	baseQuery := queryUsageEventsForList(db, filter)
 	baseQuery = applyUsageEventListQuery(baseQuery, filter)
 
 	var totalCount int64
@@ -48,7 +51,7 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 		offset = 0
 	}
 
-	query := applyUsageEventListQuery(db.Model(&entities.UsageEvent{}), filter)
+	query := applyUsageEventListQuery(queryUsageEventsForList(db, filter), filter)
 	query = query.Order("timestamp DESC, id DESC").Limit(pageSize).Offset(offset)
 
 	var events []entities.UsageEvent
@@ -58,34 +61,27 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 
 	rows := make([]dto.UsageEventRecord, 0, len(events))
 	for _, event := range events {
+		facts := InterpretUsageAttempt(event)
 		rows = append(rows, dto.UsageEventRecord{
-			ID:                  event.ID,
-			Timestamp:           event.Timestamp.UTC(),
-			APIGroupKey:         strings.TrimSpace(event.APIGroupKey),
-			APIKeyIdentity:      usageEventAPIKeyIdentity(event),
-			Model:               strings.TrimSpace(event.Model),
-			ModelAlias:          strings.TrimSpace(usageEventOptionalString(event.ModelAlias)),
-			Endpoint:            strings.TrimSpace(event.Endpoint),
-			RequestID:           strings.TrimSpace(event.RequestID),
-			AuthType:            strings.TrimSpace(event.AuthType),
-			Provider:            strings.TrimSpace(event.Provider),
-			Source:              strings.TrimSpace(event.Source),
-			AuthIndex:           strings.TrimSpace(event.AuthIndex),
-			Failed:              event.Failed,
-			StatusCode:          usageEventStatusCode(event.StatusCode),
-			ExecutorType:        strings.TrimSpace(event.ExecutorType),
-			ReasoningEffort:     strings.TrimSpace(event.ReasoningEffort),
-			ServiceTier:         strings.TrimSpace(event.ServiceTier),
-			LatencyMS:           event.LatencyMS,
-			TTFTMS:              event.TTFTMS,
-			OutputTPS:           usageEventOutputTPS(event.OutputTokens, event.LatencyMS, event.TTFTMS),
-			InputTokens:         event.InputTokens,
-			OutputTokens:        event.OutputTokens,
-			ReasoningTokens:     event.ReasoningTokens,
-			CachedTokens:        event.CachedTokens,
-			CacheReadTokens:     event.CacheReadTokens,
-			CacheCreationTokens: event.CacheCreationTokens,
-			TotalTokens:         event.TotalTokens,
+			AttemptFacts:    facts,
+			ID:              event.ID,
+			Timestamp:       event.Timestamp.UTC(),
+			APIGroupKey:     strings.TrimSpace(event.APIGroupKey),
+			APIKeyIdentity:  usageEventAPIKeyIdentity(event),
+			Model:           strings.TrimSpace(event.Model),
+			ModelAlias:      strings.TrimSpace(usageEventOptionalString(event.ModelAlias)),
+			Endpoint:        strings.TrimSpace(event.Endpoint),
+			RequestID:       strings.TrimSpace(event.RequestID),
+			AuthType:        strings.TrimSpace(event.AuthType),
+			Provider:        strings.TrimSpace(event.Provider),
+			Source:          strings.TrimSpace(event.Source),
+			AuthIndex:       strings.TrimSpace(event.AuthIndex),
+			Failed:          event.Failed,
+			StatusCode:      usageEventStatusCode(event.StatusCode),
+			ExecutorType:    strings.TrimSpace(event.ExecutorType),
+			ReasoningEffort: strings.TrimSpace(event.ReasoningEffort),
+			LatencyMS:       event.LatencyMS,
+			TTFTMS:          event.TTFTMS,
 		})
 	}
 	totalPages := 1
@@ -162,6 +158,14 @@ func queryUsageEvents(db *gorm.DB) *gorm.DB {
 	return db.Model(&entities.UsageEvent{})
 }
 
+func queryUsageEventsForList(db *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
+	if filter.StartTime != nil && filter.EndTime != nil &&
+		(strings.TrimSpace(filter.ModelAlias) != "" || strings.TrimSpace(filter.Account) != "" || strings.TrimSpace(filter.Endpoint) != "" || strings.TrimSpace(filter.Status) != "" || strings.TrimSpace(filter.RequestID) != "" || filter.MinLatencyMS != nil) {
+		return db.Table("usage_events INDEXED BY idx_usage_events_timestamp_id")
+	}
+	return queryUsageEvents(db)
+}
+
 // Request Event Log 筛选项第一步：应用时间窗口和 provider scope，不叠加当前列表筛选。
 func applyUsageEventFilterOptionsQuery(query *gorm.DB, filter dto.UsageTimeScope) *gorm.DB {
 	return applyUsageProviderFilter(applyUsageQueryWindow(query, filter), filter)
@@ -169,11 +173,7 @@ func applyUsageEventFilterOptionsQuery(query *gorm.DB, filter dto.UsageTimeScope
 
 // Request Event Log 列表第一步：在时间窗口和 provider scope 上叠加 model/source/auth_index/result。
 func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageEventListFilter) *gorm.DB {
-	query = applyUsageQueryWindow(query, filter.UsageTimeScope)
-	query = applyUsageProviderFilter(query, filter.UsageTimeScope)
-	if model := strings.TrimSpace(filter.Model); model != "" {
-		query = query.Where("TRIM(model) = ?", model)
-	}
+	query = applyUsageDiagnosticQuery(query, filter.DiagnosticFilter())
 	if source := strings.TrimSpace(filter.Source); source != "" {
 		if authIndex := strings.TrimSpace(filter.AuthIndex); authIndex != "" {
 			// 第二步：API 层会把 Source 下拉转成 auth_index，这里兼容直接传 source 的仓储调用。
@@ -191,4 +191,50 @@ func applyUsageEventListQuery(query *gorm.DB, filter dto.UsageEventListFilter) *
 		query = query.Where("failed = ?", true)
 	}
 	return query
+}
+
+const publicUsageEndpointSQL = `TRIM(CASE
+	WHEN INSTR(endpoint, '?') > 0 AND (INSTR(endpoint, '#') = 0 OR INSTR(endpoint, '?') < INSTR(endpoint, '#'))
+		THEN SUBSTR(endpoint, 1, INSTR(endpoint, '?') - 1)
+	WHEN INSTR(endpoint, '#') > 0 THEN SUBSTR(endpoint, 1, INSTR(endpoint, '#') - 1)
+	ELSE endpoint END)`
+
+func applyUsageDiagnosticQuery(query *gorm.DB, filter dto.UsageDiagnosticFilter) *gorm.DB {
+	query = applyUsageProviderFilter(applyUsageQueryWindow(query, filter.UsageTimeScope), filter.UsageTimeScope)
+	if model := strings.TrimSpace(filter.Model); model != "" {
+		query = query.Where("TRIM(usage_events.model) = ?", model)
+	}
+	if modelAlias := strings.TrimSpace(filter.ModelAlias); modelAlias != "" {
+		query = query.Where("TRIM(model_alias) = ?", modelAlias)
+	}
+	if account := strings.TrimSpace(filter.Account); account != "" {
+		query = query.Where("TRIM(auth_index) = ?", account)
+	}
+	if endpoint := strings.TrimSpace(filter.Endpoint); endpoint != "" {
+		query = query.Where(publicUsageEndpointSQL+" = ?", endpoint)
+	}
+	if requestID := strings.TrimSpace(filter.RequestID); requestID != "" {
+		query = query.Where("TRIM(request_id) = ?", requestID)
+	}
+	if filter.MinLatencyMS != nil {
+		query = query.Where("latency_ms >= ?", *filter.MinLatencyMS)
+	}
+	return applyUsageStatusFilter(query, filter.Status)
+}
+
+func applyUsageStatusFilter(query *gorm.DB, status string) *gorm.DB {
+	status = strings.TrimSpace(status)
+	switch status {
+	case "":
+		return query
+	case "unknown":
+		return query.Where("status_code = 0")
+	case "other":
+		return query.Where("status_code <> 0 AND (status_code < 100 OR status_code > 599)")
+	}
+	if len(status) == 3 && status[1:] == "xx" {
+		lower := int(status[0]-'0') * 100
+		return query.Where("status_code >= ? AND status_code < ?", lower, lower+100)
+	}
+	return query.Where("status_code = ?", status)
 }

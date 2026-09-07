@@ -7,6 +7,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -544,4 +546,144 @@ func TestNewClientTLSSkipVerify(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", result.StatusCode)
 		}
 	})
+}
+
+func TestFetchAuthFileByAuthIndexFiltersByAuthIndex(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != cpaManagementAuthFilesEndpoint {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("auth_index"); got != "codex-auth" {
+			t.Fatalf("expected auth_index query codex-auth, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
+			t.Fatalf("expected management Authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"files":[{"auth_index":"codex-auth","name":"codex-user.json","type":"codex","disabled":true}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	file, found, err := client.FetchAuthFileByAuthIndex(context.Background(), "codex-auth")
+	if err != nil {
+		t.Fatalf("FetchAuthFileByAuthIndex returned error: %v", err)
+	}
+	if !found || file.Name != "codex-user.json" || !file.Disabled {
+		t.Fatalf("unexpected auth file: %+v found=%v", file, found)
+	}
+}
+
+func TestFetchAuthFileModelsUsesResolvedNameAndAllowlistedFixture(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/models/auth-file-models.json")
+	if err != nil {
+		t.Fatalf("read auth-file models fixture: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != cpaManagementAuthFileModelsEndpoint {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("name"); got != "codex user.json" {
+			t.Fatalf("expected encoded auth file name, got %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
+			t.Fatalf("expected management Authorization header, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(fixture)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	result, err := client.FetchAuthFileModels(context.Background(), " codex user.json ")
+	if err != nil {
+		t.Fatalf("FetchAuthFileModels returned error: %v", err)
+	}
+	if len(result.Payload.Models) != 1 || result.Payload.Models[0].ID != "gpt-fixture-exact" || result.Payload.Models[0].DisplayName != "GPT Fixture Exact" {
+		t.Fatalf("unexpected registered models payload: %+v", result.Payload)
+	}
+}
+
+func TestFetchStaticModelDefinitionsPreservesCapabilityPresence(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/models/static-model-definitions.json")
+	if err != nil {
+		t.Fatalf("read static model definitions fixture: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != cpaManagementModelDefinitionsEndpoint+"codex" {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(fixture)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	result, err := client.FetchStaticModelDefinitions(context.Background(), " Codex ")
+	if err != nil {
+		t.Fatalf("FetchStaticModelDefinitions returned error: %v", err)
+	}
+	if result.Payload.Channel != "codex" || len(result.Payload.Models) != 1 {
+		t.Fatalf("unexpected definitions payload: %+v", result.Payload)
+	}
+	definition := result.Payload.Models[0]
+	if definition.ContextLength == nil || *definition.ContextLength != 200000 || definition.Thinking == nil || definition.Thinking.ZeroAllowed == nil || *definition.Thinking.ZeroAllowed {
+		t.Fatalf("expected explicit capability values, got %+v", definition)
+	}
+	marshaled, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal allowlisted model definitions result: %v", err)
+	}
+	if strings.Contains(string(marshaled), "override_header") || strings.Contains(string(marshaled), "fixture-secret") || strings.Contains(string(marshaled), "unknown_capability") {
+		t.Fatalf("unexpected non-allowlisted data retained: %s", marshaled)
+	}
+}
+
+func TestFetchAuthFileByAuthIndexReturnsNotFoundWhenEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"files":[]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	_, found, err := client.FetchAuthFileByAuthIndex(context.Background(), "missing-auth")
+	if err != nil {
+		t.Fatalf("FetchAuthFileByAuthIndex returned error: %v", err)
+	}
+	if found {
+		t.Fatal("expected found=false for empty auth files response")
+	}
+}
+
+func TestSetAuthFileDisabledPatchesStatusEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("expected PATCH method, got %s", r.Method)
+		}
+		if r.URL.Path != cpaManagementAuthFilesStatusEndpoint {
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
+			t.Fatalf("expected management Authorization header, got %q", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("expected JSON content type, got %q", got)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if body["name"] != "codex-user.json" || body["disabled"] != true {
+			t.Fatalf("unexpected auth file status body: %#v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","disabled":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "management-secret", 2*time.Second, false)
+	if err := client.SetAuthFileDisabled(context.Background(), "codex-user.json", true); err != nil {
+		t.Fatalf("SetAuthFileDisabled returned error: %v", err)
+	}
 }

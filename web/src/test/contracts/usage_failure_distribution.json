@@ -1,0 +1,35 @@
+{
+  "window_start": "2026-09-06T12:00:00Z",
+  "window_end": "2026-09-07T12:00:00Z",
+  "total_failures": 3,
+  "categories": {
+    "items": [
+      { "value": "4xx", "label": "4XX", "category": "4xx", "count": 2 },
+      { "value": "unknown", "label": "Unknown status", "category": "unknown", "count": 1 }
+    ],
+    "other_count": 0
+  },
+  "statuses": {
+    "items": [
+      { "value": "429", "label": "HTTP 429", "category": "4xx", "count": 2 },
+      { "value": "unknown", "label": "Unknown status", "category": "unknown", "count": 1 }
+    ],
+    "other_count": 0
+  },
+  "providers": {
+    "items": [{ "value": "claude", "label": "claude", "count": 3 }],
+    "other_count": 0
+  },
+  "accounts": {
+    "items": [{ "value": "auth-1", "label": "Claude Primary", "count": 2 }],
+    "other_count": 1
+  },
+  "models": {
+    "items": [{ "value": "sonnet", "label": "sonnet", "count": 3 }],
+    "other_count": 0
+  },
+  "endpoints": {
+    "items": [{ "value": "/v1/messages", "label": "/v1/messages", "count": 3 }],
+    "other_count": 0
+  }
+}

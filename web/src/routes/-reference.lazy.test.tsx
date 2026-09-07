@@ -59,6 +59,7 @@ const apiKeyRow = {
   type: "api-key",
   auth_type_name: "apikey",
   total_tokens: 17,
+  canonical_valid_attempts: 1,
   total_cost: 1.5,
   cost_available: true,
   last_used_at: null,
