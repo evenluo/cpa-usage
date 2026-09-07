@@ -185,7 +185,7 @@ function ProviderScopedRequestsPage({
         <div className="min-w-0">
           <Link
             to="/"
-            className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500"
+            className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             Back to dashboard
@@ -223,7 +223,7 @@ function ProviderScopedRequestsPage({
             value={modelDraft}
             onChange={(event) => setModelDraft(event.target.value)}
             placeholder="All models"
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
           />
         </label>
         <label className="grid gap-1 text-xs text-muted-foreground">
@@ -231,7 +231,7 @@ function ProviderScopedRequestsPage({
           <select
             value={result}
             onChange={(event) => onFiltersChange?.({ model: modelDraft.trim(), result: event.target.value as "" | "success" | "failed" })}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
           >
             <option value="">All attempts</option>
             <option value="success">Successful attempts</option>
@@ -391,7 +391,7 @@ function RequestListItem({
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500",
+        "grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-3 text-left transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500",
         selected
           ? "border-terracotta-300 bg-terracotta-50 dark:border-terracotta-800 dark:bg-terracotta-950/30"
           : "border-border hover:bg-muted/60",

@@ -142,7 +142,7 @@ function MetricRow({
               windowEnd: slowLink.windowEnd,
               result: slowLink.result,
             }}
-            className="inline-flex items-center justify-end gap-1 font-medium text-terracotta-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
+            className="inline-flex items-center justify-end gap-1 font-medium text-terracotta-700 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
             aria-label={`Inspect ${label.toLowerCase()} attempts at or above p95 latency`}
           >
             <span><span className="text-muted-foreground">p95 </span>{formatMetricValue(metric.p95, kind)}</span>

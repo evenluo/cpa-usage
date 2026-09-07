@@ -33,7 +33,7 @@ Supporting backend packages keep focused ownership:
 
 ## Frontend
 
-The current frontend lives in `web/` and uses React, TypeScript, Vite, Tailwind, and shadcn-style UI primitives.
+The current frontend lives in `web/` and uses React, TypeScript, Vite, Tailwind CSS 4, and shadcn-style UI primitives. `web/src/index.css` owns theme tokens, dark-mode styling, and custom animations; `web/vite.config.ts` integrates Tailwind through `@tailwindcss/vite`.
 
 - `web/src/routes`: route files and route-level composition. Route files may own page-local React state, data fetching hooks, mutations, events, toasts, and layout composition.
 - `web/src/features/usage-intelligence`: tested Usage Intelligence selected/fixed-window load planning and view-model derivation, including Model Mix, observed model mappings, deterministic Insights, and **Live Capacity** presentation facts.

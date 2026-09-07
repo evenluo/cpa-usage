@@ -452,7 +452,7 @@ function LiveCapacityAccountTile({
   return (
     <div
       className={cn(
-        "group flex min-h-[190px] min-w-0 flex-col rounded-lg border border-border bg-background/70 p-3 text-sm transition-[background-color,border-color,box-shadow] duration-300 hover:border-terracotta-500/25 hover:shadow-sm",
+        "group flex min-h-[190px] min-w-0 flex-col rounded-lg border border-border bg-background/70 p-3 text-sm transition-[background-color,border-color,box-shadow] duration-300 hover:border-terracotta-500/25 hover:shadow-xs",
         row.disabled && "opacity-60",
         row.status === "failed" && "border-red-500/25 bg-red-500/[0.025]",
         row.status !== "failed" && row.isConstrained && "border-amber-500/30 bg-amber-500/[0.03]",

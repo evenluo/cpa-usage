@@ -68,8 +68,16 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   const codexLogoWell = page.locator('[aria-label="Codex"]')
   await expect(codexLogoWell).toHaveCount(1)
   await expect
-    .poll(async () => codexLogoWell.evaluate((element) => getComputedStyle(element).backgroundColor))
-    .toContain("255, 255, 255")
+    .poll(async () => codexLogoWell.evaluate((element) => {
+      // CSS Color 4 may serialize the same white as oklab() instead of rgba().
+      const canvas = document.createElement("canvas")
+      canvas.width = canvas.height = 1
+      const context = canvas.getContext("2d")!
+      context.fillStyle = getComputedStyle(element).backgroundColor
+      context.fillRect(0, 0, 1, 1)
+      return Array.from(context.getImageData(0, 0, 1, 1).data).slice(0, 3)
+    }))
+    .toEqual([255, 255, 255])
   await expect(page.getByText("Request Evidence")).toBeVisible()
   await expect(page.getByText("Agent API Key").first()).toBeVisible()
   const evidenceCard = page.getByText("Request Evidence").locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]")

@@ -98,7 +98,7 @@ export function ReferencePage() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search alias or key..."
-                className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground md:min-w-[200px]"
+                className="min-w-0 flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground md:min-w-[200px]"
               />
             </div>
           </div>
@@ -141,7 +141,7 @@ export function ReferencePage() {
                           name={`key-alias-${key.id}`}
                           value={draftAlias}
                           onChange={(event) => setDraftAlias(event.target.value)}
-                          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-medium outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
+                          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm font-medium outline-hidden focus-visible:ring-1 focus-visible:ring-terracotta-500"
                           maxLength={80}
                           autoFocus
                         />

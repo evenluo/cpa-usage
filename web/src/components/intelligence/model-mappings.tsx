@@ -92,7 +92,7 @@ function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: str
       to="/requests"
       search={{ provider: row.provider, model: row.model, modelAlias: row.model_alias, account: "", endpoint: "", status: "", requestId: "", windowEnd, result: "" }}
       aria-label={`Inspect ${row.model_alias} to ${row.model} attempts`}
-      className={`${className} transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500`}
+      className={`${className} transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500`}
     >
       {content}<ArrowUpRight className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
     </Link>

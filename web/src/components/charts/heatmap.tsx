@@ -150,7 +150,7 @@ export function Heatmap({ data }: HeatmapProps) {
                     return (
                       <button
                         key={`${rowIdx}-${ci}`}
-                        className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
+                        className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-terracotta-500"
                         style={{
                           backgroundColor: fc.cell.in_range
                             ? `rgba(217, 119, 87, ${alpha})`
@@ -193,7 +193,7 @@ export function Heatmap({ data }: HeatmapProps) {
                 return (
                   <button
                     key={`${rowIdx}-${ci}`}
-                    className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
+                    className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-terracotta-500"
                     style={{
                       backgroundColor: fc.cell.in_range
                         ? `rgba(217, 119, 87, ${alpha})`

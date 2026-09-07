@@ -8,7 +8,7 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
 
   return (
     <details className="mt-4 min-w-0 border-t border-border pt-3 text-xs">
-      <summary className="cursor-pointer rounded-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <summary className="cursor-pointer rounded-sm text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
         <span className="font-medium text-foreground">Canonical token composition</span>
         <span className="mt-1 block">{getAccountingCaption(accounting)}</span>
       </summary>

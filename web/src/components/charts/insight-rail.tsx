@@ -40,7 +40,7 @@ export function InsightRail({ insights }: InsightRailProps) {
   return (
     <section
       aria-labelledby="attention-heading"
-      className="overflow-hidden rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-amber-50/40 to-transparent shadow-[0_1px_2px_rgba(146,64,14,0.06)] dark:border-amber-900/70 dark:from-amber-950/40 dark:via-amber-950/15 dark:to-transparent"
+      className="overflow-hidden rounded-xl border border-amber-200/80 bg-linear-to-br from-amber-50/90 via-amber-50/40 to-transparent shadow-[0_1px_2px_rgba(146,64,14,0.06)] dark:border-amber-900/70 dark:from-amber-950/40 dark:via-amber-950/15 dark:to-transparent"
     >
       <div className="grid md:grid-cols-[240px_minmax(0,1fr)]">
         <div className="flex items-start gap-3 border-b border-amber-200/80 px-4 py-4 md:border-b-0 md:border-r dark:border-amber-900/70">
