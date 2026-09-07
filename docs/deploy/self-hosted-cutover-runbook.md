@@ -151,32 +151,41 @@ Expected:
 - `/usage/`: 200 HTML or login shell
 - `/`: 200 CPA root response
 
-## Seed OpenAI GPT Pricing
+## Seed Model Pricing
 
-Seed GPT Cost Rates after the service has started and migrations have completed. The seed script is idempotent and only upserts the listed GPT rows in `model_price_settings`; it does not remove operator-managed prices for other models.
+Seed model Cost Rates after the service has started and migrations have completed. The seed script is idempotent and only inserts missing rows in `model_price_settings`; existing prices (including custom values and explicit zero prices) are preserved. Run it explicitly against the deployed database: deploying an image does not seed prices.
 
 Verify current pricing sources before changing values:
 
 - `https://openai.com/api/pricing/`
 - `https://developers.openai.com/api/docs/pricing`
 
+New entries verified on 2026-09-06 (USD per 1M tokens):
+
+| Model | Input | Output | Cache read |
+| --- | ---: | ---: | ---: |
+| `gpt-6-astra` | 10.00 | 50.00 | 1.00 |
+| `kimi-k3` | 3.00 | 15.00 | 0.30 |
+
+Sources: [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra), [Kimi API](https://platform.kimi.ai/). These are reference token rates. GPT-6 uses Standard pricing for at most 272K input tokens; the current three-rate schema does not represent long-context multipliers, Fast/Batch/Flex tiers, or separate cache-write pricing.
+
 On the deployment host:
 
 ```sh
-scp scripts/seed-openai-gpt-pricing.sh <deployment-host>:/tmp/seed-openai-gpt-pricing.sh
+scp scripts/seed-model-pricing.sh <deployment-host>:/tmp/seed-model-pricing.sh
 
 ssh <deployment-host>
 cd <compose-directory>
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-backup=<backup-directory>/pre-gpt-pricing-$stamp.tgz
+backup=<backup-directory>/pre-model-pricing-$stamp.tgz
 data_dir=/var/lib/docker/volumes/<cpa-usage-data-volume>/_data
 tar -C "$data_dir" -czf "$backup" .
 
 docker run --rm \
   -v <cpa-usage-data-volume>:/data \
-  -v /tmp/seed-openai-gpt-pricing.sh:/seed-openai-gpt-pricing.sh:ro \
+  -v /tmp/seed-model-pricing.sh:/seed-model-pricing.sh:ro \
   alpine:3.20 \
-  sh -lc 'apk add --no-cache sqlite >/dev/null && sh /seed-openai-gpt-pricing.sh /data/app.db'
+  sh -lc 'apk add --no-cache sqlite >/dev/null && sh /seed-model-pricing.sh /data/app.db'
 ```
 
 ## Recovery
