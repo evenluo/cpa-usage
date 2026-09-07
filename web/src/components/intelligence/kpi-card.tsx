@@ -15,6 +15,8 @@ export interface KpiCardProps {
   valueDecimals?: number
   isLoading: boolean
   tone: "terracotta" | "blue" | "violet" | "green" | "amber"
+  /** Expandable detail rendered collapsed below the caption, e.g. canonical token composition. */
+  details?: React.ReactNode
 }
 
 const toneStyles = {
@@ -25,7 +27,7 @@ const toneStyles = {
   amber: "text-amber-700 bg-amber-50 border-amber-200",
 }
 
-export function KpiCard({ label, rawValue, formatter, caption, comparison, coverageLabel, sparkline, valueDecimals = 0, isLoading, tone }: KpiCardProps) {
+export function KpiCard({ label, rawValue, formatter, caption, comparison, coverageLabel, sparkline, valueDecimals = 0, isLoading, tone, details }: KpiCardProps) {
   const animated = useCountUp(rawValue ?? 0, {
     duration: 900,
     decimals: valueDecimals,
@@ -67,6 +69,7 @@ export function KpiCard({ label, rawValue, formatter, caption, comparison, cover
                 {coverageLabel}
               </p>
             )}
+            {details}
           </>
         )}
       </CardContent>

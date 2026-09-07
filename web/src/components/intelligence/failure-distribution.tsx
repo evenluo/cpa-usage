@@ -38,7 +38,7 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
             Failure concentration
             <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
           </CardTitle>
-          <CardDescription>Observed failed attempts by status and accountable dimensions; status is evidence, not a proven root cause.</CardDescription>
+          <CardDescription>Failed attempts grouped by status and accountable dimensions.</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}

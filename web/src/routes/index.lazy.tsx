@@ -78,6 +78,7 @@ function DashboardPage() {
           sparkline={kpiData?.tokens}
           isLoading={surfaces.kpis.status === "loading"}
           tone="blue"
+          details={summary ? <CanonicalTokenComposition accounting={summary.accounting} costStatus={summary.cost_status} /> : undefined}
         />
         <KpiCard
           label="Attempts"
@@ -107,13 +108,6 @@ function DashboardPage() {
           tone="amber"
         />
           </div>
-          {surfaces.core.status === "ready" && dashboard.coreAnalyticsData ? (
-            <Card>
-              <CardContent className="p-4">
-                <CanonicalTokenComposition accounting={dashboard.coreAnalyticsData.summary.accounting} costStatus={dashboard.coreAnalyticsData.summary.cost_status} />
-              </CardContent>
-            </Card>
-          ) : null}
         </>
       )}
 

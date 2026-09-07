@@ -60,8 +60,8 @@ describe("AttemptPerformance", () => {
     render(<AttemptPerformance provider="claude" data={performance()} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     expect(screen.getAllByText("20 attempts", { exact: false }).length).toBeGreaterThan(0)
-    expect(screen.getByText("18/18 · 100%")).toBeInTheDocument()
-    expect(screen.getByText("8/10 · 80%")).toBeInTheDocument()
+    expect(screen.getByText("100%")).toHaveAttribute("title", "18 of 18 attempts sampled")
+    expect(screen.getByText("80%")).toHaveAttribute("title", "8 of 10 attempts sampled")
     expect(screen.getByText(/2 non-generating and 1 non-streaming/)).toBeInTheDocument()
     expect(screen.getByText("Other or unavailable")).toHaveTextContent("Other or unavailable")
 
@@ -85,7 +85,7 @@ describe("AttemptPerformance", () => {
 
     rerender(<AttemptPerformance provider="" data={performance()} isLoading={false} error={new Error("refresh") } onRetry={retry} />)
     expect(screen.getByRole("button", { name: "Retry refresh" })).toBeInTheDocument()
-    expect(screen.getByText("0/5 · 0%")).toBeInTheDocument()
+    expect(screen.getByText("0%")).toHaveAttribute("title", "0 of 5 attempts sampled")
     expect(screen.getAllByText("Select a provider for comparable throughput.")).toHaveLength(1)
     expect(screen.getAllByText(/TPS Select provider/)).toHaveLength(2)
   })

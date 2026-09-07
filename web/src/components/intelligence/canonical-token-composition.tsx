@@ -1,4 +1,4 @@
-import { ACCOUNTING_STATE_LABELS, getAccountingCaption, getCanonicalTokenFields } from "@/features/usage-intelligence/view-model"
+import { ACCOUNTING_STATE_LABELS, getCanonicalTokenFields } from "@/features/usage-intelligence/view-model"
 import type { AccountingState, AccountingSummary, CostStatus } from "@/types/api"
 
 export function CanonicalTokenComposition({ accounting, costStatus }: { accounting: AccountingSummary; costStatus: CostStatus }) {
@@ -7,10 +7,9 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
     .filter((state) => state !== "valid" && accounting.states[state] > 0)
 
   return (
-    <details className="min-w-0 text-xs">
-      <summary className="cursor-pointer rounded-sm text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
-        <span className="font-medium text-foreground">Canonical token composition</span>
-        <span className="mt-1 block">{getAccountingCaption(accounting)}</span>
+    <details className="mt-2 min-w-0 border-t border-border pt-2 text-xs">
+      <summary className="cursor-pointer rounded-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+        Canonical token composition
       </summary>
       <div className="mt-3 space-y-3">
         <p className="text-muted-foreground">
@@ -24,7 +23,7 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
         </p>
         {hasComposition ? (
           <>
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
               {getCanonicalTokenFields(accounting.composition).map(([label, value]) => (
                 <div key={label} className="min-w-0">
                   <dt className="text-muted-foreground">{label}</dt>

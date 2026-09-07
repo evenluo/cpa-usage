@@ -24,7 +24,7 @@ export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappings
             Observed model mappings
             <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
           </CardTitle>
-          <CardDescription>CPA alias labels observed beside the actual model and provider for each upstream attempt.</CardDescription>
+          <CardDescription>Observed alias-to-model pairs per provider.</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
@@ -72,7 +72,7 @@ function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: str
           {!row.model
             ? "Actual model unavailable"
             : row.model_alias === row.model
-              ? "No distinct alias observed · Direct or canonicalized"
+              ? "Direct"
               : `Observed remap → ${row.model}`}
         </p>
         <p className="mt-1 break-words text-xs text-muted-foreground">{row.provider || "Provider unavailable"}</p>
@@ -80,7 +80,11 @@ function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: str
       <div className="grid w-full grid-cols-2 gap-x-4 gap-y-1 text-xs sm:w-auto sm:shrink-0 sm:text-right">
         <Metric label="Attempts" value={formatCompact(row.attempt_count)} />
         <Metric label="Failures" value={formatPercent(row.failure_share)} />
-        <Metric label="Mean latency" value={row.latency_sample_count > 0 ? `${row.mean_latency_ms.toLocaleString("en", { maximumFractionDigits: 1 })} ms · ${row.latency_sample_count.toLocaleString("en")} ${row.latency_sample_count === 1 ? "sample" : "samples"}` : "No samples"} />
+        <Metric
+          label="Mean latency"
+          value={row.latency_sample_count > 0 ? `${row.mean_latency_ms.toLocaleString("en", { maximumFractionDigits: 1 })} ms` : "—"}
+          title={row.latency_sample_count > 0 ? `${row.latency_sample_count.toLocaleString("en")} ${row.latency_sample_count === 1 ? "sample" : "samples"}` : "No latency samples"}
+        />
         <Metric label="Cost" value={formatObservedCost(row.total_cost, row.cost_status)} />
       </div>
     </>
@@ -99,8 +103,8 @@ function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: str
   )
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return <span><span className="block text-[10px] text-muted-foreground">{label}</span><span className="font-medium sm:whitespace-nowrap">{value}</span></span>
+function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
+  return <span title={title}><span className="block text-[10px] text-muted-foreground">{label}</span><span className="font-medium sm:whitespace-nowrap">{value}</span></span>
 }
 
 function formatObservedCost(value: number, status: CostStatus) {

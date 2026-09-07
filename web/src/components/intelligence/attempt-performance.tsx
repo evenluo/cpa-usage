@@ -31,7 +31,7 @@ export function AttemptPerformance({ provider, data, isLoading, error, onRetry }
             Attempt performance
             <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
           </CardTitle>
-          <CardDescription>Nearest-rank p50/p95 over valid, separately qualified attempt samples.</CardDescription>
+          <CardDescription>p50/p95 latency, TTFT, and output TPS over valid attempts.</CardDescription>
         </div>
         <div className="flex items-center gap-2">
           {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
@@ -59,9 +59,12 @@ export function AttemptPerformance({ provider, data, isLoading, error, onRetry }
               </span>
             </div>
             <PerformanceSummary summary={data} provider={provider} windowEnd={data.window_end} />
-            <p className="text-xs text-muted-foreground">
-              TTFT and Output TPS exclude failed attempts plus {formatCompact(data.successful_execution.non_generating)} non-generating and {formatCompact(data.successful_execution.non_streaming)} non-streaming successful attempts. Output TPS additionally requires complete canonical output and valid timing.
-            </p>
+            <details className="text-xs text-muted-foreground">
+              <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">What counts as a sample?</summary>
+              <p className="mt-2">
+                TTFT and Output TPS exclude failed attempts plus {formatCompact(data.successful_execution.non_generating)} non-generating and {formatCompact(data.successful_execution.non_streaming)} non-streaming successful attempts. Output TPS additionally requires complete canonical output and valid timing.
+              </p>
+            </details>
             <details className="rounded-lg border border-border p-3">
               <summary className="cursor-pointer text-sm font-medium">Compare provider, actual model, and account</summary>
               <div className="mt-4 grid gap-5 xl:grid-cols-3">
@@ -119,11 +122,12 @@ function MetricRow({
   kind: "latency" | "tps"
   slowLink?: { provider: string; windowEnd: string; result: "success" | "failed"; model?: string; account?: string }
 }) {
+  const coverage = formatSampleCoverage(metric)
   return (
     <div className="min-w-0">
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-medium">{label}</span>
-        <span className="text-muted-foreground">{formatSampleCoverage(metric)}</span>
+        <span className="text-muted-foreground" title={coverage.title}>{coverage.text}</span>
       </div>
       <div className="mt-1 grid grid-cols-2 gap-2 text-xs">
         <span><span className="text-muted-foreground">p50 </span>{formatMetricValue(metric.p50, kind)}</span>
@@ -225,7 +229,8 @@ function formatMetricValue(value: number | null, kind: "latency" | "tps") {
   return kind === "latency" ? formatLatency(value) : formatOutputTPS(value)
 }
 
-function formatSampleCoverage(metric: UsagePercentileDistribution) {
-  if (metric.coverage === null) return `${metric.sample_count}/${metric.population_count} · unavailable`
-  return `${metric.sample_count}/${metric.population_count} · ${(metric.coverage * 100).toFixed(0)}%`
+function formatSampleCoverage(metric: UsagePercentileDistribution): { text: string; title: string } {
+  const counts = `${metric.sample_count.toLocaleString("en")} of ${metric.population_count.toLocaleString("en")} attempts sampled`
+  if (metric.coverage === null) return { text: "—", title: `${counts}; coverage unavailable` }
+  return { text: `${(metric.coverage * 100).toFixed(0)}%`, title: counts }
 }
