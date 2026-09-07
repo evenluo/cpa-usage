@@ -101,7 +101,7 @@ export function HealthGrid({ data }: HealthGridProps) {
                 return (
                   <button
                     key={`${rowIdx}-${colIdx}`}
-                    className={`group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-foreground/20 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500 ${cellColor(block)}`}
+                    className={`group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-foreground/20 hover:shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-emerald-500 ${cellColor(block)}`}
                     title={
                       block.rate < 0 || (block.success + block.failure) === 0
                         ? `${formatTimeLabel(block.start_time)} - no data`

@@ -10,7 +10,7 @@ export function RateInput({
   onChange,
 }: RateInputProps) {
   return (
-    <label className="space-y-1">
+    <label>
       <span className="text-[10px] font-medium text-muted-foreground">{label}</span>
       <input
         type="number"
@@ -19,7 +19,7 @@ export function RateInput({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="-"
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-terracotta-500"
+        className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm outline-hidden focus-visible:ring-1 focus-visible:ring-terracotta-500"
       />
     </label>
   )

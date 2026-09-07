@@ -28,6 +28,8 @@ The application owns one bounded shutdown path for HTTP and background work. Que
 
 ## Quickstart
 
+The dashboard requires Safari 16.4+, Chrome 111+, or Firefox 128+ (Tailwind CSS 4 browser requirements).
+
 CPA Usage needs a reachable CPA service and a CPA management key. It does not ship a standalone demo backend.
 
 ```bash

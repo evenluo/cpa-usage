@@ -94,7 +94,7 @@ export function HealthTimeline({ data, granularity }: HealthTimelineProps) {
                         key={`${date}-${h}`}
                         className={`h-5 rounded-[2px] transition-all duration-150 ${
                           hasData
-                            ? `${cellColor(rate, hasFailure)} hover:scale-125 hover:rounded-sm hover:shadow-sm`
+                            ? `${cellColor(rate, hasFailure)} hover:scale-125 hover:rounded-sm hover:shadow-xs`
                             : "bg-muted/30"
                         }`}
                         title={
@@ -119,7 +119,7 @@ export function HealthTimeline({ data, granularity }: HealthTimelineProps) {
               return (
                 <div
                   key={date}
-                  className={`h-6 flex-1 rounded-[3px] ${cellColor(block.rate, hasFailure)} transition-all hover:scale-110 hover:shadow-sm`}
+                  className={`h-6 flex-1 rounded-[3px] ${cellColor(block.rate, hasFailure)} transition-all hover:scale-110 hover:shadow-xs`}
                   title={`${block.label} — ${block.rate.toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} attempts)`}
                 />
               )

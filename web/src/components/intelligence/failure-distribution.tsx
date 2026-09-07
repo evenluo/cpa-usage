@@ -121,7 +121,7 @@ function FailureBreakdownSection({
               to="/requests"
               search={search}
               aria-label={`Inspect ${item.label} failures`}
-              className="flex min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta-500"
+              className="flex min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
             >
               <span className="truncate">{item.label}</span>
               <span className="flex shrink-0 items-center gap-1 font-medium">
