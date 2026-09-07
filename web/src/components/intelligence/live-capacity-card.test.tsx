@@ -162,46 +162,54 @@ describe("LiveCapacityCard", () => {
   })
 
   it("renders account and model passive observations separately from a manual probe", () => {
-    setupMock({
-      identities: [identity({
-        disabled: true,
-        passive_quota: {
-          source: "cpa_passive",
-          scope: "account",
-          observed_at: "2026-09-07T08:00:00Z",
-          active_limit: "codex_bengalfox",
-          quota: [
-            { key: "primary", label: "5h", usedPercent: 25, allowed: false, resetAfterSeconds: 120, window: { seconds: 18_000 } },
-            { key: "credits", label: "Credits", remaining: 4.5, unit: "credits" },
-          ],
+    vi.useFakeTimers({ now: new Date("2026-09-07T08:00:00Z") })
+    try {
+      setupMock({
+        identities: [identity({
+          disabled: true,
+          passive_quota: {
+            source: "cpa_passive",
+            scope: "account",
+            observed_at: "2026-09-07T08:00:00Z",
+            active_limit: "codex_bengalfox",
+            quota: [
+              { key: "primary", label: "5h", usedPercent: 25, allowed: false, resetAfterSeconds: 120, window: { seconds: 18_000 } },
+              { key: "credits", label: "Credits", remaining: 4.5, unit: "credits" },
+            ],
+          },
+          passive_model_quotas: [{
+            source: "cpa_passive",
+            scope: "model",
+            model: "gpt-5.3-codex",
+            observed_at: "2026-09-07T07:30:00Z",
+            quota: [{ key: "secondary", label: "Weekly", allowed: false, window: { seconds: 604_800 } }],
+          }],
+        })],
+        cachedQuota: {
+          items: [{ id: "codex-auth", cachedAt: "2026-09-07T09:00:00Z", quota: [{ key: "manual", label: "5h", usedPercent: 10 }] }],
         },
-        passive_model_quotas: [{
-          source: "cpa_passive",
-          scope: "model",
-          model: "gpt-5.3-codex",
-          observed_at: "2026-09-07T07:30:00Z",
-          quota: [{ key: "secondary", label: "Weekly", allowed: false, window: { seconds: 604_800 } }],
-        }],
-      })],
-      cachedQuota: {
-        items: [{ id: "codex-auth", cachedAt: "2026-09-07T09:00:00Z", quota: [{ key: "manual", label: "5h", usedPercent: 10 }] }],
-      },
-    })
-    render(<LiveCapacityCard provider="" />)
+      })
+      render(<LiveCapacityCard provider="" />)
 
-    const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
-    expect(within(passive).getByText("Account")).toBeInTheDocument()
-    expect(within(passive).getByText("gpt-5.3-codex")).toBeInTheDocument()
-    expect(within(passive).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
-    expect(within(passive).getByText("25% used · Blocked")).toBeInTheDocument()
-    expect(within(passive).getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
-    expect(within(passive).getByText("4.5 credits left")).toBeInTheDocument()
-    expect(within(passive).getByText("Blocked")).toBeInTheDocument()
-    expect(within(passive).getByText("reported reset 2m")).toBeInTheDocument()
-    expect(passive.querySelector("time[datetime='2026-09-07T08:00:00Z']")).toBeInTheDocument()
-    expect(passive.querySelector("time[datetime='2026-09-07T07:30:00Z']")).toBeInTheDocument()
-    expect(screen.queryByText("Manual capacity probe")).not.toBeInTheDocument()
-    expect(screen.queryByText("10% used")).not.toBeInTheDocument()
+      const passive = screen.getByRole("group", { name: "CPA passive quota observation" })
+      expect(within(passive).getByText("Account")).toBeInTheDocument()
+      expect(within(passive).getByText("gpt-5.3-codex")).toBeInTheDocument()
+      expect(within(passive).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
+      expect(within(passive).getByText("25% used · Blocked")).toBeInTheDocument()
+      expect(within(passive).getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
+      expect(within(passive).getByText("4.5 credits left")).toBeInTheDocument()
+      expect(within(passive).getByText("Blocked")).toBeInTheDocument()
+      // Frozen at the observation instant: the 120s relative reset reads as a countdown.
+      expect(within(passive).getByText("reported reset in 2m")).toBeInTheDocument()
+      const perModel = within(passive).getByText("Per-model quotas (1)")
+      expect(perModel.closest("details")).not.toHaveAttribute("open")
+      expect(passive.querySelector("time[datetime='2026-09-07T08:00:00Z']")).toBeInTheDocument()
+      expect(passive.querySelector("time[datetime='2026-09-07T07:30:00Z']")).toBeInTheDocument()
+      expect(screen.queryByText("Manual capacity probe")).not.toBeInTheDocument()
+      expect(screen.queryByText("10% used")).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("does not present missing account state as active", () => {
@@ -259,12 +267,12 @@ describe("LiveCapacityCard", () => {
     const view = render(<LiveCapacityCard provider="Codex" />)
 
     await user.click(screen.getByRole("button", { name: "Select displayed" }))
-    expect(screen.getByText("support 1/12")).toBeInTheDocument()
+    expect(screen.getByText("1/12 accounts selected")).toBeInTheDocument()
     reset.mockClear()
 
     view.rerender(<LiveCapacityCard provider="Gemini" />)
 
-    await waitFor(() => expect(screen.getByText("support 0/12")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("0/12 accounts selected")).toBeInTheDocument())
     expect(reset).toHaveBeenCalledTimes(1)
   })
 

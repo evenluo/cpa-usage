@@ -7,7 +7,7 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
     .filter((state) => state !== "valid" && accounting.states[state] > 0)
 
   return (
-    <details className="mt-4 min-w-0 border-t border-border pt-3 text-xs">
+    <details className="min-w-0 text-xs">
       <summary className="cursor-pointer rounded-sm text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
         <span className="font-medium text-foreground">Canonical token composition</span>
         <span className="mt-1 block">{getAccountingCaption(accounting)}</span>

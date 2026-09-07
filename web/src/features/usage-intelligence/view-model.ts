@@ -134,6 +134,12 @@ export function getAccountingCaption(accounting: AccountingSummary): string {
   return `Canonical: ${accounting.coverage_pct.toFixed(1)}% of attempts · ${quality}`
 }
 
+/** Compact canonical coverage readout for KPI corner badges; undefined when coverage is unavailable. */
+export function getCanonicalCoverageLabel(accounting?: AccountingSummary): string | undefined {
+  if (!accounting || accounting.coverage_pct === null) return undefined
+  return `Canonical coverage ${accounting.coverage_pct.toFixed(1)}%`
+}
+
 // Render the repository's disjoint canonical buckets without adding a subset
 // such as reasoning or cache tokens back into its parent total.
 export function getCanonicalTokenFields(composition: CanonicalComposition<number | null>): Array<[string, number | null]> {

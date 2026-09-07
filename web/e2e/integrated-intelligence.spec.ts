@@ -159,6 +159,8 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   const passive = page.getByRole("group", { name: "CPA passive quota observation" })
   await expect(passive).toContainText("Latest provider watermark observed by CPA")
   await expect(passive.locator("time[datetime='2026-09-07T08:00:00Z']")).toBeVisible()
+  // Per-model observations are folded by default; expand to inspect them.
+  await passive.getByText(/Per-model quotas/).click()
   await expect(passive.locator("time[datetime='2026-09-07T07:30:00Z']")).toBeVisible()
   await expect(page.getByText("Manual capacity probe")).toBeVisible()
   const timing = page.getByRole("group", { name: "Account and cache timing" }).first()
@@ -170,6 +172,7 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   expect(requests.filter((request) => request.path === "/usage/identities/model-support")).toHaveLength(0)
   expect(requests.filter((request) => request.path === "/quota/cache")).toHaveLength(1)
 
+  await page.getByText("Model support", { exact: true }).click()
   await page.getByRole("button", { name: "Select displayed" }).click()
   await page.getByRole("button", { name: "Load model support" }).click()
   await expect(page.getByText("Partial selected scope")).toBeVisible()

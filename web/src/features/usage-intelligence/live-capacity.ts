@@ -1,4 +1,3 @@
-import { formatDate } from "@/lib/format"
 import type { KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaCacheResponse, QuotaRow, QuotaWindow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
@@ -34,7 +33,6 @@ export interface LiveCapacityRow {
   fiveHour?: LiveCapacityMetric
   weekly?: LiveCapacityMetric
   additionalMetrics: LiveCapacityMetric[]
-  resetLabel: string
   planType: string
   planLabel?: string
   planTone: LiveCapacityPlanTone
@@ -69,7 +67,10 @@ export interface LiveCapacityPassiveModelObservation extends LiveCapacityPassive
 export interface LiveCapacityMetric {
   label: string
   valueLabel: string
-  resetLabel: string
+  /** Absolute reset instant reported by the provider, when present. */
+  resetAt?: string
+  /** Provider-reported seconds until reset, anchored to the observation time. */
+  resetAfterSeconds?: number
   progress: number | null
   tone: "green" | "amber" | "red" | "muted"
   /** Window length in seconds; derived from window.seconds (Codex) or duration+unit (Kimi). */
@@ -158,7 +159,6 @@ export function buildLiveCapacityRows(input: {
         fiveHour: fiveHour ? metricFromQuotaRow(fiveHour) : undefined,
         weekly: weekly ? metricFromQuotaRow(weekly) : undefined,
         additionalMetrics,
-        resetLabel: resetLabel(fiveHour, weekly, ...quotaRows),
         planType: resolvedPlanType,
         planLabel: planDisplay.label,
         planTone: planDisplay.tone,
@@ -207,7 +207,7 @@ function supportsPassiveQuota(providerKind: ProviderKind): boolean {
 }
 
 function validObservationTime(value: string): boolean {
-  return value.trim() !== "" && Number.isFinite(new Date(value).getTime())
+  return value.trim() !== "" && parseTime(value) !== undefined
 }
 
 export function accountStateFromIdentity(status: KeyIdentity["status"]): LiveCapacityAccountState {
@@ -232,15 +232,13 @@ export function accountStateFromIdentity(status: KeyIdentity["status"]): LiveCap
 }
 
 function isFutureTimestamp(value: string | null | undefined): boolean {
-  if (!value) return false
-  const time = new Date(value).getTime()
-  return Number.isFinite(time) && time > Date.now()
+  const time = parseTime(value)
+  return time !== undefined && time > Date.now()
 }
 
 function isPastTimestamp(value: string | null | undefined): boolean {
-  if (!value) return false
-  const time = new Date(value).getTime()
-  return Number.isFinite(time) && time <= Date.now()
+  const time = parseTime(value)
+  return time !== undefined && time <= Date.now()
 }
 
 export function mergeLiveCapacityRowOrder(currentOrder: string[], rows: LiveCapacityRow[]): string[] {
@@ -356,7 +354,8 @@ function metricFromQuotaRow(row: QuotaRow): LiveCapacityMetric {
   return {
     label: metricLabel(row),
     valueLabel: valueLabel(row),
-    resetLabel: resetLabel(row),
+    resetAt: row.resetAt,
+    resetAfterSeconds: typeof row.resetAfterSeconds === "number" ? row.resetAfterSeconds : undefined,
     progress,
     tone: toneFromProgress(row, progress),
     windowSeconds: quotaWindowSeconds(row.window),
@@ -424,27 +423,53 @@ function isRemainingExhausted(row: QuotaRow): boolean {
   return row.unlimited !== true && typeof row.remaining === "number" && row.remaining <= 0
 }
 
-function resetLabel(...rows: Array<QuotaRow | undefined>): string {
-  const row = rows.find((item) => item?.resetAt || typeof item?.resetAfterSeconds === "number")
-  if (!row) return "-"
-  if (row.resetAt) return formatResetDate(row.resetAt)
-  if (typeof row.resetAfterSeconds === "number") return formatResetDuration(row.resetAfterSeconds)
-  return "-"
+export interface LiveCapacityResetCountdown {
+  /** Compact relative label, e.g. "2h 13m". */
+  relativeLabel: string
+  /** True once the reset instant has passed. */
+  isDue: boolean
+  /** Absolute reset instant (ISO), when it could be derived. */
+  resetAt?: string
 }
 
-function formatResetDate(value: string): string {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return formatDate(value)
+/**
+ * Resolves a metric's reset hint to a countdown. resetAt is absolute;
+ * resetAfterSeconds is anchored to the observation time, never to now.
+ * Returns undefined when no usable reset hint exists (rendered as "-").
+ */
+export function resetCountdown(
+  metric: Pick<LiveCapacityMetric, "resetAt" | "resetAfterSeconds">,
+  observedAt?: string,
+  now: number = Date.now(),
+): LiveCapacityResetCountdown | undefined {
+  let instant = parseTime(metric.resetAt)
+  if (instant === undefined && typeof metric.resetAfterSeconds === "number") {
+    const anchor = parseTime(observedAt)
+    if (anchor !== undefined) instant = anchor + metric.resetAfterSeconds * 1000
+  }
+  if (instant === undefined) return undefined
+  const seconds = Math.round((instant - now) / 1000)
+  return {
+    relativeLabel: seconds <= 0 ? "due" : formatCountdownDuration(seconds),
+    isDue: seconds <= 0,
+    resetAt: new Date(instant).toISOString(),
+  }
 }
 
-function formatResetDuration(seconds: number): string {
+function parseTime(value: string | null | undefined): number | undefined {
+  if (!value) return undefined
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? time : undefined
+}
+
+function formatCountdownDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`
-  const minutes = Math.round(seconds / 60)
+  const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}m`
-  const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours}h`
-  return `${Math.round(hours / 24)}d`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours}h ${minutes % 60}m`
+  const days = Math.floor(hours / 24)
+  return `${days}d ${hours % 24}h`
 }
 
 function planType(rows: QuotaRow[], identityPlanType?: string | null): string {

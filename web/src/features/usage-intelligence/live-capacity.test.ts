@@ -6,6 +6,7 @@ import {
   mergeLiveCapacityRowOrder,
   orderLiveCapacityRows,
   providerKindFromIdentity,
+  resetCountdown,
 } from "./live-capacity"
 
 function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
@@ -109,9 +110,8 @@ describe("Live Capacity view model", () => {
       planType: "plus",
       planLabel: "Plus",
       planTone: "ordinary",
-      resetLabel: "1h",
-      fiveHour: { valueLabel: "25% used", resetLabel: "1h", progress: 25, tone: "green" },
-      weekly: { valueLabel: "80% used", resetLabel: "2h", progress: 80, tone: "amber" },
+      fiveHour: { valueLabel: "25% used", resetAfterSeconds: 3600, progress: 25, tone: "green" },
+      weekly: { valueLabel: "80% used", resetAfterSeconds: 7200, progress: 80, tone: "amber" },
       observedAt: "2026-08-31T01:00:00Z",
       expiresAt: "2026-08-31T01:05:00Z",
       // Past subscription starts are suppressed; only the end date survives.
@@ -358,7 +358,7 @@ describe("Live Capacity view model", () => {
       activeLimit: "codex_bengalfox",
       metrics: [
         { valueLabel: "Limit reached", tone: "red" },
-        { resetLabel: "0s" },
+        { resetAfterSeconds: 0 },
       ],
     })
     expect(rows[0].passiveModelQuotas).toEqual([{
@@ -602,7 +602,7 @@ describe("Live Capacity view model", () => {
       valueLabel: "10 left",
     })
     expect(rows[0].isConstrained).toBe(true)
-    expect(rows[0].resetLabel).toMatch(/^\d{1,2}\/\d{1,2} \d{2}:\d{2}$/)
+    expect(rows[0].additionalMetrics[0].resetAt).toBe("2026-05-09T12:00:00Z")
   })
 
   it("treats remaining-only zero quota as constrained", () => {
@@ -767,7 +767,7 @@ describe("Live Capacity view model", () => {
     expect(mergeLiveCapacityRowOrder(["plain-codex"], rows)).toEqual(["plain-codex", "codex-pro"])
   })
 
-  it("formats metric reset per quota row and keeps missing reset explicit", () => {
+  it("passes metric reset hints through per quota row and keeps missing reset explicit", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],
       cachedQuota: {
@@ -781,9 +781,8 @@ describe("Live Capacity view model", () => {
       },
     })
 
-    expect(rows[0].fiveHour?.resetLabel).toBe("1h")
-    expect(rows[0].weekly?.resetLabel).toBe("-")
-    expect(rows[0].resetLabel).toBe("1h")
+    expect(rows[0].fiveHour?.resetAfterSeconds).toBe(3600)
+    expect(rows[0].weekly?.resetAfterSeconds).toBeUndefined()
   })
 
   it("lets provider filtering happen before row derivation", () => {
@@ -794,5 +793,54 @@ describe("Live Capacity view model", () => {
     const filtered = all.filter((item) => item.provider === "Claude")
 
     expect(buildLiveCapacityRows({ identities: filtered }).map((row) => row.provider)).toEqual(["Claude"])
+  })
+})
+
+describe("resetCountdown", () => {
+  const now = new Date("2026-09-07T12:00:00Z").getTime()
+
+  it("derives an absolute reset instant from resetAt", () => {
+    expect(resetCountdown({ resetAt: "2026-09-07T14:13:00Z" }, undefined, now)).toEqual({
+      relativeLabel: "2h 13m",
+      isDue: false,
+      resetAt: "2026-09-07T14:13:00.000Z",
+    })
+  })
+
+  it("anchors resetAfterSeconds to the observation time, not to now", () => {
+    expect(resetCountdown({ resetAfterSeconds: 120 }, "2026-09-07T11:59:00Z", now)).toEqual({
+      relativeLabel: "1m",
+      isDue: false,
+      resetAt: "2026-09-07T12:01:00.000Z",
+    })
+  })
+
+  it("reports a past reset as due", () => {
+    expect(resetCountdown({ resetAt: "2026-09-07T11:00:00Z" }, undefined, now)).toMatchObject({ relativeLabel: "due", isDue: true })
+  })
+
+  it("stays unavailable when no usable reset hint exists", () => {
+    expect(resetCountdown({}, "2026-09-07T11:59:00Z", now)).toBeUndefined()
+    expect(resetCountdown({ resetAfterSeconds: 120 }, undefined, now)).toBeUndefined()
+  })
+})
+
+describe("metric reset pass-through", () => {
+  it("keeps resetAt and resetAfterSeconds on metrics for countdown rendering", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      cachedQuota: {
+        items: [{
+          id: "codex-auth",
+          quota: [
+            { key: "rate_limit.primary_window", label: "5h", usedPercent: 25, resetAt: "2026-09-07T14:13:00Z", window: { seconds: 18_000 } },
+            { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 80, resetAfterSeconds: 7200, window: { seconds: 604_800 } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].fiveHour?.resetAt).toBe("2026-09-07T14:13:00Z")
+    expect(rows[0].weekly?.resetAfterSeconds).toBe(7200)
   })
 })
