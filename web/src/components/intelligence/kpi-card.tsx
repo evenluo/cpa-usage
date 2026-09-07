@@ -9,6 +9,8 @@ export interface KpiCardProps {
   formatter?: (n: number) => string
   caption?: string
   comparison?: string
+  /** Canonical accounting coverage readout, e.g. "Canonical coverage 97.5%"; omitted when coverage is unavailable. */
+  coverageLabel?: string
   sparkline?: (number | null)[]
   valueDecimals?: number
   isLoading: boolean
@@ -23,7 +25,7 @@ const toneStyles = {
   amber: "text-amber-700 bg-amber-50 border-amber-200",
 }
 
-export function KpiCard({ label, rawValue, formatter, caption, comparison, sparkline, valueDecimals = 0, isLoading, tone }: KpiCardProps) {
+export function KpiCard({ label, rawValue, formatter, caption, comparison, coverageLabel, sparkline, valueDecimals = 0, isLoading, tone }: KpiCardProps) {
   const animated = useCountUp(rawValue ?? 0, {
     duration: 900,
     decimals: valueDecimals,
@@ -56,6 +58,14 @@ export function KpiCard({ label, rawValue, formatter, caption, comparison, spark
             </div>
             {caption && (
               <p className="mt-2 text-xs text-muted-foreground">{caption}</p>
+            )}
+            {coverageLabel && (
+              <p
+                className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80"
+                title="Share of attempts with valid canonical accounting in the selected window"
+              >
+                {coverageLabel}
+              </p>
             )}
           </>
         )}

@@ -3,19 +3,18 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Heatmap } from "@/components/charts/heatmap"
 import { HealthGrid } from "@/components/charts/health-grid"
-import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
+import { InsightRail } from "@/components/charts/insight-rail"
 import { RequestEvidence } from "@/components/intelligence/request-evidence"
 import { FailureDistribution } from "@/components/intelligence/failure-distribution"
 import { ModelMappings } from "@/components/intelligence/model-mappings"
 import { AttemptPerformance } from "@/components/intelligence/attempt-performance"
+import { SectionDivider } from "@/components/intelligence/section-divider"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
 import type { UsageAttemptPerformance, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
 
-interface DashboardFixedOverviewProps {
+interface DashboardAttentionProps {
   surfaces: UsageDashboardSurfaces
-  liveCapacityProvider: string
   requestEvidenceProvider: string
   requestEvidenceData?: UsageEventsPage
   isRequestEvidenceLoading: boolean
@@ -30,7 +29,7 @@ interface DashboardFixedOverviewProps {
   attemptPerformanceData?: UsageAttemptPerformance
   isAttemptPerformanceLoading: boolean
   attemptPerformanceError: unknown
-  onRetryHeatmap: () => void
+  onRetryCore: () => void
   onRetryRequestHealth: () => void
   onRetryRequestEvidence: () => void
   onRetryFailureDistribution: () => void
@@ -38,9 +37,8 @@ interface DashboardFixedOverviewProps {
   onRetryAttemptPerformance: () => void
 }
 
-export function DashboardFixedOverview({
+export function DashboardAttention({
   surfaces,
-  liveCapacityProvider,
   requestEvidenceProvider,
   requestEvidenceData,
   isRequestEvidenceLoading,
@@ -55,61 +53,28 @@ export function DashboardFixedOverview({
   attemptPerformanceData,
   isAttemptPerformanceLoading,
   attemptPerformanceError,
-  onRetryHeatmap,
+  onRetryCore,
   onRetryRequestHealth,
   onRetryRequestEvidence,
   onRetryFailureDistribution,
   onRetryModelMappings,
   onRetryAttemptPerformance,
-}: DashboardFixedOverviewProps) {
+}: DashboardAttentionProps) {
   return (
     <>
-      {/* Divider — Fixed overview */}
-      <div className="flex items-center gap-3">
-        <div className="h-px flex-1 bg-border" />
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Pin className="h-3 w-3" />
-          Fixed overview
-        </span>
-        <div className="h-px flex-1 bg-border" />
-      </div>
+      {surfaces.insights.status === "loading" ? (
+        <Skeleton className="h-24 w-full" />
+      ) : surfaces.insights.status === "error" ? (
+        <div className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-red-500">
+          <span>Failed to load attention signals</span>
+          <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry attention signals</Button>
+        </div>
+      ) : surfaces.insights.status === "ready" ? (
+        <InsightRail insights={surfaces.insights.data} />
+      ) : null}
 
-      <LiveCapacityCard provider={liveCapacityProvider} />
-
-      {/* Activity Heatmap — 30d fixed */}
-      <Card>
-        <CardHeader className="flex flex-col items-start justify-between gap-3 pb-2 sm:flex-row">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              Activity Heatmap
-              <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 30-day view" />
-            </CardTitle>
-            <CardDescription>Hourly usage density across days</CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            {surfaces.heatmap.status !== "error" && surfaces.heatmap.refreshError ? (
-              <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry refresh</Button>
-            ) : null}
-            <Badge variant="terracotta">30d fixed</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {surfaces.heatmap.status === "loading" ? (
-            <Skeleton className="h-[260px] w-full" />
-          ) : surfaces.heatmap.status === "error" ? (
-            <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-              <span>Failed to load activity heatmap</span>
-              <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry heatmap</Button>
-            </div>
-          ) : surfaces.heatmap.status === "ready" ? (
-            <Heatmap data={surfaces.heatmap.data} />
-          ) : (
-            <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-              No heatmap data
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Section divider — fixed 24h diagnostics */}
+      <SectionDivider icon={Pin} label="Diagnostics · fixed 24h window, unaffected by the range picker" />
 
       {/* Attempt Health + Evidence — 24h fixed */}
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">

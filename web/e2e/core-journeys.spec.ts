@@ -139,7 +139,7 @@ test("signed-out users are redirected to login and can sign in to reach the dash
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0)
 })
 
-test("dashboard renders KPIs, trend, leaderboard, and fixed overview surfaces", async ({ page }) => {
+test("dashboard renders account capacity, diagnostics, and analysis layers", async ({ page }) => {
   await installMockAPI(page, { analyticsCore: analyticsCoreFor })
 
   await page.goto("/")
@@ -158,6 +158,18 @@ test("dashboard renders KPIs, trend, leaderboard, and fixed overview surfaces", 
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
   await expect(page.getByText("all-model")).toBeVisible()
+  // 信息层次契约：账户用量（首屏）→ 24h 固定诊断 → 选样窗口分析。
+  const layerTop = async (pattern: RegExp | string) => {
+    const box = await page.getByText(pattern, { exact: typeof pattern === "string" }).first().boundingBox()
+    return box?.y ?? Number.POSITIVE_INFINITY
+  }
+  const liveCapacityTop = await layerTop("Live Capacity")
+  const diagnosticsTop = await layerTop(/Diagnostics · fixed 24h window/)
+  const analysisTop = await layerTop(/Analysis — follows the selected window/)
+  const trendTop = await layerTop("Trend Workbench")
+  expect(liveCapacityTop).toBeLessThan(diagnosticsTop)
+  expect(diagnosticsTop).toBeLessThan(analysisTop)
+  expect(analysisTop).toBeLessThan(trendTop)
   await expect(page.getByText("Needs attention", { exact: true })).toHaveCount(0)
   await expect(page.getByText("All providers metrics complete")).toHaveCount(0)
 })

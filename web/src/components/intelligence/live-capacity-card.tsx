@@ -24,6 +24,7 @@ import {
   FIVE_HOUR_WINDOW_SECONDS,
   mergeLiveCapacityRowOrder,
   orderLiveCapacityRows,
+  resetCountdown,
   WEEKLY_WINDOW_SECONDS,
   type LiveCapacityAccountStateTone,
   type LiveCapacityMetric,
@@ -103,6 +104,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   const displayedRows = useMemo(() => [...priorityRows, ...regularRows], [priorityRows, regularRows])
 
   const [selectedSupportIDs, setSelectedSupportIDs] = useState<Set<number>>(() => new Set())
+  const [supportOpen, setSupportOpen] = useState(false)
   const [loadedSupportScopeKey, setLoadedSupportScopeKey] = useState("")
   const [requestedSupportScopeKey, setRequestedSupportScopeKey] = useState("")
   const visibleIdentityIDs = useMemo(() => new Set(identities.map((identity) => identity.id)), [identities])
@@ -193,17 +195,6 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
           <Badge variant="blue">live probe</Badge>
           <Badge variant="outline">fixed</Badge>
           {displayedCount > refreshLimit ? <Badge variant="amber">max {refreshLimit}</Badge> : null}
-          <Badge variant={selectionTooLarge ? "amber" : "outline"}>support {selectedSupportIdentityIDs.length}/{MODEL_SUPPORT_MAX_ACCOUNTS}</Badge>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={loadSelectedSupport}
-            disabled={selectedSupportIdentityIDs.length === 0 || selectionTooLarge || modelSupport.isPending}
-          >
-            {modelSupport.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ListChecks className="mr-1.5 h-3.5 w-3.5" />}
-            Load model support
-          </Button>
           <Button type="button" variant="outline" size="sm" onClick={refreshDisplayed} disabled={displayedCount === 0}>
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isRefreshing && "animate-spin")} />
             {refreshLabel}
@@ -247,34 +238,62 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                 ))}
               </div>
             ) : null}
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/[0.12] p-2.5 text-xs">
-              <span className="text-muted-foreground">
-                Select an account set, then load registered support. This does not test current routing availability.
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={toggleDisplayedSelection}
-                disabled={modelSupport.isPending || (!displayedSelected && displayedIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS)}
-              >
-                {displayedSelected ? "Clear selection" : displayedIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS ? `Choose up to ${MODEL_SUPPORT_MAX_ACCOUNTS}` : "Select displayed"}
-              </Button>
-            </div>
-            {selectionTooLarge ? (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.05] p-2.5 text-xs text-amber-700 dark:text-amber-300" role="alert">
-                Narrow selection to {MODEL_SUPPORT_MAX_ACCOUNTS} accounts or fewer. Nothing will be silently omitted.
+            <details
+              className="rounded-md border border-border/70 bg-muted/[0.12]"
+              onToggle={(event) => setSupportOpen(event.currentTarget.open)}
+            >
+              <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 p-2.5 text-xs [&::-webkit-details-marker]:hidden">
+                <span className="flex items-center gap-1.5 font-medium text-foreground/70">
+                  <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
+                  Model support
+                </span>
+                <span className={cn("text-muted-foreground", selectionTooLarge && "text-amber-700 dark:text-amber-300")}>
+                  {selectedSupportIdentityIDs.length}/{MODEL_SUPPORT_MAX_ACCOUNTS} accounts selected
+                </span>
+              </summary>
+              <div className="space-y-2 border-t border-border/60 p-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-muted-foreground">
+                    Select an account set, then load registered support. This does not test current routing availability.
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleDisplayedSelection}
+                      disabled={modelSupport.isPending || (!displayedSelected && displayedIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS)}
+                    >
+                      {displayedSelected ? "Clear selection" : displayedIdentityIDs.length > MODEL_SUPPORT_MAX_ACCOUNTS ? `Choose up to ${MODEL_SUPPORT_MAX_ACCOUNTS}` : "Select displayed"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={loadSelectedSupport}
+                      disabled={selectedSupportIdentityIDs.length === 0 || selectionTooLarge || modelSupport.isPending}
+                    >
+                      {modelSupport.isPending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ListChecks className="mr-1.5 h-3.5 w-3.5" />}
+                      Load model support
+                    </Button>
+                  </div>
+                </div>
+                {selectionTooLarge ? (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.05] p-2.5 text-xs text-amber-700 dark:text-amber-300" role="alert">
+                    Narrow selection to {MODEL_SUPPORT_MAX_ACCOUNTS} accounts or fewer. Nothing will be silently omitted.
+                  </div>
+                ) : null}
+                {modelSupport.isPending ? (
+                  <Skeleton className="h-20 w-full" />
+                ) : modelSupport.isError && requestedSupportScopeKey === selectedSupportScopeKey ? (
+                  <div className="rounded-md border border-red-500/25 bg-red-500/[0.025] p-3 text-sm text-red-600" role="alert">
+                    Failed to load registered model support. {modelSupport.error instanceof Error ? modelSupport.error.message : "Try again."}
+                  </div>
+                ) : loadedModelSupport ? (
+                  <ModelSupportCoveragePanel result={loadedModelSupport} />
+                ) : null}
               </div>
-            ) : null}
-            {modelSupport.isPending ? (
-              <Skeleton className="h-20 w-full" />
-            ) : modelSupport.isError && requestedSupportScopeKey === selectedSupportScopeKey ? (
-              <div className="rounded-md border border-red-500/25 bg-red-500/[0.025] p-3 text-sm text-red-600" role="alert">
-                Failed to load registered model support. {modelSupport.error instanceof Error ? modelSupport.error.message : "Try again."}
-              </div>
-            ) : loadedModelSupport ? (
-              <ModelSupportCoveragePanel result={loadedModelSupport} />
-            ) : null}
+            </details>
             <div className="flex max-h-[560px] flex-col gap-3 overflow-y-auto pr-1">
               {priorityRows.length > 0 ? (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -285,6 +304,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                       onRefresh={() => refresh(row.authIndex)}
                       selectedForSupport={selectedSupportIDs.has(row.id)}
                       onToggleSupportSelection={() => toggleSupportSelection(row.id)}
+                      supportSelectionVisible={supportOpen}
                       modelSupport={supportByIdentityID.get(row.id)}
                       supportSelectionDisabled={modelSupport.isPending}
                     />
@@ -308,6 +328,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                         onRefresh={() => refresh(row.authIndex)}
                         selectedForSupport={selectedSupportIDs.has(row.id)}
                         onToggleSupportSelection={() => toggleSupportSelection(row.id)}
+                        supportSelectionVisible={supportOpen}
                         modelSupport={supportByIdentityID.get(row.id)}
                         supportSelectionDisabled={modelSupport.isPending}
                       />
@@ -369,6 +390,7 @@ function LiveCapacityAccountTile({
   onRefresh,
   selectedForSupport,
   onToggleSupportSelection,
+  supportSelectionVisible,
   modelSupport,
   supportSelectionDisabled,
 }: {
@@ -376,6 +398,7 @@ function LiveCapacityAccountTile({
   onRefresh: () => void
   selectedForSupport: boolean
   onToggleSupportSelection: () => void
+  supportSelectionVisible: boolean
   modelSupport?: AccountModelSupport
   supportSelectionDisabled: boolean
 }) {
@@ -490,17 +513,19 @@ function LiveCapacityAccountTile({
           >
             {formatAuthIndex(row.authIndex)}
           </button>
-          <label className="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[10px] text-muted-foreground">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-terracotta-600"
-              checked={selectedForSupport}
-              onChange={onToggleSupportSelection}
-              disabled={supportSelectionDisabled}
-              aria-label={`Include ${accountTitle} in model support coverage`}
-            />
-            Support scope
-          </label>
+          {supportSelectionVisible ? (
+            <label className="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[10px] text-muted-foreground">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-terracotta-600"
+                checked={selectedForSupport}
+                onChange={onToggleSupportSelection}
+                disabled={supportSelectionDisabled}
+                aria-label={`Include ${accountTitle} in model support coverage`}
+              />
+              Support scope
+            </label>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
         {hasAttention ? (
@@ -561,25 +586,29 @@ function LiveCapacityAccountTile({
         </div>
       </div>
 
-      <AccountAvailabilitySummary row={row} />
-
+      {/* Hero first: per-account usage meters with reset countdowns are the
+          operator's primary scan target; state and timing evidence follow. */}
       <PassiveQuotaEvidence
         supported={row.providerKind === "claude" || row.providerKind === "codex"}
         account={row.passiveQuota}
         models={row.passiveModelQuotas}
       />
-      {modelSupport ? <AccountModelSupportDetails account={modelSupport} /> : null}
 
       {!row.disabled ? (
         <div className="mt-3 grid gap-2">
           <p className="text-[10px] font-medium text-foreground/70">Manual capacity probe</p>
-          <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} />
-          <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} />
+          <MetricMeter title={primaryMetric?.label ?? "5h"} metric={primaryMetric} observedAt={row.observedAt} />
+          <MetricMeter title={secondaryMetric?.label ?? "Weekly"} metric={secondaryMetric} observedAt={row.observedAt} />
           {remainingMetrics.map((metric, index) => (
-            <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} />
+            <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} observedAt={row.observedAt} />
           ))}
         </div>
       ) : null}
+
+      <AccountAvailabilitySummary row={row} />
+
+      {modelSupport ? <AccountModelSupportDetails account={modelSupport} /> : null}
+
       {row.metadataObservedAt || row.lastRefresh || row.nextRetryAfter || row.observedAt || row.expiresAt || row.activeStart || row.activeUntil ? (
         <AccountTiming
           metadataObservedAt={row.metadataObservedAt}
@@ -621,9 +650,18 @@ function PassiveQuotaEvidence({
           <p className="text-[10px] text-muted-foreground">No readable passive quota observation.</p>
         ) : null}
         {account ? <PassiveQuotaObservationSection label="Account" observation={account} /> : null}
-        {models.map((observation) => (
-          <PassiveQuotaObservationSection key={`${observation.model}:${observation.observedAt}`} label={observation.model} observation={observation} />
-        ))}
+        {models.length > 0 ? (
+          <details className="rounded border border-border/50 bg-background/40 px-2 py-1.5">
+            <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">
+              Per-model quotas ({models.length})
+            </summary>
+            <div className="mt-2 space-y-3">
+              {models.map((observation) => (
+                <PassiveQuotaObservationSection key={`${observation.model}:${observation.observedAt}`} label={observation.model} observation={observation} />
+              ))}
+            </div>
+          </details>
+        ) : null}
       </div>
       <p className="mt-2 text-[9px] leading-3 text-muted-foreground">
         Latest provider watermark observed by CPA. No expiry or history is inferred; relative reset hints are anchored to the observation time.
@@ -702,7 +740,7 @@ function PassiveQuotaObservationSection({
       </div>
       <div className="mt-1.5 grid gap-1.5">
         {observation.metrics.map((metric, index) => (
-          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} resetPrefix="reported reset" />
+          <MetricMeter key={`${index}:${metric.label}`} title={metric.label} metric={metric} resetPrefix="reported reset" observedAt={observation.observedAt} />
         ))}
       </div>
     </section>
@@ -1000,14 +1038,22 @@ function MetricMeter({
   title,
   metric,
   resetPrefix = "reset",
+  observedAt,
 }: {
   title: string
   metric?: LiveCapacityMetric
   resetPrefix?: string
+  /** Observation time anchoring relative reset hints (resetAfterSeconds). */
+  observedAt?: string
 }) {
   const progress = metric?.progress ?? null
-  const resetLabel = metric?.resetLabel ?? "-"
-  const resetText = resetLabel === "-" ? "-" : `${resetPrefix} ${resetLabel}`
+  const countdown = metric ? resetCountdown(metric, observedAt) : undefined
+  const resetText = countdown
+    ? countdown.isDue
+      ? `${resetPrefix} due`
+      : `${resetPrefix} in ${countdown.relativeLabel}`
+    : "-"
+  const resetTitle = countdown?.resetAt ? `${resetText} · ${formatDate(countdown.resetAt)}` : resetText
   const WindowIcon = metric?.windowSeconds === FIVE_HOUR_WINDOW_SECONDS
     ? Timer
     : metric?.windowSeconds === WEEKLY_WINDOW_SECONDS
@@ -1035,11 +1081,16 @@ function MetricMeter({
         ) : null}
       </div>
       <div
-        className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-[11px]", metricToneClasses(metric?.tone).reset)}
-        title={resetText}
+        className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-xs font-semibold", metricToneClasses(metric?.tone).reset)}
+        title={resetTitle}
       >
-        <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
+        <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
         <span className="truncate">{resetText}</span>
+        {countdown?.resetAt ? (
+          <time className="ml-auto shrink-0 text-[10px] font-normal text-muted-foreground" dateTime={countdown.resetAt}>
+            {formatDate(countdown.resetAt)}
+          </time>
+        ) : null}
       </div>
     </div>
   )

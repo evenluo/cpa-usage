@@ -1,12 +1,17 @@
 import { createLazyFileRoute } from "@tanstack/react-router"
+import { BarChart3 } from "lucide-react"
 import { KpiCard } from "@/components/intelligence/kpi-card"
 import { DashboardCharts } from "@/components/intelligence/dashboard-charts"
 import { DashboardControls } from "@/components/intelligence/dashboard-controls"
-import { DashboardFixedOverview } from "@/components/intelligence/dashboard-fixed-overview"
+import { DashboardAttention } from "@/components/intelligence/dashboard-attention"
 import { DashboardCoreEmptyState } from "@/components/intelligence/dashboard-core-empty-state"
+import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
+import { CanonicalTokenComposition } from "@/components/intelligence/canonical-token-composition"
+import { SectionDivider } from "@/components/intelligence/section-divider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatCost, formatCompact, formatPercent } from "@/lib/format"
+import { getCanonicalCoverageLabel } from "@/features/usage-intelligence/view-model"
 import { useUsageDashboard } from "@/features/usage-intelligence/use-usage-dashboard"
 
 export const Route = createLazyFileRoute("/")({
@@ -18,6 +23,7 @@ function DashboardPage() {
   const { summary } = dashboard.coreAnalyticsData ?? {}
   const { surfaces, viewModel, loadPlan } = dashboard
   const { providerOptions, leaderboardSortLabel, cacheReadShareCaption, cacheReadShareValue, kpiData } = viewModel
+  const canonicalCoverageLabel = getCanonicalCoverageLabel(summary?.accounting)
 
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
@@ -30,6 +36,37 @@ function DashboardPage() {
         onSelectProvider={dashboard.setProvider}
         providerOptions={providerOptions}
       />
+
+      {/* Layer 1 — Account usage & capacity, live now */}
+      <LiveCapacityCard provider={loadPlan.fixedWindow.liveCapacity.provider} />
+
+      {/* Layer 2 — Needs attention, fixed 24h diagnostic window */}
+      <DashboardAttention
+        surfaces={surfaces}
+        requestEvidenceProvider={loadPlan.fixedWindow.requestEvidence.provider}
+        requestEvidenceData={dashboard.requestEvidenceData}
+        isRequestEvidenceLoading={dashboard.isRequestEvidenceLoading}
+        isRequestEvidenceRefreshing={dashboard.isRequestEvidenceRefreshing}
+        requestEvidenceError={dashboard.requestEvidenceError}
+        failureDistributionData={dashboard.failureDistributionData}
+        isFailureDistributionLoading={dashboard.isFailureDistributionLoading}
+        failureDistributionError={dashboard.failureDistributionError}
+        modelMappingsData={dashboard.modelMappingsData}
+        isModelMappingsLoading={dashboard.isModelMappingsLoading}
+        modelMappingsError={dashboard.modelMappingsError}
+        attemptPerformanceData={dashboard.attemptPerformanceData}
+        isAttemptPerformanceLoading={dashboard.isAttemptPerformanceLoading}
+        attemptPerformanceError={dashboard.attemptPerformanceError}
+        onRetryCore={dashboard.retryCore}
+        onRetryRequestHealth={dashboard.retryRequestHealth}
+        onRetryRequestEvidence={dashboard.retryRequestEvidence}
+        onRetryFailureDistribution={dashboard.retryFailureDistribution}
+        onRetryModelMappings={dashboard.retryModelMappings}
+        onRetryAttemptPerformance={dashboard.retryAttemptPerformance}
+      />
+
+      {/* Layer 3 — Trends & distribution over the selected analysis window */}
+      <SectionDivider icon={BarChart3} label="Analysis — follows the selected window" />
 
       {surfaces.core.status === "error" ? (
         <Card>
@@ -56,6 +93,7 @@ function DashboardPage() {
           formatter={formatCost}
           valueDecimals={4}
           caption={summary?.cost_status === "available" ? "Local estimate complete" : summary?.cost_status === "partial" ? "Local estimate incomplete" : "Local estimate unavailable"}
+          coverageLabel={canonicalCoverageLabel}
           sparkline={kpiData?.cost}
           isLoading={surfaces.kpis.status === "loading"}
           tone="terracotta"
@@ -97,6 +135,13 @@ function DashboardPage() {
           tone="amber"
         />
           </div>
+          {surfaces.core.status === "ready" && dashboard.coreAnalyticsData ? (
+            <Card>
+              <CardContent className="p-4">
+                <CanonicalTokenComposition accounting={dashboard.coreAnalyticsData.summary.accounting} costStatus={dashboard.coreAnalyticsData.summary.cost_status} />
+              </CardContent>
+            </Card>
+          ) : null}
         </>
       )}
 
@@ -112,31 +157,7 @@ function DashboardPage() {
         modelMixMeasure={viewModel.modelMixMeasure}
         modelMixCostStateLabel={viewModel.modelMixCostStateLabel}
         onRetryCore={dashboard.retryCore}
-      />
-
-      <DashboardFixedOverview
-        surfaces={surfaces}
-        liveCapacityProvider={loadPlan.fixedWindow.liveCapacity.provider}
-        requestEvidenceProvider={loadPlan.fixedWindow.requestEvidence.provider}
-        requestEvidenceData={dashboard.requestEvidenceData}
-        isRequestEvidenceLoading={dashboard.isRequestEvidenceLoading}
-        isRequestEvidenceRefreshing={dashboard.isRequestEvidenceRefreshing}
-        requestEvidenceError={dashboard.requestEvidenceError}
-        failureDistributionData={dashboard.failureDistributionData}
-        isFailureDistributionLoading={dashboard.isFailureDistributionLoading}
-        failureDistributionError={dashboard.failureDistributionError}
-        modelMappingsData={dashboard.modelMappingsData}
-        isModelMappingsLoading={dashboard.isModelMappingsLoading}
-        modelMappingsError={dashboard.modelMappingsError}
-        attemptPerformanceData={dashboard.attemptPerformanceData}
-        isAttemptPerformanceLoading={dashboard.isAttemptPerformanceLoading}
-        attemptPerformanceError={dashboard.attemptPerformanceError}
         onRetryHeatmap={dashboard.retryHeatmap}
-        onRetryRequestHealth={dashboard.retryRequestHealth}
-        onRetryRequestEvidence={dashboard.retryRequestEvidence}
-        onRetryFailureDistribution={dashboard.retryFailureDistribution}
-        onRetryModelMappings={dashboard.retryModelMappings}
-        onRetryAttemptPerformance={dashboard.retryAttemptPerformance}
       />
     </div>
   )

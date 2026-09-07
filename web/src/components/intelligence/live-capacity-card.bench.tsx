@@ -28,6 +28,11 @@ vi.mock("@/hooks/useKeys", () => ({
   useSetIdentityDisabled: () => ({ mutate: () => {}, isPending: false }),
 }))
 
+vi.mock("@/hooks/useModelSupport", () => ({
+  MODEL_SUPPORT_MAX_ACCOUNTS: 12,
+  useModelSupport: () => ({ mutate: () => {}, reset: () => {}, data: undefined, isPending: false, isError: false, error: null }),
+}))
+
 vi.mock("@/components/providers/toast-provider", () => ({
   useToast: () => ({ success: () => {}, error: () => {}, warning: () => {}, info: () => {} }),
 }))
