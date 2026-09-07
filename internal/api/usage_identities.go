@@ -61,8 +61,9 @@ type usageIdentityResponse struct {
 	InputTokens                int64                                  `json:"input_tokens"`
 	OutputTokens               int64                                  `json:"output_tokens"`
 	ReasoningTokens            int64                                  `json:"reasoning_tokens"`
-	CachedTokens               int64                                  `json:"cached_tokens"`
+	CacheReadTokens            int64                                  `json:"cache_read_tokens"`
 	TotalTokens                int64                                  `json:"total_tokens"`
+	CanonicalValidAttempts     int64                                  `json:"canonical_valid_attempts"`
 	TotalCost                  float64                                `json:"total_cost"`
 	CostAvailable              bool                                   `json:"cost_available"`
 	LastAggregatedUsageEventID uint                                   `json:"last_aggregated_usage_event_id"`
@@ -94,26 +95,27 @@ type passiveModelQuotaObservationResponse struct {
 }
 
 type usageAPIKeyResponse struct {
-	ID              string     `json:"id"`
-	Identity        string     `json:"identity"`
-	DisplayName     string     `json:"displayName"`
-	Alias           string     `json:"alias"`
-	Provider        string     `json:"provider"`
-	AuthType        int        `json:"auth_type"`
-	AuthTypeName    string     `json:"auth_type_name"`
-	TotalRequests   int64      `json:"total_requests"`
-	SuccessCount    int64      `json:"success_count"`
-	FailureCount    int64      `json:"failure_count"`
-	InputTokens     int64      `json:"input_tokens"`
-	OutputTokens    int64      `json:"output_tokens"`
-	ReasoningTokens int64      `json:"reasoning_tokens"`
-	CachedTokens    int64      `json:"cached_tokens"`
-	TotalTokens     int64      `json:"total_tokens"`
-	TotalCost       float64    `json:"total_cost"`
-	CostAvailable   bool       `json:"cost_available"`
-	CostStatus      string     `json:"cost_status"`
-	FirstUsedAt     *time.Time `json:"first_used_at,omitempty"`
-	LastUsedAt      *time.Time `json:"last_used_at,omitempty"`
+	ID                     string     `json:"id"`
+	Identity               string     `json:"identity"`
+	DisplayName            string     `json:"displayName"`
+	Alias                  string     `json:"alias"`
+	Provider               string     `json:"provider"`
+	AuthType               int        `json:"auth_type"`
+	AuthTypeName           string     `json:"auth_type_name"`
+	TotalRequests          int64      `json:"total_requests"`
+	SuccessCount           int64      `json:"success_count"`
+	FailureCount           int64      `json:"failure_count"`
+	InputTokens            int64      `json:"input_tokens"`
+	OutputTokens           int64      `json:"output_tokens"`
+	ReasoningTokens        int64      `json:"reasoning_tokens"`
+	CacheReadTokens        int64      `json:"cache_read_tokens"`
+	TotalTokens            int64      `json:"total_tokens"`
+	CanonicalValidAttempts int64      `json:"canonical_valid_attempts"`
+	TotalCost              float64    `json:"total_cost"`
+	CostAvailable          bool       `json:"cost_available"`
+	CostStatus             string     `json:"cost_status"`
+	FirstUsedAt            *time.Time `json:"first_used_at,omitempty"`
+	LastUsedAt             *time.Time `json:"last_used_at,omitempty"`
 }
 
 type usageIdentityAliasResponse struct {
@@ -465,8 +467,9 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		InputTokens:                item.InputTokens,
 		OutputTokens:               item.OutputTokens,
 		ReasoningTokens:            item.ReasoningTokens,
-		CachedTokens:               item.CachedTokens,
+		CacheReadTokens:            item.CachedTokens,
 		TotalTokens:                item.TotalTokens,
+		CanonicalValidAttempts:     item.CanonicalValidAttempts,
 		TotalCost:                  item.TotalCost,
 		CostAvailable:              item.CostAvailable,
 		LastAggregatedUsageEventID: item.LastAggregatedUsageEventID,
@@ -520,25 +523,26 @@ func mapUsageAPIKeyResponse(item service.APIKeyAliasTarget) usageAPIKeyResponse 
 	}
 	authTypeName, _ := entities.UsageIdentityAuthTypeAIProvider.CanonicalName()
 	return usageAPIKeyResponse{
-		ID:              item.ID,
-		Identity:        item.Identity,
-		DisplayName:     displayName,
-		Alias:           item.Alias,
-		Provider:        item.Provider,
-		AuthType:        int(entities.UsageIdentityAuthTypeAIProvider),
-		AuthTypeName:    authTypeName,
-		TotalRequests:   item.TotalRequests,
-		SuccessCount:    item.SuccessCount,
-		FailureCount:    item.FailureCount,
-		InputTokens:     item.InputTokens,
-		OutputTokens:    item.OutputTokens,
-		ReasoningTokens: item.ReasoningTokens,
-		CachedTokens:    item.CachedTokens,
-		TotalTokens:     item.TotalTokens,
-		TotalCost:       item.TotalCost,
-		CostAvailable:   item.CostAvailable,
-		CostStatus:      item.CostStatus,
-		FirstUsedAt:     item.FirstUsedAt,
-		LastUsedAt:      item.LastUsedAt,
+		ID:                     item.ID,
+		Identity:               item.Identity,
+		DisplayName:            displayName,
+		Alias:                  item.Alias,
+		Provider:               item.Provider,
+		AuthType:               int(entities.UsageIdentityAuthTypeAIProvider),
+		AuthTypeName:           authTypeName,
+		TotalRequests:          item.TotalRequests,
+		SuccessCount:           item.SuccessCount,
+		FailureCount:           item.FailureCount,
+		InputTokens:            item.InputTokens,
+		OutputTokens:           item.OutputTokens,
+		ReasoningTokens:        item.ReasoningTokens,
+		CacheReadTokens:        item.CachedTokens,
+		TotalTokens:            item.TotalTokens,
+		CanonicalValidAttempts: item.CanonicalValidAttempts,
+		TotalCost:              item.TotalCost,
+		CostAvailable:          item.CostAvailable,
+		CostStatus:             item.CostStatus,
+		FirstUsedAt:            item.FirstUsedAt,
+		LastUsedAt:             item.LastUsedAt,
 	}
 }

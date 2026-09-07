@@ -13,7 +13,7 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
         <span className="mt-1 block">{getAccountingCaption(accounting)}</span>
       </summary>
       <div className="mt-3 space-y-3">
-        <p className="text-muted-foreground">Selected window and provider scope. KPI and trend Tokens keep the provider-reported scalar totals.</p>
+        <p className="text-muted-foreground">Selected window and provider scope. Every token metric uses this canonical composition.</p>
         <div>
           <h3 className="font-medium">Metric Completeness · Accounting</h3>
           <p className="mt-1 text-muted-foreground">
@@ -48,7 +48,7 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
         ) : (
           <p className="text-muted-foreground">Canonical totals unavailable. Missing historical facts cannot be reconstructed from scalar tokens.</p>
         )}
-        <p className="text-muted-foreground">Cost completeness: {costStatus}. Cost uses the configured model rates independently of canonical quality; tiers do not establish billed amounts.</p>
+        <p className="text-muted-foreground">Local cost estimate completeness: {costStatus}. Complete canonical rows price uncached and cache-write input at the prompt rate, cache-read input at the cache rate, and total output at the completion rate. This is not an upstream billing amount.</p>
       </div>
     </details>
   )

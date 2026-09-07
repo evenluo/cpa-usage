@@ -42,13 +42,13 @@ func TestUsageModelMappingsMatchesReusableContractFixture(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	filter := usageDiagnosticFilter{usageTimeFilter: usageTimeFilter{usageWindow: usageWindow{StartTime: &start, EndTime: &end}}}
 	record := &dto.UsageModelMappingDistributionRecord{
-		TotalAttempts: 6, ObservedAliasAttempts: 5, MissingAliasAttempts: 1,
+		TotalAttempts: 6, CanonicalValidAttempts: 6, ObservedAliasAttempts: 5, MissingAliasAttempts: 1,
 		ObservedTotalCost: 1, ObservedCostStatus: dto.CostStatusPartial,
 		Mappings: []dto.UsageModelMappingRecord{
-			{ModelAlias: "route-a", Model: "actual-a", Provider: "provider-a", AttemptCount: 2, FailureCount: 1, FailureShare: 50, LatencySampleCount: 1, MeanLatencyMS: 100, TotalCost: 1, CostAvailable: true, CostStatus: dto.CostStatusAvailable},
-			{ModelAlias: "route-a", Model: "actual-b", Provider: "provider-b", AttemptCount: 1, FailureCount: 1, FailureShare: 100, LatencySampleCount: 1, MeanLatencyMS: 300, CostStatus: dto.CostStatusUnavailable},
-			{ModelAlias: "actual-b", Model: "actual-b", Provider: "provider-b", AttemptCount: 1, LatencySampleCount: 1, MeanLatencyMS: 200, CostStatus: dto.CostStatusUnavailable},
-			{ModelAlias: "route-missing-provider", Model: "actual-a", AttemptCount: 1, CostAvailable: true, CostStatus: dto.CostStatusAvailable},
+			{ModelAlias: "route-a", Model: "actual-a", Provider: "provider-a", AttemptCount: 2, CanonicalValidAttempts: 2, FailureCount: 1, FailureShare: 50, LatencySampleCount: 1, MeanLatencyMS: 100, TotalCost: 1, CostAvailable: true, CostStatus: dto.CostStatusAvailable},
+			{ModelAlias: "route-a", Model: "actual-b", Provider: "provider-b", AttemptCount: 1, CanonicalValidAttempts: 1, FailureCount: 1, FailureShare: 100, LatencySampleCount: 1, MeanLatencyMS: 300, CostStatus: dto.CostStatusUnavailable},
+			{ModelAlias: "actual-b", Model: "actual-b", Provider: "provider-b", AttemptCount: 1, CanonicalValidAttempts: 1, LatencySampleCount: 1, MeanLatencyMS: 200, CostStatus: dto.CostStatusUnavailable},
+			{ModelAlias: "route-missing-provider", Model: "actual-a", AttemptCount: 1, CanonicalValidAttempts: 1, CostAvailable: true, CostStatus: dto.CostStatusAvailable},
 		},
 	}
 	actual, err := json.Marshal(buildUsageModelMappingDistributionPayload(filter, record))
@@ -63,8 +63,8 @@ func TestUsageModelMappingsReturnsExplicitCoverageAndMappingSemantics(t *testing
 		TotalAttempts: 5, ObservedAliasAttempts: 4, MissingAliasAttempts: 1,
 		ObservedTotalCost: 1.25, ObservedCostStatus: dto.CostStatusPartial,
 		Mappings: []dto.UsageModelMappingRecord{
-			{ModelAlias: "route-a", Model: "actual-a", Provider: "provider-a", AttemptCount: 2, FailureCount: 1, FailureShare: 50, LatencySampleCount: 1, MeanLatencyMS: 100, TotalCost: 1.25, CostAvailable: true, CostStatus: dto.CostStatusAvailable},
-			{ModelAlias: "actual-b", Model: "actual-b", Provider: "", AttemptCount: 1, CostStatus: dto.CostStatusUnavailable},
+			{ModelAlias: "route-a", Model: "actual-a", Provider: "provider-a", AttemptCount: 2, CanonicalValidAttempts: 2, FailureCount: 1, FailureShare: 50, LatencySampleCount: 1, MeanLatencyMS: 100, TotalCost: 1.25, CostAvailable: true, CostStatus: dto.CostStatusAvailable},
+			{ModelAlias: "actual-b", Model: "actual-b", Provider: "", AttemptCount: 1, CanonicalValidAttempts: 1, CostStatus: dto.CostStatusUnavailable},
 		},
 		OtherAttempts: 1,
 	}}

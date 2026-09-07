@@ -11,7 +11,7 @@ func TestAccountingSumsRejectOverflowAndInvalidQuality(t *testing.T) {
 	ptr := func(v int64) *int64 { return &v }
 	quality := "complete"
 	valid := entities.UsageAccounting{
-		AccountingVersion: ptr(2), TokenBreakdownPresent: true, TokenSchemaVersion: ptr(2), TokenQuality: &quality,
+		AccountingVersion: ptr(2), TokenSchemaVersion: ptr(2), TokenQuality: &quality,
 		CanonicalTotalTokens: ptr(130), CanonicalInputTokens: ptr(100), CanonicalUncachedTokens: ptr(50), CanonicalCacheReadTokens: ptr(40), CanonicalCacheWriteTokens: ptr(10),
 		CanonicalOutputTokens: ptr(30), CanonicalNonReasoningTokens: ptr(18), CanonicalReasoningTokens: ptr(12), CanonicalUnclassifiedTokens: ptr(0),
 	}
@@ -56,7 +56,41 @@ func TestAccountingSumsRejectOverflowAndInvalidQuality(t *testing.T) {
 			t.Fatalf("structure must not upgrade quality: %+v", got)
 		}
 	}
-	if facts := InterpretUsageAttempt(entities.UsageEvent{UsageAccounting: valid, OutputTokens: 31, LatencyMS: 1200, TTFTMS: ptr(200)}); facts.OutputTPS != nil {
-		t.Fatal("legacy output exceeding canonical total output cannot yield consistent TPS")
+	generate, stream := true, true
+	if facts := InterpretUsageAttempt(entities.UsageEvent{UsageAccounting: valid, Generate: &generate, Stream: &stream, OutputTokens: 999, LatencyMS: 1200, TTFTMS: ptr(200)}); facts.OutputTPS == nil || *facts.OutputTPS != 30 {
+		t.Fatalf("expected canonical output including reasoning to own TPS, got %+v", facts.OutputTPS)
+	}
+}
+
+func TestAccountingDirectCutDistinguishesHistoricalAbsenceAndRequiresExplicitStreamingGeneration(t *testing.T) {
+	ptr := func(v int64) *int64 { return &v }
+	if state := UsageAccountingState(entities.UsageAccounting{}); state != AccountingAbsent {
+		t.Fatalf("historical row state: got %s want %s", state, AccountingAbsent)
+	}
+	if state := UsageAccountingState(entities.UsageAccounting{AccountingVersion: ptr(2)}); state != AccountingInvalid {
+		t.Fatalf("partial canonical row state: got %s want %s", state, AccountingInvalid)
+	}
+
+	quality := "complete"
+	valid := entities.UsageAccounting{
+		AccountingVersion: ptr(2), TokenSchemaVersion: ptr(2), TokenQuality: &quality,
+		CanonicalTotalTokens: ptr(130), CanonicalInputTokens: ptr(100), CanonicalUncachedTokens: ptr(50), CanonicalCacheReadTokens: ptr(40), CanonicalCacheWriteTokens: ptr(10),
+		CanonicalOutputTokens: ptr(30), CanonicalNonReasoningTokens: ptr(18), CanonicalReasoningTokens: ptr(12), CanonicalUnclassifiedTokens: ptr(0),
+	}
+	ttft := int64(200)
+	trueValue, falseValue := true, false
+	base := entities.UsageEvent{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Generate: &trueValue, Stream: &trueValue}
+	if got := InterpretUsageAttempt(base).OutputTPS; got == nil || *got != 30 {
+		t.Fatalf("canonical output TPS: got %v want 30", got)
+	}
+	for _, event := range []entities.UsageEvent{
+		{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Stream: &trueValue},
+		{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Generate: &trueValue},
+		{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Generate: &falseValue, Stream: &trueValue},
+		{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Generate: &trueValue, Stream: &falseValue},
+	} {
+		if got := InterpretUsageAttempt(event).OutputTPS; got != nil {
+			t.Fatalf("non-generating or non-streaming attempt produced TPS: %v", got)
+		}
 	}
 }

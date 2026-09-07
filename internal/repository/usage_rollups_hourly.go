@@ -174,21 +174,7 @@ func applyUsageEventToHourlyRollup(rollup *entities.UsageRollupHourly, event ent
 	} else {
 		rollup.SuccessCount++
 	}
-	inputTokens := positiveInt64(event.InputTokens)
-	cachedTokens := positiveInt64(event.CachedTokens)
-	rollup.InputTokens += inputTokens
-	rollup.BillablePromptTokens += maxInt64(inputTokens-cachedTokens, 0)
-	rollup.OutputTokens += positiveInt64(event.OutputTokens)
-	rollup.ReasoningTokens += positiveInt64(event.ReasoningTokens)
-	rollup.CachedTokens += cachedTokens
-	if validCacheReadObservation(event.InputTokens, event.CacheReadTokens) {
-		rollup.CacheReadTokens += *event.CacheReadTokens
-		rollup.CacheReadObservedInputTokens += inputTokens
-	}
 	applyUsageAccountingToHourlyRollup(rollup, event)
-	// TotalTokens 保持原始净和（不钳制负值），与 raw 读侧对 usage_events.total_tokens 的直接 SUM 镜像等价；
-	// 避免只改写入规则而不重建历史 rollup 时，已覆盖小时的 rollup 与 raw 段返回不同 token 总量。
-	rollup.TotalTokens += event.TotalTokens
 	if event.LatencyMS > 0 {
 		rollup.TotalLatencyMS += event.LatencyMS
 		rollup.LatencySampleCount++
@@ -203,16 +189,6 @@ func applyUsageAccountingToHourlyRollup(rollup *entities.UsageRollupHourly, even
 	switch event.AccountingState {
 	case AccountingAbsent:
 		rollup.AccountingAbsentAttempts++
-	case AccountingMalformed:
-		rollup.AccountingMalformedAttempts++
-	case AccountingUnsupportedVersion:
-		rollup.AccountingUnsupportedVersionAttempts++
-	case AccountingUnsupportedSchema:
-		rollup.AccountingUnsupportedSchemaAttempts++
-	case AccountingMissing:
-		rollup.AccountingMissingAttempts++
-	case AccountingUnknownQuality:
-		rollup.AccountingUnknownQualityAttempts++
 	case AccountingInvalid:
 		rollup.AccountingInvalidAttempts++
 	case AccountingValid:
@@ -220,6 +196,15 @@ func applyUsageAccountingToHourlyRollup(rollup *entities.UsageRollupHourly, even
 		switch optionalStringValue(event.TokenQuality) {
 		case "complete":
 			rollup.AccountingValidCompleteAttempts++
+			promptTokens := optionalInt64Value(event.CanonicalUncachedTokens) + optionalInt64Value(event.CanonicalCacheWriteTokens)
+			cacheReadTokens := optionalInt64Value(event.CanonicalCacheReadTokens)
+			outputTokens := optionalInt64Value(event.CanonicalOutputTokens)
+			rollup.CanonicalCompletePromptTokens += promptTokens
+			rollup.CanonicalCompleteCacheReadTokens += cacheReadTokens
+			rollup.CanonicalCompleteOutputTokens += outputTokens
+			if promptTokens == 0 && cacheReadTokens == 0 && outputTokens == 0 {
+				rollup.CanonicalCompleteZeroAttempts++
+			}
 		case "inconsistent":
 			rollup.AccountingValidInconsistentAttempts++
 		case "unclassified":
@@ -249,22 +234,4 @@ func optionalStringValue(value *string) string {
 		return ""
 	}
 	return *value
-}
-
-func validCacheReadObservation(inputTokens int64, cacheReadTokens *int64) bool {
-	return inputTokens > 0 && cacheReadTokens != nil && *cacheReadTokens >= 0 && *cacheReadTokens <= inputTokens
-}
-
-func positiveInt64(value int64) int64 {
-	if value > 0 {
-		return value
-	}
-	return 0
-}
-
-func maxInt64(a int64, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }

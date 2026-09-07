@@ -84,13 +84,13 @@ func ListUsageEventsWithFilter(ctx context.Context, db *gorm.DB, filter dto.Usag
 			LatencyMS:           event.LatencyMS,
 			TTFTMS:              event.TTFTMS,
 			OutputTPS:           facts.OutputTPS,
-			InputTokens:         event.InputTokens,
-			OutputTokens:        event.OutputTokens,
-			ReasoningTokens:     event.ReasoningTokens,
-			CachedTokens:        event.CachedTokens,
-			CacheReadTokens:     event.CacheReadTokens,
-			CacheCreationTokens: event.CacheCreationTokens,
-			TotalTokens:         event.TotalTokens,
+			InputTokens:         optionalInt64Value(facts.Accounting.Input.TotalTokens),
+			OutputTokens:        optionalInt64Value(facts.Accounting.Output.TotalTokens),
+			ReasoningTokens:     optionalInt64Value(facts.Accounting.Output.ReasoningTokens),
+			CachedTokens:        optionalInt64Value(facts.Accounting.Input.CacheReadTokens),
+			CacheReadTokens:     facts.Accounting.Input.CacheReadTokens,
+			CacheCreationTokens: facts.Accounting.Input.CacheWriteTokens,
+			TotalTokens:         optionalInt64Value(facts.Accounting.TotalTokens),
 		})
 	}
 	totalPages := 1

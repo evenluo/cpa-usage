@@ -59,8 +59,39 @@ export const usageEvents = Array.from({ length: 11 }, (_, index) => ({
     ttft_ms: index === 0 ? 1_052 : null,
     output_tps: index === 0 ? 48.33358094488189 : null,
     tokens: {
-      output_tokens: index === 0 ? 976 : 0,
-      total_tokens: index === 0 ? 105_091 : 1_700_000_000 + index,
+      input_tokens: index === 0 ? 104_115 : null,
+      output_tokens: index === 0 ? 976 : null,
+      reasoning_tokens: index === 0 ? 100 : null,
+      cache_read_tokens: index === 0 ? 20 : null,
+      cache_write_tokens: index === 0 ? 0 : null,
+      unclassified_tokens: index === 0 ? 0 : null,
+      total_tokens: index === 0 ? 105_091 : null,
+    },
+    attempt_facts: {
+      generate: index === 0 ? true : null,
+      stream: index === 0 ? true : null,
+      request_service_tier: null,
+      response_service_tier: null,
+      output_tps: index === 0 ? 48.33358094488189 : null,
+      accounting: index === 0 ? {
+        state: "valid",
+        accounting_version: 2,
+        schema_version: 2,
+        quality: "complete",
+        total_tokens: 105_091,
+        input: { total_tokens: 104_115, uncached_tokens: 104_095, cache_read_tokens: 20, cache_write_tokens: 0 },
+        output: { total_tokens: 976, non_reasoning_tokens: 876, reasoning_tokens: 100 },
+        unclassified_tokens: 0,
+      } : {
+        state: "absent",
+        accounting_version: null,
+        schema_version: null,
+        quality: null,
+        total_tokens: null,
+        input: { total_tokens: null, uncached_tokens: null, cache_read_tokens: null, cache_write_tokens: null },
+        output: { total_tokens: null, non_reasoning_tokens: null, reasoning_tokens: null },
+        unclassified_tokens: null,
+      },
     },
   }))
 
@@ -77,6 +108,7 @@ export const authFileIdentitiesPayload = {
       type: "codex",
       provider: "Codex",
       total_tokens: 0,
+      canonical_valid_attempts: 0,
       total_cost: 0,
       cost_available: false,
       last_used_at: null,
@@ -112,6 +144,7 @@ export const authFileIdentitiesPayload = {
       type: "openai",
       provider: "OpenAI",
       total_tokens: 0,
+      canonical_valid_attempts: 0,
       total_cost: 0,
       cost_available: false,
       last_used_at: null,
@@ -179,7 +212,6 @@ const performanceSummary = {
   },
   output_tps: {
     generating_streaming: percentile(10, 7, 42, 88),
-    unknown_execution: percentile(5, 2, 30, 35),
   },
 }
 
@@ -187,7 +219,6 @@ const performanceSummaryWithoutComparableTPS = {
   ...performanceSummary,
   output_tps: {
     generating_streaming: percentile(10, 0, null, null),
-    unknown_execution: percentile(5, 0, null, null),
   },
 }
 
@@ -256,7 +287,8 @@ const dashboardAnalyticsSummary = {
       input_tokens: 1000000,
       output_tokens: 500000,
       reasoning_tokens: 100000,
-      cached_tokens: 100000,
+      cache_read_tokens: 100000,
+      canonical_valid_attempts: 1,
       request_count: 1,
     },
     {
@@ -269,7 +301,8 @@ const dashboardAnalyticsSummary = {
       input_tokens: 220000,
       output_tokens: 80000,
       reasoning_tokens: 10000,
-      cached_tokens: 10000,
+      cache_read_tokens: 10000,
+      canonical_valid_attempts: 1,
       request_count: 1,
     },
     {
@@ -282,7 +315,8 @@ const dashboardAnalyticsSummary = {
       input_tokens: 280100,
       output_tokens: 20000,
       reasoning_tokens: 0,
-      cached_tokens: 50000,
+      cache_read_tokens: 50000,
+      canonical_valid_attempts: 1,
       request_count: 1,
     },
   ],

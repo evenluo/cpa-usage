@@ -219,7 +219,7 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 		`"input_tokens":100`,
 		`"output_tokens":200`,
 		`"reasoning_tokens":30`,
-		`"cached_tokens":40`,
+		`"cache_read_tokens":40`,
 		`"passive_quota":{"source":"cpa_passive","scope":"account","observed_at":"2026-05-04T08:30:00Z","active_limit":"codex_bengalfox","quota":[{"key":"codex.rate_limit.primary","label":"5h","scope":"account","usedPercent":51}]}`,
 		`"passive_model_quotas":[{"source":"cpa_passive","scope":"model","model":"gpt-5.3-codex","observed_at":"2026-05-04T07:30:00Z","quota":[{"key":"codex.model.primary","label":"5h","scope":"model","allowed":true}]}]`,
 		`"total_tokens":370`,

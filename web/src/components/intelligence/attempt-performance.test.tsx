@@ -37,7 +37,6 @@ function summary(): UsageAttemptPerformanceSummary {
     },
     output_tps: {
       generating_streaming: metric(10, 7, 42, 88),
-      unknown_execution: metric(5, 2, 30, 35),
     },
   }
 }

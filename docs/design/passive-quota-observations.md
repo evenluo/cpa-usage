@@ -9,7 +9,7 @@ The pinned producer is CLIProxyAPI commit `c76dfd4e0edabab9000628b1560ab8ab379ea
 - `quota`: the latest account observation as `observed_at` plus bounded `signals`;
 - `model_quotas`: zero or more model observations with the same shape.
 
-Only Claude and Codex are supported. v7.2.62 does not expose this contract. A response with no new provider signal may retain an older observation in CPA, so CPA Usage persists its original `observed_at`; metadata sync time is not substituted. Missing, empty, malformed and unsupported observations produce no passive fact. A successful complete auth-file snapshot still owns identity absence/deletion as documented by the account lifecycle contract.
+Only Claude and Codex are supported. Missing observations on these supported providers remain unavailable. A response with no new provider signal may retain an older observation in CPA, so CPA Usage persists its original `observed_at`; metadata sync time is not substituted. Missing, empty, malformed and unsupported observations produce no passive fact. A successful complete auth-file snapshot still owns identity absence/deletion as documented by the account lifecycle contract.
 
 ## Allowlisted interpretation
 

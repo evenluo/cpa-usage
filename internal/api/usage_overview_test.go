@@ -177,7 +177,7 @@ func TestUsageOverviewReturnsFilteredSnapshot(t *testing.T) {
 	}
 	if !contains(body, `"input_tokens":{"2026-04-22T11:00:00Z":11}`) ||
 		!contains(body, `"output_tokens":{"2026-04-22T11:00:00Z":7}`) ||
-		!contains(body, `"cached_tokens":{"2026-04-22T11:00:00Z":2}`) ||
+		!contains(body, `"cache_read_tokens":{"2026-04-22T11:00:00Z":2}`) ||
 		!contains(body, `"reasoning_tokens":{"2026-04-22T11:00:00Z":3}`) {
 		t.Fatalf("expected token breakdown series in response body: %s", body)
 	}

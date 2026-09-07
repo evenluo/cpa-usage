@@ -16,7 +16,7 @@ import (
 	"cpa-usage/internal/service"
 )
 
-func TestPinnedAccountingFixturesPreserveRawHybridRollupAndEvidenceSemantics(t *testing.T) {
+func TestPinnedAccountingFixturesPreserveCanonicalRawHybridRollupAndEvidenceSemantics(t *testing.T) {
 	db, err := repository.OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "fixtures.db")})
 	if err != nil {
 		t.Fatalf("open fixture database: %v", err)
@@ -28,11 +28,18 @@ func TestPinnedAccountingFixturesPreserveRawHybridRollupAndEvidenceSemantics(t *
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	start := time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC)
+	legacyRaw, err := os.ReadFile(filepath.Join("..", "cpa", "testdata", "usage", "v7.2.62-legacy.json"))
+	if err != nil {
+		t.Fatalf("read legacy fixture: %v", err)
+	}
+	if _, _, err := service.DecodeRedisUsageMessage(string(legacyRaw), start); err == nil {
+		t.Fatal("legacy fixture must be rejected by the direct-cut decoder")
+	}
+
 	fixtures := []struct {
 		name string
 		at   time.Time
 	}{
-		{name: "v7.2.62-legacy.json", at: start.Add(5 * time.Minute)},
 		{name: "v7.2.152-complete.json", at: start.Add(10 * time.Minute)},
 		{name: "v7.2.152-independent.json", at: start.Add(15 * time.Minute)},
 		{name: "v7.2.152-separate-reasoning.json", at: start.Add(20 * time.Minute)},
@@ -84,11 +91,11 @@ func TestPinnedAccountingFixturesPreserveRawHybridRollupAndEvidenceSemantics(t *
 	if !reflect.DeepEqual(raw.Summary, hybrid.Summary) {
 		t.Fatalf("expected provider-scoped raw/hybrid summary parity\nraw=%+v\nhybrid=%+v", raw.Summary, hybrid.Summary)
 	}
-	if hybrid.Summary.RequestCount != 4 || hybrid.Summary.TotalTokens != 580 || math.Abs(hybrid.Summary.TotalCost-0.00056) > 1e-12 {
-		t.Fatalf("legacy scalar and Cost meanings changed: %+v", hybrid.Summary)
+	if hybrid.Summary.RequestCount != 3 || hybrid.Summary.TotalTokens != 450 || math.Abs(hybrid.Summary.TotalCost-0.00014) > 1e-12 {
+		t.Fatalf("canonical token and Cost meanings changed: %+v", hybrid.Summary)
 	}
 	accounting := hybrid.Summary.Accounting
-	if accounting.ValidAttempts != 3 || accounting.CoveragePct == nil || math.Abs(*accounting.CoveragePct-75) > 1e-9 || accounting.States.Absent != 1 || accounting.States.Valid != 3 {
+	if accounting.ValidAttempts != 3 || accounting.CoveragePct == nil || math.Abs(*accounting.CoveragePct-100) > 1e-9 || accounting.States.Absent != 0 || accounting.States.Valid != 3 {
 		t.Fatalf("unexpected accounting coverage: %+v", accounting)
 	}
 	if accounting.ValidQuality != (dto.AnalyticsAccountingValidQuality{Complete: 1, Inconsistent: 1, Unclassified: 1}) ||
@@ -109,10 +116,11 @@ func TestPinnedAccountingFixturesPreserveRawHybridRollupAndEvidenceSemantics(t *
 			byProvider[event.Provider] = event
 		}
 	}
-	for _, provider := range []string{"gemini", "claude"} {
+	expectedTPS := map[string]float64{"gemini": 42, "claude": 30}
+	for provider, wantTPS := range expectedTPS {
 		evidence := byProvider[provider]
-		if evidence.AttemptFacts.OutputTPS == nil || math.Abs(*evidence.AttemptFacts.OutputTPS-30) > 1e-9 {
-			t.Fatalf("%s evidence must retain provider output scalar TPS, got %+v", provider, evidence.AttemptFacts)
+		if evidence.AttemptFacts.OutputTPS == nil || math.Abs(*evidence.AttemptFacts.OutputTPS-wantTPS) > 1e-9 {
+			t.Fatalf("%s evidence must use canonical output total for TPS, got %+v", provider, evidence.AttemptFacts)
 		}
 		if evidence.AttemptFacts.Accounting.Output.ReasoningTokens == nil || *evidence.AttemptFacts.Accounting.Output.ReasoningTokens != 12 {
 			t.Fatalf("%s evidence lost canonical reasoning bucket: %+v", provider, evidence.AttemptFacts.Accounting)

@@ -27,7 +27,7 @@ func TestRedisUsageIntakeReportsLossWithoutRetryWhenInboxWriteFails(t *testing.T
 		t.Fatalf("create inbox insert failure trigger: %v", err)
 	}
 	logs := captureSyncDebugLogs(t)
-	queue := &countingRedisQueue{messages: []string{`{"request_id":"lost-after-pop"}`}}
+	queue := &countingRedisQueue{messages: []string{withAccountingV2(t, `{"request_id":"lost-after-pop"}`)}}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL:    "https://cpa.example.com",
 		RedisQueue: queue,
@@ -56,9 +56,9 @@ var _ RedisQueue = (*countingRedisQueue)(nil)
 
 func TestRedisUsageIntakePersistsOnlyReplaySafePayload(t *testing.T) {
 	db := openSyncTestDatabase(t)
-	invalidMessage := `{invalid PRIVATE_INVALID_BODY`
+	invalidMessage := `{"accounting_version":"PRIVATE_INVALID_BODY","generate":true,"stream":true,"client_ip":"PRIVATE_IP"}`
 	queue := &countingRedisQueue{messages: []string{
-		`{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"safe-attempt","failed":true,"fail":{"status_code":429,"body":"PRIVATE_FAIL_BODY"},"response_headers":{"Set-Cookie":"PRIVATE_COOKIE"},"tokens":{"input_tokens":1,"output_tokens":2},"unknown":"PRIVATE_UNKNOWN"}`,
+		withAccountingV2(t, `{"timestamp":"2026-08-31T08:00:00Z","provider":"claude","model":"sonnet","request_id":"safe-attempt","failed":true,"fail":{"status_code":429,"body":"PRIVATE_FAIL_BODY"},"response_headers":{"Set-Cookie":"PRIVATE_COOKIE"},"tokens":{"input_tokens":1,"output_tokens":2},"unknown":"PRIVATE_UNKNOWN"}`),
 		invalidMessage,
 	}}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
@@ -80,7 +80,7 @@ func TestRedisUsageIntakePersistsOnlyReplaySafePayload(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("expected two inbox rows, got %d", len(rows))
 	}
-	for _, forbidden := range []string{"PRIVATE_FAIL_BODY", "PRIVATE_COOKIE", "PRIVATE_UNKNOWN", "response_headers", `"body"`} {
+	for _, forbidden := range []string{"PRIVATE_FAIL_BODY", "PRIVATE_COOKIE", "PRIVATE_UNKNOWN", "response_headers", `"body"`, `"tokens"`} {
 		if strings.Contains(rows[0].RawMessage, forbidden) {
 			t.Fatalf("replay-safe payload retained %q: %s", forbidden, rows[0].RawMessage)
 		}

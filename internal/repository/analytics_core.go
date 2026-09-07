@@ -277,11 +277,6 @@ func addAnalyticsAggregateRow(dst *analyticsAggregateRow, src analyticsAggregate
 	dst.MissingPricingEvents += src.MissingPricingEvents
 	dst.PricedBillableEvents += src.PricedBillableEvents
 	dst.AccountingAbsentAttempts += src.AccountingAbsentAttempts
-	dst.AccountingMalformedAttempts += src.AccountingMalformedAttempts
-	dst.AccountingUnsupportedVersionAttempts += src.AccountingUnsupportedVersionAttempts
-	dst.AccountingUnsupportedSchemaAttempts += src.AccountingUnsupportedSchemaAttempts
-	dst.AccountingMissingAttempts += src.AccountingMissingAttempts
-	dst.AccountingUnknownQualityAttempts += src.AccountingUnknownQualityAttempts
 	dst.AccountingInvalidAttempts += src.AccountingInvalidAttempts
 	dst.AccountingValidAttempts += src.AccountingValidAttempts
 	dst.AccountingValidCompleteAttempts += src.AccountingValidCompleteAttempts

@@ -60,7 +60,7 @@ export function AttemptPerformance({ provider, data, isLoading, error, onRetry }
             </div>
             <PerformanceSummary summary={data} provider={provider} windowEnd={data.window_end} />
             <p className="text-xs text-muted-foreground">
-              TTFT and Output TPS exclude failed attempts plus {formatCompact(data.successful_execution.non_generating)} non-generating and {formatCompact(data.successful_execution.non_streaming)} non-streaming successful attempts. Unknown execution is reported separately.
+              TTFT and Output TPS exclude failed attempts plus {formatCompact(data.successful_execution.non_generating)} non-generating and {formatCompact(data.successful_execution.non_streaming)} non-streaming successful attempts. Output TPS additionally requires complete canonical output and valid timing.
             </p>
             <details className="rounded-lg border border-border p-3">
               <summary className="cursor-pointer text-sm font-medium">Compare provider, actual model, and account</summary>
@@ -90,10 +90,7 @@ function PerformanceSummary({ summary, provider, windowEnd }: { summary: UsageAt
       </MetricSection>
       <MetricSection title="Output TPS">
         {provider ? (
-          <>
-            <MetricRow label="Generate + stream" metric={summary.output_tps.generating_streaming} kind="tps" />
-            <MetricRow label="Execution unknown" metric={summary.output_tps.unknown_execution} kind="tps" />
-          </>
+          <MetricRow label="Canonical generate + stream" metric={summary.output_tps.generating_streaming} kind="tps" />
         ) : (
           <p className="text-xs text-muted-foreground">Select a provider for comparable throughput.</p>
         )}

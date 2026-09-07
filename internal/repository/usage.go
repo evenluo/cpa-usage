@@ -43,23 +43,33 @@ func loadPriceSettingsByModel(db *gorm.DB) (map[string]entities.ModelPriceSettin
 }
 
 func calculateUsageEventCost(event entities.UsageEvent, pricing entities.ModelPriceSetting) float64 {
-	inputTokens := event.InputTokens
-	if inputTokens < 0 {
-		inputTokens = 0
+	facts := InterpretUsageAttempt(event).Accounting
+	if facts.State != AccountingValid || facts.Quality == nil || *facts.Quality != "complete" {
+		return 0
 	}
-	completionTokens := event.OutputTokens
-	if completionTokens < 0 {
-		completionTokens = 0
-	}
-	cachedTokens := event.CachedTokens
-	if cachedTokens < 0 {
-		cachedTokens = 0
-	}
-	promptTokens := inputTokens - cachedTokens
-	if promptTokens < 0 {
-		promptTokens = 0
-	}
+	promptTokens := optionalInt64Value(facts.Input.UncachedTokens) + optionalInt64Value(facts.Input.CacheWriteTokens)
+	completionTokens := optionalInt64Value(facts.Output.TotalTokens)
+	cachedTokens := optionalInt64Value(facts.Input.CacheReadTokens)
 	return (float64(promptTokens)/1_000_000.0)*pricing.PromptPricePer1M +
 		(float64(completionTokens)/1_000_000.0)*pricing.CompletionPricePer1M +
 		(float64(cachedTokens)/1_000_000.0)*pricing.CachePricePer1M
+}
+
+func usageEventHasCompleteAccounting(event entities.UsageEvent) bool {
+	facts := InterpretUsageAttempt(event).Accounting
+	return facts.State == AccountingValid && facts.Quality != nil && *facts.Quality == "complete"
+}
+
+func usageEventCanonicalTokenStats(event entities.UsageEvent) (dto.TokenStats, bool) {
+	facts := InterpretUsageAttempt(event).Accounting
+	if facts.State != AccountingValid {
+		return dto.TokenStats{}, false
+	}
+	return dto.TokenStats{
+		InputTokens:     optionalInt64Value(facts.Input.TotalTokens),
+		OutputTokens:    optionalInt64Value(facts.Output.TotalTokens),
+		ReasoningTokens: optionalInt64Value(facts.Output.ReasoningTokens),
+		CachedTokens:    optionalInt64Value(facts.Input.CacheReadTokens),
+		TotalTokens:     optionalInt64Value(facts.TotalTokens),
+	}, true
 }

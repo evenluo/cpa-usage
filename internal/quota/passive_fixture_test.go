@@ -48,7 +48,7 @@ func TestPinnedProducerFixtureNormalizesAccountModelTimeAndUnits(t *testing.T) {
 }
 
 func TestPinnedV7262FixtureKeepsPassiveQuotaUnavailable(t *testing.T) {
-	payload, err := os.ReadFile(filepath.Join("..", "cpa", "testdata", "authfiles", "v7.2.62-no-passive-quota.json"))
+	payload, err := os.ReadFile(filepath.Join("..", "cpa", "testdata", "authfiles", "without-passive-quota.json"))
 	if err != nil {
 		t.Fatalf("read baseline fixture: %v", err)
 	}
@@ -58,6 +58,6 @@ func TestPinnedV7262FixtureKeepsPassiveQuotaUnavailable(t *testing.T) {
 	}
 	got := NormalizePassiveQuotaSnapshot(response.Files[0].Type, response.Files[0].Quota, response.Files[0].ModelQuotas)
 	if got.Account != nil || len(got.Models) != 0 {
-		t.Fatalf("v7.2.62 fixture must remain unavailable, got %+v", got)
+		t.Fatalf("a response without quota observations must remain unavailable, got %+v", got)
 	}
 }

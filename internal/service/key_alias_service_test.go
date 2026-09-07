@@ -87,6 +87,22 @@ func TestKeyAliasServiceManagesRawAPIKeyAliasesByOpaqueID(t *testing.T) {
 	defer closeTestDatabase(t, db)
 
 	now := time.Date(2026, 5, 18, 8, 0, 0, 0, time.UTC)
+	version, million, zero := int64(2), int64(1_000_000), int64(0)
+	quality := "complete"
+	canonicalUsage := entities.UsageAccounting{
+		AccountingVersion:           &version,
+		TokenSchemaVersion:          &version,
+		TokenQuality:                &quality,
+		CanonicalTotalTokens:        &million,
+		CanonicalInputTokens:        &million,
+		CanonicalUncachedTokens:     &million,
+		CanonicalCacheReadTokens:    &zero,
+		CanonicalCacheWriteTokens:   &zero,
+		CanonicalOutputTokens:       &zero,
+		CanonicalNonReasoningTokens: &zero,
+		CanonicalReasoningTokens:    &zero,
+		CanonicalUnclassifiedTokens: &zero,
+	}
 	if _, err := repository.UpsertModelPriceSetting(db, repodto.ModelPriceSettingInput{
 		Model:            "priced-model",
 		PromptPricePer1M: 1,
@@ -94,27 +110,25 @@ func TestKeyAliasServiceManagesRawAPIKeyAliasesByOpaqueID(t *testing.T) {
 		t.Fatalf("upsert pricing: %v", err)
 	}
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
-		EventKey:    "api-key-event",
-		APIGroupKey: "sk-live-secret-value",
-		AuthType:    "oauth",
-		AuthIndex:   "account-key",
-		Source:      "operator@example.com",
-		Provider:    "OpenAI",
-		Model:       "priced-model",
-		Timestamp:   now,
-		InputTokens: 1_000_000,
-		TotalTokens: 1_000_000,
+		EventKey:        "api-key-event",
+		APIGroupKey:     "sk-live-secret-value",
+		AuthType:        "oauth",
+		AuthIndex:       "account-key",
+		Source:          "operator@example.com",
+		Provider:        "OpenAI",
+		Model:           "priced-model",
+		Timestamp:       now,
+		UsageAccounting: canonicalUsage,
 	}, {
-		EventKey:    "provider-fallback",
-		APIGroupKey: "OpenAI",
-		AuthType:    "oauth",
-		AuthIndex:   "account-key",
-		Source:      "operator@example.com",
-		Provider:    "OpenAI",
-		Model:       "priced-model",
-		Timestamp:   now.Add(time.Minute),
-		InputTokens: 1_000_000,
-		TotalTokens: 1_000_000,
+		EventKey:        "provider-fallback",
+		APIGroupKey:     "OpenAI",
+		AuthType:        "oauth",
+		AuthIndex:       "account-key",
+		Source:          "operator@example.com",
+		Provider:        "OpenAI",
+		Model:           "priced-model",
+		Timestamp:       now.Add(time.Minute),
+		UsageAccounting: canonicalUsage,
 	}}); err != nil {
 		t.Fatalf("insert usage event: %v", err)
 	}

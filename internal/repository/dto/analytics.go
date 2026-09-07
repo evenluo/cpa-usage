@@ -40,14 +40,9 @@ type AnalyticsAccountingSummary struct {
 }
 
 type AnalyticsAccountingStates struct {
-	Absent                       int64
-	Malformed                    int64
-	UnsupportedAccountingVersion int64
-	UnsupportedSchemaVersion     int64
-	Missing                      int64
-	UnknownQuality               int64
-	Invalid                      int64
-	Valid                        int64
+	Absent  int64
+	Invalid int64
+	Valid   int64
 }
 
 type AnalyticsAccountingValidQuality struct {
@@ -77,79 +72,83 @@ type AnalyticsAccountingOutputComposition struct {
 }
 
 type AnalyticsTrendPoint struct {
-	Label           string
-	BucketStart     time.Time
-	BucketEnd       time.Time
-	TotalCost       float64
-	TotalTokens     int64
-	InputTokens     int64
-	OutputTokens    int64
-	ReasoningTokens int64
-	CachedTokens    int64
-	RequestCount    int64
-	SuccessCount    int64
-	FailureCount    int64
-	CostAvailable   bool
-	CostStatus      string
+	Label                  string
+	BucketStart            time.Time
+	BucketEnd              time.Time
+	TotalCost              float64
+	TotalTokens            int64
+	InputTokens            int64
+	OutputTokens           int64
+	ReasoningTokens        int64
+	CachedTokens           int64
+	RequestCount           int64
+	SuccessCount           int64
+	FailureCount           int64
+	CanonicalValidAttempts int64
+	CostAvailable          bool
+	CostStatus             string
 }
 
 type AnalyticsKeyAliasTrendPoint struct {
-	Label         string
-	TotalCost     float64
-	TotalTokens   int64
-	CostAvailable bool
-	CostStatus    string
+	Label                  string
+	TotalCost              float64
+	TotalTokens            int64
+	CanonicalValidAttempts int64
+	CostAvailable          bool
+	CostStatus             string
 }
 
 type AnalyticsKeyAliasBreakdown struct {
-	Label          string
-	Traceability   string
-	MaskedIdentity string
-	AuthType       int
-	Identity       string
-	Alias          string
-	Name           string
-	AuthTypeName   string
-	Type           string
-	Provider       string
-	Prefix         string
-	BaseURL        string
-	IsDeleted      bool
-	TotalCost      float64
-	TotalTokens    int64
-	RequestCount   int64
-	SuccessCount   int64
-	FailureCount   int64
-	SuccessRate    float64
-	LastUsedAt     *time.Time
-	CostAvailable  bool
-	CostStatus     string
-	Trend          []AnalyticsKeyAliasTrendPoint
+	Label                  string
+	Traceability           string
+	MaskedIdentity         string
+	AuthType               int
+	Identity               string
+	Alias                  string
+	Name                   string
+	AuthTypeName           string
+	Type                   string
+	Provider               string
+	Prefix                 string
+	BaseURL                string
+	IsDeleted              bool
+	TotalCost              float64
+	TotalTokens            int64
+	RequestCount           int64
+	SuccessCount           int64
+	FailureCount           int64
+	CanonicalValidAttempts int64
+	SuccessRate            float64
+	LastUsedAt             *time.Time
+	CostAvailable          bool
+	CostStatus             string
+	Trend                  []AnalyticsKeyAliasTrendPoint
 }
 
 type AnalyticsModelBreakdown struct {
-	Model                 string
-	Provider              string
-	TotalCost             float64
-	TotalTokens           int64
-	RequestCount          int64
-	SuccessCount          int64
-	FailureCount          int64
-	InputTokens           int64
-	OutputTokens          int64
-	ReasoningTokens       int64
-	CachedTokens          int64
-	CacheReadTokens       int64
-	SuccessRate           float64
-	TotalLatencyMS        int64
-	LatencySampleCount    int64
-	AverageLatencyMS      float64
-	CostAvailable         bool
-	CostStatus            string
-	CacheReadShare        float64
-	CacheReadCoverage     float64
-	CacheReadShareState   string
-	EstimatedCacheSavings *float64
+	Model                  string
+	Provider               string
+	TotalCost              float64
+	TotalTokens            int64
+	RequestCount           int64
+	SuccessCount           int64
+	FailureCount           int64
+	InputTokens            int64
+	OutputTokens           int64
+	ReasoningTokens        int64
+	CachedTokens           int64
+	CacheReadTokens        int64
+	CanonicalValidAttempts int64
+	SuccessRate            float64
+	TotalLatencyMS         int64
+	LatencySampleCount     int64
+	AverageLatencyMS       float64
+	CostAvailable          bool
+	CostStatus             string
+	CacheReadShare         float64
+	CacheReadCoverage      float64
+	CacheReadShareState    string
+	EstimatedCacheSavings  *float64
 }
 
 type AnalyticsInsight struct {
@@ -165,12 +164,13 @@ type AnalyticsInsight struct {
 }
 
 type AnalyticsProviderOption struct {
-	Provider      string
-	RequestCount  int64
-	TotalTokens   int64
-	TotalCost     float64
-	CostAvailable bool
-	CostStatus    string
+	Provider               string
+	RequestCount           int64
+	TotalTokens            int64
+	CanonicalValidAttempts int64
+	TotalCost              float64
+	CostAvailable          bool
+	CostStatus             string
 }
 
 type AnalyticsComparison struct {
@@ -182,16 +182,17 @@ type AnalyticsComparison struct {
 }
 
 type AnalyticsHeatmapCell struct {
-	Hour          int
-	InRange       bool
-	BucketStart   time.Time
-	BucketEnd     time.Time
-	TotalTokens   int64
-	TotalCost     float64
-	RequestCount  int64
-	FailureCount  int64
-	CostAvailable bool
-	CostStatus    string
+	Hour                   int
+	InRange                bool
+	BucketStart            time.Time
+	BucketEnd              time.Time
+	TotalTokens            int64
+	TotalCost              float64
+	RequestCount           int64
+	FailureCount           int64
+	CanonicalValidAttempts int64
+	CostAvailable          bool
+	CostStatus             string
 }
 
 type AnalyticsHeatmapRow struct {

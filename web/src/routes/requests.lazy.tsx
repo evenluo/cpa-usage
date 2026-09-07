@@ -406,7 +406,7 @@ function RequestListItem({
       <div className="min-w-0 text-right">
         <p className="whitespace-nowrap text-sm font-medium">{formatOutputTPS(event.output_tps)}</p>
         <p className="mt-0.5 whitespace-nowrap text-xs text-muted-foreground">
-          {formatCompact(event.tokens?.total_tokens ?? 0, 2)} · {event.failed ? "Failed" : "Success"}
+          {event.tokens?.total_tokens === null || event.tokens?.total_tokens === undefined ? "Tokens unavailable" : `${formatCompact(event.tokens.total_tokens, 2)} canonical`} · {event.failed ? "Failed" : "Success"}
         </p>
       </div>
     </button>

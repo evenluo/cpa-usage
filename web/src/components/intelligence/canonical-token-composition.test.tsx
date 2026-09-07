@@ -9,7 +9,7 @@ const accounting: AccountingSummary = {
   total_attempts: 10,
   valid_attempts: 3,
   coverage_pct: 30,
-  states: { valid: 3, absent: 1, malformed: 1, unsupported_accounting_version: 1, unsupported_schema_version: 1, missing: 1, unknown_quality: 1, invalid: 1 },
+  states: { valid: 3, absent: 6, invalid: 1 },
   valid_quality: { complete: 1, inconsistent: 1, unclassified: 1 },
   composition: {
     total_tokens: 155,
@@ -31,22 +31,22 @@ describe("Canonical token composition", () => {
     expect(summary.parentElement).toHaveAttribute("open")
     expect(screen.getByText(/3 \/ 10 attempts have valid/)).toBeInTheDocument()
     expect(screen.getByText(/Quality among 3 valid attempts: complete 1, inconsistent 1, unclassified 1/)).toBeInTheDocument()
-    expect(screen.getByText(/Absent \/ historical 1; Malformed fields 1/)).toHaveTextContent("Invalid bucket totals 1")
-    expect(screen.getByText(/Cost completeness: available/)).toBeInTheDocument()
+    expect(screen.getByText(/Canonical facts absent 6/)).toHaveTextContent("Invalid canonical facts 1")
+    expect(screen.getByText(/Local cost estimate completeness: available/)).toBeInTheDocument()
     expect(screen.getByText("Canonical total").nextElementSibling).toHaveTextContent("155")
     expect(screen.getByText("Canonical input total").nextElementSibling).toHaveTextContent("100")
     expect(screen.getByText("Canonical output total").nextElementSibling).toHaveTextContent("50")
     expect(screen.getByText(/Input = uncached/)).toHaveTextContent("Total = input + output + unclassified")
   })
 
-  it("keeps old-only or empty windows unavailable instead of displaying zero canonical totals", () => {
+  it("keeps canonical-absent or empty windows unavailable instead of displaying zero canonical totals", () => {
     const unavailable = { ...accounting, valid_attempts: 0, coverage_pct: 0, valid_quality: { complete: 0, inconsistent: 0, unclassified: 0 } }
     render(<CanonicalTokenComposition accounting={unavailable} costStatus="partial" />)
     expect(screen.getByText(/Canonical totals unavailable/)).toBeInTheDocument()
     expect(screen.queryByText("Canonical total")).not.toBeInTheDocument()
-    expect(getAccountingCaption(unavailable)).toContain("unavailable · 0%")
-    expect(getAccountingCaption({ ...unavailable, total_attempts: 0, coverage_pct: null })).toBe("Canonical accounting: no attempts")
-    expect(getAccountingCaption()).toBe("Canonical accounting unavailable")
+    expect(getAccountingCaption(unavailable)).toBe("Canonical tokens unavailable")
+    expect(getAccountingCaption({ ...unavailable, total_attempts: 0, coverage_pct: null })).toBe("No attempts")
+    expect(getAccountingCaption()).toBe("Canonical tokens unavailable")
   })
 
   it("does not promote valid inconsistent quality or double-add the reasoning and cache subsets", () => {

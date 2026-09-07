@@ -78,6 +78,7 @@ function createFixture(accountCount: number, quotaRowsPerAccount: number): LiveC
     disabled: false,
     plan_type: index % 10 === 0 ? "pro" : "team",
     total_tokens: 0,
+    canonical_valid_attempts: 0,
     total_cost: 0,
     cost_available: false,
     last_used_at: null,

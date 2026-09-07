@@ -21,6 +21,7 @@ function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
     provider: "Codex",
     disabled: false,
     total_tokens: 0,
+    canonical_valid_attempts: 0,
     total_cost: 0,
     cost_available: false,
     last_used_at: null,

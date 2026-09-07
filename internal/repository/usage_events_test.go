@@ -23,7 +23,7 @@ func TestListUsageEventsWithFilterAppliesTimeBoundsAndPagination(t *testing.T) {
 		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), Source: "source-b", AuthIndex: "2", TotalTokens: 20},
 		{EventKey: "event-3", APIGroupKey: "provider-b", Model: "claude-opus", Timestamp: time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC), Source: "source-c", AuthIndex: "3", TotalTokens: 30},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestListUsageEventsWithFilterPagesByTimestampAndID(t *testing.T) {
 		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: timestamp, Source: "source-b", AuthIndex: "2", TotalTokens: 20},
 		{EventKey: "event-3", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: timestamp.Add(-time.Hour), Source: "source-c", AuthIndex: "3", TotalTokens: 30},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -110,7 +110,7 @@ func TestListUsageEventsWithFilterKeepsDistinctCorrelatedAttemptsWithinProviderA
 		{EventKey: "outside-lower", RequestID: "request-42", Provider: "claude", Timestamp: start.Add(-time.Nanosecond)},
 		{EventKey: "missing-request", RequestID: "", Provider: "claude", Timestamp: end},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -168,7 +168,7 @@ func TestListUsageEventsWithFilterAppliesModelSourceAndResultFilters(t *testing.
 		{EventKey: "event-3", APIGroupKey: "provider-b", Model: "claude-opus", Timestamp: time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC), Source: "source-a", Failed: false, TotalTokens: 30},
 		{EventKey: "event-4", APIGroupKey: "provider-c", Model: "gpt-5", Timestamp: time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC), Source: "source-b", Failed: false, TotalTokens: 40},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -196,7 +196,7 @@ func TestListUsageEventsWithFilterAppliesAuthIndexFilter(t *testing.T) {
 		{EventKey: "event-3", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC), Source: "other", AuthIndex: "other", TotalTokens: 30},
 		{EventKey: "event-4", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC), Source: "auth-1", AuthIndex: "auth-1", Provider: "Provider A", TotalTokens: 40},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -225,7 +225,7 @@ func TestListUsageEventsWithFilterReturnsModelsUnaffectedByListFilters(t *testin
 		{EventKey: "event-2", APIGroupKey: "provider-a", Model: "claude-sonnet", Timestamp: time.Date(2026, 4, 16, 10, 0, 0, 0, time.UTC), Source: "source-b", Failed: true, TotalTokens: 20},
 		{EventKey: "event-3", APIGroupKey: "provider-b", Model: "gpt-5", Timestamp: time.Date(2026, 4, 16, 11, 0, 0, 0, time.UTC), Source: "source-a", Failed: false, TotalTokens: 30},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -264,7 +264,7 @@ func TestListUsageAnalysisWithFilterAggregatesApisAndModels(t *testing.T) {
 			InputTokens: 30, OutputTokens: 7, ReasoningTokens: 3, CachedTokens: 2, TotalTokens: 42,
 		},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -309,7 +309,7 @@ func TestListUsageAnalysisWithFilterKeepsModelsForBlankAPIGroup(t *testing.T) {
 			InputTokens: 10, OutputTokens: 4, ReasoningTokens: 2, CachedTokens: 1, TotalTokens: 17,
 		},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("InsertUsageEvents returned error: %v", err)
 	}
 
@@ -320,7 +320,7 @@ func TestListUsageAnalysisWithFilterKeepsModelsForBlankAPIGroup(t *testing.T) {
 	if len(apiRows) != 1 {
 		t.Fatalf("expected one api row, got %d", len(apiRows))
 	}
-	if apiRows[0].APIGroupKey != "unknown" || len(apiRows[0].Models) != 1 || apiRows[0].Models[0].Model != "blank-model" || apiRows[0].Models[0].TotalTokens != 17 {
+	if apiRows[0].APIGroupKey != "unknown" || len(apiRows[0].Models) != 1 || apiRows[0].Models[0].Model != "blank-model" || apiRows[0].Models[0].TotalTokens != 14 {
 		t.Fatalf("expected unknown api row to keep model breakdown, got %+v", apiRows[0])
 	}
 }

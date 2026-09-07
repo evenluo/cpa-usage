@@ -20,7 +20,8 @@
       "mean_latency_ms": 100,
       "total_cost": 1,
       "cost_available": true,
-      "cost_status": "available"
+      "cost_status": "available",
+      "canonical_valid_attempts": 2
     },
     {
       "model_alias": "route-a",
@@ -33,7 +34,8 @@
       "mean_latency_ms": 300,
       "total_cost": 0,
       "cost_available": false,
-      "cost_status": "unavailable"
+      "cost_status": "unavailable",
+      "canonical_valid_attempts": 1
     },
     {
       "model_alias": "actual-b",
@@ -46,7 +48,8 @@
       "mean_latency_ms": 200,
       "total_cost": 0,
       "cost_available": false,
-      "cost_status": "unavailable"
+      "cost_status": "unavailable",
+      "canonical_valid_attempts": 1
     },
     {
       "model_alias": "route-missing-provider",
@@ -59,8 +62,10 @@
       "mean_latency_ms": 0,
       "total_cost": 0,
       "cost_available": true,
-      "cost_status": "available"
+      "cost_status": "available",
+      "canonical_valid_attempts": 1
     }
   ],
-  "other_attempts": 0
+  "other_attempts": 0,
+  "canonical_valid_attempts": 6
 }

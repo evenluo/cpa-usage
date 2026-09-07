@@ -176,8 +176,8 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		filter.Page = page
 	}
 	pageSizeValue := strings.TrimSpace(query.Get("page_size"))
-	if pageSizeValue == "" {
-		pageSizeValue = strings.TrimSpace(query.Get("limit"))
+	if query.Has("limit") {
+		return usageEventListFilter{}, fmt.Errorf("use page_size instead of removed limit parameter")
 	}
 	if pageSizeValue != "" {
 		pageSize, err := strconv.Atoi(pageSizeValue)
@@ -190,25 +190,12 @@ func parseUsageEventListFilterQuery(req *http.Request, anchor time.Time) (usageE
 		filter.PageSize = pageSize
 	}
 	filter.Offset = (filter.Page - 1) * filter.PageSize
-	if hasUsageDiagnosticSelection(query) {
-		selection, err := parseUsageDiagnosticSelection(query)
-		if err != nil {
-			return usageEventListFilter{}, err
-		}
-		filter.Provider = selection.Provider
-		filter.Model = selection.Model
-		filter.ModelAlias = selection.ModelAlias
-		filter.Account = selection.Account
-		filter.Endpoint = selection.Endpoint
-		filter.Status = selection.Status
-		filter.RequestID = selection.RequestID
-		filter.MinLatencyMS = selection.MinLatencyMS
-	} else {
-		// Preserve the existing event-list contract when no diagnostic-only
-		// selection is present; model/provider historically only trim whitespace.
-		filter.Model = strings.TrimSpace(query.Get("model"))
-		filter.Provider = strings.TrimSpace(query.Get("provider"))
+	selection, err := parseUsageDiagnosticSelection(query)
+	if err != nil {
+		return usageEventListFilter{}, err
 	}
+	selection.usageWindow = filter.usageWindow
+	filter.usageDiagnosticFilter = selection
 	filter.Source = strings.TrimSpace(query.Get("source"))
 	filter.AuthIndex = strings.TrimSpace(query.Get("auth_index"))
 	filter.Result = strings.TrimSpace(query.Get("result"))

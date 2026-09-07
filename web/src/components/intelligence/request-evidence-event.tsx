@@ -38,7 +38,7 @@ export function RequestEvidenceEvent({ event, label, syncState, detail = false }
       <div className="mt-3 grid min-w-0 grid-cols-3 gap-3">
         <RequestMetric label="Output TPS" value={formatOutputTPS(event.output_tps)} />
         <RequestMetric label="Latency" value={formatLatency(event.latency_ms)} />
-        <RequestMetric label="Tokens" value={formatCompact(event.tokens?.total_tokens ?? 0, 2)} />
+        <RequestMetric label="Canonical tokens" value={formatTokenCount(event.tokens?.total_tokens)} />
       </div>
       {detail ? <RequestEvidenceDetail event={event} /> : null}
     </section>
@@ -61,12 +61,6 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
     ["Generate", formatOptionalBoolean(facts?.generate)],
     ["Stream", formatOptionalBoolean(facts?.stream)],
     ["TTFT", event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms)],
-    ["Input tokens", formatTokenCount(event.tokens?.input_tokens)],
-    ["Output tokens", formatTokenCount(event.tokens?.output_tokens)],
-    ["Reasoning tokens", formatTokenCount(event.tokens?.reasoning_tokens)],
-    ["Generic cached tokens", formatTokenCount(event.tokens?.cached_tokens)],
-    ["Cache read tokens", formatTokenCount(event.tokens?.cache_read_tokens)],
-    ["Cache creation tokens", formatTokenCount(event.tokens?.cache_creation_tokens)],
     ["Canonical accounting", accounting ? ACCOUNTING_STATE_LABELS[accounting.state] : "Unavailable"],
     ["Accounting version", formatOptionalNumber(accounting?.accounting_version)],
     ["Token schema version", formatOptionalNumber(accounting?.schema_version)],
@@ -76,7 +70,7 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
 
   return (
     <div className="mt-4 border-t border-terracotta-200 pt-3 dark:border-terracotta-900/60">
-      <p className="mb-3 text-xs text-muted-foreground">Canonical values are reported evidence; only valid structure enters composition, with quality qualified separately. Missing facts are shown as -. Output TPS uses provider-reported output with repository eligibility checks.</p>
+      <p className="mb-3 text-xs text-muted-foreground">Canonical values are upstream evidence; only valid structure enters composition, with quality qualified separately. Missing facts are shown as -. Output TPS uses complete canonical output for generating streaming attempts.</p>
       <dl className="grid min-w-0 gap-x-4 gap-y-3 sm:grid-cols-2">
         {fields.map(([label, value]) => (
           <div key={label} className="min-w-0">

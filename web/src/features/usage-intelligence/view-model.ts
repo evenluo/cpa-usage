@@ -34,7 +34,7 @@ export type TrendView = "cost-token" | "requests-token" | "tokens"
 
 export interface UsageKpiSparklineData {
   cost: Array<number | null>
-  tokens: number[]
+  tokens: Array<number | null>
   requests: number[]
   successRate: number[]
 }
@@ -85,7 +85,7 @@ export function deriveKpiSparklineData(trend: TrendPoint[]): UsageKpiSparklineDa
   if (trend.length === 0) return null
   return {
     cost: trend.map((point) => (point.cost_status === "unavailable" ? null : point.total_cost)),
-    tokens: trend.map((point) => point.total_tokens),
+    tokens: trend.map((point) => point.canonical_valid_attempts > 0 ? point.total_tokens : null),
     requests: trend.map((point) => point.request_count),
     successRate: trend.map((point) => {
       const success = Math.max(point.request_count - point.failure_count, 0)
@@ -104,17 +104,17 @@ export function getLeaderboardRows(
 
 export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
   if (costStatus === "unavailable") return "Sort: Tokens"
-  if (costStatus === "partial") return "Sort: Cost partial"
+  if (costStatus === "partial") return "Sort: Local estimate incomplete"
   return "Sort: Cost"
 }
 
 export function getCacheReadShareCaption(state?: CacheReadShareState, coverage?: number): string | undefined {
   if (state === undefined) return undefined
-  if (state === "no_prompt_input") return "No prompt input"
+  if (state === "no_prompt_input") return "No canonical input"
   if (state === "no_cache_data") return "No exact cache data"
   const label = state === "available" ? "Exact" : "Partial"
   if (coverage === undefined) return label
-  return `${label} · covers ${coverage.toFixed(1)}% of prompt input`
+  return `${label} · covers ${coverage.toFixed(1)}% of canonical input`
 }
 
 export function getCacheReadShareValue(value?: number, state?: CacheReadShareState): number | undefined {
@@ -123,26 +123,21 @@ export function getCacheReadShareValue(value?: number, state?: CacheReadShareSta
 }
 
 export const ACCOUNTING_STATE_LABELS: Record<AccountingState, string> = {
-  absent: "Absent / historical",
-  malformed: "Malformed fields",
-  unsupported_accounting_version: "Unsupported accounting version",
-  unsupported_schema_version: "Unsupported schema version",
-  missing: "Missing required facts",
-  unknown_quality: "Unknown quality",
-  invalid: "Invalid bucket totals",
+  absent: "Canonical facts absent",
+  invalid: "Invalid canonical facts",
   valid: "Valid structure",
 }
 
 export function getAccountingCaption(accounting?: AccountingSummary): string {
-  if (!accounting) return "Canonical accounting unavailable"
-  if (accounting.coverage_pct === null) return "Canonical accounting: no attempts"
-  if (accounting.valid_attempts === 0) return "Canonical accounting unavailable · 0% of attempts"
+  if (!accounting) return "Canonical tokens unavailable"
+  if (accounting.coverage_pct === null) return "No attempts"
+  if (accounting.valid_attempts === 0) return "Canonical tokens unavailable"
   const quality = accounting.valid_quality.complete === accounting.valid_attempts ? "complete quality" : "qualified quality"
   return `Canonical: ${accounting.coverage_pct.toFixed(1)}% of attempts · ${quality}`
 }
 
-// Render the repository's disjoint buckets and reported totals; never sum legacy
-// scalars or add a reasoning/cache subset back into its parent total.
+// Render the repository's disjoint canonical buckets without adding a subset
+// such as reasoning or cache tokens back into its parent total.
 export function getCanonicalTokenFields(composition?: CanonicalComposition<number | null>): Array<[string, number | null | undefined]> {
   return [
     ["Canonical total", composition?.total_tokens],
@@ -165,7 +160,7 @@ export function getModelMixPresentation(costStatus?: CostStatus): {
     return { measure: "cost", costStateLabel: "By cost" }
   }
   if (costStatus === "partial") {
-    return { measure: "tokens", costStateLabel: "Cost partial, by tokens" }
+    return { measure: "tokens", costStateLabel: "Local estimate incomplete, by tokens" }
   }
   return { measure: "tokens", costStateLabel: "Cost unavailable, by tokens" }
 }

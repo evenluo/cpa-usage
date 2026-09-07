@@ -8,12 +8,7 @@ const canonicalAccounting = {
   valid_attempts: 3,
   coverage_pct: 30,
   states: {
-    absent: 1,
-    malformed: 1,
-    unsupported_accounting_version: 1,
-    unsupported_schema_version: 1,
-    missing: 1,
-    unknown_quality: 1,
+    absent: 6,
     invalid: 1,
     valid: 3,
   },
@@ -44,8 +39,8 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await page.getByText("Canonical token composition").click()
   await expect(page.getByText(/3 \/ 10 attempts have valid canonical structure/)).toBeVisible()
   await expect(page.getByText(/complete 1, inconsistent 1, unclassified 1/)).toBeVisible()
-  await expect(page.getByText(/Absent \/ historical 1; Malformed fields 1/)).toContainText("Invalid bucket totals 1")
-  await expect(page.getByText(/Cost completeness: partial/)).toBeVisible()
+  await expect(page.getByText(/Canonical facts absent 6; Invalid canonical facts 1/)).toBeVisible()
+  await expect(page.getByText(/Local cost estimate completeness: partial/)).toBeVisible()
   const mapping = page.getByRole("link", { name: "Inspect route-a to actual-a attempts" })
   for (const text of ["route-a", "Observed remap → actual-a", "provider-a"]) {
     const label = mapping.getByText(text, { exact: true })

@@ -25,7 +25,8 @@ function trendPoint(overrides: Partial<TrendPoint>): TrendPoint {
     input_tokens: 0,
     output_tokens: 0,
     reasoning_tokens: 0,
-    cached_tokens: 0,
+    cache_read_tokens: 0,
+    canonical_valid_attempts: 1,
     request_count: 0,
     success_count: 0,
     failure_count: 0,
@@ -48,6 +49,7 @@ function keyRow(label: string): KeyAliasBreakdown {
     is_deleted: false,
     total_cost: 0,
     total_tokens: 0,
+    canonical_valid_attempts: 1,
     request_count: 0,
     success_count: 0,
     failure_count: 0,
@@ -79,12 +81,12 @@ describe("Usage Intelligence view model", () => {
   it("derives KPI sparklines without counting unavailable Cost or negative successes", () => {
     const data = deriveKpiSparklineData([
       trendPoint({ total_cost: 2.5, total_tokens: 100, request_count: 4, failure_count: 1 }),
-      trendPoint({ total_cost: 5, total_tokens: 50, request_count: 2, failure_count: 3, cost_status: "unavailable" }),
+      trendPoint({ total_cost: 5, total_tokens: 50, request_count: 2, failure_count: 3, cost_status: "unavailable", canonical_valid_attempts: 0 }),
     ])
 
     expect(data).toEqual({
       cost: [2.5, null],
-      tokens: [100, 50],
+      tokens: [100, null],
       requests: [4, 2],
       successRate: [75, 0],
     })
@@ -103,8 +105,8 @@ describe("Usage Intelligence view model", () => {
         input_tokens: 20,
         output_tokens: 0,
         reasoning_tokens: 0,
-        cached_tokens: 5,
         cache_read_tokens: 5,
+        cache_write_tokens: 0,
         success_rate: 100,
         cost_available: false,
         cost_status: "partial",
@@ -115,7 +117,7 @@ describe("Usage Intelligence view model", () => {
       trend: [trendPoint({ label: "selected-window", request_count: 1 })],
       key_alias_breakdown: [account],
       api_key_breakdown: [apiKey],
-      provider_options: [{ provider: "OpenAI", request_count: 2, total_tokens: 20, total_cost: 10, cost_available: false, cost_status: "partial" }],
+      provider_options: [{ provider: "OpenAI", request_count: 2, total_tokens: 20, canonical_valid_attempts: 1, total_cost: 10, cost_available: false, cost_status: "partial" }],
     }
     const fixedHeatmap = { measure: "tokens" as const, max_tokens: 20, max_cost: 10, max_requests: 2, max_failures: 0, rows: [] }
     const requestHealth = {
@@ -148,11 +150,11 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.hasModelDistribution).toBe(false)
     expect(viewModel.hasInsights).toBe(false)
     expect(viewModel.modelMixMeasure).toBe("tokens")
-    expect(viewModel.modelMixCostStateLabel).toBe("Cost partial, by tokens")
+    expect(viewModel.modelMixCostStateLabel).toBe("Local estimate incomplete, by tokens")
     expect(viewModel.fixedHeatmap).toBe(fixedHeatmap)
     expect(viewModel.serviceHealth).toBe(requestHealth.service_health)
     expect(viewModel.hasLeaderboardBreakdown).toBe(true)
-    expect(viewModel.leaderboardSortLabel).toBe("Sort: Cost partial")
+    expect(viewModel.leaderboardSortLabel).toBe("Sort: Local estimate incomplete")
   })
 
   it("treats core leaderboard arrays as loaded before fixed full-dashboard data arrives", () => {
@@ -167,8 +169,8 @@ describe("Usage Intelligence view model", () => {
           input_tokens: 0,
           output_tokens: 0,
           reasoning_tokens: 0,
-          cached_tokens: 0,
           cache_read_tokens: 0,
+          cache_write_tokens: 0,
           success_rate: 0,
           cost_available: true,
           cost_status: "available",
@@ -202,18 +204,18 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.modelDistribution[0].model).toBe("priced-model")
     expect(viewModel.insights[0].title).toBe("Pricing Missing")
     expect(viewModel.modelMixMeasure).toBe("tokens")
-    expect(viewModel.modelMixCostStateLabel).toBe("Cost partial, by tokens")
+    expect(viewModel.modelMixCostStateLabel).toBe("Local estimate incomplete, by tokens")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
-    expect(viewModel.accountingCaption).toBe("Canonical accounting unavailable · 0% of attempts")
+    expect(viewModel.accountingCaption).toBe("Canonical: 100.0% of attempts · complete quality")
   })
 
   it("derives the Cache KPI caption from the cache read share state", () => {
     expect(getCacheReadShareCaption(undefined, undefined)).toBeUndefined()
-    expect(getCacheReadShareCaption("available", 100)).toBe("Exact · covers 100.0% of prompt input")
+    expect(getCacheReadShareCaption("available", 100)).toBe("Exact · covers 100.0% of canonical input")
     expect(getCacheReadShareCaption("available", undefined)).toBe("Exact")
-    expect(getCacheReadShareCaption("partial", 82.4)).toBe("Partial · covers 82.4% of prompt input")
+    expect(getCacheReadShareCaption("partial", 82.4)).toBe("Partial · covers 82.4% of canonical input")
     expect(getCacheReadShareCaption("no_cache_data", 0)).toBe("No exact cache data")
-    expect(getCacheReadShareCaption("no_prompt_input", 0)).toBe("No prompt input")
+    expect(getCacheReadShareCaption("no_prompt_input", 0)).toBe("No canonical input")
     expect(getCacheReadShareValue(24.6, "partial")).toBe(24.6)
     expect(getCacheReadShareValue(24.6, "available")).toBe(24.6)
     expect(getCacheReadShareValue(0, "no_cache_data")).toBeUndefined()
@@ -270,7 +272,7 @@ describe("Usage Intelligence view model", () => {
     })
     expect(getModelMixPresentation("partial")).toEqual({
       measure: "tokens",
-      costStateLabel: "Cost partial, by tokens",
+      costStateLabel: "Local estimate incomplete, by tokens",
     })
     expect(getModelMixPresentation("unavailable")).toEqual({
       measure: "tokens",

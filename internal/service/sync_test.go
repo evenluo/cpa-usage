@@ -167,7 +167,7 @@ func TestPullRedisUsageInboxOnlyStoresPendingRows(t *testing.T) {
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pull-only","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pull-only"}`),
 		}},
 	})
 
@@ -199,7 +199,7 @@ func TestProcessRedisUsageInboxPersistsEventsWithoutSnapshot(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","endpoint":"/v1/messages","auth_type":"api_key","model":"sonnet","request_id":"process-only","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","endpoint":"/v1/messages","auth_type":"api_key","model":"sonnet","request_id":"process-only"}`),
 		PoppedAt:   time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC),
 	}})
 	if err != nil {
@@ -241,7 +241,7 @@ func TestProcessRedisUsageInboxDoesNotFetchMetadata(t *testing.T) {
 	metadata := &trackingMetadataFetcher{}
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-no-metadata","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-no-metadata"}`),
 		PoppedAt:   time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC),
 	}})
 	if err != nil {
@@ -298,7 +298,7 @@ func TestRedisInboxPullThenProcessPersistsEventsWithoutMetadata(t *testing.T) {
 	metadata := &trackingMetadataFetcher{}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL:         "https://cpa.example.com",
-		RedisQueue:      staticRedisQueue{messages: []string{`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-1","tokens":{"input_tokens":1,"output_tokens":2}}`}},
+		RedisQueue:      staticRedisQueue{messages: []string{withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-1"}`)}},
 		MetadataFetcher: metadata,
 	})
 
@@ -334,7 +334,7 @@ func TestRedisInboxPullThenProcessPersistsValidRowsWhenBatchContainsMalformedMes
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-valid","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-valid"}`),
 			`{bad-json}`,
 		}},
 	})
@@ -399,7 +399,7 @@ func TestProcessRedisUsageInboxProcessesPendingRowsWithoutPoppingRedis(t *testin
 	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pending-1","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"pending-1"}`),
 		PoppedAt:   poppedAt,
 	}})
 	if err != nil {
@@ -447,7 +447,7 @@ func TestRedisInboxPullThenProcessDoesNotWatermarkFilterRedisInboxEvents(t *test
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-26T07:00:00Z","provider":"claude","model":"sonnet","request_id":"old-but-unique","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-26T07:00:00Z","provider":"claude","model":"sonnet","request_id":"old-but-unique"}`),
 		}},
 	})
 
@@ -470,7 +470,7 @@ func TestProcessRedisUsageInboxRetriesProcessFailedRowsWithoutPoppingRedis(t *te
 	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	rows, err := repository.InsertRedisUsageInboxMessages(db, []dto.RedisInboxInsert{{
 		QueueKey:   cpa.ManagementUsageQueueKey,
-		RawMessage: `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"retry-process-failed","tokens":{"input_tokens":1,"output_tokens":2}}`,
+		RawMessage: withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"retry-process-failed"}`),
 		PoppedAt:   poppedAt,
 	}})
 	if err != nil {
@@ -500,13 +500,12 @@ func TestProcessRedisUsageInboxRetriesProcessFailedRowsWithoutPoppingRedis(t *te
 	}
 }
 
-func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEventExists(t *testing.T) {
+func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentHistoricalEventExists(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	timestamp := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
 	tokens := dto.TokenStats{InputTokens: 10, OutputTokens: 20, ReasoningTokens: 5, CachedTokens: 4, TotalTokens: 39}
-	canonicalKey := BuildEventKey("external-api-key", "claude-sonnet", timestamp, "codex-a", "1", false, tokens)
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
-		EventKey:        canonicalKey,
+		EventKey:        "historical-event:equivalent-fields",
 		APIGroupKey:     "external-api-key",
 		Model:           "claude-sonnet",
 		Timestamp:       timestamp,
@@ -520,7 +519,7 @@ func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEven
 		CachedTokens:    tokens.CachedTokens,
 		TotalTokens:     tokens.TotalTokens,
 	}}); err != nil {
-		t.Fatalf("seed canonical usage event: %v", err)
+		t.Fatalf("seed historical usage event: %v", err)
 	}
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
@@ -534,7 +533,7 @@ func TestRedisInboxPullThenProcessKeepsRedisRequestIDWhenEquivalentCanonicalEven
 		t.Fatalf("pull then process returned error: %v", err)
 	}
 	if result.InsertedEvents != 1 || result.DedupedEvents != 0 {
-		t.Fatalf("expected Redis request_id event to insert separately from canonical event, got %+v", result)
+		t.Fatalf("expected Redis request_id event to insert separately from historical event, got %+v", result)
 	}
 	assertUsageEventCount(t, db, 2)
 	var inbox entities.RedisUsageInbox
@@ -575,7 +574,7 @@ func TestRedisInboxPullThenProcessWritesDebugLogsWithoutRawPayload(t *testing.T)
 	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
 		BaseURL: "https://cpa.example.com",
 		RedisQueue: staticRedisQueue{messages: []string{
-			`{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-log","api_key":"raw-secret-key","tokens":{"input_tokens":1,"output_tokens":2}}`,
+			withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"redis-log","api_key":"raw-secret-key"}`),
 		}},
 	})
 
@@ -1417,15 +1416,28 @@ func TestSyncMetadataAggregatesUsageIdentityStatsAfterUpsert(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	eventTime := time.Date(2026, 5, 4, 8, 0, 0, 0, time.UTC)
 	now := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
+	version, input, output, total, zero := int64(2), int64(11), int64(13), int64(24), int64(0)
+	quality := "complete"
 	if _, _, err := repository.InsertUsageEvents(db, []entities.UsageEvent{{
-		EventKey:     "auth-stat-event",
-		AuthType:     "oauth",
-		AuthIndex:    "auth-stat",
-		Model:        "sonnet",
-		Timestamp:    eventTime,
-		InputTokens:  11,
-		OutputTokens: 13,
-		TotalTokens:  24,
+		EventKey:  "auth-stat-event",
+		AuthType:  "oauth",
+		AuthIndex: "auth-stat",
+		Model:     "sonnet",
+		Timestamp: eventTime,
+		UsageAccounting: entities.UsageAccounting{
+			AccountingVersion:           &version,
+			TokenSchemaVersion:          &version,
+			TokenQuality:                &quality,
+			CanonicalTotalTokens:        &total,
+			CanonicalInputTokens:        &input,
+			CanonicalUncachedTokens:     &input,
+			CanonicalCacheReadTokens:    &zero,
+			CanonicalCacheWriteTokens:   &zero,
+			CanonicalOutputTokens:       &output,
+			CanonicalNonReasoningTokens: &output,
+			CanonicalReasoningTokens:    &zero,
+			CanonicalUnclassifiedTokens: &zero,
+		},
 	}}); err != nil {
 		t.Fatalf("seed usage event: %v", err)
 	}
@@ -1447,11 +1459,19 @@ func TestSyncMetadataAggregatesUsageIdentityStatsAfterUpsert(t *testing.T) {
 	if err := db.Where("identity = ?", "auth-stat").First(&identity).Error; err != nil {
 		t.Fatalf("load usage identity: %v", err)
 	}
-	if identity.TotalRequests != 1 || identity.SuccessCount != 1 || identity.InputTokens != 11 || identity.OutputTokens != 13 || identity.TotalTokens != 24 || identity.LastAggregatedUsageEventID == 0 || identity.StatsUpdatedAt == nil || !identity.StatsUpdatedAt.Equal(now) {
+	if identity.TotalRequests != 1 || identity.SuccessCount != 1 || identity.LastAggregatedUsageEventID == 0 || identity.StatsUpdatedAt == nil || !identity.StatsUpdatedAt.Equal(now) {
 		t.Fatalf("expected usage identity stats aggregated after metadata upsert, got %+v", identity)
 	}
 	if identity.FirstUsedAt == nil || !identity.FirstUsedAt.Equal(eventTime) || identity.LastUsedAt == nil || !identity.LastUsedAt.Equal(eventTime) {
 		t.Fatalf("expected usage identity first/last usage times from seeded event, got %+v", identity)
+	}
+	items, _, err := repository.NewUsageIdentityReader(db).ListActiveUsageIdentitiesPage(context.Background(), repository.ListUsageIdentitiesPageRequest{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list usage identities: %v", err)
+	}
+	readIdentity := usageIdentitiesByIdentity(items)["auth-stat"]
+	if readIdentity.CanonicalValidAttempts != 1 || readIdentity.InputTokens != input || readIdentity.OutputTokens != output || readIdentity.TotalTokens != total {
+		t.Fatalf("expected canonical token stats from usage reader, got %+v", readIdentity)
 	}
 }
 
@@ -1652,12 +1672,12 @@ func pullThenProcessRedisInbox(t *testing.T, service *SyncService) (*servicedto.
 	return service.ProcessRedisUsageInbox(context.Background())
 }
 
-func equivalentRedisMessage(apiGroupKey, model string, timestamp time.Time, source, authIndex string, failed bool, latencyMS int64, tokens dto.TokenStats, requestID string) string {
+func equivalentRedisMessage(apiGroupKey, model string, timestamp time.Time, source, authIndex string, failed bool, latencyMS int64, _ dto.TokenStats, requestID string) string {
 	failedValue := "false"
 	if failed {
 		failedValue = "true"
 	}
-	return `{"timestamp":"` + timestamp.UTC().Format(time.RFC3339) + `","latency_ms":` + int64String(latencyMS) + `,"source":"` + source + `","auth_index":"` + authIndex + `","failed":` + failedValue + `,"api_key":"` + apiGroupKey + `","model":"` + model + `","request_id":"` + requestID + `","tokens":{"input_tokens":` + int64String(tokens.InputTokens) + `,"output_tokens":` + int64String(tokens.OutputTokens) + `,"reasoning_tokens":` + int64String(tokens.ReasoningTokens) + `,"cached_tokens":` + int64String(tokens.CachedTokens) + `,"total_tokens":` + int64String(tokens.TotalTokens) + `}}`
+	return `{"timestamp":"` + timestamp.UTC().Format(time.RFC3339) + `","latency_ms":` + int64String(latencyMS) + `,"source":"` + source + `","auth_index":"` + authIndex + `","failed":` + failedValue + `,"api_key":"` + apiGroupKey + `","model":"` + model + `","request_id":"` + requestID + `","accounting_version":2,"generate":true,"stream":true,"token_breakdown":{"schema_version":2,"quality":"complete","total_tokens":0,"input":{"total_tokens":0,"uncached_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0},"output":{"total_tokens":0,"non_reasoning_tokens":0,"reasoning_tokens":0},"unclassified_tokens":0}}`
 }
 
 func int64String(value int64) string {

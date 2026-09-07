@@ -39,7 +39,7 @@ function eventsPage(page: number, provider: string): UsageEventsPage {
       latency_ms: 10,
       ttft_ms: 2,
       output_tps: 100,
-      tokens: { output_tokens: 1, total_tokens: 2 },
+      tokens: { input_tokens: 1, output_tokens: 1, reasoning_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, unclassified_tokens: 0, total_tokens: 2 },
     })),
     window_end: "2026-09-07T12:00:00.123456789Z",
     total_count: 20,

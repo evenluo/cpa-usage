@@ -1,241 +1,38 @@
-# Per-attempt accounting and execution facts
+# Canonical usage accounting
 
-Status: current, slices F/G of Parent #140 / Issues #144 and #145 r1
+Status: current
+Authority: [accepted Accounting v2 direct cut](accounting-v2-direct-cut.md), superseding the additive accounting design from Parent #140 r1.
 
-CPA v7.2.62 (`3554b63721aac9b4202bf2ef88ba7a82b4e5caf8`) emits legacy token
-facts. CPA v7.2.152 (`c76dfd4e0edabab9000628b1560ab8ab379eadb8`) retains the
-v7.2.151 canonical accounting-v2 contract. Readable fields and their two schema
-versions determine support; application version strings do not gate decoding.
-The [pinned synthetic fixtures](../../internal/cpa/testdata/usage/README.md) give
-official producer provenance and consumer examples.
+## One metric source
 
-## Owners and storage
+CPA v7.2.152 (`c76dfd4e0edabab9000628b1560ab8ab379eadb8`) supplies Accounting v2 on every queue message. The queue producer calls `EnsureTokenBreakdownForProvider` before serializing `accounting_version=2`, `token_breakdown`, `generate`, and `stream`.
 
-`internal/cpa/usage_accounting.go` owns typed upstream extension DTOs.
-`internal/service` adds them to the existing replay-safe allowlist and projects
-typed facts to `entities.UsageAccounting`, embedded in `UsageEvent`.
-`repository.InterpretUsageAttempt` owns per-attempt validity and throughput;
-`UsageEventRecord.AttemptFacts` exposes its result on the existing bounded read.
-G projects summary accounting and attempt evidence through `internal/api` and
-the existing frontend token/evidence surfaces; C consumes execution facts for
-its distributions.
+The consumer admits that contract only. `internal/cpa` owns the typed external DTO; `internal/service` owns the replay-safe projection and admission; `internal/repository` owns per-attempt interpretation, metric reads and aggregation. All token consumers use canonical buckets, including selected-window KPI/trend/contributors, overview/analysis, mappings, Request Evidence and CSV. Stored historical scalar columns never supply an alternate metric.
 
-G requires selected-window SQL aggregation plus the existing hourly rollup
-owner; C requires bounded raw per-attempt reads. Nullable scalar columns support
-both without parsing a JSON blob during SQL aggregation. No raw canonical JSON
-is stored. `InsertUsageEvents` materializes `accounting_state` using the same
-repository interpretation before insertion. SQL aggregators may use
-`accounting_state = 'valid'` to select canonical buckets, and must separately
-count/qualify `token_quality`. Direct fixture writes must use `InsertUsageEvents`
-to exercise this contract. Immutable events have no competing update path.
+Input = uncached + cache read + cache write. Output = non-reasoning + reasoning. Total = input + output + unclassified. All nine counters must be present, nonnegative int64 with overflow-safe consistent sums. Both versions must be 2. Quality is `complete`, `inconsistent`, or `unclassified`; complete also requires zero unclassified tokens. Structural validity does not upgrade producer quality.
 
-The existing `input_tokens`, `output_tokens`, `reasoning_tokens`, `cached_tokens`,
-explicit legacy cache fields, and `total_tokens` retain their meanings. Canonical
-columns start with `canonical_`; they never replace or add to legacy columns in
-this slice. Operator Cost Rates, three-rate Cost calculation, and completeness
-remain unchanged. Response tiers do not establish billing or multipliers.
+Cache Read Share is cache-read input divided by canonical input; its input coverage is scoped to canonical observations. Accounting attempt coverage separately identifies missing historical facts.
 
-## Availability and quality
+Historical events retain attempt counts, status and timing, with absent canonical facts. Invalid persisted facts are unavailable. API/UI qualify these observations rather than converting absent tokens into a reported zero. A structurally valid observation reporting zero remains real zero. The repository's availability states are only `valid`, `absent`, and `invalid`; detailed producer-version compatibility matrices are removed.
 
-The read record retains typed reported values even when unavailable. A nil
-number means missing or malformed, never zero. `State` qualifies the whole
-canonical record. The first applicable rule in this table wins:
+## Execution and Cost
 
-| State | Meaning |
-| --- | --- |
-| `malformed` | A supplied accounting field has an invalid JSON type, null, fractional or out-of-int64 number. |
-| `unsupported_accounting_version` | A supplied top-level integer version is not 2. |
-| `unsupported_schema_version` | A supplied nested integer version is not 2. |
-| `absent` | Neither top-level version nor canonical breakdown is present. Historical records remain here. |
-| `missing` | Either version, the breakdown, quality, or a required bucket is absent. |
-| `unknown_quality` | Supplied string quality is outside the supported enum; the persisted category is `unknown`, never arbitrary upstream text. |
-| `invalid` | A bucket is negative, a sum overflows or disagrees, or complete quality includes unclassified tokens. |
-| `valid` | Both versions are 2 and all canonical structural invariants hold. |
+Output TPS = canonical output total × 1000 / (latency_ms − ttft_ms). It includes reasoning tokens and requires complete-quality canonical facts, `generate=true`, `stream=true`, positive output/TTFT, and latency greater than TTFT. Unknown historical execution never supplies TPS. This is a token throughput observation; provider/model tokenization and workloads still affect comparisons.
 
-For records with a quality value, unknown quality is checked before missing
-numeric buckets. No state reconstructs canonical facts from legacy totals,
-provider names, aliases, or tiers. Supported qualities are `complete`,
-`inconsistent`, and `unclassified`. **Valid is not complete**: preserve the
-upstream quality even if every sum holds or the unclassified bucket is zero.
+Requested and response service tier are distinct optional observations. Neither establishes prices or billing multipliers.
 
-Canonical buckets are mutually exclusive:
+Local three-rate Cost uses complete canonical facts only: uncached plus cache-write input at the prompt rate, cache-read input at the cache rate, and total canonical output at the completion rate. Existing operator rates and aliases remain untouched. Missing pricing, unavailable accounting or non-complete quality must qualify Cost as incomplete/unavailable. This defined local estimate is not an upstream bill.
 
-- input total = uncached + cache read + cache write;
-- output total = non-reasoning + reasoning;
-- total = input total + output total + unclassified.
+## Intake and history
 
-All values must be non-negative int64, all nine numeric fields must be present,
-and complete quality additionally requires zero unclassified tokens. Aggregate
-consumers select only valid records for canonical bucket sums, report quality
-and coverage independently, and define their denominators. F does not add
-aggregate metrics or alter rollup units; G owns that implementation.
+Malformed or unsupported incoming messages follow the existing explicit `decode_failed` inbox lifecycle. The consumer never admits them through a legacy decoder or encodes malformed fields into a secondary sentinel protocol. The allowlist excludes raw failure bodies, headers, credentials and client/session metadata even when admission fails.
 
-## Execution and throughput
+The persisted inbox row and `PoppedAt` remain the owners of replay identity/time under ADR 0008/0009. Redis `LPOP` cannot reconstruct previously consumed history. Migration preserves historical raw rows and operator configuration; it does not infer their canonical values or consume the production queue.
 
-`generate` and `stream` are nullable booleans. CPA's verified v2 producer emits
-both, but CPA Usage never synthesizes them for historical or absent fields.
-Malformed flags become unknown. The upstream SDK's defaulting rules do not
-authorize consumer-side historical defaults.
+## Aggregates and upgrade
 
-Existing `service_tier` is the requested tier; `RequestServiceTier` presents it
-as optional text. `response_service_tier` is an independent optional observed
-response tier. Empty/malformed response tiers are unknown. Neither fills or
-overwrites the other.
+Canonical sums and valid quality populations are projected into hourly rollups by the existing transactional rebuild owner. Complete-only prompt/cache-read/output sums and a complete-zero attempt count support the same Cost formula and known/unknown distinction for raw and covered rollup reads. A complete zero-token attempt has known zero Cost without pricing; mixed known and unknown costs are partial. Overview series carries Cost status for every observed bucket. No new worker, cache, version switch, or recovery owner exists.
 
-`InterpretUsageAttempt.OutputTPS` reuses the existing positive-output,
-positive-TTFT, latency-greater-than-TTFT arithmetic and the existing
-`event.OutputTokens` numerator. Valid complete v2 qualifies this reading; any
-other supplied canonical evidence yields no TPS. A legacy output scalar
-exceeding the canonical output total is inconsistent with that evidence and
-also yields no TPS. Explicit non-generating or non-streaming
-attempts yield no TPS. Absent canonical evidence keeps the existing historical
-output interpretation, with absence and unknown flags visible in `AttemptFacts`.
-The formula remains output tokens × 1000 / (latency_ms − ttft_ms).
+For a first upgrade from published main, every pre-upgrade event is canonical-absent. The one-time rollup migration initializes `accounting_absent_attempts=request_count`, leaves all newly added canonical/quality sums zero and preserves every backfill checkpoint/lifecycle field. Subsequent incoming events rebuild only their affected hours. Unpublished intermediate binaries are not supported upgrade sources. Existing pending backfill work retains its original scope.
 
-Compatibility decision (root adjudicated, Parent r1): frozen
-`internal/service/event_key.go:33-41` only fills missing total tokens; it does
-not alter output. In pinned c76
-[usage_helpers.go](https://github.com/router-for-me/CLIProxyAPI/blob/c76dfd4e0edabab9000628b1560ab8ab379eadb8/internal/runtime/executor/helps/usage_helpers.go),
-lines 780-825 retain OpenAI output including its reasoning subset, lines 890-941
-retain Anthropic raw output including thinking, while lines 944-977 retain
-Gemini candidates separately from thoughts. Neither canonical output total nor
-canonical non-reasoning output preserves the existing numerator for all three.
-Positive-reasoning fixtures lock the unchanged numerator. This is not a newly
-defined canonical-output throughput metric, and it must not be described as
-excluding reasoning. C must qualify provider/actual-model/execution populations
-and must not imply exact throughput comparability across provider semantics.
-C owns the
-explicit success/failure and known-execution sample populations and coverage;
-the per-attempt seam does not infer a final client outcome.
-
-## Replay, migration, and compatibility
-
-Malformed extension fields do not discard a valid legacy attempt. The private
-DTO field wrapper projects invalid supplied values as `[]`, a fixed invalid
-type for the allowlisted scalars/objects; the decoder recognizes the same
-malformed state on every replay. Unknown nested fields and excluded sensitive
-fields never enter the inbox. This adds no decoder fallback or recovery owner.
-Malformed base envelopes still follow the existing `decode_failed` lifecycle.
-
-Migration `20260907_add_usage_accounting_fields` only adds columns, with null
-facts, false presence/malformed markers and `absent` state for historical rows.
-It does not update historical tokens, tiers, event identity, inbox payloads, or
-rollups. Existing pending inboxes can only yield the facts already retained in
-their projection. ADR 0008's destructive pop and persisted timestamp contract
-and ADR 0009's inbox-row attempt identity/idempotence remain unchanged.
-
-Compatibility is additive for SQLite and repository reads; legacy scalar/Cost
-semantics and routes remain compatible. The intentional Output TPS correction
-retains provider-specific numerator units and suppresses explicitly
-non-stream/non-generating or qualified canonical samples. No canonical API/UI
-surface is added by F alone. G's additive projection is described below. Main
-integration owns whole-program gates and any production upgrade decision.
-
-## Selected-window composition and supporting evidence (G)
-
-The existing summary response adds `accounting`. `total_attempts` is the selected
-window's attempt count after provider filtering; `valid_attempts` and `states`
-count F's persisted availability states. `coverage_pct` is
-`valid_attempts / total_attempts * 100`, or null when there are no attempts.
-This measures attempt coverage, not token-volume coverage and not completeness
-of all historical usage. Each state count has all selected attempts as its
-denominator. `valid_quality` counts complete, inconsistent and unclassified
-quality **among valid attempts**, with `valid_attempts` as that denominator.
-Structural validity and quality are never merged into a single success verdict.
-
-`composition` sums only `accounting_state = 'valid'` rows. It retains the input,
-output and unclassified structure above, with no legacy scalar substitution or
-addition. Valid inconsistent and unclassified quality still contributes its
-reported canonical buckets, qualified by the independent quality counts. When
-there are no valid attempts, zero aggregate sums are an empty population; the
-UI displays canonical totals as unavailable. Reported zero tokens in a valid
-population remain real zero observations.
-
-Only the current summary needs these aggregates; trend and contributor scalar
-contracts retain their existing units. The summary reuses the existing bounded
-raw/hourly source plan, including partial-hour edges and provider filtering.
-The existing rollup owner stores state/quality counts and canonical sums and
-rebuilds affected buckets on ingestion. The additive rollup migration resets
-the existing backfill checkpoint; the same bounded backfill runner reconstructs
-rollups from persisted rows. Until coverage is complete, the existing observable
-`backfill_incomplete` read path applies. It never fills historical canonical
-columns or infers new upstream facts.
-
-The Tokens KPI and trend continue to use the existing scalar total. A compact
-caption and expandable composition inside Trend Workbench explain accounting
-Metric Completeness and the disjoint buckets. Cost completeness retains its own
-status and configured three-rate calculation, independent of accounting quality
-or tiers. No new KPI group, pricing engine, query endpoint or worker is added.
-
-Request Evidence adds `attempt_facts`, projected directly from F's repository
-read record. Canonical values remain visible even when invalid or incomplete,
-with the repository state and reported quality explaining their interpretation.
-Optional numeric facts, generate/stream and requested/response tiers serialize
-as null and display as `-`; historical records do not acquire implied flags,
-response tiers or canonical buckets. The existing `service_tier` compatibility
-field remains requested tier. Top-level `output_tps` uses the same
-`AttemptFacts.OutputTPS`, preserving provider scalar units and F's eligibility
-correction. Neither canonical output bucket is substituted into throughput.
-
-Compatibility: API fields and SQLite rollup columns are additive. Existing
-scalar metrics, Cost, cache-read share, event identity, auth/routes, and Redis
-effects retain their contracts. API evidence now honors F's intentional TPS
-qualification for invalid/incomplete canonical or non-generating/non-streaming
-attempts. Browser rendering treats an unavailable additive payload explicitly
-as unavailable; it never fabricates a canonical value from scalar fields.
-
-Local bundle evidence (2026-09-07, identical installed dependencies and Vite
-manifest reporting): compared with accepted E+F base `f536cab`, G changes total
-JavaScript from 926,312 to 931,634 bytes (gzip 270,113 to 271,756), and CSS from
-38,804 to 39,029 bytes (gzip 7,799 to 7,835). JavaScript chunk count stays 12;
-there are no added package dependencies. The pre-existing large-chunk warning
-occurs on both builds. This is a local artifact-size comparison, not runtime or
-production latency evidence.
-
-The existing deterministic analytics benchmark (65,536 attempts, 32 providers,
-512 models, 2,048 identities per kind) ran sequentially on a `git archive` of
-base `f536cab0a2f20399f2397ffe0df042f7189409f2`, then implementation
-`7e04dae29f5084af2d703a590766bb57b248c537`, with identical fixtures and command:
-
-```text
-GOCACHE=/tmp/cpa-usage-go-cache GOMAXPROCS=1 go test ./internal/repository -run '^$' -bench '^(BenchmarkAnalyticsCoreRawFastHighCardinality|BenchmarkAnalyticsCoreCoveredRollupHighCardinality)$' -benchmem -count=1 -benchtime=1x
-```
-
-Environment: Apple M4, darwin/arm64, Go 1.27.1. The existing benchmark excludes
-setup, warms the read, and checks bounded top-N output. Other tasks shared the
-host; this is one paired observation, not proof of a stable regression or an SLA.
-
-| Existing path | Base ns/op | G ns/op | Elapsed change | Base / G B/op | Base / G allocs/op |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Raw SQL-limited fast Adapter | 8,245,562,083 | 8,343,143,167 | +1.18% | 833,952 / 927,336 | 7,740 / 7,808 |
-| Covered hourly plan | 779,984,958 | 797,331,166 | +2.22% | 7,420,512 / 7,499,960 | 130,404 / 130,469 |
-
-Raw bytes/allocations change by +11.20%/+0.88%; covered bytes/allocations by
-+1.07%/+0.05%. These observations are inside the existing
-[convergence disposition](analytics-raw-rollup-convergence.md)'s 10% elapsed and
-20% bytes/allocations thresholds; the single sample does not establish timing
-stability. The raw SQL-limited Adapter and current source-plan ownership remain
-unchanged. Migration plan evidence separately verifies indexed extrema reads;
-focused tests cover provider-scoped hybrid windows and bounded backfill completion.
-
-## Local intake performance evidence (2026-09-07)
-
-The committed `BenchmarkRedisUsageAccountingBatchEndToEnd` and the identical
-synthetic fixture files ran on the frozen `2e15df04` source archive and the F
-implementation, sequentially on this Mac with `GOMAXPROCS=1`, `-count=3`, and
-`-benchtime=1x`. Each timed operation ingests 1000 messages with 250 request IDs,
-128 accounts, 32 models, and 64 keys. Timing includes replay projection, inbox
-and event writes, the existing rollup rebuild, and processed marks. Database
-creation and message construction are outside the timer. No production queue,
-credential, DB, or provider request was used.
-
-| Identical input | Baseline median | F median | Baseline / F DB bytes |
-| --- | --- | --- | --- |
-| v7.2.62 legacy | 46.09 ms | 58.85 ms | 1,748,992 / 1,765,376 |
-| v7.2.152 complete | 47.57 ms | 81.11 ms | 1,748,992 / 2,351,104 |
-
-The baseline drops v2 extensions. Preserving and validating them adds 33.54 ms
-per 1000-message v2 batch (about 71% in this sample); legacy batches add about
-28%. These are attributable local measurements, not an idle-host SLA or a
-production throughput claim; other tasks were active on the machine. There is
-no speculative performance cache or extra worker.
+Required proof is strict v2 admission and invalid isolation, safe deterministic replay, historical absence versus actual zero, canonical parity across all read paths, Cost completeness, and upgrade initialization without checkpoint reset. See the PR for exact-head verification results.

@@ -3,19 +3,18 @@ package dto
 // UsageAttemptPerformanceRecord keeps result and execution populations
 // separate so percentile consumers never silently mix unlike attempts.
 type UsageAttemptPerformanceRecord struct {
-	TotalAttempts             int64
-	SuccessfulAttempts        int64
-	FailedAttempts            int64
-	SuccessfulExecution       UsageExecutionPopulationRecord
-	SuccessfulLatencyMS       UsagePercentileRecord
-	FailedLatencyMS           UsagePercentileRecord
-	StreamingTTFTMS           UsagePercentileRecord
-	UnknownExecutionTTFTMS    UsagePercentileRecord
-	StreamingOutputTPS        UsagePercentileRecord
-	UnknownExecutionOutputTPS UsagePercentileRecord
-	Providers                 UsagePerformanceBreakdownRecord
-	Models                    UsagePerformanceBreakdownRecord
-	Accounts                  UsagePerformanceBreakdownRecord
+	TotalAttempts          int64
+	SuccessfulAttempts     int64
+	FailedAttempts         int64
+	SuccessfulExecution    UsageExecutionPopulationRecord
+	SuccessfulLatencyMS    UsagePercentileRecord
+	FailedLatencyMS        UsagePercentileRecord
+	StreamingTTFTMS        UsagePercentileRecord
+	UnknownExecutionTTFTMS UsagePercentileRecord
+	StreamingOutputTPS     UsagePercentileRecord
+	Providers              UsagePerformanceBreakdownRecord
+	Models                 UsagePerformanceBreakdownRecord
+	Accounts               UsagePerformanceBreakdownRecord
 }
 
 const UsagePerformanceBreakdownLimit = 8
@@ -26,17 +25,16 @@ type UsagePerformanceBreakdownRecord struct {
 }
 
 type UsagePerformanceBreakdownItemRecord struct {
-	Value                     string
-	AttemptCount              int64
-	SuccessfulAttempts        int64
-	FailedAttempts            int64
-	SuccessfulExecution       UsageExecutionPopulationRecord
-	SuccessfulLatencyMS       UsagePercentileRecord
-	FailedLatencyMS           UsagePercentileRecord
-	StreamingTTFTMS           UsagePercentileRecord
-	UnknownExecutionTTFTMS    UsagePercentileRecord
-	StreamingOutputTPS        UsagePercentileRecord
-	UnknownExecutionOutputTPS UsagePercentileRecord
+	Value                  string
+	AttemptCount           int64
+	SuccessfulAttempts     int64
+	FailedAttempts         int64
+	SuccessfulExecution    UsageExecutionPopulationRecord
+	SuccessfulLatencyMS    UsagePercentileRecord
+	FailedLatencyMS        UsagePercentileRecord
+	StreamingTTFTMS        UsagePercentileRecord
+	UnknownExecutionTTFTMS UsagePercentileRecord
+	StreamingOutputTPS     UsagePercentileRecord
 }
 
 // UsageExecutionPopulationRecord is an exhaustive, non-overlapping partition

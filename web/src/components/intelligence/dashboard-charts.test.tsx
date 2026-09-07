@@ -48,12 +48,12 @@ describe("DashboardCharts Usage Intelligence fields", () => {
       onSelectLeaderboardScope: vi.fn(),
       leaderboardSortLabel: "Sort: Cost",
       modelMixMeasure: "tokens" as const,
-      modelMixCostStateLabel: "Cost partial, by tokens",
+      modelMixCostStateLabel: "Local estimate incomplete, by tokens",
       onRetryCore: vi.fn(),
     }
     const { rerender } = render(<DashboardCharts {...props} surfaces={surfaces()} />)
     expect(screen.getByText("Canonical token composition")).toBeInTheDocument()
-    expect(screen.getByText(/0 \/ 3 attempts have valid/)).toBeInTheDocument()
+    expect(screen.getByText(/3 \/ 3 attempts have valid/)).toBeInTheDocument()
     rerender(<DashboardCharts {...props} surfaces={surfaces({ core: { status: "error", data: undefined, error: new Error("unavailable") } })} />)
     expect(screen.queryByText("Canonical token composition")).not.toBeInTheDocument()
   })
@@ -72,12 +72,12 @@ describe("DashboardCharts Usage Intelligence fields", () => {
         onSelectLeaderboardScope={vi.fn()}
         leaderboardSortLabel="Sort: Tokens"
         modelMixMeasure="tokens"
-        modelMixCostStateLabel="Cost partial, by tokens"
+        modelMixCostStateLabel="Local estimate incomplete, by tokens"
         onRetryCore={vi.fn()}
       />,
     )
 
-    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Cost partial, by tokens")
+    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Local estimate incomplete, by tokens")
     expect(screen.getByTestId("model-distribution-owner")).toHaveTextContent("tokens:provider-scoped-model")
     expect(screen.getByTestId("insight-rail-owner")).toHaveTextContent("Pricing incomplete")
   })

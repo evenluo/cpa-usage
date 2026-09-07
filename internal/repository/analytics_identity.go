@@ -40,6 +40,7 @@ func buildAnalyticsKeyAliasBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
@@ -97,6 +98,7 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys 
 			` + identityExpr + ` AS identity,
 			` + bucketExpr + ` AS bucket,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
@@ -111,11 +113,12 @@ func buildAnalyticsKeyAliasTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys 
 		key := analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}
 		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPoint{
-			Label:         row.Bucket,
-			TotalCost:     row.TotalCost,
-			TotalTokens:   row.TotalTokens,
-			CostAvailable: cost.Available,
-			CostStatus:    cost.Status,
+			Label:                  row.Bucket,
+			TotalCost:              row.TotalCost,
+			TotalTokens:            row.TotalTokens,
+			CanonicalValidAttempts: row.CanonicalValidAttempts,
+			CostAvailable:          cost.Available,
+			CostStatus:             cost.Status,
 		})
 	}
 	return trends, nil
@@ -187,6 +190,7 @@ func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys []
 			` + identityExpr + ` AS identity,
 			` + bucketExpr + ` AS bucket,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
@@ -201,11 +205,12 @@ func buildAnalyticsAPIKeyTrends(db *gorm.DB, filter dto.AnalyticsFilter, keys []
 		key := analyticsIdentityKey{AuthType: row.AuthType, Identity: row.Identity}
 		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPoint{
-			Label:         row.Bucket,
-			TotalCost:     row.TotalCost,
-			TotalTokens:   row.TotalTokens,
-			CostAvailable: cost.Available,
-			CostStatus:    cost.Status,
+			Label:                  row.Bucket,
+			TotalCost:              row.TotalCost,
+			TotalTokens:            row.TotalTokens,
+			CanonicalValidAttempts: row.CanonicalValidAttempts,
+			CostAvailable:          cost.Available,
+			CostStatus:             cost.Status,
 		})
 	}
 	return trends, nil
@@ -224,26 +229,27 @@ func mapAnalyticsKeyAliasBreakdown(row analyticsIdentityAggregateRow) dto.Analyt
 	maskedIdentity := analyticsMaskedIdentity(authType, row.Identity)
 	label := analyticsKeyAliasLabel(authType, row, maskedIdentity)
 	record := dto.AnalyticsKeyAliasBreakdown{
-		Label:          label,
-		Traceability:   analyticsKeyAliasTraceability(maskedIdentity, row.Provider),
-		MaskedIdentity: maskedIdentity,
-		AuthType:       row.AuthType,
-		Identity:       row.Identity,
-		Alias:          row.Alias,
-		Name:           row.Name,
-		AuthTypeName:   row.AuthTypeName,
-		Type:           row.Type,
-		Provider:       row.Provider,
-		Prefix:         row.Prefix,
-		BaseURL:        row.BaseURL,
-		IsDeleted:      row.IsDeleted,
-		TotalCost:      row.TotalCost,
-		TotalTokens:    row.TotalTokens,
-		RequestCount:   row.RequestCount,
-		SuccessCount:   row.SuccessCount,
-		FailureCount:   row.FailureCount,
-		LastUsedAt:     parseAnalyticsTimestamp(row.LastUsedAt),
-		Trend:          []dto.AnalyticsKeyAliasTrendPoint{},
+		Label:                  label,
+		Traceability:           analyticsKeyAliasTraceability(maskedIdentity, row.Provider),
+		MaskedIdentity:         maskedIdentity,
+		AuthType:               row.AuthType,
+		Identity:               row.Identity,
+		Alias:                  row.Alias,
+		Name:                   row.Name,
+		AuthTypeName:           row.AuthTypeName,
+		Type:                   row.Type,
+		Provider:               row.Provider,
+		Prefix:                 row.Prefix,
+		BaseURL:                row.BaseURL,
+		IsDeleted:              row.IsDeleted,
+		TotalCost:              row.TotalCost,
+		TotalTokens:            row.TotalTokens,
+		RequestCount:           row.RequestCount,
+		SuccessCount:           row.SuccessCount,
+		FailureCount:           row.FailureCount,
+		CanonicalValidAttempts: row.CanonicalValidAttempts,
+		LastUsedAt:             parseAnalyticsTimestamp(row.LastUsedAt),
+		Trend:                  []dto.AnalyticsKeyAliasTrendPoint{},
 	}
 	if row.RequestCount > 0 {
 		record.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100

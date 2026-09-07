@@ -3,7 +3,7 @@ export type TimeRange = "today" | "yesterday" | "24h" | "7d" | "30d"
 export type CostStatus = "available" | "partial" | "unavailable"
 export type CacheReadShareState = "available" | "partial" | "no_cache_data" | "no_prompt_input"
 
-export type AccountingState = "absent" | "malformed" | "unsupported_accounting_version" | "unsupported_schema_version" | "missing" | "unknown_quality" | "invalid" | "valid"
+export type AccountingState = "absent" | "invalid" | "valid"
 export type AccountingQuality = "complete" | "inconsistent" | "unclassified"
 
 export interface CanonicalComposition<T = number> {
@@ -46,8 +46,8 @@ export interface AnalyticsSummary {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
   cache_read_tokens: number
+  cache_write_tokens: number
   success_rate: number
   cost_available: boolean
   cost_status: CostStatus
@@ -64,12 +64,13 @@ export interface TrendPoint {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
+  cache_read_tokens: number
   request_count: number
   success_count: number
   failure_count: number
   cost_available: boolean
   cost_status: CostStatus
+  canonical_valid_attempts: number
 }
 
 export interface KeyAliasBreakdown {
@@ -91,7 +92,8 @@ export interface KeyAliasBreakdown {
   last_used_at: string | null
   cost_available: boolean
   cost_status: CostStatus
-  trend: Array<Pick<TrendPoint, "label" | "total_cost" | "total_tokens" | "cost_available" | "cost_status">>
+  canonical_valid_attempts: number
+  trend: Array<Pick<TrendPoint, "label" | "total_cost" | "total_tokens" | "cost_available" | "cost_status" | "canonical_valid_attempts">>
 }
 
 export interface ModelDistribution {
@@ -102,7 +104,6 @@ export interface ModelDistribution {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
   cache_read_tokens: number
   cache_read_share: number
   cache_read_coverage: number
@@ -117,6 +118,7 @@ export interface ModelDistribution {
   average_latency_ms: number
   cost_available: boolean
   cost_status: CostStatus
+  canonical_valid_attempts: number
 }
 
 export interface Insight {
@@ -135,6 +137,7 @@ export interface ProviderOption {
   provider: string
   request_count: number
   total_tokens: number
+  canonical_valid_attempts: number
   total_cost: number
   cost_available: boolean
   cost_status: CostStatus
@@ -151,6 +154,7 @@ export interface HeatmapCell {
   failure_count: number
   cost_available: boolean
   cost_status: CostStatus
+  canonical_valid_attempts: number
 }
 
 export interface HeatmapRow {
@@ -206,6 +210,7 @@ export interface KeyIdentity {
   active_start?: string | null
   active_until?: string | null
   total_tokens: number
+  canonical_valid_attempts: number
   total_cost: number
   cost_available: boolean
   last_used_at: string | null
@@ -225,8 +230,9 @@ export interface APIKeyAliasTarget {
   input_tokens: number
   output_tokens: number
   reasoning_tokens: number
-  cached_tokens: number
+  cache_read_tokens: number
   total_tokens: number
+  canonical_valid_attempts: number
   total_cost: number
   cost_available: boolean
   cost_status: CostStatus
@@ -422,13 +428,13 @@ export interface UsageEvent {
   ttft_ms: number | null
   output_tps: number | null
   tokens: {
-    input_tokens?: number
-    output_tokens: number
-    reasoning_tokens?: number
-    cached_tokens?: number
-    cache_read_tokens?: number
-    cache_creation_tokens?: number
-    total_tokens: number
+    input_tokens: number | null
+    output_tokens: number | null
+    reasoning_tokens: number | null
+    cache_read_tokens: number | null
+    cache_write_tokens: number | null
+    unclassified_tokens: number | null
+    total_tokens: number | null
   }
 }
 
@@ -458,6 +464,7 @@ export interface UsageModelMapping {
   model: string
   provider: string
   attempt_count: number
+  canonical_valid_attempts: number
   failure_count: number
   failure_share: number
   latency_sample_count: number
@@ -472,6 +479,7 @@ export interface UsageModelMappingDistribution {
   window_end: string
   total_attempts: number
   observed_alias_attempts: number
+  canonical_valid_attempts: number
   missing_alias_attempts: number
   alias_coverage: number
   observed_total_cost: number
@@ -535,7 +543,6 @@ export interface UsageAttemptPerformanceSummary {
   }
   output_tps: {
     generating_streaming: UsagePercentileDistribution
-    unknown_execution: UsagePercentileDistribution
   }
 }
 

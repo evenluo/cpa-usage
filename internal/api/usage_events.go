@@ -79,13 +79,13 @@ var usageEventsCSVHeader = []string{
 	"latency_ms",
 	"ttft_ms",
 	"output_tps",
-	"input_tokens",
-	"output_tokens",
-	"reasoning_tokens",
-	"cached_tokens",
-	"cache_read_tokens",
-	"cache_creation_tokens",
-	"total_tokens",
+	"canonical_input_tokens",
+	"canonical_output_tokens",
+	"canonical_reasoning_tokens",
+	"canonical_cache_read_tokens",
+	"canonical_cache_write_tokens",
+	"canonical_unclassified_tokens",
+	"canonical_total_tokens",
 }
 
 type usageAttemptFactsPayload struct {
@@ -122,13 +122,13 @@ type usageAttemptOutputPayload struct {
 }
 
 type usageEventTokenPayload struct {
-	InputTokens         int64  `json:"input_tokens"`
-	OutputTokens        int64  `json:"output_tokens"`
-	ReasoningTokens     int64  `json:"reasoning_tokens"`
-	CachedTokens        int64  `json:"cached_tokens"`
-	CacheReadTokens     *int64 `json:"cache_read_tokens,omitempty"`
-	CacheCreationTokens *int64 `json:"cache_creation_tokens,omitempty"`
-	TotalTokens         int64  `json:"total_tokens"`
+	InputTokens        *int64 `json:"input_tokens"`
+	OutputTokens       *int64 `json:"output_tokens"`
+	ReasoningTokens    *int64 `json:"reasoning_tokens"`
+	CacheReadTokens    *int64 `json:"cache_read_tokens"`
+	CacheWriteTokens   *int64 `json:"cache_write_tokens"`
+	UnclassifiedTokens *int64 `json:"unclassified_tokens"`
+	TotalTokens        *int64 `json:"total_tokens"`
 }
 
 func registerUsageEventsRoute(
@@ -280,13 +280,13 @@ func encodeUsageEventsCSV(events []usageEventPayload) ([]byte, error) {
 			strconv.FormatInt(event.LatencyMS, 10),
 			formatUsageEventsCSVInt(event.TTFTMS),
 			formatUsageEventsCSVFloat(event.OutputTPS),
-			strconv.FormatInt(event.Tokens.InputTokens, 10),
-			strconv.FormatInt(event.Tokens.OutputTokens, 10),
-			strconv.FormatInt(event.Tokens.ReasoningTokens, 10),
-			strconv.FormatInt(event.Tokens.CachedTokens, 10),
+			formatUsageEventsCSVInt(event.Tokens.InputTokens),
+			formatUsageEventsCSVInt(event.Tokens.OutputTokens),
+			formatUsageEventsCSVInt(event.Tokens.ReasoningTokens),
 			formatUsageEventsCSVInt(event.Tokens.CacheReadTokens),
-			formatUsageEventsCSVInt(event.Tokens.CacheCreationTokens),
-			strconv.FormatInt(event.Tokens.TotalTokens, 10),
+			formatUsageEventsCSVInt(event.Tokens.CacheWriteTokens),
+			formatUsageEventsCSVInt(event.Tokens.UnclassifiedTokens),
+			formatUsageEventsCSVInt(event.Tokens.TotalTokens),
 		}); err != nil {
 			return nil, err
 		}
@@ -410,13 +410,13 @@ func buildUsageEventsPayload(rows []repodto.UsageEventRecord, resolver usageIden
 			OutputTPS:       row.AttemptFacts.OutputTPS,
 			AttemptFacts:    mapUsageAttemptFactsPayload(row.AttemptFacts),
 			Tokens: usageEventTokenPayload{
-				InputTokens:         row.InputTokens,
-				OutputTokens:        row.OutputTokens,
-				ReasoningTokens:     row.ReasoningTokens,
-				CachedTokens:        row.CachedTokens,
-				CacheReadTokens:     row.CacheReadTokens,
-				CacheCreationTokens: row.CacheCreationTokens,
-				TotalTokens:         row.TotalTokens,
+				InputTokens:        row.AttemptFacts.Accounting.Input.TotalTokens,
+				OutputTokens:       row.AttemptFacts.Accounting.Output.TotalTokens,
+				ReasoningTokens:    row.AttemptFacts.Accounting.Output.ReasoningTokens,
+				CacheReadTokens:    row.AttemptFacts.Accounting.Input.CacheReadTokens,
+				CacheWriteTokens:   row.AttemptFacts.Accounting.Input.CacheWriteTokens,
+				UnclassifiedTokens: row.AttemptFacts.Accounting.UnclassifiedTokens,
+				TotalTokens:        row.AttemptFacts.Accounting.TotalTokens,
 			},
 		})
 	}

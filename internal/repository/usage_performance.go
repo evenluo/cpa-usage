@@ -103,15 +103,10 @@ func buildUsageAttemptPerformanceSnapshot(ctx context.Context, db *gorm.DB, filt
 	}
 	providerSelected := strings.TrimSpace(filter.Provider) != ""
 	streamingTPS := usagePercentileRecord(nil, execution.GeneratingStreaming)
-	unknownTPS := usagePercentileRecord(nil, execution.Unknown)
 	if providerSelected {
 		streamingTPS, err = loadUsageOutputTPSPercentiles(base().Where("failed = 0 AND "+knownStreamingExecutionSQL), execution.GeneratingStreaming)
 		if err != nil {
 			return nil, fmt.Errorf("load generating streaming Output TPS distribution: %w", err)
-		}
-		unknownTPS, err = loadUsageOutputTPSPercentiles(base().Where("failed = 0 AND "+unknownExecutionSQL), execution.Unknown)
-		if err != nil {
-			return nil, fmt.Errorf("load unknown-execution Output TPS distribution: %w", err)
 		}
 	}
 
@@ -129,19 +124,18 @@ func buildUsageAttemptPerformanceSnapshot(ctx context.Context, db *gorm.DB, filt
 	}
 
 	return &dto.UsageAttemptPerformanceRecord{
-		TotalAttempts:             resultCounts.Total,
-		SuccessfulAttempts:        resultCounts.Successful,
-		FailedAttempts:            resultCounts.Failed,
-		SuccessfulExecution:       execution,
-		SuccessfulLatencyMS:       successLatency,
-		FailedLatencyMS:           failedLatency,
-		StreamingTTFTMS:           streamingTTFT,
-		UnknownExecutionTTFTMS:    unknownTTFT,
-		StreamingOutputTPS:        streamingTPS,
-		UnknownExecutionOutputTPS: unknownTPS,
-		Providers:                 providers,
-		Models:                    models,
-		Accounts:                  accounts,
+		TotalAttempts:          resultCounts.Total,
+		SuccessfulAttempts:     resultCounts.Successful,
+		FailedAttempts:         resultCounts.Failed,
+		SuccessfulExecution:    execution,
+		SuccessfulLatencyMS:    successLatency,
+		FailedLatencyMS:        failedLatency,
+		StreamingTTFTMS:        streamingTTFT,
+		UnknownExecutionTTFTMS: unknownTTFT,
+		StreamingOutputTPS:     streamingTPS,
+		Providers:              providers,
+		Models:                 models,
+		Accounts:               accounts,
 	}, nil
 }
 
@@ -155,12 +149,9 @@ type usagePerformanceAttempt struct {
 	Failed                      bool    `gorm:"column:failed"`
 	LatencyMS                   int64   `gorm:"column:latency_ms"`
 	TTFTMS                      *int64  `gorm:"column:ttft_ms"`
-	OutputTokens                int64   `gorm:"column:output_tokens"`
 	Generate                    *bool   `gorm:"column:generate"`
 	Stream                      *bool   `gorm:"column:stream"`
 	AccountingVersion           *int64  `gorm:"column:accounting_version"`
-	TokenBreakdownPresent       bool    `gorm:"column:token_breakdown_present"`
-	AccountingMalformed         bool    `gorm:"column:accounting_malformed"`
 	TokenSchemaVersion          *int64  `gorm:"column:token_schema_version"`
 	TokenQuality                *string `gorm:"column:token_quality"`
 	CanonicalTotalTokens        *int64  `gorm:"column:canonical_total_tokens"`
@@ -174,8 +165,8 @@ type usagePerformanceAttempt struct {
 	CanonicalUnclassifiedTokens *int64  `gorm:"column:canonical_unclassified_tokens"`
 }
 
-const usagePerformanceAttemptColumns = `failed, latency_ms, ttft_ms, output_tokens, generate, stream,
-	accounting_version, token_breakdown_present, accounting_malformed, token_schema_version, token_quality,
+const usagePerformanceAttemptColumns = `failed, latency_ms, ttft_ms, generate, stream,
+	accounting_version, token_schema_version, token_quality,
 	canonical_total_tokens, canonical_input_tokens, canonical_uncached_tokens, canonical_cache_read_tokens,
 	canonical_cache_write_tokens, canonical_output_tokens, canonical_non_reasoning_tokens,
 	canonical_reasoning_tokens, canonical_unclassified_tokens`
@@ -222,16 +213,13 @@ func loadUsagePerformanceBreakdown(base func() *gorm.DB, dimension string, total
 
 func (attempt usagePerformanceAttempt) entity() entities.UsageEvent {
 	return entities.UsageEvent{
-		Failed:       attempt.Failed,
-		LatencyMS:    attempt.LatencyMS,
-		TTFTMS:       attempt.TTFTMS,
-		OutputTokens: attempt.OutputTokens,
-		Generate:     attempt.Generate,
-		Stream:       attempt.Stream,
+		Failed:    attempt.Failed,
+		LatencyMS: attempt.LatencyMS,
+		TTFTMS:    attempt.TTFTMS,
+		Generate:  attempt.Generate,
+		Stream:    attempt.Stream,
 		UsageAccounting: entities.UsageAccounting{
 			AccountingVersion:           attempt.AccountingVersion,
-			TokenBreakdownPresent:       attempt.TokenBreakdownPresent,
-			AccountingMalformed:         attempt.AccountingMalformed,
 			TokenSchemaVersion:          attempt.TokenSchemaVersion,
 			TokenQuality:                attempt.TokenQuality,
 			CanonicalTotalTokens:        attempt.CanonicalTotalTokens,
@@ -254,7 +242,6 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 	streamingTTFT := make([]float64, 0, len(attempts))
 	unknownTTFT := make([]float64, 0, len(attempts))
 	streamingTPS := make([]float64, 0, len(attempts))
-	unknownTPS := make([]float64, 0, len(attempts))
 	for _, attempt := range attempts {
 		if attempt.Failed {
 			item.FailedAttempts++
@@ -288,11 +275,6 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 			if attempt.validTTFT() {
 				unknownTTFT = append(unknownTTFT, float64(*attempt.TTFTMS))
 			}
-			if includeOutputTPS {
-				if outputTPS := InterpretUsageAttempt(attempt.entity()).OutputTPS; outputTPS != nil {
-					unknownTPS = append(unknownTPS, *outputTPS)
-				}
-			}
 		}
 	}
 	item.SuccessfulLatencyMS = usagePercentileRecord(successLatency, item.SuccessfulAttempts)
@@ -300,7 +282,6 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 	item.StreamingTTFTMS = usagePercentileRecord(streamingTTFT, item.SuccessfulExecution.GeneratingStreaming)
 	item.UnknownExecutionTTFTMS = usagePercentileRecord(unknownTTFT, item.SuccessfulExecution.Unknown)
 	item.StreamingOutputTPS = usagePercentileRecord(streamingTPS, item.SuccessfulExecution.GeneratingStreaming)
-	item.UnknownExecutionOutputTPS = usagePercentileRecord(unknownTPS, item.SuccessfulExecution.Unknown)
 	return item
 }
 

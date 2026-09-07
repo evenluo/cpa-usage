@@ -31,6 +31,7 @@ function identity(authIndex: string, provider: string): KeyIdentity {
     provider,
     disabled: false,
     total_tokens: 0,
+    canonical_valid_attempts: 0,
     total_cost: 0,
     cost_available: false,
     last_used_at: null,

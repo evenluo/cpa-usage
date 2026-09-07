@@ -244,27 +244,12 @@ func TestParseUsageEventListFilterQueryAcceptsCompactEvidencePageSize(t *testing
 	}
 }
 
-func TestParseUsageEventListFilterQueryUsesLimitAsPageSizeAlias(t *testing.T) {
-	req := httptest.NewRequest("GET", "/api/v1/usage/events?limit=20", nil)
-
-	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
-	if err != nil {
-		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
-	}
-	if filter.Page != 1 || filter.PageSize != 20 || filter.Offset != 0 {
-		t.Fatalf("expected limit alias to set page size, got %+v", filter)
-	}
-}
-
-func TestParseUsageEventListFilterQueryPrefersPageSizeOverLimit(t *testing.T) {
-	req := httptest.NewRequest("GET", "/api/v1/usage/events?page_size=50&limit=20", nil)
-
-	filter, err := parseUsageEventListFilterQuery(req, time.Time{})
-	if err != nil {
-		t.Fatalf("parseUsageEventListFilterQuery returned error: %v", err)
-	}
-	if filter.PageSize != 50 {
-		t.Fatalf("expected page_size to win over limit, got %+v", filter)
+func TestParseUsageEventListFilterQueryRejectsRemovedLimitAlias(t *testing.T) {
+	for _, query := range []string{"limit=20", "page_size=50&limit=20"} {
+		req := httptest.NewRequest("GET", "/api/v1/usage/events?"+query, nil)
+		if _, err := parseUsageEventListFilterQuery(req, time.Time{}); err == nil {
+			t.Fatal("removed limit alias must not silently change selection")
+		}
 	}
 }
 
@@ -426,15 +411,16 @@ func TestFrozenDiagnosticWindowRoundTripsNanosecondsIntoEvidence(t *testing.T) {
 	}
 }
 
-func TestRequestEvidenceKeepsLegacyModelLengthUntilDiagnosticSelectionIsUsed(t *testing.T) {
-	longModel := strings.Repeat("m", 129)
-	legacyRequest := httptest.NewRequest("GET", "/api/v1/usage/events?range=all&model="+longModel, nil)
-	legacyFilter, err := parseUsageEventListFilterQuery(legacyRequest, time.Now())
-	if err != nil || legacyFilter.Model != longModel {
-		t.Fatalf("expected existing list filter compatibility, filter=%+v err=%v", legacyFilter, err)
-	}
-	diagnosticRequest := httptest.NewRequest("GET", "/api/v1/usage/events?range=24h&status=4xx&model="+longModel, nil)
-	if _, err := parseUsageEventListFilterQuery(diagnosticRequest, time.Now()); err == nil {
-		t.Fatal("expected bounded diagnostic model to be rejected")
+func TestRequestEvidenceValidatesEverySelectionUniformly(t *testing.T) {
+	for _, query := range []string{
+		"range=all&model=" + strings.Repeat("m", 129),
+		"range=24h&status=4xx&model=" + strings.Repeat("m", 129),
+		"range=all&provider=" + strings.Repeat("p", 129),
+		"range=24h&model=model%0Aname",
+	} {
+		req := httptest.NewRequest("GET", "/api/v1/usage/events?"+query, nil)
+		if _, err := parseUsageEventListFilterQuery(req, time.Now()); err == nil {
+			t.Fatalf("expected uniform selection validation for %s", query)
+		}
 	}
 }

@@ -159,11 +159,12 @@ func buildAnalyticsCoreIdentityTrends(db *gorm.DB, plan analyticsCoreWindowPlan,
 		for _, row := range rows {
 			cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 			trends[key] = append(trends[key], dto.AnalyticsKeyAliasTrendPoint{
-				Label:         row.Bucket,
-				TotalCost:     row.TotalCost,
-				TotalTokens:   row.TotalTokens,
-				CostAvailable: cost.Available,
-				CostStatus:    cost.Status,
+				Label:                  row.Bucket,
+				TotalCost:              row.TotalCost,
+				TotalTokens:            row.TotalTokens,
+				CanonicalValidAttempts: row.CanonicalValidAttempts,
+				CostAvailable:          cost.Available,
+				CostStatus:             cost.Status,
 			})
 		}
 	}
@@ -197,7 +198,8 @@ func buildAnalyticsIdentityTrendSegmentRows(db *gorm.DB, filter dto.AnalyticsFil
 			` + authTypeExpr + ` AS auth_type,
 			` + identityExpr + ` AS identity,
 			` + bucketExpr + ` AS bucket,
-			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+				COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
+				COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 			COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
@@ -242,6 +244,7 @@ func analyticsIdentityAggregateSelect(source analyticsAggregateSource, authTypeE
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
@@ -267,6 +270,7 @@ func addAnalyticsIdentityRows(dst map[analyticsIdentityKey]analyticsIdentityAggr
 		combined.SuccessCount += row.SuccessCount
 		combined.FailureCount += row.FailureCount
 		combined.TotalTokens += row.TotalTokens
+		combined.CanonicalValidAttempts += row.CanonicalValidAttempts
 		combined.TotalCost += row.TotalCost
 		combined.MissingPricingEvents += row.MissingPricingEvents
 		combined.PricedBillableEvents += row.PricedBillableEvents
@@ -285,6 +289,7 @@ func addAnalyticsIdentityTrendRows(dst map[analyticsIdentityTrendKey]analyticsId
 		combined.Identity = row.Identity
 		combined.Bucket = row.Bucket
 		combined.TotalTokens += row.TotalTokens
+		combined.CanonicalValidAttempts += row.CanonicalValidAttempts
 		combined.TotalCost += row.TotalCost
 		combined.MissingPricingEvents += row.MissingPricingEvents
 		combined.PricedBillableEvents += row.PricedBillableEvents

@@ -80,7 +80,7 @@ func BenchmarkRedisUsageInboxBatchEndToEnd(b *testing.B) {
 					if err := db.Table("usage_events").Where("status_code = ?", 429).First(&failedAttempt).Error; err != nil {
 						b.Fatalf("load benchmark failed attempt: %v", err)
 					}
-					if failedAttempt.ExecutorType == "" || failedAttempt.ReasoningEffort == "" || failedAttempt.ServiceTier == "" || failedAttempt.CacheReadTokens == nil || failedAttempt.CacheCreationTokens == nil || failedAttempt.Source == "" || failedAttempt.AuthIndex == "" || failedAttempt.LatencyMS == 0 {
+					if failedAttempt.ExecutorType == "" || failedAttempt.ReasoningEffort == "" || failedAttempt.ServiceTier == "" || failedAttempt.Source == "" || failedAttempt.AuthIndex == "" || failedAttempt.LatencyMS == 0 {
 						b.Fatalf("benchmark path lost expanded attempt fields: %+v", failedAttempt)
 					}
 				}
@@ -102,15 +102,13 @@ type redisUsagePerformanceQueue struct {
 }
 
 type redisUsageExpandedBenchmarkRow struct {
-	StatusCode          int    `gorm:"column:status_code"`
-	ExecutorType        string `gorm:"column:executor_type"`
-	ReasoningEffort     string `gorm:"column:reasoning_effort"`
-	ServiceTier         string `gorm:"column:service_tier"`
-	CacheReadTokens     *int64 `gorm:"column:cache_read_tokens"`
-	CacheCreationTokens *int64 `gorm:"column:cache_creation_tokens"`
-	Source              string `gorm:"column:source"`
-	AuthIndex           string `gorm:"column:auth_index"`
-	LatencyMS           int64  `gorm:"column:latency_ms"`
+	StatusCode      int    `gorm:"column:status_code"`
+	ExecutorType    string `gorm:"column:executor_type"`
+	ReasoningEffort string `gorm:"column:reasoning_effort"`
+	ServiceTier     string `gorm:"column:service_tier"`
+	Source          string `gorm:"column:source"`
+	AuthIndex       string `gorm:"column:auth_index"`
+	LatencyMS       int64  `gorm:"column:latency_ms"`
 }
 
 func redisUsageAttemptColumnsPresent(db *gorm.DB) bool {
@@ -119,8 +117,6 @@ func redisUsageAttemptColumnsPresent(db *gorm.DB) bool {
 		"executor_type",
 		"reasoning_effort",
 		"service_tier",
-		"cache_read_tokens",
-		"cache_creation_tokens",
 	} {
 		if !db.Migrator().HasColumn("usage_events", column) {
 			return false
@@ -145,7 +141,7 @@ func benchmarkRedisUsageMessages(uniqueRequestIDs int, attemptsPerRequest int) [
 			failed = "true"
 			failure = `,"fail":{"status_code":429,"body":"excluded failure body"},"response_headers":{"set-cookie":"excluded"}`
 		}
-		messages = append(messages, fmt.Sprintf(`{"timestamp":"2026-08-31T08:%02d:%02dZ","latency_ms":%d,"ttft_ms":%d,"source":"source-%03d","auth_index":"auth-%04d","provider":"provider-%02d","executor_type":"executor-%d","model":"model-%03d","auth_type":"apikey","api_key":"sk-bench-%04d","request_id":"request-%04d","reasoning_effort":"high","service_tier":"priority","failed":%s%s,"tokens":{"input_tokens":%d,"output_tokens":%d,"reasoning_tokens":%d,"cached_tokens":%d,"cache_read_tokens":%d,"cache_creation_tokens":%d,"total_tokens":%d}}`,
+		messages = append(messages, fmt.Sprintf(`{"timestamp":"2026-08-31T08:%02d:%02dZ","latency_ms":%d,"ttft_ms":%d,"source":"source-%03d","auth_index":"auth-%04d","provider":"provider-%02d","executor_type":"executor-%d","model":"model-%03d","auth_type":"apikey","api_key":"sk-bench-%04d","request_id":"request-%04d","reasoning_effort":"high","service_tier":"priority","failed":%s%s,"tokens":{"input_tokens":%d,"output_tokens":%d,"reasoning_tokens":%d,"cached_tokens":%d,"cache_read_tokens":%d,"cache_creation_tokens":%d,"total_tokens":%d},"accounting_version":2,"generate":true,"stream":true,"token_breakdown":{"schema_version":2,"quality":"complete","total_tokens":0,"input":{"total_tokens":0,"uncached_tokens":0,"cache_read_tokens":0,"cache_write_tokens":0},"output":{"total_tokens":0,"non_reasoning_tokens":0,"reasoning_tokens":0},"unclassified_tokens":0}}`,
 			(messageIndex/60)%60,
 			messageIndex%60,
 			100+messageIndex%1_000,

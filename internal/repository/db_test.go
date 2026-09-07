@@ -113,7 +113,7 @@ func TestOpenDatabasePreservesExistingUsageRollupBackfillProgress(t *testing.T) 
 	}
 }
 
-func TestCacheReadRollupUpgradeBackfillsOnlyExactRangeIncludingCurrentHour(t *testing.T) {
+func TestCacheReadRollupUpgradeDoesNotPromoteHistoricalScalarsToCanonicalMetrics(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "app.db")
 	db, err := OpenDatabase(config.Config{SQLitePath: dbPath})
 	if err != nil {
@@ -197,8 +197,8 @@ func TestCacheReadRollupUpgradeBackfillsOnlyExactRangeIncludingCurrentHour(t *te
 	if err != nil {
 		t.Fatalf("read crossed-hour analytics from rebuilt rollup: %v", err)
 	}
-	if snapshot.Summary.CacheReadTokens != 25 || snapshot.Summary.CacheReadShare != 25 || snapshot.Summary.CacheReadCoverage != 100 || snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
-		t.Fatalf("expected exact current-hour cache-read metrics after crossing the hour, got %+v", snapshot.Summary)
+	if snapshot.Summary.CacheReadTokens != 0 || snapshot.Summary.TotalTokens != 0 || snapshot.Summary.Accounting.States.Absent != 1 || snapshot.Summary.CostStatus != dto.CostStatusUnavailable {
+		t.Fatalf("historical scalar fields must remain unavailable after rollup rebuild, got %+v", snapshot.Summary)
 	}
 }
 
@@ -258,8 +258,8 @@ func TestCacheReadRollupUpgradeWithoutStateCompletesOldAndExactBuckets(t *testin
 	if err := reopened.Order("bucket_start ASC").Find(&rollups).Error; err != nil {
 		t.Fatalf("load rebuilt old and exact rollups: %v", err)
 	}
-	if len(rollups) != 3 || !rollups[0].BucketStart.Equal(oldBucket) || rollups[0].TotalTokens != 40 || !rollups[1].BucketStart.Equal(exactBucket) || rollups[1].CacheReadTokens != 20 || rollups[1].CacheReadObservedInputTokens != 100 || !rollups[2].BucketStart.Equal(latestBucket) || rollups[2].TotalTokens != 60 {
-		t.Fatalf("expected unfinished old, exact, and latest buckets after backfill, got %+v", rollups)
+	if len(rollups) != 3 || !rollups[0].BucketStart.Equal(oldBucket) || rollups[0].AccountingAbsentAttempts != 1 || !rollups[1].BucketStart.Equal(exactBucket) || rollups[1].AccountingAbsentAttempts != 1 || rollups[1].CanonicalCacheReadTokens != 0 || !rollups[2].BucketStart.Equal(latestBucket) || rollups[2].AccountingAbsentAttempts != 1 {
+		t.Fatalf("expected historical buckets to rebuild as canonical-absent, got %+v", rollups)
 	}
 }
 

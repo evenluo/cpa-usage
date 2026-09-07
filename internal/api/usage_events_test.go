@@ -24,12 +24,19 @@ func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T
 	statusCode := 429
 	ttftMS := int64(12)
 	outputTPS := 34.5
+	canonicalInput, canonicalOutput, canonicalReasoning := int64(6), int64(3), int64(1)
+	canonicalCacheRead, canonicalCacheWrite, canonicalUnclassified, canonicalTotal := int64(1), int64(2), int64(1), int64(10)
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		ID: 99, Timestamp: time.Date(2026, 9, 7, 11, 59, 59, 0, time.UTC),
 		Provider: "\t=provider", Source: "sk-live-secret-value", AuthType: "apikey", AuthIndex: "auth-1",
 		APIKeyIdentity: "sk-live-secret-value", Model: "\n=model", ModelAlias: "@别名\"quoted", Endpoint: "/v1/messages?api_key=secret",
 		RequestID: "\r+request", Failed: true, StatusCode: &statusCode, LatencyMS: 80, TTFTMS: &ttftMS,
-		AttemptFacts: dto.UsageAttemptFacts{OutputTPS: &outputTPS}, InputTokens: 1, OutputTokens: 2, ReasoningTokens: 3,
+		AttemptFacts: dto.UsageAttemptFacts{OutputTPS: &outputTPS, Accounting: dto.UsageAccountingRecord{
+			State: "valid", TotalTokens: &canonicalTotal,
+			Input:              dto.UsageTokenInput{TotalTokens: &canonicalInput, CacheReadTokens: &canonicalCacheRead, CacheWriteTokens: &canonicalCacheWrite},
+			Output:             dto.UsageTokenOutput{TotalTokens: &canonicalOutput, ReasoningTokens: &canonicalReasoning},
+			UnclassifiedTokens: &canonicalUnclassified,
+		}}, InputTokens: 1, OutputTokens: 2, ReasoningTokens: 3,
 		CachedTokens: 4, TotalTokens: 10,
 	}}}
 	router := NewRouter(nil, nil, provider, nil, AuthConfig{}, nil, "", OptionalProviders{
@@ -77,7 +84,8 @@ func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T
 	if row[6] != "/v1/messages" || strings.Contains(resp.Body.String(), "sk-live-secret-value") || strings.Contains(resp.Body.String(), "api_key=secret") || strings.Contains(resp.Body.String(), "auth-1") || strings.Contains(resp.Body.String(), "provider") {
 		t.Fatalf("expected only safe endpoint and no raw identity material, got %q", resp.Body.String())
 	}
-	if row[8] != "failed" || row[9] != "429" || row[10] != "80" || row[11] != "12" || row[12] != "34.5" || row[17] != "" || row[18] != "" {
+	if row[8] != "failed" || row[9] != "429" || row[10] != "80" || row[11] != "12" || row[12] != "34.5" ||
+		strings.Join(row[13:20], ",") != "6,3,1,1,2,1,10" {
 		t.Fatalf("unexpected CSV units or empty semantics: %#v", row)
 	}
 }
@@ -160,7 +168,7 @@ func BenchmarkEncodeUsageEventsCSVAtLimit(b *testing.B) {
 		events[index] = usageEventPayload{
 			Timestamp: "2026-09-07T12:00:00Z", Source: "Account", APIKeyAlias: "Key Alias", APIKeyDisplay: "sk-a***********z",
 			Model: "model", ModelAlias: "route", Endpoint: "/v1/messages", RequestID: "request", LatencyMS: 100,
-			Tokens: usageEventTokenPayload{InputTokens: 1, OutputTokens: 2, TotalTokens: 3},
+			Tokens: usageEventTokenPayload{InputTokens: testInt64Pointer(1), OutputTokens: testInt64Pointer(2), TotalTokens: testInt64Pointer(3)},
 		}
 	}
 	b.ReportMetric(float64(len(events)), "export_rows")
@@ -422,12 +430,12 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	if contains(body, "api_key=secret") {
 		t.Fatalf("expected endpoint query to stay hidden: %s", body)
 	}
-	for _, token := range []string{`"input_tokens":10`, `"output_tokens":976`, `"reasoning_tokens":2`, `"cached_tokens":1`, `"total_tokens":105091`} {
+	for _, token := range []string{`"input_tokens":10`, `"output_tokens":4`, `"reasoning_tokens":2`, `"cache_read_tokens":0`, `"cache_write_tokens":4`, `"unclassified_tokens":0`, `"total_tokens":14`} {
 		if !contains(body, token) {
 			t.Fatalf("expected complete token evidence %s in response body: %s", token, body)
 		}
 	}
-	for _, evidence := range []string{`"status_code":200`, `"executor_type":"openai"`, `"reasoning_effort":"high"`, `"service_tier":"priority"`, `"cache_read_tokens":1`, `"cache_creation_tokens":3`} {
+	for _, evidence := range []string{`"status_code":200`, `"executor_type":"openai"`, `"reasoning_effort":"high"`, `"service_tier":"priority"`} {
 		if !contains(body, evidence) {
 			t.Fatalf("expected attempt evidence %s in response body: %s", evidence, body)
 		}
@@ -493,10 +501,12 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 		!contains(body, `"accounting_version":null`) || !contains(body, `"schema_version":null`) || !contains(body, `"quality":null`) || !contains(body, `"unclassified_tokens":null`) {
 		t.Fatalf("expected absent attempt facts to remain explicit nulls: %s", body)
 	}
-	if !contains(body, `"tokens":{"input_tokens":0,"output_tokens":976,"reasoning_tokens":0,"cached_tokens":0,"total_tokens":105091}`) {
-		t.Fatalf("expected missing legacy exact-cache facts to stay omitted from tokens: %s", body)
+	if !contains(body, `"tokens":{"input_tokens":null,"output_tokens":null,"reasoning_tokens":null,"cache_read_tokens":null,"cache_write_tokens":null,"unclassified_tokens":null,"total_tokens":null}`) {
+		t.Fatalf("expected historical scalar tokens to remain unavailable: %s", body)
 	}
 }
+
+func testInt64Pointer(value int64) *int64 { return &value }
 
 // usage identity 展示名规则的行为测试已随 DisplayName 收拢到 internal/entities 包。
 

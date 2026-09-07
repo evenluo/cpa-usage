@@ -52,17 +52,17 @@ function DashboardPage() {
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <KpiCard
           label="Cost"
-          rawValue={summary?.total_cost}
+          rawValue={summary?.cost_available ? summary.total_cost : undefined}
           formatter={formatCost}
           valueDecimals={4}
-          caption={summary?.cost_status}
+          caption={summary?.cost_status === "available" ? "Local estimate complete" : summary?.cost_status === "partial" ? "Local estimate incomplete" : "Local estimate unavailable"}
           sparkline={kpiData?.cost}
           isLoading={surfaces.kpis.status === "loading"}
           tone="terracotta"
         />
         <KpiCard
           label="Tokens"
-          rawValue={summary?.total_tokens}
+          rawValue={(summary?.accounting?.valid_attempts ?? 0) > 0 ? summary?.total_tokens : undefined}
           caption={viewModel.accountingCaption}
           formatter={(n) => formatCompact(n, 2)}
           sparkline={kpiData?.tokens}

@@ -16,7 +16,7 @@ type usageAttemptPerformanceResponse struct {
 	FailedAttempts      int64                            `json:"failed_attempts"`
 	SuccessfulExecution usageExecutionPopulationPayload  `json:"successful_execution"`
 	LatencyMS           usageResultPercentilesPayload    `json:"latency_ms"`
-	TTFTMS              usageExecutionPercentilesPayload `json:"ttft_ms"`
+	TTFTMS              usageTTFTPercentilesPayload      `json:"ttft_ms"`
 	OutputTPS           usageExecutionPercentilesPayload `json:"output_tps"`
 	Providers           usagePerformanceBreakdownPayload `json:"providers"`
 	Models              usagePerformanceBreakdownPayload `json:"models"`
@@ -36,6 +36,10 @@ type usageResultPercentilesPayload struct {
 }
 
 type usageExecutionPercentilesPayload struct {
+	GeneratingStreaming usagePercentilePayload `json:"generating_streaming"`
+}
+
+type usageTTFTPercentilesPayload struct {
 	GeneratingStreaming usagePercentilePayload `json:"generating_streaming"`
 	UnknownExecution    usagePercentilePayload `json:"unknown_execution"`
 }
@@ -61,7 +65,7 @@ type usagePerformanceBreakdownItemPayload struct {
 	FailedAttempts      int64                            `json:"failed_attempts"`
 	SuccessfulExecution usageExecutionPopulationPayload  `json:"successful_execution"`
 	LatencyMS           usageResultPercentilesPayload    `json:"latency_ms"`
-	TTFTMS              usageExecutionPercentilesPayload `json:"ttft_ms"`
+	TTFTMS              usageTTFTPercentilesPayload      `json:"ttft_ms"`
 	OutputTPS           usageExecutionPercentilesPayload `json:"output_tps"`
 }
 
@@ -114,13 +118,12 @@ func buildUsageAttemptPerformancePayload(filter usageDiagnosticFilter, record *r
 			Successful: buildUsagePercentilePayload(record.SuccessfulLatencyMS),
 			Failed:     buildUsagePercentilePayload(record.FailedLatencyMS),
 		},
-		TTFTMS: usageExecutionPercentilesPayload{
+		TTFTMS: usageTTFTPercentilesPayload{
 			GeneratingStreaming: buildUsagePercentilePayload(record.StreamingTTFTMS),
 			UnknownExecution:    buildUsagePercentilePayload(record.UnknownExecutionTTFTMS),
 		},
 		OutputTPS: usageExecutionPercentilesPayload{
 			GeneratingStreaming: buildUsagePercentilePayload(record.StreamingOutputTPS),
-			UnknownExecution:    buildUsagePercentilePayload(record.UnknownExecutionOutputTPS),
 		},
 		Providers: buildUsagePerformanceBreakdownPayload(record.Providers, identityLabel),
 		Models:    buildUsagePerformanceBreakdownPayload(record.Models, identityLabel),
@@ -152,13 +155,12 @@ func buildUsagePerformanceBreakdownPayload(record repodto.UsagePerformanceBreakd
 				Successful: buildUsagePercentilePayload(item.SuccessfulLatencyMS),
 				Failed:     buildUsagePercentilePayload(item.FailedLatencyMS),
 			},
-			TTFTMS: usageExecutionPercentilesPayload{
+			TTFTMS: usageTTFTPercentilesPayload{
 				GeneratingStreaming: buildUsagePercentilePayload(item.StreamingTTFTMS),
 				UnknownExecution:    buildUsagePercentilePayload(item.UnknownExecutionTTFTMS),
 			},
 			OutputTPS: usageExecutionPercentilesPayload{
 				GeneratingStreaming: buildUsagePercentilePayload(item.StreamingOutputTPS),
-				UnknownExecution:    buildUsagePercentilePayload(item.UnknownExecutionOutputTPS),
 			},
 		})
 	}

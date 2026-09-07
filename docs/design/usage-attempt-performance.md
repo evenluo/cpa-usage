@@ -34,7 +34,7 @@ TTFT and Output TPS describe successful generation only; failed attempts are exp
 
 TTFT is reported separately for `generating_streaming` and `unknown_execution`. A valid TTFT is positive, has positive total latency, and is not greater than total latency. Non-generating and non-streaming attempts do not enter TTFT percentiles.
 
-Output TPS is reported separately for the same two execution populations. The repository consumes only `InterpretUsageAttempt(event).OutputTPS`; it does not reproduce the arithmetic, replace `UsageEvent.OutputTokens`, or substitute canonical total/non-reasoning output. Consequently nil/zero/inconsistent timing, explicit non-generation/non-streaming, invalid or non-complete canonical quality, and a legacy output scalar exceeding canonical output cannot produce false exact throughput. Historical absent canonical facts with unknown execution flags remain a separately labeled population. Provider-normalized output units are comparable only inside one provider: when no provider is selected, overall/model/account Output TPS remains unavailable while each provider breakdown retains its own distribution; selecting a provider enables Output TPS throughout that filtered response.
+Output TPS consumes only `InterpretUsageAttempt(event).OutputTPS`: canonical total output including reasoning, complete quality, explicit generating/streaming execution and valid positive timing. Unknown historical execution has no TPS population. No legacy scalar numerator or provider-dependent accounting fallback is used. Comparisons remain observations qualified by provider/model workloads and tokenization.
 
 ## Bounded comparisons and slow evidence
 
@@ -44,13 +44,13 @@ Account values stay repository identities and receive the same display-safe API 
 
 A successful or failed latency p95 may open Request Evidence with the same provider/model/account selection, exact returned `window_end`, matching `result`, and `min_latency_ms=p95`. Because the threshold is inclusive, ties can make the slow evidence set larger than five percent; the evidence page reports its actual paginated count and never claims an exact top-five-percent set.
 
-## Compatibility and failure policy
+## Selection and failure policy
 
-This is an additive protected route, additive nullable execution evidence, and additive diagnostic selection. Existing non-diagnostic event-list provider/model/source/auth-index/result/range behavior, selected-window analytics, rollups, Cost, ingestion, auth/session, backup, release, and deployment behavior remain compatible.
+The protected route follows the [direct-cut contract](accounting-v2-direct-cut.md). Token metrics and Cost intentionally use canonical accounting only; historical attempt counts/timing remain observations.
 
 Invalid selection returns HTTP 400 before any repository read. A successful zero-attempt selection returns HTTP 200 with empty breakdowns and unavailable percentiles. Repository/API failure remains HTTP 500; the frontend preserves stale complete data when available.
 
-## Local bounded-read evidence (2026-09-07)
+## Historical pre-direct-cut bounded-read evidence (2026-09-07)
 
 `BenchmarkUsageAttemptPerformanceHighCardinality` uses the existing deterministic 65,536-attempt synthetic fixture spread across 48 hours, with 32 providers, 512 models, 2,048 auth-index values, positive timing/output data, and known generate/stream flags. Its route-shaped exact 24-hour selection contains 32,760 attempts. Fixture construction and SQLite `ANALYZE` are outside the timer. On this Apple M4 with `GOMAXPROCS=1`, `-count=1`, and `-benchtime=1x`, the final transactionally consistent read took 322.35 ms with 24,890,880 B allocated across 378,529 allocations. `/usr/bin/time -l` reported 204,881,920 bytes maximum resident set size for the complete `go test` invocation.
 

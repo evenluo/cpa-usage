@@ -1,41 +1,41 @@
 package service
 
 import (
+	"fmt"
+
 	"cpa-usage/internal/cpa"
 	"cpa-usage/internal/entities"
+	"cpa-usage/internal/repository"
 )
 
-// Preserve typed producer facts only; repository owns validity and quality.
+func validateQueuedAccounting(d cpa.UsageAccountingFields) error {
+	if d.Generate == nil || d.Stream == nil || d.TokenBreakdown == nil || d.TokenBreakdown.Input == nil || d.TokenBreakdown.Output == nil {
+		return fmt.Errorf("complete Accounting v2 envelope is required")
+	}
+	if repository.UsageAccountingState(queuedAccountingFacts(d)) != repository.AccountingValid {
+		return fmt.Errorf("canonical Accounting v2 facts are invalid")
+	}
+	return nil
+}
+
+// queuedAccountingFacts projects the already validated Accounting v2 record.
 func queuedAccountingFacts(d cpa.UsageAccountingFields) entities.UsageAccounting {
-	facts := entities.UsageAccounting{
-		AccountingVersion:     d.AccountingVersion.Value,
-		TokenBreakdownPresent: d.TokenBreakdown.Value != nil || d.TokenBreakdown.Malformed,
-		AccountingMalformed:   d.AccountingVersion.Malformed || d.TokenBreakdown.Malformed,
-	}
-	b := d.TokenBreakdown.Value
+	b := d.TokenBreakdown
 	if b == nil {
-		return facts
+		return entities.UsageAccounting{}
 	}
-	facts.TokenSchemaVersion = b.SchemaVersion.Value
-	if b.Quality.Value != nil {
-		quality := string(*b.Quality.Value)
-		facts.TokenQuality = &quality
+	return entities.UsageAccounting{
+		AccountingVersion:           d.AccountingVersion,
+		TokenSchemaVersion:          b.SchemaVersion,
+		TokenQuality:                b.Quality,
+		CanonicalTotalTokens:        b.TotalTokens,
+		CanonicalInputTokens:        b.Input.TotalTokens,
+		CanonicalUncachedTokens:     b.Input.UncachedTokens,
+		CanonicalCacheReadTokens:    b.Input.CacheReadTokens,
+		CanonicalCacheWriteTokens:   b.Input.CacheWriteTokens,
+		CanonicalOutputTokens:       b.Output.TotalTokens,
+		CanonicalNonReasoningTokens: b.Output.NonReasoningTokens,
+		CanonicalReasoningTokens:    b.Output.ReasoningTokens,
+		CanonicalUnclassifiedTokens: b.UnclassifiedTokens,
 	}
-	facts.CanonicalTotalTokens = b.TotalTokens.Value
-	facts.CanonicalUnclassifiedTokens = b.UnclassifiedTokens.Value
-	facts.AccountingMalformed = facts.AccountingMalformed || b.SchemaVersion.Malformed || b.Quality.Malformed || b.TotalTokens.Malformed || b.UnclassifiedTokens.Malformed || b.Input.Malformed || b.Output.Malformed
-	if input := b.Input.Value; input != nil {
-		facts.CanonicalInputTokens = input.TotalTokens.Value
-		facts.CanonicalUncachedTokens = input.UncachedTokens.Value
-		facts.CanonicalCacheReadTokens = input.CacheReadTokens.Value
-		facts.CanonicalCacheWriteTokens = input.CacheWriteTokens.Value
-		facts.AccountingMalformed = facts.AccountingMalformed || input.TotalTokens.Malformed || input.UncachedTokens.Malformed || input.CacheReadTokens.Malformed || input.CacheWriteTokens.Malformed
-	}
-	if output := b.Output.Value; output != nil {
-		facts.CanonicalOutputTokens = output.TotalTokens.Value
-		facts.CanonicalNonReasoningTokens = output.NonReasoningTokens.Value
-		facts.CanonicalReasoningTokens = output.ReasoningTokens.Value
-		facts.AccountingMalformed = facts.AccountingMalformed || output.TotalTokens.Malformed || output.NonReasoningTokens.Malformed || output.ReasoningTokens.Malformed
-	}
-	return facts
 }

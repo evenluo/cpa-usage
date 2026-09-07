@@ -17,6 +17,7 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dt
 			COUNT(*) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokensExpr) + `), 0) AS input_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokensExpr) + `), 0) AS output_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
@@ -51,20 +52,21 @@ func buildAnalyticsModelBreakdown(db *gorm.DB, filter dto.AnalyticsFilter) ([]dt
 
 func mapAnalyticsModelBreakdown(row analyticsModelAggregateRow) dto.AnalyticsModelBreakdown {
 	record := dto.AnalyticsModelBreakdown{
-		Model:              row.Model,
-		Provider:           row.Provider,
-		TotalCost:          row.TotalCost,
-		TotalTokens:        row.TotalTokens,
-		RequestCount:       row.RequestCount,
-		SuccessCount:       row.SuccessCount,
-		FailureCount:       row.FailureCount,
-		InputTokens:        row.InputTokens,
-		OutputTokens:       row.OutputTokens,
-		ReasoningTokens:    row.ReasoningTokens,
-		CachedTokens:       row.CachedTokens,
-		CacheReadTokens:    row.CacheReadTokens,
-		TotalLatencyMS:     row.TotalLatencyMS,
-		LatencySampleCount: row.LatencySampleCount,
+		Model:                  row.Model,
+		Provider:               row.Provider,
+		TotalCost:              row.TotalCost,
+		TotalTokens:            row.TotalTokens,
+		RequestCount:           row.RequestCount,
+		SuccessCount:           row.SuccessCount,
+		FailureCount:           row.FailureCount,
+		InputTokens:            row.InputTokens,
+		OutputTokens:           row.OutputTokens,
+		ReasoningTokens:        row.ReasoningTokens,
+		CachedTokens:           row.CachedTokens,
+		CacheReadTokens:        row.CacheReadTokens,
+		CanonicalValidAttempts: row.CanonicalValidAttempts,
+		TotalLatencyMS:         row.TotalLatencyMS,
+		LatencySampleCount:     row.LatencySampleCount,
 	}
 	if row.ProviderCount > 1 {
 		record.Provider = "Multiple providers"

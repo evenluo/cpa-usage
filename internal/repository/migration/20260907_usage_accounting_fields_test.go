@@ -55,3 +55,36 @@ func TestUsageAccountingMigrationPreservesHistoricalFacts(t *testing.T) {
 		}
 	}
 }
+
+func TestAccountingUpgradeRequiresPublishedConsumerToDrainInbox(t *testing.T) {
+	for _, status := range []string{"pending", "process_failed", "processed", "decode_failed", "discarded"} {
+		t.Run(status, func(t *testing.T) {
+			db, err := gorm.Open(sqlite.Open(testSQLiteDSN(filepath.Join(t.TempDir(), "inbox.db"))), &gorm.Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer closeOpenedDatabase(t, db)
+			if err := db.Exec(`CREATE TABLE usage_events (id INTEGER PRIMARY KEY)`).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec(`CREATE TABLE redis_usage_inboxes (id INTEGER PRIMARY KEY, status TEXT)`).Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec(`INSERT INTO redis_usage_inboxes VALUES (1, ?)`, status).Error; err != nil {
+				t.Fatal(err)
+			}
+			err = db.Transaction(addUsageAccountingFieldsMigration)
+			blocked := status == "pending" || status == "process_failed"
+			if (err != nil) != blocked {
+				t.Fatalf("status %s: err=%v", status, err)
+			}
+			if db.Migrator().HasColumn("usage_events", "accounting_version") == blocked {
+				t.Fatalf("unexpected schema mutation for status %s", status)
+			}
+			var retained int64
+			if err := db.Table("redis_usage_inboxes").Count(&retained).Error; err != nil || retained != 1 {
+				t.Fatalf("inbox changed: %d %v", retained, err)
+			}
+		})
+	}
+}

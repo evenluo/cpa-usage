@@ -82,6 +82,9 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
 	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+	if row.RequestCount == 0 {
+		cost = costCompletenessAssessment{Status: dto.CostStatusUnavailable}
+	}
 	summary.CostAvailable, summary.CostStatus = cost.Available, cost.Status
 	summary.CacheReadShare, summary.CacheReadCoverage, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
@@ -101,14 +104,9 @@ func mapAnalyticsAccountingSummary(row analyticsAggregateRow) dto.AnalyticsAccou
 		TotalAttempts: row.RequestCount,
 		ValidAttempts: row.AccountingValidAttempts,
 		States: dto.AnalyticsAccountingStates{
-			Absent:                       row.AccountingAbsentAttempts,
-			Malformed:                    row.AccountingMalformedAttempts,
-			UnsupportedAccountingVersion: row.AccountingUnsupportedVersionAttempts,
-			UnsupportedSchemaVersion:     row.AccountingUnsupportedSchemaAttempts,
-			Missing:                      row.AccountingMissingAttempts,
-			UnknownQuality:               row.AccountingUnknownQualityAttempts,
-			Invalid:                      row.AccountingInvalidAttempts,
-			Valid:                        row.AccountingValidAttempts,
+			Absent:  row.AccountingAbsentAttempts,
+			Invalid: row.AccountingInvalidAttempts,
+			Valid:   row.AccountingValidAttempts,
 		},
 		ValidQuality: dto.AnalyticsAccountingValidQuality{
 			Complete:     row.AccountingValidCompleteAttempts,

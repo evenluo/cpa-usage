@@ -10,24 +10,26 @@ import (
 )
 
 type usageModelMappingSummaryRow struct {
-	TotalAttempts         int64
-	ObservedAliasAttempts int64
-	ObservedTotalCost     float64
-	MissingPricingEvents  int64
-	PricedBillableEvents  int64
+	TotalAttempts          int64
+	ObservedAliasAttempts  int64
+	CanonicalValidAttempts int64
+	ObservedTotalCost      float64
+	MissingPricingEvents   int64
+	PricedBillableEvents   int64
 }
 
 type usageModelMappingAggregateRow struct {
-	ModelAlias           string
-	Model                string
-	Provider             string
-	AttemptCount         int64
-	FailureCount         int64
-	TotalLatencyMS       int64
-	LatencySampleCount   int64
-	TotalCost            float64
-	MissingPricingEvents int64
-	PricedBillableEvents int64
+	ModelAlias             string
+	Model                  string
+	Provider               string
+	AttemptCount           int64
+	FailureCount           int64
+	CanonicalValidAttempts int64
+	TotalLatencyMS         int64
+	LatencySampleCount     int64
+	TotalCost              float64
+	MissingPricingEvents   int64
+	PricedBillableEvents   int64
 }
 
 // BuildUsageModelMappingsWithFilter returns a bounded fixed-window projection
@@ -55,7 +57,8 @@ func BuildUsageModelMappingsWithFilter(ctx context.Context, db *gorm.DB, filter 
 		var summary usageModelMappingSummaryRow
 		if err := base().Select(`
 		COUNT(*) AS total_attempts,
-		COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN 1 ELSE 0 END), 0) AS observed_alias_attempts,
+			COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN 1 ELSE 0 END), 0) AS observed_alias_attempts,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 		COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN ` + analyticsSourceCostSQLExpression(source) + ` ELSE 0 END), 0) AS observed_total_cost,
 		COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN ` + analyticsSourceMissingPricingSQLExpression(source) + ` ELSE 0 END), 0) AS missing_pricing_events,
 		COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN ` + analyticsSourcePricedBillableSQLExpression(source) + ` ELSE 0 END), 0) AS priced_billable_events`).
@@ -69,7 +72,8 @@ func BuildUsageModelMappingsWithFilter(ctx context.Context, db *gorm.DB, filter 
 		TRIM(usage_events.model) AS model,
 		TRIM(usage_events.provider) AS provider,
 		COUNT(*) AS attempt_count,
-		COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(CASE WHEN usage_events.failed THEN 1 ELSE 0 END), 0) AS failure_count,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 		COALESCE(SUM(` + source.latencySumExpr + `), 0) AS total_latency_ms,
 		COALESCE(SUM(` + source.latencyCountExpr + `), 0) AS latency_sample_count,
 		COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
@@ -84,25 +88,27 @@ func BuildUsageModelMappingsWithFilter(ctx context.Context, db *gorm.DB, filter 
 		}
 
 		record = &dto.UsageModelMappingDistributionRecord{
-			TotalAttempts:         summary.TotalAttempts,
-			ObservedAliasAttempts: summary.ObservedAliasAttempts,
-			MissingAliasAttempts:  max(summary.TotalAttempts-summary.ObservedAliasAttempts, 0),
-			ObservedTotalCost:     summary.ObservedTotalCost,
-			Mappings:              make([]dto.UsageModelMappingRecord, 0, len(rows)),
+			TotalAttempts:          summary.TotalAttempts,
+			ObservedAliasAttempts:  summary.ObservedAliasAttempts,
+			CanonicalValidAttempts: summary.CanonicalValidAttempts,
+			MissingAliasAttempts:   max(summary.TotalAttempts-summary.ObservedAliasAttempts, 0),
+			ObservedTotalCost:      summary.ObservedTotalCost,
+			Mappings:               make([]dto.UsageModelMappingRecord, 0, len(rows)),
 		}
 		cost := assessCostCompleteness(summary.MissingPricingEvents, summary.PricedBillableEvents)
 		record.ObservedCostAvailable, record.ObservedCostStatus = cost.Available, cost.Status
 		visibleAttempts := int64(0)
 		for _, row := range rows {
 			mapping := dto.UsageModelMappingRecord{
-				ModelAlias:         strings.TrimSpace(row.ModelAlias),
-				Model:              strings.TrimSpace(row.Model),
-				Provider:           strings.TrimSpace(row.Provider),
-				AttemptCount:       row.AttemptCount,
-				FailureCount:       row.FailureCount,
-				TotalLatencyMS:     row.TotalLatencyMS,
-				LatencySampleCount: row.LatencySampleCount,
-				TotalCost:          row.TotalCost,
+				ModelAlias:             strings.TrimSpace(row.ModelAlias),
+				Model:                  strings.TrimSpace(row.Model),
+				Provider:               strings.TrimSpace(row.Provider),
+				AttemptCount:           row.AttemptCount,
+				FailureCount:           row.FailureCount,
+				CanonicalValidAttempts: row.CanonicalValidAttempts,
+				TotalLatencyMS:         row.TotalLatencyMS,
+				LatencySampleCount:     row.LatencySampleCount,
+				TotalCost:              row.TotalCost,
 			}
 			if row.AttemptCount > 0 {
 				mapping.FailureShare = float64(row.FailureCount) / float64(row.AttemptCount) * 100

@@ -22,33 +22,32 @@ type UsageRollupHourly struct {
 	CacheReadTokens      int64     `gorm:"not null"`
 	// CacheReadObservedInputTokens is the prompt-input denominator from attempts
 	// that carried a valid explicit cache_read_tokens fact, including explicit zero.
-	CacheReadObservedInputTokens         int64     `gorm:"not null"`
-	AccountingAbsentAttempts             int64     `gorm:"not null"`
-	AccountingMalformedAttempts          int64     `gorm:"not null"`
-	AccountingUnsupportedVersionAttempts int64     `gorm:"not null"`
-	AccountingUnsupportedSchemaAttempts  int64     `gorm:"not null"`
-	AccountingMissingAttempts            int64     `gorm:"not null"`
-	AccountingUnknownQualityAttempts     int64     `gorm:"not null"`
-	AccountingInvalidAttempts            int64     `gorm:"not null"`
-	AccountingValidAttempts              int64     `gorm:"not null"`
-	AccountingValidCompleteAttempts      int64     `gorm:"not null"`
-	AccountingValidInconsistentAttempts  int64     `gorm:"not null"`
-	AccountingValidUnclassifiedAttempts  int64     `gorm:"not null"`
-	CanonicalTotalTokens                 int64     `gorm:"not null"`
-	CanonicalInputTokens                 int64     `gorm:"not null"`
-	CanonicalUncachedTokens              int64     `gorm:"not null"`
-	CanonicalCacheReadTokens             int64     `gorm:"not null"`
-	CanonicalCacheWriteTokens            int64     `gorm:"not null"`
-	CanonicalOutputTokens                int64     `gorm:"not null"`
-	CanonicalNonReasoningTokens          int64     `gorm:"not null"`
-	CanonicalReasoningTokens             int64     `gorm:"not null"`
-	CanonicalUnclassifiedTokens          int64     `gorm:"not null"`
-	TotalTokens                          int64     `gorm:"not null"`
-	TotalLatencyMS                       int64     `gorm:"not null"`
-	LatencySampleCount                   int64     `gorm:"not null"`
-	LastEventAt                          time.Time `gorm:"not null"`
-	CreatedAt                            time.Time
-	UpdatedAt                            time.Time
+	CacheReadObservedInputTokens        int64     `gorm:"not null"`
+	AccountingAbsentAttempts            int64     `gorm:"not null"`
+	AccountingInvalidAttempts           int64     `gorm:"not null"`
+	AccountingValidAttempts             int64     `gorm:"not null"`
+	AccountingValidCompleteAttempts     int64     `gorm:"not null"`
+	AccountingValidInconsistentAttempts int64     `gorm:"not null"`
+	AccountingValidUnclassifiedAttempts int64     `gorm:"not null"`
+	CanonicalCompleteZeroAttempts       int64     `gorm:"not null"`
+	CanonicalCompletePromptTokens       int64     `gorm:"not null"`
+	CanonicalCompleteCacheReadTokens    int64     `gorm:"not null"`
+	CanonicalCompleteOutputTokens       int64     `gorm:"not null"`
+	CanonicalTotalTokens                int64     `gorm:"not null"`
+	CanonicalInputTokens                int64     `gorm:"not null"`
+	CanonicalUncachedTokens             int64     `gorm:"not null"`
+	CanonicalCacheReadTokens            int64     `gorm:"not null"`
+	CanonicalCacheWriteTokens           int64     `gorm:"not null"`
+	CanonicalOutputTokens               int64     `gorm:"not null"`
+	CanonicalNonReasoningTokens         int64     `gorm:"not null"`
+	CanonicalReasoningTokens            int64     `gorm:"not null"`
+	CanonicalUnclassifiedTokens         int64     `gorm:"not null"`
+	TotalTokens                         int64     `gorm:"not null"`
+	TotalLatencyMS                      int64     `gorm:"not null"`
+	LatencySampleCount                  int64     `gorm:"not null"`
+	LastEventAt                         time.Time `gorm:"not null"`
+	CreatedAt                           time.Time
+	UpdatedAt                           time.Time
 }
 
 func (UsageRollupHourly) TableName() string {

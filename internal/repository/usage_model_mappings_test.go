@@ -51,7 +51,7 @@ func TestUsageModelMappingsPreserveObservedPopulationSplitsAndEvidenceParity(t *
 		{EventKey: "missing-alias", Timestamp: start.Add(5 * time.Hour), Model: "actual-a", Provider: "provider-a"},
 		{EventKey: "outside", Timestamp: start.Add(-time.Second), ModelAlias: alias("route-a"), Model: "actual-a", Provider: "provider-a"},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert usage events: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestUsageModelMappingsUsesSingleReadSnapshot(t *testing.T) {
 	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 	alias := "route-a"
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "before-snapshot", Timestamp: start.Add(time.Hour), ModelAlias: &alias, Model: "actual-a", Provider: "provider-a",
 	}}); err != nil {
 		t.Fatalf("seed usage event: %v", err)
@@ -123,7 +123,7 @@ func TestUsageModelMappingsUsesSingleReadSnapshot(t *testing.T) {
 		Interface: db.Logger,
 		match:     "AS observed_alias_attempts",
 		after: func() {
-			if _, _, insertErr := InsertUsageEvents(writer, []entities.UsageEvent{{
+			if _, _, insertErr := insertCanonicalUsageTestEvents(writer, []entities.UsageEvent{{
 				EventKey: "during-snapshot", Timestamp: start.Add(2 * time.Hour), ModelAlias: &alias, Model: "actual-b", Provider: "provider-b",
 			}}); insertErr != nil {
 				t.Errorf("insert concurrent usage event: %v", insertErr)
@@ -161,7 +161,7 @@ func TestUsageModelMappingsBoundsRowsAndPreservesExcludedAttempts(t *testing.T) 
 			Model: "actual", Provider: "provider",
 		})
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert usage events: %v", err)
 	}
 
