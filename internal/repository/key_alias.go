@@ -14,7 +14,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const KeyAliasMaxLength = 80
+const (
+	KeyAliasMaxLength       = 80
+	keyAliasLookupBatchSize = 400
+)
 
 var (
 	ErrInvalidKeyAlias  = errors.New("invalid key alias")
@@ -118,16 +121,28 @@ func ListKeyAliases(ctx context.Context, db *gorm.DB, keys []KeyAliasKey) (map[K
 		return result, nil
 	}
 
+	identitiesByAuthType := make(map[entities.UsageIdentityAuthType][]string)
+	authTypes := make([]entities.UsageIdentityAuthType, 0, 2)
 	for _, key := range normalized {
-		var row entities.KeyAlias
-		err := db.WithContext(ctx).Where("auth_type = ? AND identity = ?", key.AuthType, key.Identity).First(&row).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			continue
+		if _, ok := identitiesByAuthType[key.AuthType]; !ok {
+			authTypes = append(authTypes, key.AuthType)
 		}
-		if err != nil {
-			return result, fmt.Errorf("list key aliases: %w", err)
+		identitiesByAuthType[key.AuthType] = append(identitiesByAuthType[key.AuthType], key.Identity)
+	}
+	for _, authType := range authTypes {
+		identities := identitiesByAuthType[authType]
+		for start := 0; start < len(identities); start += keyAliasLookupBatchSize {
+			end := min(start+keyAliasLookupBatchSize, len(identities))
+			var rows []entities.KeyAlias
+			if err := db.WithContext(ctx).
+				Where("auth_type = ? AND identity IN ?", authType, identities[start:end]).
+				Find(&rows).Error; err != nil {
+				return result, fmt.Errorf("list key aliases: %w", err)
+			}
+			for _, row := range rows {
+				result[KeyAliasKey{AuthType: row.AuthType, Identity: row.Identity}] = row
+			}
 		}
-		result[key] = row
 	}
 	return result, nil
 }

@@ -15,31 +15,33 @@ type usageAnalysisResponse struct {
 }
 
 type usageAnalysisAPIPayload struct {
-	APIKey          string                      `json:"api_key"`
-	DisplayName     string                      `json:"display_name"`
-	TotalRequests   int64                       `json:"total_requests"`
-	SuccessCount    int64                       `json:"success_count"`
-	FailureCount    int64                       `json:"failure_count"`
-	InputTokens     int64                       `json:"input_tokens"`
-	OutputTokens    int64                       `json:"output_tokens"`
-	ReasoningTokens int64                       `json:"reasoning_tokens"`
-	CachedTokens    int64                       `json:"cached_tokens"`
-	TotalTokens     int64                       `json:"total_tokens"`
-	Models          []usageAnalysisModelPayload `json:"models"`
+	APIKey                 string                      `json:"api_key"`
+	DisplayName            string                      `json:"display_name"`
+	TotalRequests          int64                       `json:"total_requests"`
+	SuccessCount           int64                       `json:"success_count"`
+	FailureCount           int64                       `json:"failure_count"`
+	InputTokens            int64                       `json:"input_tokens"`
+	OutputTokens           int64                       `json:"output_tokens"`
+	ReasoningTokens        int64                       `json:"reasoning_tokens"`
+	CacheReadTokens        int64                       `json:"cache_read_tokens"`
+	TotalTokens            int64                       `json:"total_tokens"`
+	CanonicalValidAttempts int64                       `json:"canonical_valid_attempts"`
+	Models                 []usageAnalysisModelPayload `json:"models"`
 }
 
 type usageAnalysisModelPayload struct {
-	Model              string `json:"model"`
-	TotalRequests      int64  `json:"total_requests"`
-	SuccessCount       int64  `json:"success_count"`
-	FailureCount       int64  `json:"failure_count"`
-	InputTokens        int64  `json:"input_tokens"`
-	OutputTokens       int64  `json:"output_tokens"`
-	ReasoningTokens    int64  `json:"reasoning_tokens"`
-	CachedTokens       int64  `json:"cached_tokens"`
-	TotalTokens        int64  `json:"total_tokens"`
-	TotalLatencyMS     int64  `json:"total_latency_ms"`
-	LatencySampleCount int64  `json:"latency_sample_count"`
+	Model                  string `json:"model"`
+	TotalRequests          int64  `json:"total_requests"`
+	SuccessCount           int64  `json:"success_count"`
+	FailureCount           int64  `json:"failure_count"`
+	InputTokens            int64  `json:"input_tokens"`
+	OutputTokens           int64  `json:"output_tokens"`
+	ReasoningTokens        int64  `json:"reasoning_tokens"`
+	CacheReadTokens        int64  `json:"cache_read_tokens"`
+	TotalTokens            int64  `json:"total_tokens"`
+	CanonicalValidAttempts int64  `json:"canonical_valid_attempts"`
+	TotalLatencyMS         int64  `json:"total_latency_ms"`
+	LatencySampleCount     int64  `json:"latency_sample_count"`
 }
 
 func registerUsageAnalysisRoute(router gin.IRoutes, usageProvider UsageProvider) {
@@ -73,17 +75,18 @@ func buildUsageAnalysisPayload(apiRows []repodto.UsageAnalysisAPIStatRecord, mod
 			models = append(models, mapUsageAnalysisModelPayload(model))
 		}
 		apis = append(apis, usageAnalysisAPIPayload{
-			APIKey:          redact.APIAlias(api.APIGroupKey),
-			DisplayName:     redact.APIKeyDisplayName(api.APIGroupKey),
-			TotalRequests:   api.TotalRequests,
-			SuccessCount:    api.SuccessCount,
-			FailureCount:    api.FailureCount,
-			InputTokens:     api.InputTokens,
-			OutputTokens:    api.OutputTokens,
-			ReasoningTokens: api.ReasoningTokens,
-			CachedTokens:    api.CachedTokens,
-			TotalTokens:     api.TotalTokens,
-			Models:          models,
+			APIKey:                 redact.APIAlias(api.APIGroupKey),
+			DisplayName:            redact.APIKeyDisplayName(api.APIGroupKey),
+			TotalRequests:          api.TotalRequests,
+			SuccessCount:           api.SuccessCount,
+			FailureCount:           api.FailureCount,
+			InputTokens:            api.InputTokens,
+			OutputTokens:           api.OutputTokens,
+			ReasoningTokens:        api.ReasoningTokens,
+			CacheReadTokens:        api.CachedTokens,
+			TotalTokens:            api.TotalTokens,
+			CanonicalValidAttempts: api.CanonicalValidAttempts,
+			Models:                 models,
 		})
 	}
 
@@ -97,16 +100,17 @@ func buildUsageAnalysisPayload(apiRows []repodto.UsageAnalysisAPIStatRecord, mod
 
 func mapUsageAnalysisModelPayload(model repodto.UsageAnalysisModelStatRecord) usageAnalysisModelPayload {
 	return usageAnalysisModelPayload{
-		Model:              model.Model,
-		TotalRequests:      model.TotalRequests,
-		SuccessCount:       model.SuccessCount,
-		FailureCount:       model.FailureCount,
-		InputTokens:        model.InputTokens,
-		OutputTokens:       model.OutputTokens,
-		ReasoningTokens:    model.ReasoningTokens,
-		CachedTokens:       model.CachedTokens,
-		TotalTokens:        model.TotalTokens,
-		TotalLatencyMS:     model.TotalLatencyMS,
-		LatencySampleCount: model.LatencySampleCount,
+		Model:                  model.Model,
+		TotalRequests:          model.TotalRequests,
+		SuccessCount:           model.SuccessCount,
+		FailureCount:           model.FailureCount,
+		InputTokens:            model.InputTokens,
+		OutputTokens:           model.OutputTokens,
+		ReasoningTokens:        model.ReasoningTokens,
+		CacheReadTokens:        model.CachedTokens,
+		TotalTokens:            model.TotalTokens,
+		CanonicalValidAttempts: model.CanonicalValidAttempts,
+		TotalLatencyMS:         model.TotalLatencyMS,
+		LatencySampleCount:     model.LatencySampleCount,
 	}
 }

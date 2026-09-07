@@ -43,12 +43,13 @@ func buildAnalyticsCoreProviderOptions(db *gorm.DB, plan analyticsCoreWindowPlan
 	for _, row := range rows {
 		cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
 		options = append(options, dto.AnalyticsProviderOption{
-			Provider:      row.Provider,
-			RequestCount:  row.RequestCount,
-			TotalTokens:   row.TotalTokens,
-			TotalCost:     row.TotalCost,
-			CostAvailable: cost.Available,
-			CostStatus:    cost.Status,
+			Provider:               row.Provider,
+			RequestCount:           row.RequestCount,
+			TotalTokens:            row.TotalTokens,
+			CanonicalValidAttempts: row.CanonicalValidAttempts,
+			TotalCost:              row.TotalCost,
+			CostAvailable:          cost.Available,
+			CostStatus:             cost.Status,
 		})
 	}
 	return options, nil
@@ -110,7 +111,8 @@ func buildAnalyticsProviderOptionSegmentRows(db *gorm.DB, filter dto.AnalyticsFi
 	if err := source.query(db, filter).
 		Select(`
 			` + source.providerExpr + ` AS provider,
-			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
+				COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
+				COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + source.totalTokensExpr + `), 0) AS total_tokens,
 			COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 			COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
@@ -132,7 +134,8 @@ func buildAnalyticsModelSegmentRows(db *gorm.DB, filter dto.AnalyticsFilter, sou
 			` + source.providerExpr + ` AS provider,
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
-			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+				COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+				COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokensExpr) + `), 0) AS input_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokensExpr) + `), 0) AS output_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
@@ -162,6 +165,7 @@ func addAnalyticsProviderOptionRows(dst map[string]analyticsProviderOptionRow, r
 		combined.Provider = row.Provider
 		combined.RequestCount += row.RequestCount
 		combined.TotalTokens += row.TotalTokens
+		combined.CanonicalValidAttempts += row.CanonicalValidAttempts
 		combined.TotalCost += row.TotalCost
 		combined.MissingPricingEvents += row.MissingPricingEvents
 		combined.PricedBillableEvents += row.PricedBillableEvents
@@ -176,6 +180,7 @@ func addAnalyticsModelRows(dst map[string]analyticsModelAggregateRow, providersB
 		combined.RequestCount += row.RequestCount
 		combined.SuccessCount += row.SuccessCount
 		combined.FailureCount += row.FailureCount
+		combined.CanonicalValidAttempts += row.CanonicalValidAttempts
 		combined.InputTokens += row.InputTokens
 		combined.OutputTokens += row.OutputTokens
 		combined.ReasoningTokens += row.ReasoningTokens

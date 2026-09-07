@@ -31,6 +31,7 @@ export interface ReferenceKeyRow {
   type: string
   auth_type_name: string
   total_tokens: number
+  canonical_valid_attempts: number
   total_cost: number
   cost_available: boolean
   last_used_at: string | null
@@ -51,6 +52,7 @@ export function normalizeAPIKeyRows(apiKeys: APIKeyAliasTarget[] = []): Referenc
     type: "api-key",
     auth_type_name: key.auth_type_name,
     total_tokens: key.total_tokens,
+    canonical_valid_attempts: key.canonical_valid_attempts,
     total_cost: key.total_cost,
     cost_available: key.cost_available,
     last_used_at: key.last_used_at ?? null,
@@ -68,6 +70,7 @@ export function normalizeAccountKeyRows(keys: KeyIdentity[] = []): ReferenceKeyR
     type: key.type,
     auth_type_name: key.auth_type_name,
     total_tokens: key.total_tokens,
+    canonical_valid_attempts: key.canonical_valid_attempts,
     total_cost: key.total_cost,
     cost_available: key.cost_available,
     last_used_at: key.last_used_at,

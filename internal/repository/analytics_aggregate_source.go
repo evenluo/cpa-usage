@@ -22,19 +22,23 @@ type analyticsAggregateSource struct {
 	cacheReadTokensExpr              string
 	cacheReadObservedInputTokensExpr string
 	totalTokensExpr                  string
-	// promptTokensExpr 是 Cost 计算里的可计费 prompt tokens：raw 源由 input-cached 推导，rollup 源已物化。
-	promptTokensExpr string
-	providerExpr     string
-	modelExpr        string
-	latencySumExpr   string
-	latencyCountExpr string
-	lastUsedAtExpr   string
+	completeAttemptsExpr             string
+	completeZeroAttemptsExpr         string
+	completePromptTokensExpr         string
+	completeCacheReadTokensExpr      string
+	completeOutputTokensExpr         string
+	providerExpr                     string
+	modelExpr                        string
+	latencySumExpr                   string
+	latencyCountExpr                 string
+	lastUsedAtExpr                   string
 	// firstUsedAtExpr 仅 raw events 有精确事实；rollup 不伪造 first-used。
 	firstUsedAtExpr string
 	// identityAuthTypeExpr/identityExpr 是 Key Alias 维度的身份列；apiKeyIdentityExpr 是 API Key 维度的身份列。
 	identityAuthTypeExpr string
 	identityExpr         string
 	apiKeyIdentityExpr   string
+	accounting           analyticsAccountingAggregateSource
 	bucketExpr           func(bucketByDay bool) string
 	query                func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	// identityQuery/apiKeyQuery 在 query 基础上附加身份/别名 join 与非空身份过滤。
@@ -42,49 +46,69 @@ type analyticsAggregateSource struct {
 	apiKeyQuery   func(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB
 }
 
+type analyticsAccountingAggregateSource struct {
+	stateAttemptsExpr        func(string) string
+	validQualityAttemptsExpr func(string) string
+	validTokenExpr           func(string) string
+}
+
 func analyticsEventsAggregateSource() analyticsAggregateSource {
-	inputTokens := analyticsPositiveTokenSQLExpression("usage_events.input_tokens")
-	cachedTokens := analyticsPositiveTokenSQLExpression("usage_events.cached_tokens")
-	cacheReadTokens, cacheReadObservedInputTokens := analyticsCacheReadObservationSQLExpressions("usage_events.input_tokens", "usage_events.cache_read_tokens")
+	accounting := analyticsEventsAccountingAggregateSource()
+	validToken := accounting.validTokenExpr
+	completeToken := func(column string) string {
+		return "CASE WHEN usage_events.accounting_state = 'valid' AND usage_events.token_quality = 'complete' THEN COALESCE(usage_events." + column + ", 0) ELSE 0 END"
+	}
 	return analyticsAggregateSource{
 		name:                             "events",
 		requestCountExpr:                 "1",
 		successSumExpr:                   "CASE WHEN usage_events.failed THEN 0 ELSE 1 END",
 		failureSumExpr:                   "CASE WHEN usage_events.failed THEN 1 ELSE 0 END",
-		inputTokensExpr:                  "usage_events.input_tokens",
-		outputTokensExpr:                 "usage_events.output_tokens",
-		reasoningTokensExpr:              "usage_events.reasoning_tokens",
-		cachedTokensExpr:                 "usage_events.cached_tokens",
-		cacheReadTokensExpr:              cacheReadTokens,
-		cacheReadObservedInputTokensExpr: cacheReadObservedInputTokens,
-		totalTokensExpr:                  "usage_events.total_tokens",
-		promptTokensExpr:                 "(CASE WHEN " + inputTokens + " - " + cachedTokens + " > 0 THEN " + inputTokens + " - " + cachedTokens + " ELSE 0 END)",
-		providerExpr:                     "TRIM(usage_events.provider)",
-		modelExpr:                        "TRIM(usage_events.model)",
-		latencySumExpr:                   "CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END",
-		latencyCountExpr:                 "CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END",
-		lastUsedAtExpr:                   "usage_events.timestamp",
-		firstUsedAtExpr:                  "usage_events.timestamp",
-		identityAuthTypeExpr:             analyticsUsageIdentityAuthTypeSQLExpression(),
-		identityExpr:                     analyticsUsageIdentitySQLExpression(),
-		apiKeyIdentityExpr:               analyticsAPIKeyIdentitySQLExpression(),
-		bucketExpr:                       analyticsBucketSQLExpression,
-		query:                            analyticsEventsWithPricingQuery,
-		identityQuery:                    analyticsIdentityEventsWithPricingQuery,
-		apiKeyQuery:                      apiKeyEventsWithPricingQuery,
+		inputTokensExpr:                  validToken("canonical_input_tokens"),
+		outputTokensExpr:                 validToken("canonical_output_tokens"),
+		reasoningTokensExpr:              validToken("canonical_reasoning_tokens"),
+		cachedTokensExpr:                 validToken("canonical_cache_read_tokens"),
+		cacheReadTokensExpr:              validToken("canonical_cache_read_tokens"),
+		cacheReadObservedInputTokensExpr: validToken("canonical_input_tokens"),
+		totalTokensExpr:                  validToken("canonical_total_tokens"),
+		completeAttemptsExpr:             accounting.validQualityAttemptsExpr("complete"),
+		completeZeroAttemptsExpr: `CASE WHEN usage_events.accounting_state = 'valid'
+			AND usage_events.token_quality = 'complete'
+			AND COALESCE(usage_events.canonical_uncached_tokens, 0) + COALESCE(usage_events.canonical_cache_write_tokens, 0) = 0
+			AND COALESCE(usage_events.canonical_cache_read_tokens, 0) = 0
+			AND COALESCE(usage_events.canonical_output_tokens, 0) = 0
+			THEN 1 ELSE 0 END`,
+		completePromptTokensExpr:    "(" + completeToken("canonical_uncached_tokens") + " + " + completeToken("canonical_cache_write_tokens") + ")",
+		completeCacheReadTokensExpr: completeToken("canonical_cache_read_tokens"),
+		completeOutputTokensExpr:    completeToken("canonical_output_tokens"),
+		providerExpr:                "TRIM(usage_events.provider)",
+		modelExpr:                   "TRIM(usage_events.model)",
+		latencySumExpr:              "CASE WHEN usage_events.latency_ms > 0 THEN usage_events.latency_ms ELSE 0 END",
+		latencyCountExpr:            "CASE WHEN usage_events.latency_ms > 0 THEN 1 ELSE 0 END",
+		lastUsedAtExpr:              "usage_events.timestamp",
+		firstUsedAtExpr:             "usage_events.timestamp",
+		identityAuthTypeExpr:        analyticsUsageIdentityAuthTypeSQLExpression(),
+		identityExpr:                analyticsUsageIdentitySQLExpression(),
+		apiKeyIdentityExpr:          analyticsAPIKeyIdentitySQLExpression(),
+		accounting:                  accounting,
+		bucketExpr:                  analyticsBucketSQLExpression,
+		query:                       analyticsEventsWithPricingQuery,
+		identityQuery:               analyticsIdentityEventsWithPricingQuery,
+		apiKeyQuery:                 apiKeyEventsWithPricingQuery,
 	}
 }
 
-// analyticsCacheReadObservationSQLExpressions admits only internally consistent
-// provider cache-read facts. Invalid facts remain available as raw Request Evidence,
-// but contribute neither the cache-read numerator nor its observed-input denominator.
-func analyticsCacheReadObservationSQLExpressions(inputTokensExpr string, cacheReadTokensExpr string) (string, string) {
-	valid := inputTokensExpr + " > 0" +
-		" AND " + cacheReadTokensExpr + " IS NOT NULL" +
-		" AND " + cacheReadTokensExpr + " >= 0" +
-		" AND " + cacheReadTokensExpr + " <= " + inputTokensExpr
-	return "CASE WHEN " + valid + " THEN " + cacheReadTokensExpr + " ELSE 0 END",
-		"CASE WHEN " + valid + " THEN " + inputTokensExpr + " ELSE 0 END"
+func analyticsEventsAccountingAggregateSource() analyticsAccountingAggregateSource {
+	return analyticsAccountingAggregateSource{
+		stateAttemptsExpr: func(state string) string {
+			return "CASE WHEN usage_events.accounting_state = '" + state + "' THEN 1 ELSE 0 END"
+		},
+		validQualityAttemptsExpr: func(quality string) string {
+			return "CASE WHEN usage_events.accounting_state = 'valid' AND usage_events.token_quality = '" + quality + "' THEN 1 ELSE 0 END"
+		},
+		validTokenExpr: func(column string) string {
+			return "CASE WHEN usage_events.accounting_state = 'valid' THEN COALESCE(usage_events." + column + ", 0) ELSE 0 END"
+		},
+	}
 }
 
 func analyticsRollupsAggregateSource() analyticsAggregateSource {
@@ -93,14 +117,18 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 		requestCountExpr:                 "usage_rollups_hourly.request_count",
 		successSumExpr:                   "usage_rollups_hourly.success_count",
 		failureSumExpr:                   "usage_rollups_hourly.failure_count",
-		inputTokensExpr:                  "usage_rollups_hourly.input_tokens",
-		outputTokensExpr:                 "usage_rollups_hourly.output_tokens",
-		reasoningTokensExpr:              "usage_rollups_hourly.reasoning_tokens",
-		cachedTokensExpr:                 "usage_rollups_hourly.cached_tokens",
-		cacheReadTokensExpr:              "usage_rollups_hourly.cache_read_tokens",
-		cacheReadObservedInputTokensExpr: "usage_rollups_hourly.cache_read_observed_input_tokens",
-		totalTokensExpr:                  "usage_rollups_hourly.total_tokens",
-		promptTokensExpr:                 "usage_rollups_hourly.billable_prompt_tokens",
+		inputTokensExpr:                  "usage_rollups_hourly.canonical_input_tokens",
+		outputTokensExpr:                 "usage_rollups_hourly.canonical_output_tokens",
+		reasoningTokensExpr:              "usage_rollups_hourly.canonical_reasoning_tokens",
+		cachedTokensExpr:                 "usage_rollups_hourly.canonical_cache_read_tokens",
+		cacheReadTokensExpr:              "usage_rollups_hourly.canonical_cache_read_tokens",
+		cacheReadObservedInputTokensExpr: "usage_rollups_hourly.canonical_input_tokens",
+		totalTokensExpr:                  "usage_rollups_hourly.canonical_total_tokens",
+		completeAttemptsExpr:             "usage_rollups_hourly.accounting_valid_complete_attempts",
+		completeZeroAttemptsExpr:         "usage_rollups_hourly.canonical_complete_zero_attempts",
+		completePromptTokensExpr:         "usage_rollups_hourly.canonical_complete_prompt_tokens",
+		completeCacheReadTokensExpr:      "usage_rollups_hourly.canonical_complete_cache_read_tokens",
+		completeOutputTokensExpr:         "usage_rollups_hourly.canonical_complete_output_tokens",
 		providerExpr:                     "TRIM(usage_rollups_hourly.provider)",
 		modelExpr:                        "TRIM(usage_rollups_hourly.model)",
 		latencySumExpr:                   "usage_rollups_hourly.total_latency_ms",
@@ -110,6 +138,7 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 		identityAuthTypeExpr:             analyticsRollupUsageIdentityAuthTypeSQLExpression(),
 		identityExpr:                     analyticsRollupUsageIdentitySQLExpression(),
 		apiKeyIdentityExpr:               analyticsRollupAPIKeyIdentitySQLExpression(),
+		accounting:                       analyticsRollupsAccountingAggregateSource(),
 		bucketExpr:                       analyticsRollupBucketSQLExpression,
 		query:                            analyticsRollupsWithPricingQuery,
 		identityQuery:                    analyticsRollupIdentityWithPricingQuery,
@@ -117,29 +146,54 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 	}
 }
 
+func analyticsRollupsAccountingAggregateSource() analyticsAccountingAggregateSource {
+	return analyticsAccountingAggregateSource{
+		stateAttemptsExpr: func(state string) string {
+			columns := map[string]string{
+				AccountingAbsent: "accounting_absent_attempts",
+				AccountingValid:  "accounting_valid_attempts",
+			}
+			return "usage_rollups_hourly." + columns[state]
+		},
+		validQualityAttemptsExpr: func(quality string) string {
+			columns := map[string]string{
+				"complete":     "accounting_valid_complete_attempts",
+				"inconsistent": "accounting_valid_inconsistent_attempts",
+				"unclassified": "accounting_valid_unclassified_attempts",
+			}
+			return "usage_rollups_hourly." + columns[quality]
+		},
+		validTokenExpr: func(column string) string {
+			return "usage_rollups_hourly." + column
+		},
+	}
+}
+
 // analyticsSourceCostSQLExpression 渲染该源的 Cost 表达式。
 func analyticsSourceCostSQLExpression(source analyticsAggregateSource) string {
-	return analyticsCostSQLExpressionWithPromptTokens(source.promptTokensExpr, analyticsPositiveTokenSQLExpression(source.outputTokensExpr), analyticsPositiveTokenSQLExpression(source.cachedTokensExpr))
+	return analyticsCostSQLExpressionWithPromptTokens(source.completePromptTokensExpr, source.completeOutputTokensExpr, source.completeCacheReadTokensExpr)
 }
 
 func analyticsSourceCacheSavingsSQLExpression(source analyticsAggregateSource) string {
-	return analyticsCacheSavingsSQLExpressionFor(source.cacheReadTokensExpr)
+	return analyticsCacheSavingsSQLExpressionFor(source.completeCacheReadTokensExpr)
 }
 
 func analyticsSourceCacheSavingsEligibleSQLExpression(source analyticsAggregateSource) string {
-	return analyticsCacheSavingsEligibleSQLExpressionFor(source.cacheReadTokensExpr, source.requestCountExpr)
+	return analyticsCacheSavingsEligibleSQLExpressionFor(source.completeCacheReadTokensExpr, source.completeAttemptsExpr)
 }
 
 func analyticsSourceCacheSavingsIneligibleSQLExpression(source analyticsAggregateSource) string {
-	return analyticsCacheSavingsIneligibleSQLExpressionFor(source.cacheReadTokensExpr, source.requestCountExpr)
+	return analyticsCacheSavingsIneligibleSQLExpressionFor(source.completeCacheReadTokensExpr, source.completeAttemptsExpr)
 }
 
 func analyticsSourceMissingPricingSQLExpression(source analyticsAggregateSource) string {
-	return analyticsMissingPricingSQLExpressionFor(source.inputTokensExpr, source.outputTokensExpr, source.cachedTokensExpr, source.requestCountExpr)
+	return analyticsMissingPricingSQLExpressionFor(source.requestCountExpr, source.completeAttemptsExpr, source.completeZeroAttemptsExpr)
 }
 
+// PricedBillable is the historical internal name for attempts whose Cost is
+// known. Complete zero-token attempts are known even without a price row.
 func analyticsSourcePricedBillableSQLExpression(source analyticsAggregateSource) string {
-	return analyticsPricedBillableSQLExpressionFor(source.inputTokensExpr, source.outputTokensExpr, source.cachedTokensExpr, source.requestCountExpr)
+	return analyticsPricedBillableSQLExpressionFor(source.completeAttemptsExpr, source.completeZeroAttemptsExpr)
 }
 
 // analyticsTotalTokensDescOrder 渲染按总 token 量降序的排序片段，供各维度 breakdown 查询共用。
@@ -154,6 +208,7 @@ func analyticsSummaryTrendSelect(source analyticsAggregateSource) string {
 			COALESCE(SUM(` + source.requestCountExpr + `), 0) AS request_count,
 			COALESCE(SUM(` + source.successSumExpr + `), 0) AS success_count,
 			COALESCE(SUM(` + source.failureSumExpr + `), 0) AS failure_count,
+			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS accounting_valid_attempts,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.inputTokensExpr) + `), 0) AS input_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.outputTokensExpr) + `), 0) AS output_tokens,
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.reasoningTokensExpr) + `), 0) AS reasoning_tokens,
@@ -171,7 +226,28 @@ func analyticsSummarySelect(source analyticsAggregateSource) string {
 			COALESCE(SUM(` + analyticsPositiveTokenSQLExpression(source.cacheReadObservedInputTokensExpr) + `), 0) AS cache_read_observed_input_tokens,
 			COALESCE(SUM(` + analyticsSourceCacheSavingsSQLExpression(source) + `), 0) AS cache_savings,
 			COALESCE(SUM(` + analyticsSourceCacheSavingsEligibleSQLExpression(source) + `), 0) AS cache_savings_eligible_rows,
-			COALESCE(SUM(` + analyticsSourceCacheSavingsIneligibleSQLExpression(source) + `), 0) AS cache_savings_ineligible_rows`
+			COALESCE(SUM(` + analyticsSourceCacheSavingsIneligibleSQLExpression(source) + `), 0) AS cache_savings_ineligible_rows,` +
+		analyticsAccountingSummarySelect(source.accounting)
+}
+
+func analyticsAccountingSummarySelect(source analyticsAccountingAggregateSource) string {
+	state := source.stateAttemptsExpr
+	quality := source.validQualityAttemptsExpr
+	token := source.validTokenExpr
+	return `
+			COALESCE(SUM(` + state(AccountingAbsent) + `), 0) AS accounting_absent_attempts,
+			COALESCE(SUM(` + quality("complete") + `), 0) AS accounting_valid_complete_attempts,
+			COALESCE(SUM(` + quality("inconsistent") + `), 0) AS accounting_valid_inconsistent_attempts,
+			COALESCE(SUM(` + quality("unclassified") + `), 0) AS accounting_valid_unclassified_attempts,
+			COALESCE(SUM(` + token("canonical_total_tokens") + `), 0) AS canonical_total_tokens,
+			COALESCE(SUM(` + token("canonical_input_tokens") + `), 0) AS canonical_input_tokens,
+			COALESCE(SUM(` + token("canonical_uncached_tokens") + `), 0) AS canonical_uncached_tokens,
+			COALESCE(SUM(` + token("canonical_cache_read_tokens") + `), 0) AS canonical_cache_read_tokens,
+			COALESCE(SUM(` + token("canonical_cache_write_tokens") + `), 0) AS canonical_cache_write_tokens,
+			COALESCE(SUM(` + token("canonical_output_tokens") + `), 0) AS canonical_output_tokens,
+			COALESCE(SUM(` + token("canonical_non_reasoning_tokens") + `), 0) AS canonical_non_reasoning_tokens,
+			COALESCE(SUM(` + token("canonical_reasoning_tokens") + `), 0) AS canonical_reasoning_tokens,
+			COALESCE(SUM(` + token("canonical_unclassified_tokens") + `), 0) AS canonical_unclassified_tokens`
 }
 
 func buildAnalyticsAggregateRow(db *gorm.DB, filter dto.AnalyticsFilter, source analyticsAggregateSource) (analyticsAggregateRow, error) {

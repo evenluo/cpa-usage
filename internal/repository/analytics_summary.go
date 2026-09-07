@@ -82,6 +82,9 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 		summary.SuccessRate = (float64(row.SuccessCount) / float64(row.RequestCount)) * 100
 	}
 	cost := assessCostCompleteness(row.MissingPricingEvents, row.PricedBillableEvents)
+	if row.RequestCount == 0 {
+		cost = costCompletenessAssessment{Status: dto.CostStatusUnavailable}
+	}
 	summary.CostAvailable, summary.CostStatus = cost.Available, cost.Status
 	summary.CacheReadShare, summary.CacheReadCoverage, summary.CacheReadShareState, summary.EstimatedCacheSavings = analyticsCacheEfficiency(
 		row.InputTokens,
@@ -92,7 +95,44 @@ func mapAnalyticsSummary(row analyticsAggregateRow) dto.AnalyticsSummary {
 		row.CacheSavingsIneligibleRows,
 		summary.CostStatus == dto.CostStatusAvailable,
 	)
+	summary.Accounting = mapAnalyticsAccountingSummary(row)
 	return summary
+}
+
+func mapAnalyticsAccountingSummary(row analyticsAggregateRow) dto.AnalyticsAccountingSummary {
+	accounting := dto.AnalyticsAccountingSummary{
+		TotalAttempts: row.RequestCount,
+		ValidAttempts: row.AccountingValidAttempts,
+		States: dto.AnalyticsAccountingStates{
+			Absent: row.AccountingAbsentAttempts,
+			Valid:  row.AccountingValidAttempts,
+		},
+		ValidQuality: dto.AnalyticsAccountingValidQuality{
+			Complete:     row.AccountingValidCompleteAttempts,
+			Inconsistent: row.AccountingValidInconsistentAttempts,
+			Unclassified: row.AccountingValidUnclassifiedAttempts,
+		},
+		Composition: dto.AnalyticsAccountingComposition{
+			TotalTokens: row.CanonicalTotalTokens,
+			Input: dto.AnalyticsAccountingInputComposition{
+				TotalTokens:      row.CanonicalInputTokens,
+				UncachedTokens:   row.CanonicalUncachedTokens,
+				CacheReadTokens:  row.CanonicalCacheReadTokens,
+				CacheWriteTokens: row.CanonicalCacheWriteTokens,
+			},
+			Output: dto.AnalyticsAccountingOutputComposition{
+				TotalTokens:        row.CanonicalOutputTokens,
+				NonReasoningTokens: row.CanonicalNonReasoningTokens,
+				ReasoningTokens:    row.CanonicalReasoningTokens,
+			},
+			UnclassifiedTokens: row.CanonicalUnclassifiedTokens,
+		},
+	}
+	if row.RequestCount > 0 {
+		coverage := (float64(row.AccountingValidAttempts) / float64(row.RequestCount)) * 100
+		accounting.CoveragePct = &coverage
+	}
+	return accounting
 }
 func analyticsCacheReadMetrics(inputTokens int64, observedInputTokens int64, cacheReadTokens int64) (float64, float64, string) {
 	if inputTokens <= 0 {

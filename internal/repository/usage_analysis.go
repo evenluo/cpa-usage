@@ -23,6 +23,7 @@ func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.Us
 	db = db.WithContext(ctx)
 
 	baseQuery := applyUsageAnalysisTabQuery(db.Model(&entities.UsageEvent{}), filter)
+	source := analyticsEventsAggregateSource()
 
 	apiQuery := baseQuery.Session(&gorm.Session{})
 	apiQuery = apiQuery.Select(strings.Join([]string{
@@ -30,11 +31,12 @@ func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.Us
 		"COUNT(*) AS total_requests",
 		"SUM(CASE WHEN failed THEN 0 ELSE 1 END) AS success_count",
 		"SUM(CASE WHEN failed THEN 1 ELSE 0 END) AS failure_count",
-		"SUM(input_tokens) AS input_tokens",
-		"SUM(output_tokens) AS output_tokens",
-		"SUM(reasoning_tokens) AS reasoning_tokens",
-		"SUM(cached_tokens) AS cached_tokens",
-		"SUM(total_tokens) AS total_tokens",
+		"SUM(" + source.accounting.stateAttemptsExpr(AccountingValid) + ") AS canonical_valid_attempts",
+		"SUM(" + source.inputTokensExpr + ") AS input_tokens",
+		"SUM(" + source.outputTokensExpr + ") AS output_tokens",
+		"SUM(" + source.reasoningTokensExpr + ") AS reasoning_tokens",
+		"SUM(" + source.cachedTokensExpr + ") AS cached_tokens",
+		"SUM(" + source.totalTokensExpr + ") AS total_tokens",
 	}, ", "))
 	apiQuery = apiQuery.Group("TRIM(api_group_key)")
 	apiQuery = apiQuery.Order("total_requests DESC, api_group_key ASC")
@@ -50,11 +52,12 @@ func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.Us
 		"COUNT(*) AS total_requests",
 		"SUM(CASE WHEN failed THEN 0 ELSE 1 END) AS success_count",
 		"SUM(CASE WHEN failed THEN 1 ELSE 0 END) AS failure_count",
-		"SUM(input_tokens) AS input_tokens",
-		"SUM(output_tokens) AS output_tokens",
-		"SUM(reasoning_tokens) AS reasoning_tokens",
-		"SUM(cached_tokens) AS cached_tokens",
-		"SUM(total_tokens) AS total_tokens",
+		"SUM(" + source.accounting.stateAttemptsExpr(AccountingValid) + ") AS canonical_valid_attempts",
+		"SUM(" + source.inputTokensExpr + ") AS input_tokens",
+		"SUM(" + source.outputTokensExpr + ") AS output_tokens",
+		"SUM(" + source.reasoningTokensExpr + ") AS reasoning_tokens",
+		"SUM(" + source.cachedTokensExpr + ") AS cached_tokens",
+		"SUM(" + source.totalTokensExpr + ") AS total_tokens",
 		"SUM(latency_ms) AS total_latency_ms",
 		"SUM(CASE WHEN latency_ms > 0 THEN 1 ELSE 0 END) AS latency_sample_count",
 	}, ", "))
@@ -73,11 +76,12 @@ func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.Us
 		"COUNT(*) AS total_requests",
 		"SUM(CASE WHEN failed THEN 0 ELSE 1 END) AS success_count",
 		"SUM(CASE WHEN failed THEN 1 ELSE 0 END) AS failure_count",
-		"SUM(input_tokens) AS input_tokens",
-		"SUM(output_tokens) AS output_tokens",
-		"SUM(reasoning_tokens) AS reasoning_tokens",
-		"SUM(cached_tokens) AS cached_tokens",
-		"SUM(total_tokens) AS total_tokens",
+		"SUM(" + source.accounting.stateAttemptsExpr(AccountingValid) + ") AS canonical_valid_attempts",
+		"SUM(" + source.inputTokensExpr + ") AS input_tokens",
+		"SUM(" + source.outputTokensExpr + ") AS output_tokens",
+		"SUM(" + source.reasoningTokensExpr + ") AS reasoning_tokens",
+		"SUM(" + source.cachedTokensExpr + ") AS cached_tokens",
+		"SUM(" + source.totalTokensExpr + ") AS total_tokens",
 		"SUM(latency_ms) AS total_latency_ms",
 		"SUM(CASE WHEN latency_ms > 0 THEN 1 ELSE 0 END) AS latency_sample_count",
 	}, ", "))
@@ -85,18 +89,19 @@ func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.Us
 	apiModelQuery = apiModelQuery.Order("api_group_key ASC, total_requests DESC, model ASC")
 
 	var apiModelRows []struct {
-		APIGroupKey        string
-		Model              string
-		TotalRequests      int64
-		SuccessCount       int64
-		FailureCount       int64
-		InputTokens        int64
-		OutputTokens       int64
-		ReasoningTokens    int64
-		CachedTokens       int64
-		TotalTokens        int64
-		TotalLatencyMS     int64
-		LatencySampleCount int64
+		APIGroupKey            string
+		Model                  string
+		TotalRequests          int64
+		SuccessCount           int64
+		FailureCount           int64
+		CanonicalValidAttempts int64
+		InputTokens            int64
+		OutputTokens           int64
+		ReasoningTokens        int64
+		CachedTokens           int64
+		TotalTokens            int64
+		TotalLatencyMS         int64
+		LatencySampleCount     int64
 	}
 	if err := apiModelQuery.Scan(&apiModelRows).Error; err != nil {
 		return nil, nil, fmt.Errorf("load usage analysis api model stats: %w", err)
@@ -113,17 +118,18 @@ func ListUsageAnalysisWithFilter(ctx context.Context, db *gorm.DB, filter dto.Us
 	for _, row := range apiModelRows {
 		apiKey := normalize(row.APIGroupKey)
 		modelsByAPI[apiKey] = append(modelsByAPI[apiKey], dto.UsageAnalysisModelStatRecord{
-			Model:              row.Model,
-			TotalRequests:      row.TotalRequests,
-			SuccessCount:       row.SuccessCount,
-			FailureCount:       row.FailureCount,
-			InputTokens:        row.InputTokens,
-			OutputTokens:       row.OutputTokens,
-			ReasoningTokens:    row.ReasoningTokens,
-			CachedTokens:       row.CachedTokens,
-			TotalTokens:        row.TotalTokens,
-			TotalLatencyMS:     row.TotalLatencyMS,
-			LatencySampleCount: row.LatencySampleCount,
+			Model:                  row.Model,
+			TotalRequests:          row.TotalRequests,
+			SuccessCount:           row.SuccessCount,
+			FailureCount:           row.FailureCount,
+			CanonicalValidAttempts: row.CanonicalValidAttempts,
+			InputTokens:            row.InputTokens,
+			OutputTokens:           row.OutputTokens,
+			ReasoningTokens:        row.ReasoningTokens,
+			CachedTokens:           row.CachedTokens,
+			TotalTokens:            row.TotalTokens,
+			TotalLatencyMS:         row.TotalLatencyMS,
+			LatencySampleCount:     row.LatencySampleCount,
 		})
 	}
 

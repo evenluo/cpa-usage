@@ -31,7 +31,7 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 		{EventKey: "unpriced-day-2", Model: "missing-model", Timestamp: start.AddDate(0, 0, 1).Add(11 * time.Hour), Failed: true, InputTokens: 100, TotalTokens: 100},
 		{EventKey: "outside", Model: "priced-model", Timestamp: start.AddDate(0, 0, -1), InputTokens: 1_000_000, TotalTokens: 1_000_000},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 
@@ -40,7 +40,7 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
 
-	if snapshot.Summary.RequestCount != 3 || snapshot.Summary.TotalTokens != 2_100_100 {
+	if snapshot.Summary.RequestCount != 3 || snapshot.Summary.TotalTokens != 2_000_100 {
 		t.Fatalf("unexpected summary counts: %+v", snapshot.Summary)
 	}
 	if snapshot.Summary.SuccessCount != 2 || snapshot.Summary.FailureCount != 1 {
@@ -55,10 +55,10 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesSummaryAndTrend(t *testing.T) 
 	if snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "partial" {
 		t.Fatalf("expected partial cost status, got %+v", snapshot.Summary)
 	}
-	if snapshot.Summary.InputTokens != 1_500_100 || snapshot.Summary.CachedTokens != 100_000 || snapshot.Summary.CacheReadTokens != 100_000 || snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStatePartial {
+	if snapshot.Summary.InputTokens != 1_500_100 || snapshot.Summary.CachedTokens != 100_000 || snapshot.Summary.CacheReadTokens != 100_000 || snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
 		t.Fatalf("expected cache token summary from real fields, got %+v", snapshot.Summary)
 	}
-	if math.Abs(snapshot.Summary.CacheReadShare-10) > 0.000000001 || math.Abs(snapshot.Summary.CacheReadCoverage-66.66222251849877) > 0.000000001 {
+	if math.Abs(snapshot.Summary.CacheReadShare-6.666222251849876) > 0.000000001 || math.Abs(snapshot.Summary.CacheReadCoverage-100) > 0.000000001 {
 		t.Fatalf("unexpected cache read share: %+v", snapshot.Summary)
 	}
 	if snapshot.Summary.EstimatedCacheSavings != nil {
@@ -94,7 +94,7 @@ func TestBuildAnalyticsCoreWithFilterUsesRollupsForSummaryAndTrend(t *testing.T)
 		{EventKey: "unpriced-hour-2", Provider: "OpenAI", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-2", Timestamp: start.AddDate(0, 0, 1).Add(11 * time.Hour), Failed: true, InputTokens: 100, TotalTokens: 100},
 		{EventKey: "other-provider", Provider: "Claude", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-3", Timestamp: start.Add(12 * time.Hour), InputTokens: 700, TotalTokens: 700},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	target := end.UTC().Truncate(time.Hour)
@@ -121,11 +121,11 @@ func TestBuildAnalyticsCoreWithFilterUsesRollupsForSummaryAndTrend(t *testing.T)
 		t.Fatalf("BuildAnalyticsCoreWithFilter returned error: %v", err)
 	}
 
-	if core.Summary != rawSummary {
+	if !reflect.DeepEqual(core.Summary, rawSummary) {
 		t.Fatalf("expected rollup summary to match raw summary\nrollup=%+v\nraw=%+v", core.Summary, rawSummary)
 	}
-	if core.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStatePartial || math.Abs(core.Summary.CacheReadShare-10) > 1e-9 || math.Abs(core.Summary.CacheReadCoverage-66.66222251849877) > 1e-9 {
-		t.Fatalf("expected rollup summary to preserve partial exact cache coverage, got %+v", core.Summary)
+	if core.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable || math.Abs(core.Summary.CacheReadShare-6.666222251849876) > 1e-9 || math.Abs(core.Summary.CacheReadCoverage-100) > 1e-9 {
+		t.Fatalf("expected rollup summary to preserve canonical cache coverage, got %+v", core.Summary)
 	}
 	if len(core.Trend) != len(rawTrend) {
 		t.Fatalf("expected %d trend points, got %+v", len(rawTrend), core.Trend)
@@ -169,7 +169,7 @@ func TestBuildAnalyticsCoreWithFilterUsesRollupsForBreakdownsAndReadTimeEnrichme
 		{EventKey: "api-key-usage", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-provider", APIGroupKey: "sk-alpha", Timestamp: start.Add(time.Hour + 10*time.Minute), InputTokens: 500_000, OutputTokens: 100_000, TotalTokens: 600_000, LatencyMS: 240},
 		{EventKey: "missing-price", Provider: "Claude", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-missing", Timestamp: start.Add(time.Hour + 20*time.Minute), Failed: true, InputTokens: 100, TotalTokens: 100},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	target := end.UTC().Truncate(time.Hour)
@@ -274,7 +274,7 @@ func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenRollup
 		{EventKey: "current-unpriced", Provider: "OpenAI", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-missing", Timestamp: start.Add(time.Hour + 20*time.Minute), Failed: true, InputTokens: 100, TotalTokens: 100},
 		{EventKey: "other-provider", Provider: "Anthropic", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-other", Timestamp: start.Add(30 * time.Minute), InputTokens: 9_000_000, TotalTokens: 9_000_000},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	target := end.UTC().Truncate(time.Hour)
@@ -319,7 +319,7 @@ func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenRollup
 	if summary.Comparison.TotalCostChangePct != nil || summary.Comparison.TotalTokensChangePct == nil {
 		t.Fatalf("expected incomplete Cost comparison to omit cost delta while keeping token delta, got %+v", summary.Comparison)
 	}
-	if len(summary.Heatmap.Rows) < 30 || summary.Heatmap.MaxTokens != 1_250_000 {
+	if len(summary.Heatmap.Rows) < 30 || summary.Heatmap.MaxTokens != 1_100_000 {
 		t.Fatalf("expected fixed-window Activity Heatmap in compatibility summary, got %+v", summary.Heatmap)
 	}
 }
@@ -358,7 +358,7 @@ func TestBuildAnalyticsSummaryWithFilterUsesRollupAwareReadModelsWhenCovered(t *
 		{EventKey: "current-unpriced-rollup", Provider: "OpenAI", Model: "missing-model", AuthType: "oauth", AuthIndex: "auth-missing", Timestamp: start.Add(time.Hour + 20*time.Minute), Failed: true, InputTokens: 100, TotalTokens: 100},
 		{EventKey: "other-provider-rollup", Provider: "Anthropic", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-other", Timestamp: start.Add(30 * time.Minute), InputTokens: 9_000_000, TotalTokens: 9_000_000},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	if err := db.Where("1 = 1").Delete(&entities.UsageEvent{}).Error; err != nil {
@@ -395,14 +395,14 @@ func TestBuildAnalyticsSummaryWithFilterUsesRollupAwareReadModelsWhenCovered(t *
 	}
 
 	assertAnalyticsSummaryCompatibilityMatchesCoreAndHeatmap(t, summary, core, heatmap)
-	if summary.Summary.RequestCount != 3 || summary.Summary.TotalTokens != 1_850_100 || summary.Summary.CostStatus != dto.CostStatusPartial {
+	if summary.Summary.RequestCount != 3 || summary.Summary.TotalTokens != 1_700_100 || summary.Summary.CostStatus != dto.CostStatusPartial {
 		t.Fatalf("expected summary to read selected-window rollups, got %+v", summary.Summary)
 	}
-	if !summary.Comparison.HasPreviousPeriod || summary.Comparison.TotalTokensChangePct == nil || *summary.Comparison.TotalTokensChangePct <= 80 {
+	if !summary.Comparison.HasPreviousPeriod || summary.Comparison.TotalTokensChangePct == nil || *summary.Comparison.TotalTokensChangePct <= 70 {
 		t.Fatalf("expected previous-period comparison from rollups, got %+v", summary.Comparison)
 	}
 	row := analyticsHeatmapRowByDate(t, summary.Heatmap, "2026-05-11")
-	if row.Cells[9].TotalTokens != 1_250_000 || row.Cells[10].RequestCount != 2 {
+	if row.Cells[9].TotalTokens != 1_100_000 || row.Cells[10].RequestCount != 2 {
 		t.Fatalf("expected summary heatmap to read fixed-window rollups, got row %+v", row)
 	}
 }
@@ -416,7 +416,7 @@ func TestBuildAnalyticsSummaryWithFilterMatchesCompatibilityReadModelsWhenBackfi
 	event := entities.UsageEvent{
 		EventKey: "uncovered-summary-window", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 100, CachedTokens: 25, TotalTokens: 100,
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{event}); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{event}); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	if err := db.Where("1 = 1").Delete(&entities.UsageRollupHourly{}).Error; err != nil {
@@ -499,7 +499,7 @@ func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
 		{EventKey: "partial-end-edge", Provider: "Zulu", Model: "model", APIGroupKey: "sk-mixed", Timestamp: end.Truncate(time.Hour).Add(15 * time.Minute), InputTokens: 30, TotalTokens: 30},
 		{EventKey: "partial-after-end", Provider: "Alpha", Model: "model", APIGroupKey: "sk-mixed", Timestamp: end.Truncate(time.Hour).Add(45 * time.Minute), InputTokens: 100, TotalTokens: 100},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	target := end.UTC().Truncate(time.Hour)
@@ -533,7 +533,7 @@ func TestBuildAnalyticsCoreWithFilterKeepsPartialHourWindowExact(t *testing.T) {
 	if rawSummary.RequestCount != 3 || rawSummary.TotalTokens != 60 {
 		t.Fatalf("test setup expected three in-window events, got %+v", rawSummary)
 	}
-	if core.Summary != rawSummary {
+	if !reflect.DeepEqual(core.Summary, rawSummary) {
 		t.Fatalf("expected partial-hour core summary to match raw summary\ncore=%+v\nraw=%+v", core.Summary, rawSummary)
 	}
 	if len(core.Trend) != len(rawTrend) {
@@ -557,7 +557,7 @@ func TestBuildAnalyticsCoreWithFilterFallsBackWhenBackfillIncomplete(t *testing.
 	event := entities.UsageEvent{
 		EventKey: "uncovered-window", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 100, TotalTokens: 100,
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{event}); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{event}); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	if err := db.Where("1 = 1").Delete(&entities.UsageRollupHourly{}).Error; err != nil {
@@ -591,7 +591,7 @@ func TestBuildAnalyticsCoreWithFilterAllowsIngestionMaintainedBucketsAfterComple
 	event := entities.UsageEvent{
 		EventKey: "after-target-window", Provider: "OpenAI", Model: "model", Timestamp: start.Add(15 * time.Minute), InputTokens: 100, TotalTokens: 100,
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{event}); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{event}); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	if err := db.Where("1 = 1").Delete(&entities.UsageEvent{}).Error; err != nil {
@@ -634,7 +634,7 @@ func TestBuildAnalyticsCoreWithFilterPreservesRawPromptCostClamp(t *testing.T) {
 		{EventKey: "clamped-cache-heavy", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha", Timestamp: start.Add(10 * time.Minute), InputTokens: 100, CachedTokens: 200, TotalTokens: 300},
 		{EventKey: "clamped-prompt-heavy", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha", Timestamp: start.Add(20 * time.Minute), InputTokens: 200, TotalTokens: 200},
 	}
-	if _, _, err := InsertUsageEvents(db, events); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 	target := start
@@ -679,8 +679,9 @@ func TestBuildAnalyticsHeatmapWithFilterUsesRollupsWhenCovered(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
-		{EventKey: "heatmap-rollup", Provider: "OpenAI", Model: "priced-model", Timestamp: eventTime, InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 100_000, TotalTokens: 1_600_000},
+	cacheReadTokens := int64(100_000)
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
+		{EventKey: "heatmap-rollup", Provider: "OpenAI", Model: "priced-model", Timestamp: eventTime, InputTokens: 1_000_000, OutputTokens: 500_000, CachedTokens: 100_000, CacheReadTokens: &cacheReadTokens, TotalTokens: 1_600_000},
 		{EventKey: "heatmap-start-boundary-outside", Provider: "OpenAI", Model: "priced-model", Timestamp: windowStart.Truncate(time.Hour).Add(15 * time.Minute), InputTokens: 9_000_000, TotalTokens: 9_000_000},
 		{EventKey: "heatmap-end-boundary-inside", Provider: "OpenAI", Model: "priced-model", Timestamp: windowEnd.Add(-10 * time.Minute), InputTokens: 300, TotalTokens: 300},
 		{EventKey: "heatmap-end-boundary-outside", Provider: "OpenAI", Model: "priced-model", Timestamp: windowEnd.Truncate(time.Hour).Add(45 * time.Minute), InputTokens: 8_000_000, TotalTokens: 8_000_000},
@@ -710,7 +711,7 @@ func TestBuildAnalyticsHeatmapWithFilterUsesRollupsWhenCovered(t *testing.T) {
 	if !reflect.DeepEqual(rollupHeatmap, rawHeatmap) {
 		t.Fatalf("expected rollup heatmap to match raw heatmap\nrollup=%+v\nraw=%+v", rollupHeatmap, rawHeatmap)
 	}
-	if rollupHeatmap.MaxTokens != 1_600_000 || math.Abs(rollupHeatmap.MaxCost-1.95) > 0.000000001 {
+	if rollupHeatmap.MaxTokens != 1_500_000 || math.Abs(rollupHeatmap.MaxCost-1.95) > 0.000000001 {
 		t.Fatalf("expected provider-scoped rollup heatmap metrics, got %+v", rollupHeatmap)
 	}
 }
@@ -723,14 +724,14 @@ func TestInsertUsageEventsRebuildsHourlyRollupsIdempotently(t *testing.T) {
 		EventKey: "rollup-idempotent", Provider: "OpenAI", Model: "priced-model", AuthType: "apikey", AuthIndex: "auth-1", APIGroupKey: "sk-alpha",
 		Timestamp: bucket.Add(5 * time.Minute), InputTokens: 100, OutputTokens: 50, CachedTokens: 10, CacheReadTokens: &cacheReadTokens, TotalTokens: 160,
 	}
-	inserted, deduped, err := InsertUsageEvents(db, []entities.UsageEvent{event})
+	inserted, deduped, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{event})
 	if err != nil {
 		t.Fatalf("first InsertUsageEvents returned error: %v", err)
 	}
 	if inserted != 1 || deduped != 0 {
 		t.Fatalf("expected first insert inserted=1 deduped=0, got inserted=%d deduped=%d", inserted, deduped)
 	}
-	inserted, deduped, err = InsertUsageEvents(db, []entities.UsageEvent{event})
+	inserted, deduped, err = insertCanonicalUsageTestEvents(db, []entities.UsageEvent{event})
 	if err != nil {
 		t.Fatalf("second InsertUsageEvents returned error: %v", err)
 	}
@@ -746,7 +747,7 @@ func TestInsertUsageEventsRebuildsHourlyRollupsIdempotently(t *testing.T) {
 		t.Fatalf("expected one rollup row after retry, got %+v", rollups)
 	}
 	rollup := rollups[0]
-	if rollup.RequestCount != 1 || rollup.SuccessCount != 1 || rollup.FailureCount != 0 || rollup.TotalTokens != 160 || rollup.InputTokens != 100 || rollup.BillablePromptTokens != 90 || rollup.OutputTokens != 50 || rollup.CachedTokens != 10 || rollup.CacheReadTokens != 6 || rollup.CacheReadObservedInputTokens != 100 {
+	if rollup.RequestCount != 1 || rollup.SuccessCount != 1 || rollup.FailureCount != 0 || rollup.CanonicalTotalTokens != 150 || rollup.CanonicalInputTokens != 100 || rollup.CanonicalCompletePromptTokens != 94 || rollup.CanonicalOutputTokens != 50 || rollup.CanonicalCacheReadTokens != 6 {
 		t.Fatalf("unexpected rollup metrics after retry: %+v", rollup)
 	}
 	if !rollup.BucketStart.Equal(bucket) || rollup.APIKeyIdentity != "sk-alpha" {
@@ -758,16 +759,16 @@ func TestInsertUsageEventsDoesNotRebuildDuplicateEventBuckets(t *testing.T) {
 	db := openTestDatabase(t)
 	oldBucket := time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC)
 	oldEvent := entities.UsageEvent{EventKey: "duplicate-old", Provider: "OpenAI", Model: "model", Timestamp: oldBucket.Add(5 * time.Minute), InputTokens: 10, TotalTokens: 10}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{oldEvent}); err != nil {
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{oldEvent}); err != nil {
 		t.Fatalf("insert old event: %v", err)
 	}
-	if err := db.Model(&entities.UsageRollupHourly{}).Where("bucket_start = ?", oldBucket).Update("total_tokens", 999).Error; err != nil {
+	if err := db.Model(&entities.UsageRollupHourly{}).Where("bucket_start = ?", oldBucket).Update("canonical_total_tokens", 999).Error; err != nil {
 		t.Fatalf("mark old rollup bucket: %v", err)
 	}
 	newBucket := time.Date(2026, 5, 11, 9, 0, 0, 0, time.UTC)
 	newEvent := entities.UsageEvent{EventKey: "new-event", Provider: "OpenAI", Model: "model", Timestamp: newBucket.Add(5 * time.Minute), InputTokens: 20, TotalTokens: 20}
 
-	inserted, deduped, err := InsertUsageEvents(db, []entities.UsageEvent{oldEvent, newEvent})
+	inserted, deduped, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{oldEvent, newEvent})
 	if err != nil {
 		t.Fatalf("insert mixed duplicate and new event: %v", err)
 	}
@@ -779,14 +780,14 @@ func TestInsertUsageEventsDoesNotRebuildDuplicateEventBuckets(t *testing.T) {
 	if err := db.Where("bucket_start = ?", oldBucket).First(&oldRollup).Error; err != nil {
 		t.Fatalf("load old rollup: %v", err)
 	}
-	if oldRollup.TotalTokens != 999 {
+	if oldRollup.CanonicalTotalTokens != 999 {
 		t.Fatalf("duplicate old event should not rebuild old bucket, got %+v", oldRollup)
 	}
 	var newRollup entities.UsageRollupHourly
 	if err := db.Where("bucket_start = ?", newBucket).First(&newRollup).Error; err != nil {
 		t.Fatalf("load new rollup: %v", err)
 	}
-	if newRollup.TotalTokens != 20 {
+	if newRollup.CanonicalTotalTokens != 20 {
 		t.Fatalf("expected new bucket to be rebuilt, got %+v", newRollup)
 	}
 }
@@ -804,7 +805,7 @@ func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsCompl
 		t.Fatalf("upsert pricing: %v", err)
 	}
 	cacheReadTokens := int64(250_000)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "cached", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour),
 		InputTokens: 1_000_000, CachedTokens: 400_000, CacheReadTokens: &cacheReadTokens, OutputTokens: 100_000, TotalTokens: 1_500_000,
 	}}); err != nil {
@@ -816,7 +817,7 @@ func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsCompl
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
 
-	if snapshot.Summary.InputTokens != 1_000_000 || snapshot.Summary.CachedTokens != 400_000 || snapshot.Summary.CacheReadTokens != 250_000 || snapshot.Summary.CacheReadCoverage != 100 {
+	if snapshot.Summary.InputTokens != 1_000_000 || snapshot.Summary.CachedTokens != 250_000 || snapshot.Summary.CacheReadTokens != 250_000 || snapshot.Summary.CacheReadCoverage != 100 {
 		t.Fatalf("expected input and cached tokens in summary, got %+v", snapshot.Summary)
 	}
 	if snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
@@ -832,7 +833,7 @@ func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsCompl
 		t.Fatalf("expected one model row, got %+v", snapshot.ModelBreakdown)
 	}
 	model := snapshot.ModelBreakdown[0]
-	if model.InputTokens != 1_000_000 || model.CachedTokens != 400_000 || model.CacheReadTokens != 250_000 || model.CacheReadCoverage != 100 || model.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
+	if model.InputTokens != 1_000_000 || model.CachedTokens != 250_000 || model.CacheReadTokens != 250_000 || model.CacheReadCoverage != 100 || model.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable {
 		t.Fatalf("expected model cache fields from same source, got %+v", model)
 	}
 	if model.EstimatedCacheSavings == nil || math.Abs(*model.EstimatedCacheSavings-0.375) > 0.000000001 {
@@ -840,15 +841,16 @@ func TestBuildAnalyticsSummaryWithFilterExposesCacheEfficiencyWhenPricingIsCompl
 	}
 }
 
-func TestBuildAnalyticsSummaryWithFilterReportsPartialExactCacheCoverage(t *testing.T) {
+func TestBuildAnalyticsSummaryWithFilterExcludesHistoricalRowsFromCanonicalCacheShare(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 	cacheReadTokens := int64(25)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
-		{EventKey: "observed", Model: "model", Timestamp: start.Add(time.Hour), InputTokens: 100, CachedTokens: 90, CacheReadTokens: &cacheReadTokens, TotalTokens: 190},
+	events := []entities.UsageEvent{
+		canonicalUsageTestEvent(entities.UsageEvent{EventKey: "observed", Model: "model", Timestamp: start.Add(time.Hour), InputTokens: 100, CachedTokens: 90, CacheReadTokens: &cacheReadTokens, TotalTokens: 190}),
 		{EventKey: "unknown", Model: "model", Timestamp: start.Add(2 * time.Hour), InputTokens: 300, CachedTokens: 200, TotalTokens: 500},
-	}); err != nil {
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
 		t.Fatalf("insert events: %v", err)
 	}
 
@@ -856,11 +858,11 @@ func TestBuildAnalyticsSummaryWithFilterReportsPartialExactCacheCoverage(t *test
 	if err != nil {
 		t.Fatalf("BuildAnalyticsSummaryWithFilter returned error: %v", err)
 	}
-	if snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStatePartial || math.Abs(snapshot.Summary.CacheReadShare-25) > 1e-9 || math.Abs(snapshot.Summary.CacheReadCoverage-25) > 1e-9 {
-		t.Fatalf("expected 25%% observed share over 25%% token coverage, got %+v", snapshot.Summary)
+	if snapshot.Summary.CacheReadShareState != dto.AnalyticsCacheReadShareStateAvailable || math.Abs(snapshot.Summary.CacheReadShare-25) > 1e-9 || math.Abs(snapshot.Summary.CacheReadCoverage-100) > 1e-9 {
+		t.Fatalf("expected canonical-covered population cache share, got %+v", snapshot.Summary)
 	}
-	if snapshot.Summary.EstimatedCacheSavings != nil {
-		t.Fatalf("partial exact-cache coverage must withhold a whole-range savings estimate, got %+v", snapshot.Summary.EstimatedCacheSavings)
+	if snapshot.Summary.Accounting.ValidAttempts != 1 || snapshot.Summary.Accounting.States.Absent != 1 || snapshot.Summary.EstimatedCacheSavings != nil {
+		t.Fatalf("historical absence must remain outside canonical metrics and withhold complete cost, got %+v", snapshot.Summary)
 	}
 }
 
@@ -871,11 +873,11 @@ func TestBuildAnalyticsSummaryWithFilterSplitsCacheUnavailableStates(t *testing.
 		expectedState string
 	}{
 		{
-			name: "no cache data",
+			name: "explicit zero cache read",
 			event: entities.UsageEvent{
 				EventKey: "no-cache-data", Model: "priced-model", InputTokens: 1000, TotalTokens: 1000,
 			},
-			expectedState: dto.AnalyticsCacheReadShareStateNoCacheData,
+			expectedState: dto.AnalyticsCacheReadShareStateAvailable,
 		},
 		{
 			name: "no prompt input",
@@ -899,7 +901,7 @@ func TestBuildAnalyticsSummaryWithFilterSplitsCacheUnavailableStates(t *testing.
 				t.Fatalf("upsert pricing: %v", err)
 			}
 			tt.event.Timestamp = start.Add(time.Hour)
-			if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{tt.event}); err != nil {
+			if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{tt.event}); err != nil {
 				t.Fatalf("insert events: %v", err)
 			}
 
@@ -927,7 +929,7 @@ func TestBuildAnalyticsSummaryWithFilterWithholdsCacheSavingsWhenPromptCachePric
 		t.Fatalf("upsert pricing: %v", err)
 	}
 	cacheReadTokens := int64(250_000)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "invalid-savings", Model: "inverted-cache-price", Timestamp: start.Add(time.Hour),
 		InputTokens: 1_000_000, CachedTokens: 250_000, CacheReadTokens: &cacheReadTokens, TotalTokens: 1_250_000,
 	}}); err != nil {
@@ -957,7 +959,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendByLocalDay(t *testing.T
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "local-day-event", Model: "priced-model",
 		Timestamp:   time.Date(2026, 5, 11, 16, 30, 0, 0, time.UTC),
 		InputTokens: 1000, TotalTokens: 1000,
@@ -995,7 +997,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsHourlyTrendWhenRequested(t *testi
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{
 			EventKey: "local-hour-0", Model: "priced-model",
 			Timestamp:   time.Date(2026, 5, 11, 16, 30, 0, 0, time.UTC),
@@ -1040,7 +1042,7 @@ func TestBuildAnalyticsSummaryWithFilterKeepsRepeatedDSTHoursSeparate(t *testing
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{
 			EventKey: "fall-back-hour-early", Model: "priced-model",
 			Timestamp:   time.Date(2026, 11, 1, 5, 30, 0, 0, time.UTC),
@@ -1092,7 +1094,7 @@ func TestBuildAnalyticsSummaryWithFilterHandlesSpringForwardHeatmapHour(t *testi
 	localEnd := time.Date(2026, 3, 8, 23, 59, 59, 999999999, time.Local)
 	start := localStart.UTC()
 	end := localEnd.UTC()
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey:    "spring-forward-hour",
 		Model:       "missing-model",
 		Timestamp:   time.Date(2026, 3, 8, 3, 30, 0, 0, time.Local).UTC(),
@@ -1142,7 +1144,7 @@ func TestBuildAnalyticsSummaryWithFilterBucketsDailyTrendAcrossDSTChange(t *test
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "after-dst-change", Model: "priced-model",
 		Timestamp:   time.Date(2026, 3, 9, 4, 30, 0, 0, time.UTC),
 		InputTokens: 1000, TotalTokens: 1000,
@@ -1170,7 +1172,7 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostUnavailableWhenNoPricedCostExis
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := start.Add(7 * 24 * time.Hour)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "unpriced-only", Model: "missing-model", Timestamp: start.Add(time.Hour), InputTokens: 100, TotalTokens: 100,
 	}}); err != nil {
 		t.Fatalf("insert events: %v", err)
@@ -1198,7 +1200,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsModelAndTimeBreakdowns(t *testing
 			t.Fatalf("upsert pricing: %v", err)
 		}
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "priced-openai-1", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000, LatencyMS: 100},
 		{EventKey: "priced-openai-2", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), OutputTokens: 500_000, TotalTokens: 500_000, Failed: true, LatencyMS: 300},
 		{EventKey: "unpriced-openai", Provider: "OpenAI", Model: "missing-model", Timestamp: start.Add(26 * time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000, LatencyMS: 200},
@@ -1247,7 +1249,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsProviderOptionsForCurrentScope(t 
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "openai-a", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
 		{EventKey: "openai-b", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), OutputTokens: 500_000, TotalTokens: 500_000},
 		{EventKey: "anthropic", Provider: "Anthropic", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 3_000_000, TotalTokens: 3_000_000},
@@ -1302,8 +1304,8 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 		t.Fatalf("set alias: %v", err)
 	}
 	cacheReadTokens := int64(200_000)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
-		{EventKey: "alpha-priced", AuthType: "apikey", AuthIndex: "sk-alpha-123456", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, CachedTokens: 200_000, CacheReadTokens: &cacheReadTokens, ReasoningTokens: 300_000, TotalTokens: 1_500_000},
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
+		{EventKey: "alpha-priced", AuthType: "apikey", AuthIndex: "sk-alpha-123456", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, OutputTokens: 300_000, CachedTokens: 200_000, CacheReadTokens: &cacheReadTokens, ReasoningTokens: 300_000, TotalTokens: 1_500_000},
 		{EventKey: "beta-unpriced", AuthType: "apikey", AuthIndex: "sk-beta-123456", Model: "missing-model", Timestamp: start.Add(26 * time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000, Failed: true},
 	}); err != nil {
 		t.Fatalf("insert events: %v", err)
@@ -1344,7 +1346,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	}
 }
 
-func TestBuildAnalyticsSummaryWithFilterDoesNotRenderUnavailableCacheInsightAsZeroShare(t *testing.T) {
+func TestBuildAnalyticsSummaryWithFilterRendersCanonicalZeroCacheShare(t *testing.T) {
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
@@ -1356,7 +1358,7 @@ func TestBuildAnalyticsSummaryWithFilterDoesNotRenderUnavailableCacheInsightAsZe
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "no-cache-data", Model: "priced-model", Timestamp: start.Add(time.Hour),
 		InputTokens: 1000, TotalTokens: 1000,
 	}}); err != nil {
@@ -1372,8 +1374,8 @@ func TestBuildAnalyticsSummaryWithFilterDoesNotRenderUnavailableCacheInsightAsZe
 		t.Fatalf("expected cache insight after completeness, got %+v", snapshot.Insights)
 	}
 	cacheInsight := snapshot.Insights[1]
-	if cacheInsight.Subject != "No cache data" || cacheInsight.MetricLabel != "Cache state" || cacheInsight.MetricValue != 0 {
-		t.Fatalf("expected unavailable cache state instead of zero share, got %+v", cacheInsight)
+	if cacheInsight.Subject != "Prompt input cache" || cacheInsight.MetricLabel != "Cache Read Share" || cacheInsight.MetricValue != 0 || cacheInsight.CostStatus != dto.CostStatusAvailable {
+		t.Fatalf("expected canonical zero cache share, got %+v", cacheInsight)
 	}
 }
 
@@ -1389,7 +1391,7 @@ func TestBuildAnalyticsSummaryWithFilterMarksCostPartialWhenPricedRowsHaveZeroRa
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "priced-zero-rate", Model: "zero-rate-model", Timestamp: start.Add(time.Hour), InputTokens: 1000, TotalTokens: 1000},
 		{EventKey: "unpriced", Model: "missing-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1000, TotalTokens: 1000},
 	}); err != nil {
@@ -1421,7 +1423,7 @@ func TestBuildAnalyticsSummaryWithFilterClampsTokenFieldsBeforeCostCalculation(t
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "negative-cached", Model: "priced-model", Timestamp: start.Add(time.Hour),
 		InputTokens: 100, OutputTokens: -20, CachedTokens: -50, TotalTokens: 30,
 	}}); err != nil {
@@ -1451,8 +1453,8 @@ func TestBuildAnalyticsSummaryWithFilterReturnsEmptyState(t *testing.T) {
 	if snapshot.Summary.RequestCount != 0 || snapshot.Summary.TotalTokens != 0 || snapshot.Summary.TotalCost != 0 {
 		t.Fatalf("unexpected empty summary: %+v", snapshot.Summary)
 	}
-	if !snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "available" {
-		t.Fatalf("expected available cost status for empty state, got %+v", snapshot.Summary)
+	if snapshot.Summary.CostAvailable || snapshot.Summary.CostStatus != "unavailable" {
+		t.Fatalf("expected unavailable cost status for empty state, got %+v", snapshot.Summary)
 	}
 	if len(snapshot.Trend) != 0 {
 		t.Fatalf("expected empty trend, got %+v", snapshot.Trend)
@@ -1473,7 +1475,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsPreviousPeriodComparison(t *testi
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "previous-success", Provider: "OpenAI", Model: "priced-model", Timestamp: previousStart.Add(24 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
 		{EventKey: "previous-failure", Provider: "OpenAI", Model: "priced-model", Timestamp: previousStart.Add(48 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000, Failed: true},
 		{EventKey: "previous-other-provider", Provider: "Anthropic", Model: "priced-model", Timestamp: previousStart.Add(72 * time.Hour), InputTokens: 20_000_000, TotalTokens: 20_000_000},
@@ -1523,7 +1525,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsMissingPreviousPeriodComparison(t
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey: "current-only", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(24 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000,
 	}}); err != nil {
 		t.Fatalf("insert events: %v", err)
@@ -1559,7 +1561,7 @@ func TestBuildAnalyticsSummaryWithFilterIncludesPreviousPeriodStartBoundary(t *t
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "previous-boundary", Provider: "OpenAI", Model: "priced-model", Timestamp: previousStart, InputTokens: 1_000_000, TotalTokens: 1_000_000},
 		{EventKey: "current-boundary", Provider: "OpenAI", Model: "priced-model", Timestamp: start, InputTokens: 1_000_000, TotalTokens: 1_000_000},
 	}); err != nil {
@@ -1593,7 +1595,7 @@ func TestBuildAnalyticsSummaryWithFilterOmitsCostComparisonWhenPricingIsIncomple
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "previous-priced", Provider: "OpenAI", Model: "priced-model", Timestamp: previousStart.Add(24 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
 		{EventKey: "current-priced", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(24 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
 		{EventKey: "current-unpriced", Provider: "OpenAI", Model: "missing-model", Timestamp: start.Add(48 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
@@ -1643,7 +1645,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	}); err != nil {
 		t.Fatalf("upsert pricing: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "priced-cell", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(9 * time.Hour), InputTokens: 120, TotalTokens: 120},
 		{EventKey: "unpriced-cell", Provider: "OpenAI", Model: "missing-model", Timestamp: start.AddDate(0, 0, 1).Add(10 * time.Hour), InputTokens: 80, TotalTokens: 80, Failed: true},
 	}); err != nil {
@@ -1675,8 +1677,8 @@ func TestBuildAnalyticsSummaryWithFilterReturnsCompleteHourlyHeatmap(t *testing.
 	if !firstRow.Cells[9].InRange {
 		t.Fatalf("expected populated fixed-window cell to be in range, got %+v", firstRow.Cells[9])
 	}
-	if !firstRow.Cells[8].CostAvailable || firstRow.Cells[8].CostStatus != dto.CostStatusAvailable || firstRow.Cells[8].TotalTokens != 0 {
-		t.Fatalf("expected empty bucket to be explicit available zero cell, got %+v", firstRow.Cells[8])
+	if firstRow.Cells[8].CostAvailable || firstRow.Cells[8].CostStatus != dto.CostStatusUnavailable || firstRow.Cells[8].TotalTokens != 0 {
+		t.Fatalf("expected empty bucket cost to remain unavailable, got %+v", firstRow.Cells[8])
 	}
 	secondRow := analyticsHeatmapRowByDate(t, heatmap, "2026-05-12")
 	unpriced := secondRow.Cells[10]
@@ -1727,7 +1729,7 @@ func TestBuildAnalyticsSummaryWithFilterHeatmapBucketsFractionalOffsetLocalHour(
 	localEnd := time.Date(2026, 5, 11, 23, 59, 59, 999999999, time.Local)
 	start := localStart.UTC()
 	end := localEnd.UTC()
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{{
 		EventKey:    "fractional-offset-local-midnight",
 		Provider:    "OpenAI",
 		Model:       "missing-model",
@@ -1782,7 +1784,7 @@ func TestBuildAnalyticsSummaryWithFilterAggregatesKeyAliasBreakdownByStableIdent
 	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-deleted-123456", "Historical Alias", start); err != nil {
 		t.Fatalf("set deleted alias: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "alpha-1", AuthType: "apikey", AuthIndex: "sk-alpha-123456", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000},
 		{EventKey: "beta-1", AuthType: "apikey", AuthIndex: "sk-beta-123456", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000, Failed: true},
 		{EventKey: "missing-alias-1", AuthType: "apikey", AuthIndex: "sk-missing-123456", Model: "missing-model", Timestamp: start.Add(4 * time.Hour), InputTokens: 3_000_000, TotalTokens: 3_000_000},
@@ -1832,7 +1834,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsAPIKeyBreakdownByClientKey(t *tes
 	if _, err := SetKeyAlias(context.Background(), db, entities.UsageIdentityAuthTypeAIProvider, "sk-alpha-123456", "Alpha API Key", start); err != nil {
 		t.Fatalf("set alpha alias: %v", err)
 	}
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "alpha", APIGroupKey: "sk-alpha-123456", AuthType: "oauth", AuthIndex: "account-key", Source: "operator@example.com", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(time.Hour), InputTokens: 2_000_000, TotalTokens: 2_000_000},
 		{EventKey: "beta", APIGroupKey: "sk-beta-123456", AuthType: "oauth", AuthIndex: "account-key", Source: "operator@example.com", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1_000_000, TotalTokens: 1_000_000},
 		{EventKey: "provider-fallback-ignored", APIGroupKey: "OpenAI", AuthType: "oauth", AuthIndex: "oauth-account", Source: "sk-oauth-source", Provider: "OpenAI", Model: "priced-model", Timestamp: start.Add(3 * time.Hour), InputTokens: 5_000_000, TotalTokens: 5_000_000},
@@ -1870,7 +1872,7 @@ func TestBuildAnalyticsSummaryWithFilterOrdersKeyAliasBreakdownByTokensWhenCostU
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "low-token-unpriced", AuthType: "apikey", AuthIndex: "sk-low-123456", Model: "missing-model", Timestamp: start.Add(time.Hour), InputTokens: 10, TotalTokens: 10},
 		{EventKey: "high-token-unpriced", AuthType: "apikey", AuthIndex: "sk-high-123456", Model: "missing-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1000, TotalTokens: 1000},
 	}); err != nil {
@@ -1894,7 +1896,7 @@ func TestBuildAnalyticsKeyAliasTrendsRestrictsRowsToSelectedIdentities(t *testin
 	db := openTestDatabase(t)
 	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
-	if _, _, err := InsertUsageEvents(db, []entities.UsageEvent{
+	if _, _, err := insertCanonicalUsageTestEvents(db, []entities.UsageEvent{
 		{EventKey: "included", AuthType: "apikey", AuthIndex: "sk-included-123456", Model: "missing-model", Timestamp: start.Add(time.Hour), InputTokens: 10, TotalTokens: 10},
 		{EventKey: "excluded", AuthType: "apikey", AuthIndex: "sk-excluded-123456", Model: "missing-model", Timestamp: start.Add(2 * time.Hour), InputTokens: 1000, TotalTokens: 1000},
 	}); err != nil {

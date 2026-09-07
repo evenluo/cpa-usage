@@ -421,7 +421,10 @@ func newAnalyticsCoreCardinalityFixture(eventCount int, providerCount int, model
 		}
 		var cacheReadTokens *int64
 		if eventIndex%5 != 0 {
-			value := positiveInt64(cachedTokens)
+			value := cachedTokens
+			if value < 0 {
+				value = 0
+			}
 			cacheReadTokens = &value
 		}
 		authType := entities.UsageIdentityAuthTypeNameOAuth
