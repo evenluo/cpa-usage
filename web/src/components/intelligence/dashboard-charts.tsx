@@ -99,7 +99,7 @@ export function DashboardCharts({
       </Card>
 
       {/* Model Mix + Key Leaderboard */}
-      <div className="grid min-w-0 gap-6 lg:grid-cols-2">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <Card className="min-w-0">
           <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
             <div>

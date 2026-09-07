@@ -48,7 +48,7 @@ const MEASURE_CONFIG: Record<Measure, MeasureConfig> = {
     emptyMessage: "No cost recorded for shown models",
     unavailableMessage: "Cost unavailable for shown models",
     centerLabel: "Shown cost mix",
-    supportingMetric: (row) => row.tokensAvailable ? `${formatCompact(row.totalTokens, 1)} canonical tokens` : "Tokens n/a",
+    supportingMetric: (row) => row.tokensAvailable ? `${formatCompact(row.totalTokens, 1)} tokens` : "Tokens n/a",
   },
   tokens: {
     value: (row) => row.total_tokens,
@@ -161,9 +161,6 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
   const clearHover = () => setHoveredKey(null)
   const trailing = rows.slice(1)
   const twoColumnTrailing = trailing.length > 1
-  // divide-y never underlines the final row; mirror that in grid mode by
-  // dropping the bottom rule on the last visual row (the last item on mobile,
-  // plus the second-to-last at sm+ when the count is even).
   const trailingRuleClass = (index: number) => {
     if (index === trailing.length - 1) return ""
     if (twoColumnTrailing && trailing.length % 2 === 0 && index === trailing.length - 2) {
@@ -258,20 +255,15 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
           {trailing.map((row, index) => (
             <div
               key={row.key}
-              className={`-mx-2 grid gap-2 rounded-md px-2 py-3.5 transition-colors sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6 ${trailingRuleClass(index)} ${hoveredKey === row.key ? "bg-muted/60" : ""}`}
+              className={`-mx-2 grid min-w-0 content-start gap-1 rounded-md px-2 py-3.5 transition-colors ${trailingRuleClass(index)} ${hoveredKey === row.key ? "bg-muted/60" : ""}`}
               onMouseEnter={hoverRow(row.key)}
               onMouseLeave={clearHover}
             >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2.5">
-                  <span className="h-7 w-1 shrink-0 rounded-full" style={{ backgroundColor: row.color }} aria-hidden="true" />
-                  <p className="truncate text-sm font-medium">{row.model}</p>
-                </div>
-                <div className="pl-3.5">
-                  <SupportingMetrics row={row} measure={measure} />
-                </div>
+              <div className="flex min-w-0 items-start gap-2.5">
+                <span className="h-7 w-1 shrink-0 rounded-full" style={{ backgroundColor: row.color }} aria-hidden="true" />
+                <p className="min-w-0 [overflow-wrap:anywhere] text-sm font-medium">{row.model}</p>
               </div>
-              <div className="pl-3.5 sm:min-w-[120px] sm:pl-0 sm:text-right">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 pl-3.5">
                 {row.valueAvailable ? (
                   <>
                     <p className="text-sm font-semibold">{shareOf(row).toFixed(1)}%</p>
@@ -280,6 +272,9 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
                 ) : (
                   <p className="text-sm font-semibold text-muted-foreground">Cost n/a</p>
                 )}
+              </div>
+              <div className="min-w-0 pl-3.5">
+                <SupportingMetrics row={row} measure={measure} />
               </div>
             </div>
           ))}
