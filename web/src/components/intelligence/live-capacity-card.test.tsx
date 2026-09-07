@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { KeyIdentity, ModelSupportResponse, QuotaCacheResponse } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
+import { formatDate } from "@/lib/format"
 
 // Mock the useLiveCapacity hook
 const mockUseLiveCapacity = vi.fn()
@@ -250,6 +251,13 @@ describe("LiveCapacityCard", () => {
       expect(screen.queryByText("-")).not.toBeInTheDocument()
       // The Weekly skeleton slot has no reading from either source.
       expect(screen.getByText("No reading")).toBeInTheDocument()
+      // Freshness line: the newer of the two observation times, with both
+      // sources and their absolute times on the tooltip.
+      const updated = screen.getByText("Updated 3h ago")
+      expect(updated.parentElement).toHaveAttribute(
+        "title",
+        `Manual probe · ${formatDate("2026-09-07T09:00:00Z")}\nReported by CPA · ${formatDate("2026-09-07T08:00:00Z")}`,
+      )
       // Named additional limits and timing lines live behind the fold; a shared
       // metadata/probe observation time collapses to a single "Observed" line.
       const fold = screen.getByText("··· 3 more").closest("details")
@@ -411,20 +419,22 @@ describe("LiveCapacityCard", () => {
       }],
     }
     setupMock({ identities, cachedQuota })
-    const { container } = render(<LiveCapacityCard provider="" />)
+    render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
     const timing = screen.getByRole("group", { name: "Account and cache timing" })
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
-    expect(timing.querySelectorAll("time")).toHaveLength(2)
+    // Past subscription starts are hidden; only the future end date remains,
+    // folded with the other timing lines.
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
+    expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
+    expect(timing.querySelectorAll("time")).toHaveLength(3)
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
-    // Past subscription starts are hidden; only the future end date remains, as
-    // a bottom line outside the fold.
-    expect(screen.getByText("Ends")).toBeInTheDocument()
-    expect(screen.queryByText("Starts")).not.toBeInTheDocument()
-    expect(container.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
+    expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
+    // Data freshness sits on the card surface instead of the subscription end.
+    expect(screen.getByText(/^Updated /)).toBeInTheDocument()
   })
 
   it("renders a single cache-expiry endpoint without a connector when observedAt is missing", () => {
@@ -512,7 +522,7 @@ describe("LiveCapacityCard", () => {
     await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Auth index copied"))
   })
 
-  it("renders the subscription end as a bottom line when the active start is missing", () => {
+  it("folds the subscription end into the timing lines when the active start is missing", () => {
     const futureUntil = new Date(Date.now() + 30 * 86_400_000).toISOString()
     const identities = [identity({
       identity: "codex-pro",
@@ -528,12 +538,14 @@ describe("LiveCapacityCard", () => {
       }],
     }
     setupMock({ identities, cachedQuota })
-    const { container } = render(<LiveCapacityCard provider="" />)
+    render(<LiveCapacityCard provider="" />)
 
-    expect(screen.getByText("Ends")).toBeInTheDocument()
-    expect(screen.queryByText("Starts")).not.toBeInTheDocument()
-    expect(screen.queryByRole("group", { name: "Account and cache timing" })).not.toBeInTheDocument()
-    expect(container.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
+    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
+    expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
+    expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
+    // No probe or reported observation exists, so no freshness line renders.
+    expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument()
   })
 
   it("shows both subscription endpoints when the active start is still in the future", () => {
@@ -558,9 +570,9 @@ describe("LiveCapacityCard", () => {
 
     const timing = within(container).getByRole("group", { name: "Account and cache timing" })
     expect(within(timing).getByText("Starts")).toBeInTheDocument()
+    expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureStart}']`)).toBeInTheDocument()
-    expect(within(container).getByText("Ends")).toBeInTheDocument()
-    expect(container.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
+    expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
   })
 
   it("separates priority accounts from regular accounts with a divider", () => {

@@ -36,7 +36,7 @@ import { MODEL_SUPPORT_MAX_ACCOUNTS, useModelSupport } from "@/hooks/useModelSup
 import { useSetIdentityDisabled } from "@/hooks/useKeys"
 import { useFlipReorder } from "@/hooks/useFlipReorder"
 import { useToast } from "@/components/providers/toast-provider"
-import { formatDate } from "@/lib/format"
+import { formatDate, formatRelativeAge } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import type { AccountModelSupport, ModelCapability, ModelSupportResponse, RegisteredModelSupport } from "@/types/api"
 import { ProviderBrandIcon } from "./provider-brand-icon"
@@ -474,12 +474,21 @@ function LiveCapacityAccountTile({
     (row.lastRefresh ? 1 : 0) +
     (row.nextRetryAfter ? 1 : 0) +
     (row.expiresAt ? 1 : 0) +
-    (row.activeStart ? 1 : 0)
+    (row.activeStart ? 1 : 0) +
+    (row.activeUntil ? 1 : 0)
   const foldedCount =
     layout.extras.length +
     row.passiveModelQuotas.length +
     timingLineCount +
     (row.passiveQuota?.activeLimit ? 1 : 0)
+  const observationSources: Array<[string, string]> = [
+    ...(row.observedAt ? [["Manual probe", row.observedAt] as [string, string]] : []),
+    ...(row.passiveQuota?.observedAt ? [["Reported by CPA", row.passiveQuota.observedAt] as [string, string]] : []),
+  ]
+  const latestObservedAt = observationSources.reduce<string | undefined>(
+    (latest, [, at]) => (latest === undefined || Date.parse(at) > Date.parse(latest) ? at : latest),
+    undefined,
+  )
 
   return (
     <div
@@ -675,6 +684,7 @@ function LiveCapacityAccountTile({
                 observedAt={row.observedAt}
                 expiresAt={row.expiresAt}
                 activeStart={row.activeStart}
+                activeUntil={row.activeUntil}
                 cacheStale={row.isCacheStale}
               />
             ) : null}
@@ -686,10 +696,12 @@ function LiveCapacityAccountTile({
 
       {modelSupport ? <AccountModelSupportDetails account={modelSupport} /> : null}
 
-      {row.activeUntil ? (
-        <div className="mt-2 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
-          <span>Ends</span>
-          <time dateTime={row.activeUntil} title={row.activeUntil}>{formatDate(row.activeUntil)}</time>
+      {latestObservedAt ? (
+        <div
+          className="mt-2 flex items-center justify-end gap-1 text-[10px] text-muted-foreground"
+          title={observationSources.map(([label, at]) => `${label} · ${formatDate(at)}`).join("\n")}
+        >
+          <span>Updated {formatRelativeAge(latestObservedAt)}</span>
         </div>
       ) : null}
     </div>
@@ -877,6 +889,7 @@ function AccountTiming({
   observedAt,
   expiresAt,
   activeStart,
+  activeUntil,
   cacheStale = false,
 }: {
   metadataObservedAt?: string | null
@@ -885,6 +898,7 @@ function AccountTiming({
   observedAt?: string | null
   expiresAt?: string | null
   activeStart?: string | null
+  activeUntil?: string | null
   cacheStale?: boolean
 }) {
   // activeStart arrives pre-filtered by buildLiveCapacityRows: it is only set
@@ -907,6 +921,7 @@ function AccountTiming({
       ) : null}
       {expiresAt ? <TimingLine label="Cache expires" value={expiresAt} stale={cacheStale} /> : null}
       {activeStart ? <TimingLine label="Starts" value={activeStart} /> : null}
+      {activeUntil ? <TimingLine label="Ends" value={activeUntil} /> : null}
     </div>
   )
 }

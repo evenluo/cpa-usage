@@ -29,6 +29,19 @@ export function formatDate(date: string | null): string {
   return `${part("month")}/${part("day")} ${part("hour")}:${part("minute")}`
 }
 
+/** Compact age like "12m ago" / "2h ago" / "3d ago"; absolute date past 7 days. */
+export function formatRelativeAge(date: string, now: number = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - new Date(date).getTime()) / 1000))
+  if (seconds < 60) return "just now"
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days <= 7) return `${days}d ago`
+  return formatDate(date)
+}
+
 export function formatComparison(
   value: number | null | undefined,
   unit: "%" | "pp",
