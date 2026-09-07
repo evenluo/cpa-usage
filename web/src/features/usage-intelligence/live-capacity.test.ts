@@ -116,9 +116,10 @@ describe("Live Capacity view model", () => {
       weekly: { valueLabel: "80% used", resetAfterSeconds: 7200, progress: 80, tone: "amber" },
       observedAt: "2026-08-31T01:00:00Z",
       expiresAt: "2026-08-31T01:05:00Z",
-      // Past subscription starts are suppressed; only the end date survives.
+      // Stale subscription metadata is suppressed: past starts and past ends
+      // are both display noise.
       activeStart: null,
-      activeUntil: "2026-09-01T00:00:00Z",
+      activeUntil: null,
     })
   })
 

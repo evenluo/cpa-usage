@@ -389,13 +389,14 @@ describe("LiveCapacityCard", () => {
   })
 
   it("visualizes probe freshness, subscription window, and additional quota rows", () => {
+    const futureUntil = new Date(Date.now() + 30 * 86_400_000).toISOString()
     const identities = [identity({
       identity: "codex-pro",
       displayName: "Codex Pro",
       provider: "Codex",
       type: "codex",
       active_start: "2026-08-01T00:00:00Z",
-      active_until: "2026-09-01T00:00:00Z",
+      active_until: futureUntil,
     })]
     const cachedQuota: QuotaCacheResponse = {
       items: [{
@@ -419,11 +420,11 @@ describe("LiveCapacityCard", () => {
     expect(timing.querySelectorAll("time")).toHaveLength(2)
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
-    // Past subscription starts are hidden; only the end date remains, as a
-    // bottom line outside the fold.
+    // Past subscription starts are hidden; only the future end date remains, as
+    // a bottom line outside the fold.
     expect(screen.getByText("Ends")).toBeInTheDocument()
     expect(screen.queryByText("Starts")).not.toBeInTheDocument()
-    expect(container.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
+    expect(container.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
   })
 
   it("renders a single cache-expiry endpoint without a connector when observedAt is missing", () => {
@@ -512,12 +513,13 @@ describe("LiveCapacityCard", () => {
   })
 
   it("renders the subscription end as a bottom line when the active start is missing", () => {
+    const futureUntil = new Date(Date.now() + 30 * 86_400_000).toISOString()
     const identities = [identity({
       identity: "codex-pro",
       displayName: "Codex Pro",
       provider: "Codex",
       type: "codex",
-      active_until: "2026-09-01T00:00:00Z",
+      active_until: futureUntil,
     })]
     const cachedQuota: QuotaCacheResponse = {
       items: [{
@@ -531,7 +533,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("Ends")).toBeInTheDocument()
     expect(screen.queryByText("Starts")).not.toBeInTheDocument()
     expect(screen.queryByRole("group", { name: "Account and cache timing" })).not.toBeInTheDocument()
-    expect(container.querySelector("time[datetime='2026-09-01T00:00:00Z']")).toBeInTheDocument()
+    expect(container.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
   })
 
   it("shows both subscription endpoints when the active start is still in the future", () => {

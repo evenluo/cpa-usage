@@ -187,7 +187,9 @@ export function buildLiveCapacityRows(input: {
         // active_start only carries signal while still in the future (the
         // subscription is not yet effective); past starts are display noise.
         activeStart: isFutureTimestamp(identity.active_start) ? identity.active_start : null,
-        activeUntil: identity.active_until,
+        // Same rule for active_until: past ends are almost always stale
+        // id_token metadata, not real expiries.
+        activeUntil: isFutureTimestamp(identity.active_until) ? identity.active_until : null,
       }
     })
     .sort(compareLiveCapacityRows)
