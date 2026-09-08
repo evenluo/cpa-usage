@@ -165,6 +165,31 @@ func SetUsageIdentityDisabled(ctx context.Context, db *gorm.DB, id uint, disable
 	return nil
 }
 
+// UpdateUsageIdentityAuthFileState replaces the observed account state after an
+// explicit toggle without changing identity metadata, passive quotas or usage.
+func UpdateUsageIdentityAuthFileState(ctx context.Context, db *gorm.DB, id uint, observed entities.UsageIdentity) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+	result := db.WithContext(ctx).Model(&entities.UsageIdentity{}).Where("id = ?", id).
+		Updates(map[string]any{
+			"disabled":             observed.Disabled,
+			"auth_file_status":     observed.AuthFileStatus,
+			"unavailable":          observed.Unavailable,
+			"last_refresh":         observed.LastRefresh,
+			"next_retry_after":     observed.NextRetryAfter,
+			"metadata_observed_at": observed.MetadataObservedAt,
+			"updated_at":           observed.MetadataObservedAt,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("update auth file state: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("update auth file state: identity %d not found", id)
+	}
+	return nil
+}
+
 func activeUsageIdentitiesQuery(db *gorm.DB, authType *entities.UsageIdentityAuthType) *gorm.DB {
 	// 把活跃条件和可选 auth_type 条件集中到一个查询构造器，避免 count/list 条件漂移。
 	query := db.Where("is_deleted = ?", false).

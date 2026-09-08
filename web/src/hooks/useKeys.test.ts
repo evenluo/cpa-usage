@@ -1,11 +1,15 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { act, renderHook, waitFor } from "@testing-library/react"
+import { createElement, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import apiKeyAliasTargetsFixture from "@/test/contracts/api_key_alias_targets_page.json"
 import usageIdentitiesFixture from "@/test/contracts/usage_identities_page.json"
 import type { APIKeyAliasTarget, APIKeyAliasTargetPage, KeyIdentity, KeyIdentityPage } from "@/types/api"
-import { apiFetch } from "@/lib/api"
-import { fetchAllAPIKeys, fetchAllKeys } from "./useKeys"
+import { ApiError, apiFetch } from "@/lib/api"
+import { fetchAllAPIKeys, fetchAllKeys, useSetIdentityDisabled } from "./useKeys"
 
-vi.mock("@/lib/api", () => ({
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   apiFetch: vi.fn(),
 }))
 
@@ -212,5 +216,83 @@ describe("fetchAllAPIKeys", () => {
   it("rejects when an API key page fails", async () => {
     mockedApiFetch.mockRejectedValueOnce(new Error("api keys unavailable"))
     await expect(fetchAllAPIKeys()).rejects.toThrow("api keys unavailable")
+  })
+})
+
+describe("useSetIdentityDisabled", () => {
+  function setupMutation() {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const invalidateQueries = vi.spyOn(client, "invalidateQueries").mockResolvedValue(undefined)
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children)
+    const hook = renderHook(() => useSetIdentityDisabled(), { wrapper })
+    return { ...hook, invalidateQueries }
+  }
+
+  it("reloads both identity queries after a successful toggle", async () => {
+    mockedApiFetch.mockResolvedValueOnce({ disabled: true })
+    const { result, invalidateQueries } = setupMutation()
+
+    await act(async () => {
+      await result.current.mutateAsync({ id: 7, disabled: true })
+    })
+
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(2))
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([
+      { queryKey: ["quota", "auth-file-identities"] },
+      { queryKey: ["keys", "identities"] },
+    ])
+  })
+
+  it("reloads both identity queries after a failed toggle", async () => {
+    mockedApiFetch.mockRejectedValueOnce(new ApiError(
+      502,
+      JSON.stringify({
+        error: "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status.",
+      }),
+    ))
+    const { result, invalidateQueries } = setupMutation()
+
+    await act(async () => {
+      await expect(result.current.mutateAsync({ id: 9, disabled: false })).rejects.toThrow(
+        "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status.",
+      )
+    })
+
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(2))
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([
+      { queryKey: ["quota", "auth-file-identities"] },
+      { queryKey: ["keys", "identities"] },
+    ])
+  })
+
+  it.each([
+    ["invalid JSON", "not-json"],
+    ["a non-string error", JSON.stringify({ error: { message: "unsafe shape" } })],
+  ])("uses the generic message for %s in an API error body", async (_case, body) => {
+    mockedApiFetch.mockRejectedValueOnce(new ApiError(502, body))
+    const { result } = setupMutation()
+
+    await act(async () => {
+      await expect(result.current.mutateAsync({ id: 9, disabled: false })).rejects.toThrow("Failed to update account")
+    })
+  })
+
+  it("keeps network failure details out of the account toast while preserving the cause", async () => {
+    const networkError = new Error("Failed to fetch")
+    mockedApiFetch.mockRejectedValueOnce(networkError)
+    const { result } = setupMutation()
+
+    await act(async () => {
+      await expect(result.current.mutateAsync({ id: 9, disabled: false })).rejects.toMatchObject({
+        message: "Failed to update account",
+        cause: networkError,
+      })
+    })
   })
 })

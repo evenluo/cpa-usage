@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -14,16 +15,27 @@ import (
 )
 
 type stubAuthFileStatusClient struct {
-	file         authfiles.AuthFile
-	found        bool
-	fetchErr     error
-	setErr       error
-	gotName      string
-	gotDisabled  bool
-	setCallCount int
+	file            authfiles.AuthFile
+	found           bool
+	fetchErr        error
+	setErr          error
+	gotName         string
+	gotDisabled     bool
+	setCallCount    int
+	afterSetFile    *authfiles.AuthFile
+	afterSetErr     error
+	afterSetMissing bool
 }
 
 func (s *stubAuthFileStatusClient) FetchAuthFileByAuthIndex(_ context.Context, _ string) (authfiles.AuthFile, bool, error) {
+	if s.setCallCount > 0 {
+		if s.afterSetErr != nil || s.afterSetMissing {
+			return authfiles.AuthFile{}, false, s.afterSetErr
+		}
+		if s.afterSetFile != nil {
+			return *s.afterSetFile, true, nil
+		}
+	}
 	return s.file, s.found, s.fetchErr
 }
 
@@ -31,6 +43,9 @@ func (s *stubAuthFileStatusClient) SetAuthFileDisabled(_ context.Context, name s
 	s.gotName = name
 	s.gotDisabled = disabled
 	s.setCallCount++
+	if s.setErr == nil {
+		s.file.Disabled = disabled
+	}
 	return s.setErr
 }
 
@@ -148,5 +163,104 @@ func TestSetIdentityDisabledKeepsLocalStateWhenCPAFails(t *testing.T) {
 	}
 	if stored.Disabled {
 		t.Fatalf("expected local identity to stay enabled after CPA failure, got %+v", stored)
+	}
+}
+
+func TestSetIdentityDisabledReadsBackCPAState(t *testing.T) {
+	for _, target := range []bool{false, true} {
+		for _, reported := range []string{"active", "disabled", "error", ""} {
+			t.Run(fmt.Sprintf("disabled=%v/status=%s", target, reported), func(t *testing.T) {
+				db := openSyncTestDatabase(t)
+				before := "disabled"
+				unavailable := true
+				previousTime := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
+				identity := seedAuthFileIdentity(t, db, entities.UsageIdentity{Name: "account", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth", Type: "codex", Disabled: !target, AuthFileStatus: &before, Unavailable: &unavailable, LastRefresh: &previousTime, NextRetryAfter: &previousTime, TotalRequests: 42})
+				after := authfiles.AuthFile{Name: "account.json", AuthIndex: "auth", Disabled: target}
+				if reported != "" {
+					after.Status = &reported
+				}
+				client := &stubAuthFileStatusClient{file: authfiles.AuthFile{Name: "account.json", AuthIndex: "auth"}, found: true, afterSetFile: &after}
+				svc := NewAccountStatusService(db, client)
+				now := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+				svc.now = func() time.Time { return now }
+				if err := svc.SetIdentityDisabled(context.Background(), identity.ID, target); err != nil {
+					t.Fatal(err)
+				}
+				got, err := repository.GetUsageIdentityByID(context.Background(), db, identity.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got.Disabled != target || (reported == "" && got.AuthFileStatus != nil) || (reported != "" && (got.AuthFileStatus == nil || *got.AuthFileStatus != reported)) {
+					t.Fatalf("stale state: disabled=%v status=%v; want %v/%q", got.Disabled, got.AuthFileStatus, target, reported)
+				}
+				if got.Unavailable != nil || got.LastRefresh != nil || got.NextRetryAfter != nil || got.MetadataObservedAt == nil || !got.MetadataObservedAt.Equal(now) || got.TotalRequests != 42 {
+					t.Fatalf("readback did not replace observations or preserve usage: %+v", got)
+				}
+			})
+		}
+	}
+}
+
+func TestSetIdentityDisabledReportsReadbackFailureAfterAcceptedChange(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("missing=%v", missing), func(t *testing.T) {
+			db := openSyncTestDatabase(t)
+			status := "disabled"
+			identity := seedAuthFileIdentity(t, db, entities.UsageIdentity{Name: "account", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth", Disabled: true, AuthFileStatus: &status})
+			client := &stubAuthFileStatusClient{file: authfiles.AuthFile{Name: "account.json", AuthIndex: "auth"}, found: true, afterSetMissing: missing}
+			if !missing {
+				client.afterSetErr = errors.New("read failed")
+			}
+			err := NewAccountStatusService(db, client).SetIdentityDisabled(context.Background(), identity.ID, false)
+			if !errors.Is(err, ErrAccountStatusRefresh) {
+				t.Fatalf("expected explicit partial-success error, got %v", err)
+			}
+			got, err := repository.GetUsageIdentityByID(context.Background(), db, identity.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Disabled || got.AuthFileStatus == nil || *got.AuthFileStatus != "disabled" || got.MetadataObservedAt != nil || client.setCallCount != 1 {
+				t.Fatalf("must preserve accepted flag and prior observations without retry: %+v", got)
+			}
+		})
+	}
+}
+
+func TestSetIdentityDisabledPreservesConflictingReadback(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	identity := seedAuthFileIdentity(t, db, entities.UsageIdentity{Name: "account", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth", Disabled: true})
+	after := authfiles.AuthFile{Name: "account.json", AuthIndex: "auth", Disabled: true}
+	client := &stubAuthFileStatusClient{file: after, found: true, afterSetFile: &after}
+	err := NewAccountStatusService(db, client).SetIdentityDisabled(context.Background(), identity.ID, false)
+	if !errors.Is(err, ErrAccountStatusRefresh) {
+		t.Fatalf("expected unconfirmed result, got %v", err)
+	}
+	got, err := repository.GetUsageIdentityByID(context.Background(), db, identity.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Disabled || client.setCallCount != 1 {
+		t.Fatal("must keep readback authority without replaying mutation")
+	}
+}
+
+func TestSetIdentityDisabledPersistsReportedAvailability(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	identity := seedAuthFileIdentity(t, db, entities.UsageIdentity{Name: "account", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth", Disabled: true})
+	status := " ERROR "
+	unavailable := true
+	refreshed := time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
+	retry := refreshed.Add(time.Hour)
+	after := authfiles.AuthFile{Name: "account.json", AuthIndex: "auth", Status: &status, Unavailable: &unavailable, LastRefresh: &refreshed, NextRetryAfter: &retry}
+	client := &stubAuthFileStatusClient{file: after, found: true, afterSetFile: &after}
+	if err := NewAccountStatusService(db, client).SetIdentityDisabled(context.Background(), identity.ID, false); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repository.GetUsageIdentityByID(context.Background(), db, identity.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Disabled || got.AuthFileStatus == nil || *got.AuthFileStatus != "error" || got.Unavailable == nil || !*got.Unavailable || got.LastRefresh == nil || !got.LastRefresh.Equal(refreshed) || got.NextRetryAfter == nil || !got.NextRetryAfter.Equal(retry) {
+		t.Fatalf("must preserve actual CPA observations: %+v", got)
 	}
 }

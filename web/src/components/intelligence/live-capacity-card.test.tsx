@@ -844,7 +844,7 @@ describe("LiveCapacityCard", () => {
     const [, options] = mockSetIdentityDisabled.mutate.mock.calls[0]
     options.onSuccess()
     expect(mockToast.success).toHaveBeenCalledWith("Account disabled")
-    options.onError()
+    options.onError("unexpected response")
     expect(mockToast.error).toHaveBeenCalledWith("Failed to update account")
   })
 
@@ -885,6 +885,10 @@ describe("LiveCapacityCard", () => {
     const [, options] = mockSetIdentityDisabled.mutate.mock.calls[0]
     options.onSuccess()
     expect(mockToast.success).toHaveBeenCalledWith("Account enabled")
+    options.onError(new Error("CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status."))
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status.",
+    )
   })
 
   it("renders a disabled account dimmed with an amber badge and no refresh action", () => {

@@ -421,7 +421,7 @@ function LiveCapacityAccountTile({
         { id: row.id, disabled: false },
         {
           onSuccess: () => toast.success("Account enabled"),
-          onError: () => toast.error("Failed to update account"),
+          onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to update account"),
         },
       )
       return
@@ -440,7 +440,7 @@ function LiveCapacityAccountTile({
       { id: row.id, disabled: true },
       {
         onSuccess: () => toast.success("Account disabled"),
-        onError: () => toast.error("Failed to update account"),
+        onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to update account"),
       },
     )
   }

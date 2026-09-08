@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -797,6 +798,8 @@ func TestSetUsageIdentityDisabledRouteMapsServiceErrors(t *testing.T) {
 		{name: "identity missing", err: service.ErrUsageIdentityMissing, statusCode: http.StatusNotFound},
 		{name: "not auth file", err: service.ErrIdentityNotAuthFile, statusCode: http.StatusUnprocessableEntity},
 		{name: "missing in cpa", err: service.ErrAuthFileNotFoundInCPA, statusCode: http.StatusNotFound},
+		{name: "readback failure", err: service.ErrAccountStatusRefresh, statusCode: http.StatusBadGateway},
+		{name: "readback missing", err: fmt.Errorf("%w: %w", service.ErrAccountStatusRefresh, service.ErrAuthFileNotFoundInCPA), statusCode: http.StatusBadGateway},
 		{name: "cpa failure", err: errors.New("cpa unavailable"), statusCode: http.StatusInternalServerError},
 	}
 	for _, testCase := range cases {
@@ -810,6 +813,9 @@ func TestSetUsageIdentityDisabledRouteMapsServiceErrors(t *testing.T) {
 
 			if resp.Code != testCase.statusCode {
 				t.Fatalf("expected status %d, got %d: %s", testCase.statusCode, resp.Code, resp.Body.String())
+			}
+			if errors.Is(testCase.err, service.ErrAccountStatusRefresh) && !strings.Contains(resp.Body.String(), "CPA accepted the change") {
+				t.Fatalf("missing partial-success explanation: %s", resp.Body.String())
 			}
 		})
 	}
