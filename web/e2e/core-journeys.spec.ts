@@ -149,7 +149,7 @@ test("dashboard renders account capacity, diagnostics, and analysis layers", asy
     // 首次冷启动时 3 个视口 project 并行加载，KPI 渲染可能慢于默认 5s 超时。
     await expect(page.getByText(kpi, { exact: true }).first()).toBeVisible({ timeout: 10_000 })
   }
-  await expect(page.getByText("Trend Workbench")).toBeVisible()
+  await expect(page.getByText("Trends")).toBeVisible()
   await expect(page.getByText("Key Leaderboard")).toBeVisible()
   await expect(page.getByText("sk-live Agent")).toBeVisible()
   await expect(page.getByText("Activity Heatmap")).toBeVisible()
@@ -163,8 +163,8 @@ test("dashboard renders account capacity, diagnostics, and analysis layers", asy
     const box = await page.getByText(pattern, { exact: typeof pattern === "string" }).first().boundingBox()
     return box?.y ?? Number.POSITIVE_INFINITY
   }
-  const analysisTop = await layerTop("Analysis")
-  const trendTop = await layerTop("Trend Workbench")
+  const analysisTop = await layerTop("Cost")
+  const trendTop = await layerTop("Trends")
   const liveCapacityTop = await layerTop("Live Capacity")
   const diagnosticsTop = await layerTop("Diagnostics · fixed 24h")
   expect(analysisTop).toBeLessThan(trendTop)
@@ -184,7 +184,7 @@ test("switching time range and granularity changes the analytics request and the
   })
 
   await page.goto("/")
-  await expect(page.getByText("Trend Workbench")).toBeVisible()
+  await expect(page.getByText("Trends")).toBeVisible()
 
   const lastRange = () => analyticsRequests.at(-1)?.searchParams.get("range")
   const lastGranularity = () => analyticsRequests.at(-1)?.searchParams.get("granularity")
@@ -216,7 +216,7 @@ test("provider filter scopes the analytics request and manual sync reports compl
   })
 
   await page.goto("/")
-  await expect(page.getByText("Trend Workbench")).toBeVisible()
+  await expect(page.getByText("Trends")).toBeVisible()
 
   await page.getByRole("button", { name: /^claude/ }).click()
   await expect.poll(() => analyticsRequests.at(-1)?.searchParams.get("provider")).toBe("claude")

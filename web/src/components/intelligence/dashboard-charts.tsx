@@ -48,14 +48,12 @@ export function DashboardCharts({
         <CardHeader className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:flex-wrap">
           <div>
             <CardTitle className="flex items-center gap-2">
-              Trend Workbench
+              Trends
               <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
             </CardTitle>
-            <CardDescription>
-              {trendView === "cost-token" && "Cost area, tokens dotted overlay"}
-              {trendView === "requests-token" && "Attempts area, tokens dotted overlay"}
-              {trendView === "tokens" && "Provider-reported token scalars; subsets may overlap"}
-            </CardDescription>
+            {trendView === "tokens" ? (
+              <CardDescription>Provider-reported tokens · subsets may overlap</CardDescription>
+            ) : null}
           </div>
           <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
             {[
@@ -190,7 +188,6 @@ export function DashboardCharts({
               Activity Heatmap
               <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 30-day view" />
             </CardTitle>
-            <CardDescription>Hourly usage density across days</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             {surfaces.heatmap.status !== "error" && surfaces.heatmap.refreshError ? (

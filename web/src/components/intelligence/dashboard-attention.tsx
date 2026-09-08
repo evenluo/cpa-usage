@@ -1,5 +1,4 @@
 import { Pin } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -81,18 +80,12 @@ export function DashboardAttention({
         <Card className="flex h-full min-w-0 flex-col overflow-hidden xl:h-[300px]">
           <CardHeader className="flex flex-col items-start justify-between gap-4 pb-2 sm:flex-row">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                Attempt Health
-                <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
-              </CardTitle>
-              <CardDescription>Attempt success rate per 3-minute bucket</CardDescription>
+              <CardTitle>Attempt Health</CardTitle>
+              <CardDescription>Success rate · 3 min</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              {surfaces.requestHealth.status !== "error" && surfaces.requestHealth.refreshError ? (
-                <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry refresh</Button>
-              ) : null}
-              <Badge variant="green">24h fixed</Badge>
-            </div>
+            {surfaces.requestHealth.status !== "error" && surfaces.requestHealth.refreshError ? (
+              <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry refresh</Button>
+            ) : null}
           </CardHeader>
           <CardContent className="min-h-0 min-w-0 flex-1">
             {surfaces.requestHealth.status === "loading" ? (

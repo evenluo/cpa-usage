@@ -9,7 +9,7 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
   return (
     <details className="mt-2 min-w-0 border-t border-border pt-2 text-xs">
       <summary className="cursor-pointer rounded-sm font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
-        Canonical token composition
+        Token breakdown
       </summary>
       <div className="mt-3 space-y-3">
         <p className="text-muted-foreground">

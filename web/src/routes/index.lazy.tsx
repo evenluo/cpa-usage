@@ -1,5 +1,4 @@
 import { createLazyFileRoute } from "@tanstack/react-router"
-import { BarChart3 } from "lucide-react"
 import { KpiCard } from "@/components/intelligence/kpi-card"
 import { DashboardCharts } from "@/components/intelligence/dashboard-charts"
 import { DashboardControls } from "@/components/intelligence/dashboard-controls"
@@ -7,7 +6,6 @@ import { DashboardAttention } from "@/components/intelligence/dashboard-attentio
 import { DashboardCoreEmptyState } from "@/components/intelligence/dashboard-core-empty-state"
 import { LiveCapacityCard } from "@/components/intelligence/live-capacity-card"
 import { CanonicalTokenComposition } from "@/components/intelligence/canonical-token-composition"
-import { SectionDivider } from "@/components/intelligence/section-divider"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { formatCost, formatCompact, formatPercent } from "@/lib/format"
@@ -38,8 +36,6 @@ function DashboardPage() {
       />
 
       {/* Layer 1 — Trends & distribution over the selected analysis window */}
-      <SectionDivider icon={BarChart3} label="Analysis" />
-
       {surfaces.core.status === "error" ? (
         <Card>
           <CardContent className="flex min-h-32 flex-col items-center justify-center gap-3 text-center">

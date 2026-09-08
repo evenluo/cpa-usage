@@ -27,14 +27,9 @@ export function DashboardControls({
     <>
       {/* Header */}
       <header>
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Usage Intelligence
-          </p>
-          <h1 className="mt-1 font-serif text-3xl font-semibold tracking-tight text-foreground">
-            Dashboard
-          </h1>
-        </div>
+        <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
+          Dashboard
+        </h1>
       </header>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

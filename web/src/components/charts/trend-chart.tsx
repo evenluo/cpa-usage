@@ -104,14 +104,12 @@ export function TrendChart({ data, granularity, mode = "cost-token" }: TrendChar
           formatter={tooltipFormatter}
           labelFormatter={(label) => label}
         />
-        {mode === "tokens" && (
-          <Legend
-            verticalAlign="top"
-            align="right"
-            iconType="line"
-            wrapperStyle={{ fontSize: "12px", paddingBottom: "8px" }}
-          />
-        )}
+        <Legend
+          verticalAlign="top"
+          align="right"
+          iconType="line"
+          wrapperStyle={{ fontSize: "12px", paddingBottom: "8px" }}
+        />
         <Area
           yAxisId="primary"
           type="monotone"

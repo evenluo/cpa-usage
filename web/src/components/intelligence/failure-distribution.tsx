@@ -1,9 +1,8 @@
 import { Link } from "@tanstack/react-router"
-import { ArrowUpRight, Pin } from "lucide-react"
+import { ArrowUpRight } from "lucide-react"
 import { useState } from "react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCompact } from "@/lib/format"
 import type { UsageFailureBreakdown, UsageFailureDistribution } from "@/types/api"
@@ -34,16 +33,9 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
     <Card className="min-w-0 overflow-hidden">
       <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            Failure concentration
-            <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
-          </CardTitle>
-          <CardDescription>Failed attempts grouped by status and accountable dimensions.</CardDescription>
+          <CardTitle>Failure concentration</CardTitle>
         </div>
-        <div className="flex items-center gap-2">
-          {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
-          <Badge variant="terracotta">24h fixed</Badge>
-        </div>
+        {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
       </CardHeader>
       <CardContent>
         {!hasCompleteData && isLoading ? (
@@ -61,7 +53,7 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
           <div className="space-y-4">
             <div className="flex items-baseline gap-2">
               <span className="font-serif text-2xl font-semibold">{formatCompact(data.total_failures)}</span>
-              <span className="text-xs text-muted-foreground">failed attempts in scope</span>
+              <span className="text-xs text-muted-foreground">failed attempts</span>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
               {sections.map((section) => (

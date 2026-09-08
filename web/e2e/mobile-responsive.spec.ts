@@ -41,7 +41,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await page.getByRole("button", { name: "Day", exact: true }).click()
   await page.getByRole("button", { name: "Trend view: Tokens" }).click()
 
-  await expect(page.getByText("Trend Workbench")).toBeVisible()
+  await expect(page.getByText("Trends")).toBeVisible()
   const chartLegend = page.locator(".recharts-legend-wrapper")
   await expect(chartLegend.getByText("Tokens", { exact: true })).toBeVisible()
   await expect(chartLegend.getByText("Input", { exact: true })).toBeVisible()

@@ -35,7 +35,7 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await expect(page.getByText("Failure concentration")).toBeVisible()
   await expect(page.getByText("Attempt performance")).toBeVisible()
   await expect(page.getByText("Observed model mappings")).toBeVisible()
-  await page.getByText("Canonical token composition").click()
+  await page.getByText("Token breakdown").click()
   await expect(page.getByText(/3 \/ 10 valid/)).toBeVisible()
   await expect(page.getByText(/complete 1 · inconsistent 1 · unclassified 1/)).toBeVisible()
   await expect(page.getByText(/Canonical facts absent 7/)).toBeVisible()

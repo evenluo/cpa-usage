@@ -25,7 +25,7 @@ describe("Canonical token composition", () => {
   it("expands within the token surface and qualifies mixed coverage and quality separately from Cost", async () => {
     const user = userEvent.setup()
     render(<CanonicalTokenComposition accounting={accounting} costStatus="available" />)
-    const summary = screen.getByText("Canonical token composition").closest("summary")!
+    const summary = screen.getByText("Token breakdown").closest("summary")!
     expect(summary.parentElement).not.toHaveAttribute("open")
     await user.click(summary)
     expect(summary.parentElement).toHaveAttribute("open")

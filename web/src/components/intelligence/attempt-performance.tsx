@@ -1,8 +1,7 @@
 import { Link } from "@tanstack/react-router"
-import { ArrowUpRight, Pin } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { ArrowUpRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatLatency, formatOutputTPS } from "@/components/intelligence/request-evidence-event"
 import { formatCompact } from "@/lib/format"
@@ -27,16 +26,9 @@ export function AttemptPerformance({ provider, data, isLoading, error, onRetry }
     <Card className="min-w-0 overflow-hidden">
       <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            Attempt performance
-            <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
-          </CardTitle>
-          <CardDescription>p50/p95 latency, TTFT, and output TPS over valid attempts.</CardDescription>
+          <CardTitle>Attempt performance</CardTitle>
         </div>
-        <div className="flex items-center gap-2">
-          {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
-          <Badge variant="terracotta">24h fixed</Badge>
-        </div>
+        {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
       </CardHeader>
       <CardContent>
         {!hasCompleteData && isLoading ? (
@@ -60,13 +52,13 @@ export function AttemptPerformance({ provider, data, isLoading, error, onRetry }
             </div>
             <PerformanceSummary summary={data} provider={provider} windowEnd={data.window_end} />
             <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">What counts as a sample?</summary>
+              <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Sample rules</summary>
               <p className="mt-2">
                 TTFT and Output TPS exclude failed attempts plus {formatCompact(data.successful_execution.non_generating)} non-generating and {formatCompact(data.successful_execution.non_streaming)} non-streaming successful attempts. Output TPS additionally requires complete canonical output and valid timing.
               </p>
             </details>
             <details className="rounded-lg border border-border p-3">
-              <summary className="cursor-pointer text-sm font-medium">Compare provider, actual model, and account</summary>
+              <summary className="cursor-pointer text-sm font-medium">Breakdown</summary>
               <div className="mt-4 grid gap-5 xl:grid-cols-3">
                 <PerformanceBreakdown title="Providers" breakdown={data.providers} provider={provider} windowEnd={data.window_end} selection="provider" />
                 <PerformanceBreakdown title="Actual models" breakdown={data.models} provider={provider} windowEnd={data.window_end} selection="model" />

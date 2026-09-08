@@ -1,8 +1,7 @@
 import { Link } from "@tanstack/react-router"
-import { ArrowUpRight, Pin } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { ArrowUpRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCompact, formatCost, formatPercent } from "@/lib/format"
 import type { CostStatus, UsageModelMapping, UsageModelMappingDistribution } from "@/types/api"
@@ -20,16 +19,9 @@ export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappings
     <Card className="min-w-0 overflow-hidden">
       <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div>
-          <CardTitle className="flex items-center gap-2">
-            Observed model mappings
-            <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 24-hour view" />
-          </CardTitle>
-          <CardDescription>Observed alias-to-model pairs per provider.</CardDescription>
+          <CardTitle>Observed model mappings</CardTitle>
         </div>
-        <div className="flex items-center gap-2">
-          {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
-          <Badge variant="terracotta">24h fixed</Badge>
-        </div>
+        {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
       </CardHeader>
       <CardContent>
         {!hasCompleteData && isLoading ? (
@@ -55,7 +47,7 @@ export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappings
                 {data.mappings.map((row) => <MappingRow key={`${row.model_alias}:${row.model}:${row.provider}`} row={row} windowEnd={data.window_end} />)}
               </div>
             )}
-            {data.other_attempts > 0 ? <p className="text-xs text-muted-foreground">{formatCompact(data.other_attempts)} lower-ranked observed attempts are outside this bounded breakdown.</p> : null}
+            {data.other_attempts > 0 ? <p className="text-xs text-muted-foreground">Other observed attempts · {formatCompact(data.other_attempts)}</p> : null}
           </div>
         )}
       </CardContent>

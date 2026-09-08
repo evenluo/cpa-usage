@@ -34,7 +34,7 @@ describe("FailureDistribution", () => {
     expect(statusLink).toHaveAttribute("href", expect.stringContaining("status=429"))
     expect(statusLink).toHaveAttribute("href", expect.stringContaining("result=failed"))
     expect(statusLink).toHaveAttribute("href", expect.stringContaining("windowEnd=2026-09-07T12%3A00%3A00.123456789Z"))
-    expect(screen.getByText(/grouped by status and accountable dimensions/)).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Exact statuses" })).toBeInTheDocument()
   })
 
   it("keeps initial API error and successful empty state distinct", async () => {
