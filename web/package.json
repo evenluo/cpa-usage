@@ -15,7 +15,7 @@
     "perf:bundle": "tsc && vite build --manifest && node scripts/bundle-report.mjs"
   },
   "dependencies": {
-    "@radix-ui/react-dialog": "^1.1.1",
+    "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-dropdown-menu": "^2.1.1",
     "@radix-ui/react-label": "^2.1.0",
     "@radix-ui/react-popover": "^1.1.1",
