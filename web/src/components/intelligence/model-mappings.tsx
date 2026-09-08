@@ -1,9 +1,9 @@
 import { Link } from "@tanstack/react-router"
-import { ArrowUpRight } from "lucide-react"
+import { ArrowRight, ArrowUpRight, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatCompact, formatCost, formatPercent } from "@/lib/format"
+import { formatCompact, formatCost, formatDate, formatPercent } from "@/lib/format"
 import type { CostStatus, UsageModelMapping, UsageModelMappingDistribution } from "@/types/api"
 
 interface ModelMappingsProps {
@@ -14,89 +14,148 @@ interface ModelMappingsProps {
 }
 
 export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappingsProps) {
-  const hasCompleteData = data !== undefined
+  if (data && data.total_attempts > 0) {
+    return (
+      <Card className="min-w-0 overflow-hidden">
+        <details className="group">
+          <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 rounded-xl px-4 py-4 transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 [&::-webkit-details-marker]:hidden">
+            <CardTitle>Observed model mappings</CardTitle>
+            <ChevronDown className="row-span-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
+            <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span title={`${formatDate(data.window_start)} – ${formatDate(data.window_end)}`}>Last 24h</span>
+              <span><strong className="font-medium text-foreground">{formatCompact(data.mappings.length)}</strong> mappings displayed</span>
+              <span><strong className="font-medium text-foreground">{formatPercent(data.alias_coverage)}</strong> alias coverage</span>
+              <span><strong className="font-medium text-foreground">{formatCompact(data.missing_alias_attempts)}</strong> missing alias</span>
+            </span>
+          </summary>
+
+          <CardContent className="border-t border-border px-4 pb-5 pt-5 sm:px-6">
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-start justify-between gap-2 text-xs text-muted-foreground">
+                <p>Share of alias-bearing attempts</p>
+                <details className="max-w-lg">
+                  <summary className="cursor-pointer rounded-sm underline decoration-dotted underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">About these mappings</summary>
+                  <p className="mt-2 leading-relaxed">Names are observed values. Matching names do not prove how a request was routed.</p>
+                </details>
+              </div>
+
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <span>{formatCompact(data.observed_alias_attempts)} of {formatCompact(data.total_attempts)} attempts with an alias</span>
+                <span>Observed cost · {data.observed_alias_attempts > 0 ? formatObservedCost(data.observed_total_cost, data.observed_cost_status) : "No observed alias population"}</span>
+              </div>
+
+              {data.mappings.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">No observed alias mappings in scope</div>
+              ) : (
+                <div className="space-y-2">
+                  {data.mappings.map((row) => (
+                    <MappingRow
+                      key={`${row.model_alias}:${row.model}:${row.provider}`}
+                      row={row}
+                      observedAttempts={data.observed_alias_attempts}
+                      windowEnd={data.window_end}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {data.other_attempts > 0 ? (
+                <p className="text-xs text-muted-foreground">Other observed attempts · {formatCompact(data.other_attempts)}</p>
+              ) : null}
+            </div>
+          </CardContent>
+        </details>
+        {error ? <RefreshFailure onRetry={onRetry} /> : null}
+      </Card>
+    )
+  }
+
   return (
     <Card className="min-w-0 overflow-hidden">
-      <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row">
-        <div>
+      <CardHeader className="pb-4">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <CardTitle>Observed model mappings</CardTitle>
+          <span className="text-xs text-muted-foreground">Last 24h</span>
         </div>
-        {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
       </CardHeader>
       <CardContent>
-        {!hasCompleteData && isLoading ? (
-          <Skeleton className="h-44 w-full" />
-        ) : !hasCompleteData && error ? (
-          <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
+        {!data && isLoading ? (
+          <Skeleton className="h-12 w-full" />
+        ) : !data && error ? (
+          <div className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
             <span>Failed to load observed model mappings</span>
             <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry model mappings</Button>
           </div>
-        ) : !data || data.total_attempts === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">No attempts in the last 24 hours</div>
         ) : (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
-              <span><strong className="text-foreground">{formatCompact(data.observed_alias_attempts)}</strong> of {formatCompact(data.total_attempts)} attempts have an observed alias ({formatPercent(data.alias_coverage)})</span>
-              <span>{formatCompact(data.missing_alias_attempts)} missing alias</span>
-              <span>Observed Cost: {data.observed_alias_attempts > 0 ? formatObservedCost(data.observed_total_cost, data.observed_cost_status) : "No observed alias population"}</span>
-            </div>
-            {data.mappings.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">No observed alias mappings in scope</div>
-            ) : (
-              <div className="grid gap-2 lg:grid-cols-2">
-                {data.mappings.map((row) => <MappingRow key={`${row.model_alias}:${row.model}:${row.provider}`} row={row} windowEnd={data.window_end} />)}
-              </div>
-            )}
-            {data.other_attempts > 0 ? <p className="text-xs text-muted-foreground">Other observed attempts · {formatCompact(data.other_attempts)}</p> : null}
-          </div>
+          <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">No attempts in the last 24 hours</div>
         )}
       </CardContent>
+      {data && error ? <RefreshFailure onRetry={onRetry} /> : null}
     </Card>
   )
 }
 
-function MappingRow({ row, windowEnd }: { row: UsageModelMapping; windowEnd: string }) {
+function MappingRow({ row, observedAttempts, windowEnd }: { row: UsageModelMapping; observedAttempts: number; windowEnd: string }) {
+  const attemptShare = observedAttempts > 0 ? row.attempt_count / observedAttempts * 100 : 0
   const content = (
     <>
-      <div className="min-w-0 sm:flex-1">
-        <p className="break-words text-sm font-semibold">{row.model_alias}</p>
-        <p className="mt-0.5 break-words text-xs text-muted-foreground">
-          {!row.model
-            ? "Actual model unavailable"
-            : row.model_alias === row.model
-              ? "Direct"
-              : `Observed remap → ${row.model}`}
-        </p>
-        <p className="mt-1 break-words text-xs text-muted-foreground">{row.provider || "Provider unavailable"}</p>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+        <span className="[overflow-wrap:anywhere] font-semibold">{row.model_alias}</span>
+        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="[overflow-wrap:anywhere] font-medium">{row.model || "Actual model unavailable"}</span>
+        <span className="inline-flex min-w-0 gap-1 text-xs text-muted-foreground">
+          <span aria-hidden="true">/</span>
+          <span className="[overflow-wrap:anywhere]">{row.provider || "Provider unavailable"}</span>
+        </span>
+        {row.model && row.model_alias === row.model ? (
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Same observed name</span>
+        ) : null}
       </div>
-      <div className="grid w-full grid-cols-2 gap-x-4 gap-y-1 text-xs sm:w-auto sm:shrink-0 sm:text-right">
-        <Metric label="Attempts" value={formatCompact(row.attempt_count)} />
-        <Metric label="Failures" value={formatPercent(row.failure_share)} />
-        <Metric
-          label="Mean latency"
-          value={row.latency_sample_count > 0 ? `${row.mean_latency_ms.toLocaleString("en", { maximumFractionDigits: 1 })} ms` : "—"}
-          title={row.latency_sample_count > 0 ? `${row.latency_sample_count.toLocaleString("en")} ${row.latency_sample_count === 1 ? "sample" : "samples"}` : "No latency samples"}
-        />
-        <Metric label="Cost" value={formatObservedCost(row.total_cost, row.cost_status)} />
+
+      <div className="mt-3 flex items-center gap-3">
+        <div
+          className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
+          role="img"
+          aria-label={`${formatPercent(attemptShare)} of attempts with an observed alias`}
+        >
+          <div className="h-full rounded-full bg-terracotta-500" style={{ width: `${Math.min(attemptShare, 100)}%` }} />
+        </div>
+        <span className="w-24 shrink-0 text-right text-xs font-medium tabular-nums">
+          {formatCompact(row.attempt_count)} · {formatPercent(attemptShare)}
+        </span>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+        <span>Failures · {formatPercent(row.failure_share)}</span>
+        <span title={row.latency_sample_count > 0 ? `${row.latency_sample_count.toLocaleString("en")} ${row.latency_sample_count === 1 ? "sample" : "samples"}` : "No latency samples"}>
+          Mean latency · {row.latency_sample_count > 0 ? `${row.mean_latency_ms.toLocaleString("en", { maximumFractionDigits: 1 })} ms` : "—"}
+        </span>
+        <span>Cost · {formatObservedCost(row.total_cost, row.cost_status)}</span>
       </div>
     </>
   )
-  const className = "relative flex min-w-0 flex-col gap-3 rounded-lg border border-border p-3 pr-8 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+  const className = "relative block min-w-0 rounded-lg border border-border p-3 pr-9 transition-colors"
+
   if (!row.model || !row.provider) return <div className={className}>{content}</div>
   return (
     <Link
       to="/requests"
       search={{ provider: row.provider, model: row.model, modelAlias: row.model_alias, account: "", endpoint: "", status: "", requestId: "", windowEnd, result: "" }}
       aria-label={`Inspect ${row.model_alias} to ${row.model} attempts`}
-      className={`${className} transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500`}
+      className={`${className} hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500`}
     >
       {content}<ArrowUpRight className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
     </Link>
   )
 }
 
-function Metric({ label, value, title }: { label: string; value: string; title?: string }) {
-  return <span title={title}><span className="block text-[10px] text-muted-foreground">{label}</span><span className="font-medium sm:whitespace-nowrap">{value}</span></span>
+function RefreshFailure({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5 text-xs text-red-500 sm:px-6" role="alert">
+      <span>Latest refresh failed. Showing previously loaded data.</span>
+      <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button>
+    </div>
+  )
 }
 
 function formatObservedCost(value: number, status: CostStatus) {

@@ -15,3 +15,7 @@ Each row carries attempt count, failure count/share, positive-latency sample cou
 Complete rows link to first-page Request Evidence with exact provider, actual model, observed `model_alias`, and snapshot `window_end`. Rows missing model or provider remain visible without a broader link that could falsely claim aggregate/evidence parity. Model Mix remains the selected-window actual-model view and is not replaced or duplicated by this explanatory fixed-window Module.
 
 The reusable response fixture is `web/src/test/contracts/usage_model_mappings.json`. It covers alias splits, an observed remap, alias-equals-model canonicalization, missing alias/provider, failures, latency coverage, and mixed Cost availability using synthetic data only.
+
+## Dashboard presentation
+
+The default surface is a collapsed 24-hour summary showing displayed mapping count, alias coverage and missing aliases. Expanded rows connect the observed alias to actual model/provider and show attempt-share bars using all observed-alias attempts as the denominator, including omitted rows. Same-name rows are labelled `Same observed name`, with no routing inference. The attempt-share denominator stays beside the chart; the routing explanation is available through the clickable About these mappings details. Costs and latency remain supporting values inside the details. Refresh failures remain visible and retryable while the details are collapsed.

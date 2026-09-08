@@ -24,7 +24,6 @@ interface DashboardChartsProps {
   modelMixMeasure: "cost" | "tokens"
   modelMixCostStateLabel: string
   onRetryCore: () => void
-  onRetryHeatmap: () => void
 }
 
 export function DashboardCharts({
@@ -39,7 +38,6 @@ export function DashboardCharts({
   modelMixMeasure,
   modelMixCostStateLabel,
   onRetryCore,
-  onRetryHeatmap,
 }: DashboardChartsProps) {
   return (
     <div className="space-y-6">
@@ -179,40 +177,43 @@ export function DashboardCharts({
           </CardContent>
         </Card>
       </div>
-
-      {/* Activity Heatmap — 30d fixed */}
-      <Card>
-        <CardHeader className="flex flex-col items-start justify-between gap-3 pb-2 sm:flex-row">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              Activity Heatmap
-              <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 30-day view" />
-            </CardTitle>
-          </div>
-          <div className="flex items-center gap-2">
-            {surfaces.heatmap.status !== "error" && surfaces.heatmap.refreshError ? (
-              <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry refresh</Button>
-            ) : null}
-            <Badge variant="terracotta">30d fixed</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {surfaces.heatmap.status === "loading" ? (
-            <Skeleton className="h-[260px] w-full" />
-          ) : surfaces.heatmap.status === "error" ? (
-            <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-              <span>Failed to load activity heatmap</span>
-              <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry heatmap</Button>
-            </div>
-          ) : surfaces.heatmap.status === "ready" ? (
-            <Heatmap data={surfaces.heatmap.data} />
-          ) : (
-            <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-              No heatmap data
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
+  )
+}
+
+export function DashboardActivity({ surfaces, onRetryHeatmap }: { surfaces: UsageDashboardSurfaces; onRetryHeatmap: () => void }) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-col items-start justify-between gap-3 pb-2 sm:flex-row">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            Activity Heatmap
+            <Pin className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed 30-day view" />
+          </CardTitle>
+        </div>
+        <div className="flex items-center gap-2">
+          {surfaces.heatmap.status !== "error" && surfaces.heatmap.refreshError ? (
+            <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry refresh</Button>
+          ) : null}
+          <Badge variant="terracotta">30d fixed</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {surfaces.heatmap.status === "loading" ? (
+          <Skeleton className="h-[260px] w-full" />
+        ) : surfaces.heatmap.status === "error" ? (
+          <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
+            <span>Failed to load activity heatmap</span>
+            <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry heatmap</Button>
+          </div>
+        ) : surfaces.heatmap.status === "ready" ? (
+          <Heatmap data={surfaces.heatmap.data} />
+        ) : (
+          <div className="flex h-[260px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
+            No heatmap data
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

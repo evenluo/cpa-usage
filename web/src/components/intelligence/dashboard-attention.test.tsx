@@ -6,9 +6,9 @@ import type { Insight } from "@/types/api"
 
 vi.mock("@/components/charts/health-grid", () => ({ HealthGrid: () => null }))
 vi.mock("@/components/intelligence/request-evidence", () => ({ RequestEvidence: () => null }))
-vi.mock("@/components/intelligence/failure-distribution", () => ({ FailureDistribution: () => null }))
+vi.mock("@/components/intelligence/failure-distribution", () => ({ FailureDistribution: () => <div>Failure detail owner</div> }))
 vi.mock("@/components/intelligence/model-mappings", () => ({ ModelMappings: () => null }))
-vi.mock("@/components/intelligence/attempt-performance", () => ({ AttemptPerformance: () => null }))
+vi.mock("@/components/intelligence/attempt-performance", () => ({ AttemptPerformance: () => <div>Performance comparison owner</div> }))
 
 import { DashboardAttention } from "./dashboard-attention"
 
@@ -65,6 +65,14 @@ const sampleInsight: Insight = {
 }
 
 describe("DashboardAttention", () => {
+  it("puts performance first and failure detail inside Attempt Health", () => {
+    render(attention(makeSurfaces({ status: "empty", data: [] })).element)
+    const performance = screen.getByText("Performance comparison owner")
+    const health = screen.getByRole("heading", { name: "Attempt Health" })
+    expect(performance.compareDocumentPosition(health) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(health.closest(".rounded-xl")).toContainElement(screen.getByText("Failure detail owner"))
+  })
+
   it("renders the insight rail when attention signals are ready", () => {
     render(attention(makeSurfaces({ status: "ready", data: [sampleInsight] })).element)
 

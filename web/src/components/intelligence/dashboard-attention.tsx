@@ -73,15 +73,23 @@ export function DashboardAttention({
       ) : null}
 
       {/* Section divider — fixed 24h diagnostics */}
-      <SectionDivider icon={Pin} label="Diagnostics · fixed 24h" />
+      <SectionDivider icon={Pin} label="Performance & health" />
+
+      <AttemptPerformance
+        provider={requestEvidenceProvider}
+        data={attemptPerformanceData}
+        isLoading={isAttemptPerformanceLoading}
+        error={attemptPerformanceError}
+        onRetry={onRetryAttemptPerformance}
+      />
 
       {/* Attempt Health + Evidence — 24h fixed */}
-      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
-        <Card className="flex h-full min-w-0 flex-col overflow-hidden xl:h-[300px]">
+      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
+        <Card className="min-w-0 overflow-hidden">
           <CardHeader className="flex flex-col items-start justify-between gap-4 pb-2 sm:flex-row">
             <div>
               <CardTitle>Attempt Health</CardTitle>
-              <CardDescription>Success rate · 3 min</CardDescription>
+              <CardDescription>Last 24h · Success rate every 3 min</CardDescription>
             </div>
             {surfaces.requestHealth.status !== "error" && surfaces.requestHealth.refreshError ? (
               <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry refresh</Button>
@@ -102,6 +110,14 @@ export function DashboardAttention({
                 No health data
               </div>
             )}
+
+            <FailureDistribution
+              provider={requestEvidenceProvider}
+              data={failureDistributionData}
+              isLoading={isFailureDistributionLoading}
+              error={failureDistributionError}
+              onRetry={onRetryFailureDistribution}
+            />
           </CardContent>
         </Card>
 
@@ -114,22 +130,6 @@ export function DashboardAttention({
           onRetry={onRetryRequestEvidence}
         />
       </div>
-
-      <FailureDistribution
-        provider={requestEvidenceProvider}
-        data={failureDistributionData}
-        isLoading={isFailureDistributionLoading}
-        error={failureDistributionError}
-        onRetry={onRetryFailureDistribution}
-      />
-
-      <AttemptPerformance
-        provider={requestEvidenceProvider}
-        data={attemptPerformanceData}
-        isLoading={isAttemptPerformanceLoading}
-        error={attemptPerformanceError}
-        onRetry={onRetryAttemptPerformance}
-      />
 
       <ModelMappings
         data={modelMappingsData}

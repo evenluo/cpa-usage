@@ -4,7 +4,7 @@ Status: current, slice C of Parent #140 / Issue #146 r1
 
 Owner: `internal/repository` bounded raw aggregation, `internal/api` query and HTTP projection
 
-Consumer: Usage Intelligence fixed-window supporting diagnostics and Request Evidence
+Consumer: Usage Intelligence fixed-window performance comparison and Request Evidence
 
 ## Selection and percentile method
 
@@ -43,6 +43,12 @@ The overall summary and each provider, actual-model, and account comparison use 
 Account values stay repository identities and receive the same display-safe API labeling as failure concentration. No endpoint query, fragment, unrestricted failure text, headers, credentials, or client metadata enters the response.
 
 A successful or failed latency p95 may open Request Evidence with the same provider/model/account selection, exact returned `window_end`, matching `result`, and `min_latency_ms=p95`. Because the threshold is inclusive, ties can make the slow evidence set larger than five percent; the evidence page reports its actual paginated count and never claims an exact top-five-percent set.
+
+## Dashboard presentation
+
+Performance is the first comparison in the fixed 24-hour diagnostic section, after selected-window consumption analysis. The chart is visible by default and initially compares actual models. Metric controls switch successful latency, generating/streaming TTFT and Output TPS; dimension controls switch actual models, providers and accounts locally without another fetch. All visible rows use an aligned linear scale, with p50 and p95 markers. Partial or unavailable sample coverage stays visible; complete coverage and exact sample counts are available through the clickable attempt count or Samples details. These are the most-used returned groups, not a slowest-model ranking.
+
+Failed latency remains a separate collapsed comparison with its own aggregate and matching evidence links. Unknown-execution TTFT remains separately qualified. Without a selected provider, Output TPS cannot display a pooled aggregate or a cross-provider comparison axis; provider readings remain individually qualified numeric observations.
 
 ## Selection and failure policy
 

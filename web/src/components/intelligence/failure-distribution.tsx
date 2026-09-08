@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router"
 import { ArrowUpRight } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCompact } from "@/lib/format"
 import type { UsageFailureBreakdown, UsageFailureDistribution } from "@/types/api"
@@ -30,49 +29,60 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
   const hasCompleteData = data !== undefined
 
   return (
-    <Card className="min-w-0 overflow-hidden">
-      <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row">
-        <div>
-          <CardTitle>Failure concentration</CardTitle>
-          <CardDescription>Share of failed attempts · each dimension is independent</CardDescription>
+    <section aria-label="Failure analysis" className="mt-5 border-t border-border pt-4">
+      {!hasCompleteData && isLoading ? (
+        <Skeleton className="h-8 w-full" />
+      ) : !hasCompleteData && error ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-red-500">
+          <span>Failed to load failure distribution</span>
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry failure distribution</Button>
         </div>
-        {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
-      </CardHeader>
-      <CardContent>
-        {!hasCompleteData && isLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : !hasCompleteData && error ? (
-          <div className="flex h-40 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-            <span>Failed to load failure distribution</span>
-            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry failure distribution</Button>
-          </div>
-        ) : !data || data.total_failures === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-            No failed attempts in the last 24 hours
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex items-baseline gap-2">
-              <span className="font-serif text-2xl font-semibold">{formatCompact(data.total_failures)}</span>
-              <span className="text-xs text-muted-foreground">failed attempts</span>
+      ) : !data ? (
+        <p className="text-xs text-muted-foreground">Failure analysis unavailable</p>
+      ) : (
+        <>
+          {error ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>Failure refresh failed; showing the last complete result.</span>
+              <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry failure refresh</Button>
             </div>
-            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
-              {sections.map((section) => (
-                <FailureBreakdownSection
-                  key={section.field}
-                  title={section.title}
-                  breakdown={data[section.field]}
-                  selectionKey={section.key}
-                  provider={provider}
-                  windowEnd={data.window_end}
-                  totalFailures={data.total_failures}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          ) : null}
+          {data.total_failures === 0 ? (
+            <p className="text-xs text-muted-foreground">No failed attempts in the last 24 hours</p>
+          ) : (
+            <>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span><strong className="font-medium tabular-nums">{formatCompact(data.total_failures)}</strong> {data.total_failures === 1 ? "failed attempt" : "failed attempts"}</span>
+                <Link
+                  to="/requests"
+                  search={{ provider, model: "", modelAlias: "", account: "", endpoint: "", status: "", requestId: "", windowEnd: data.window_end, result: "failed" }}
+                  className="inline-flex min-h-8 items-center gap-1 rounded-sm font-medium text-terracotta-700 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:text-terracotta-300"
+                >
+                  View failures <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                </Link>
+              </div>
+              <details>
+                <summary className="cursor-pointer rounded-sm text-xs font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Failure breakdown</summary>
+                <p className="mb-4 mt-2 text-xs text-muted-foreground">Share of failures within each dimension.</p>
+                <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                  {sections.map((section) => (
+                    <FailureBreakdownSection
+                      key={section.field}
+                      title={section.title}
+                      breakdown={data[section.field]}
+                      selectionKey={section.key}
+                      provider={provider}
+                      windowEnd={data.window_end}
+                      totalFailures={data.total_failures}
+                    />
+                  ))}
+                </div>
+              </details>
+            </>
+          )}
+        </>
+      )}
+    </section>
   )
 }
 

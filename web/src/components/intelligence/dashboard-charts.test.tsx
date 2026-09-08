@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
 import type { AnalyticsCoreResponse, ModelDistribution } from "@/types/api"
-import { DashboardCharts } from "./dashboard-charts"
+import { DashboardActivity, DashboardCharts } from "./dashboard-charts"
 
 vi.mock("@/components/charts/model-distribution", () => ({
   ModelDistributionChart: ({ data, measure }: { data: ModelDistribution[]; measure: string }) => (
@@ -42,7 +42,6 @@ function makeProps(overrides: Record<string, unknown> = {}) {
     modelMixMeasure: "tokens" as const,
     modelMixCostStateLabel: "Local estimate incomplete, by tokens",
     onRetryCore: vi.fn(),
-    onRetryHeatmap: vi.fn(),
     ...overrides,
   }
 }
@@ -80,16 +79,16 @@ describe("DashboardCharts Usage Intelligence fields", () => {
     const user = userEvent.setup()
     const onRetryHeatmap = vi.fn()
     const { rerender } = render(
-      <DashboardCharts
-        {...makeProps({ onRetryHeatmap })}
+      <DashboardActivity
+        onRetryHeatmap={onRetryHeatmap}
         surfaces={surfaces({ heatmap: { status: "ready", data: { rows: [] } as never } })}
       />,
     )
     expect(screen.getByTestId("heatmap-owner")).toBeInTheDocument()
 
     rerender(
-      <DashboardCharts
-        {...makeProps({ onRetryHeatmap })}
+      <DashboardActivity
+        onRetryHeatmap={onRetryHeatmap}
         surfaces={surfaces({ heatmap: { status: "error", data: undefined, error: new Error("unavailable") } })}
       />,
     )

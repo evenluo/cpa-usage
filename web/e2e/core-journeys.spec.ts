@@ -158,7 +158,7 @@ test("dashboard renders account capacity, diagnostics, and analysis layers", asy
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
   await expect(page.getByText("all-model")).toBeVisible()
-  // 信息层次契约：选样窗口分析（首屏）→ 账户用量 → 24h 固定诊断。
+  // 信息层次契约：选样窗口分析 → 24h 性能与健康 → 当前容量与长期活跃。
   const layerTop = async (pattern: RegExp | string) => {
     const box = await page.getByText(pattern, { exact: typeof pattern === "string" }).first().boundingBox()
     return box?.y ?? Number.POSITIVE_INFINITY
@@ -166,10 +166,12 @@ test("dashboard renders account capacity, diagnostics, and analysis layers", asy
   const analysisTop = await layerTop("Cost")
   const trendTop = await layerTop("Trends")
   const liveCapacityTop = await layerTop("Live Capacity")
-  const diagnosticsTop = await layerTop("Diagnostics · fixed 24h")
+  const diagnosticsTop = await layerTop("Performance & health")
   expect(analysisTop).toBeLessThan(trendTop)
-  expect(trendTop).toBeLessThan(liveCapacityTop)
-  expect(liveCapacityTop).toBeLessThan(diagnosticsTop)
+  expect(trendTop).toBeLessThan(diagnosticsTop)
+  expect(diagnosticsTop).toBeLessThan(liveCapacityTop)
+  expect(liveCapacityTop).toBeLessThan(await layerTop("Activity Heatmap"))
+  expect(await layerTop("Attempt performance")).toBeLessThan(await layerTop("Attempt Health"))
   await expect(page.getByText("Needs attention", { exact: true })).toHaveCount(0)
   await expect(page.getByText("All providers metrics complete")).toHaveCount(0)
 })

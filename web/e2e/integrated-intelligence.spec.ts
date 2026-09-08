@@ -32,7 +32,7 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   })
 
   await page.goto("/")
-  await expect(page.getByText("Failure concentration")).toBeVisible()
+  await expect(page.getByText("Failure breakdown", { exact: true })).toBeVisible()
   await expect(page.getByText("Attempt performance")).toBeVisible()
   await expect(page.getByText("Observed model mappings")).toBeVisible()
   await page.getByText("Token breakdown").click()
@@ -40,14 +40,16 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await expect(page.getByText(/complete 1 · inconsistent 1 · unclassified 1/)).toBeVisible()
   await expect(page.getByText(/Canonical facts absent 7/)).toBeVisible()
   await expect(page.getByText(/Local estimate \(partial\)/)).toBeVisible()
+  await page.locator("summary").filter({ hasText: "Observed model mappings" }).click()
   const mapping = page.getByRole("link", { name: "Inspect route-a to actual-a attempts" })
-  for (const text of ["route-a", "Observed remap → actual-a", "provider-a"]) {
+  for (const text of ["route-a", "actual-a", "provider-a"]) {
     const label = mapping.getByText(text, { exact: true })
     await expect(label).toBeVisible()
     expect(await label.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
   }
   await page.screenshot({ path: testInfo.outputPath("dashboard-diagnostics.png"), fullPage: true })
 
+  await page.getByText("Failure breakdown", { exact: true }).click()
   await page.getByRole("link", { name: "Inspect HTTP 429 failures" }).click()
   await expectEvidenceSelection(page, requests, {
     windowEnd: "2026-09-07T12:00:00Z",
@@ -64,6 +66,7 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   })
 
   await page.goto("/")
+  await page.locator("summary").filter({ hasText: "Observed model mappings" }).click()
   await page.getByRole("link", { name: "Inspect route-a to actual-a attempts" }).click()
   await expectEvidenceSelection(page, requests, {
     windowEnd: "2026-09-07T12:00:00Z",

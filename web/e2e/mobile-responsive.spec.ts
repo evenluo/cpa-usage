@@ -92,7 +92,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(evidenceCard.getByText("Canonical tokens", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("105.09K", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByRole("button", { name: /Show request evidence/ })).toHaveCount(0)
-  await expectFixedOverviewCardHeights(page)
+  await expectOverviewCardLayout(page)
   await evidenceCard.getByRole("link", { name: "View all attempts" }).click()
   await expect(page).toHaveURL(/\/requests\?/)
   const requestsURL = new URL(page.url())
@@ -177,7 +177,7 @@ async function expectMobileNavigationPinnedToViewportBottom(page: Page) {
   expect(navPosition.willChange).toBe("auto")
 }
 
-async function expectFixedOverviewCardHeights(page: Page) {
+async function expectOverviewCardLayout(page: Page) {
   const heights = await page.evaluate(() => {
     const healthHeading = Array.from(document.querySelectorAll("h3")).find((node) => node.textContent?.includes("Attempt Health"))
     const evidenceHeading = Array.from(document.querySelectorAll("h3")).find((node) => node.textContent?.includes("Request Evidence"))
@@ -185,12 +185,13 @@ async function expectFixedOverviewCardHeights(page: Page) {
     const evidenceCard = evidenceHeading?.closest(".rounded-xl")
     return {
       isWide: window.matchMedia("(min-width: 1280px)").matches,
-      health: healthCard?.getBoundingClientRect().height ?? 0,
+      healthTop: healthCard?.getBoundingClientRect().top ?? 0,
+      evidenceTop: evidenceCard?.getBoundingClientRect().top ?? 0,
       evidence: evidenceCard?.getBoundingClientRect().height ?? 0,
     }
   })
 
   if (!heights.isWide) return
-  expect(Math.abs(heights.health - heights.evidence)).toBeLessThanOrEqual(1)
+  expect(Math.abs(heights.healthTop - heights.evidenceTop)).toBeLessThanOrEqual(1)
   expect(heights.evidence).toBeLessThanOrEqual(330)
 }

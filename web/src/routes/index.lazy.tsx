@@ -1,6 +1,6 @@
 import { createLazyFileRoute } from "@tanstack/react-router"
 import { KpiCard } from "@/components/intelligence/kpi-card"
-import { DashboardCharts } from "@/components/intelligence/dashboard-charts"
+import { DashboardActivity, DashboardCharts } from "@/components/intelligence/dashboard-charts"
 import { DashboardControls } from "@/components/intelligence/dashboard-controls"
 import { DashboardAttention } from "@/components/intelligence/dashboard-attention"
 import { DashboardCoreEmptyState } from "@/components/intelligence/dashboard-core-empty-state"
@@ -119,13 +119,9 @@ function DashboardPage() {
         modelMixMeasure={viewModel.modelMixMeasure}
         modelMixCostStateLabel={viewModel.modelMixCostStateLabel}
         onRetryCore={dashboard.retryCore}
-        onRetryHeatmap={dashboard.retryHeatmap}
       />
 
-      {/* Layer 2 — Account usage & capacity, live now */}
-      <LiveCapacityCard provider={loadPlan.fixedWindow.liveCapacity.provider} />
-
-      {/* Layer 3 — Needs attention, fixed 24h diagnostic window */}
+      {/* Performance and health — fixed 24h diagnostic window */}
       <DashboardAttention
         surfaces={surfaces}
         requestEvidenceProvider={loadPlan.fixedWindow.requestEvidence.provider}
@@ -149,6 +145,9 @@ function DashboardPage() {
         onRetryModelMappings={dashboard.retryModelMappings}
         onRetryAttemptPerformance={dashboard.retryAttemptPerformance}
       />
+      {/* Supporting operational views keep their own time scopes. */}
+      <LiveCapacityCard provider={loadPlan.fixedWindow.liveCapacity.provider} />
+      <DashboardActivity surfaces={surfaces} onRetryHeatmap={dashboard.retryHeatmap} />
     </div>
   )
 }

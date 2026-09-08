@@ -26,9 +26,14 @@ const distribution: UsageFailureDistribution = {
 }
 
 describe("FailureDistribution", () => {
-  it("opens first-page Request Evidence with the selected breakdown and frozen window", () => {
+  it("opens first-page Request Evidence with the selected breakdown and frozen window", async () => {
     render(<FailureDistribution provider="claude" data={distribution} isLoading={false} error={null} onRetry={vi.fn()} />)
 
+    expect(screen.getByText("Failure breakdown").closest("details")).not.toHaveAttribute("open")
+    const allFailures = screen.getByRole("link", { name: "View failures" })
+    expect(allFailures).toHaveAttribute("href", expect.stringContaining("result=failed"))
+    expect(allFailures).toHaveAttribute("href", expect.stringContaining("windowEnd=2026-09-07T12%3A00%3A00.123456789Z"))
+    await userEvent.click(screen.getByText("Failure breakdown"))
     const statusLink = screen.getByRole("link", { name: "Inspect HTTP 429 failures" })
     expect(statusLink).toHaveAttribute("href", expect.stringContaining("provider=claude"))
     expect(statusLink).toHaveAttribute("href", expect.stringContaining("status=429"))
@@ -51,6 +56,7 @@ describe("FailureDistribution", () => {
     rerender(<FailureDistribution provider="" data={{ ...distribution, total_failures: 0, categories: emptyBreakdown }} isLoading={false} error={null} onRetry={retry} />)
     expect(screen.getByText("No failed attempts in the last 24 hours")).toBeInTheDocument()
     expect(screen.queryByText("Failed to load failure distribution")).not.toBeInTheDocument()
+    expect(screen.queryByText("Failure breakdown")).not.toBeInTheDocument()
   })
 
   it("accounts for lower-ranked rows before expanding all returned breakdown items", async () => {
@@ -67,6 +73,7 @@ describe("FailureDistribution", () => {
     }
     render(<FailureDistribution provider="" data={{ ...distribution, total_failures: 35, categories }} isLoading={false} error={null} onRetry={vi.fn()} />)
 
+    await userEvent.click(screen.getByText("Failure breakdown"))
     const section = screen.getByRole("region", { name: "Status families" })
     expect(section).not.toHaveTextContent("5XX")
     expect(section).toHaveTextContent("7 attempts")
