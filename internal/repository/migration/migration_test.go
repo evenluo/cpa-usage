@@ -50,6 +50,7 @@ func TestOrderedMigrationsPreservesExecutionOrder(t *testing.T) {
 		"20260907_add_usage_rollup_accounting_fields",
 		"20260907_add_usage_identity_passive_quota",
 		"20260907_make_usage_event_cache_columns_nullable",
+		"20260908_create_quota_observations",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("expected ordered migrations %v, got %v", want, got)
@@ -117,6 +118,7 @@ func TestOpenDatabaseRunsSchemaMigrationsAndAddsUsageEventRedisFields(t *testing
 		"20260907_add_usage_identity_passive_quota",
 		"20260907_add_usage_rollup_accounting_fields",
 		"20260907_make_usage_event_cache_columns_nullable",
+		"20260908_create_quota_observations",
 	}
 	if len(versions) != len(expected) {
 		t.Fatalf("expected migration versions %v, got %v", expected, versions)

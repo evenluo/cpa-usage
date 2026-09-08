@@ -2,9 +2,11 @@ import { act } from "react"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { KeyIdentity, ModelSupportResponse, QuotaCacheResponse } from "@/types/api"
+import type { KeyIdentity, ModelSupportResponse, QuotaObservationsResponse } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 import { formatDate } from "@/lib/format"
+
+const OBSERVED_AT = "2026-09-07T09:00:00Z"
 
 // Mock the useLiveCapacity hook
 const mockUseLiveCapacity = vi.fn()
@@ -69,7 +71,7 @@ function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
 
 interface LiveCapacityReturn {
   identities: KeyIdentity[]
-  cachedQuota: QuotaCacheResponse | undefined
+  observations: QuotaObservationsResponse | undefined
   taskStates: Record<string, LiveCapacityTaskState>
   refresh: (target?: string | string[]) => void
   refreshLimit: number
@@ -81,7 +83,7 @@ interface LiveCapacityReturn {
 function setupMock(props: Partial<LiveCapacityReturn> = {}): LiveCapacityReturn {
   const defaults: LiveCapacityReturn = {
     identities: [],
-    cachedQuota: undefined,
+    observations: undefined,
     taskStates: {},
     refresh: vi.fn(),
     refreshLimit: 20,
@@ -151,7 +153,7 @@ describe("LiveCapacityCard", () => {
     expect(within(availability).getByText("Unavailable")).toBeInTheDocument()
     expect(within(availability).getByText("CPA: Error")).toBeInTheDocument()
 
-    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    const timing = screen.getByRole("group", { name: "Account and observation timing" })
     for (const label of ["Metadata observed", "Token refreshed", "Retry eligible"]) {
       expect(within(timing).getByText(label)).toBeInTheDocument()
     }
@@ -161,6 +163,34 @@ describe("LiveCapacityCard", () => {
     )
     for (const timestamp of ["2026-09-07T08:00:00Z", "2026-09-07T07:45:00Z", "2026-09-07T08:30:00Z"]) {
       expect(timing.querySelector(`time[datetime='${timestamp}']`)).toBeInTheDocument()
+    }
+    expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
+  })
+
+  it("uses a model-only passive quota as the latest successful observation", () => {
+    vi.useFakeTimers({ now: new Date("2026-09-07T12:00:00Z") })
+    try {
+      setupMock({
+        identities: [identity({
+          metadata_observed_at: "2026-09-07T11:00:00Z",
+          passive_model_quotas: [{
+            source: "cpa_passive",
+            scope: "model",
+            model: "gpt-5.3-codex",
+            observed_at: "2026-09-07T09:00:00Z",
+            quota: [{ key: "weekly", label: "Weekly", usedPercent: 20 }],
+          }],
+        })],
+      })
+      render(<LiveCapacityCard provider="" />)
+
+      const updated = screen.getByText("Last updated 3h ago")
+      expect(updated.parentElement).toHaveAttribute(
+        "title",
+        `Reported by CPA (gpt-5.3-codex) · ${formatDate("2026-09-07T09:00:00Z")}`,
+      )
+    } finally {
+      vi.useRealTimers()
     }
   })
 
@@ -188,20 +218,18 @@ describe("LiveCapacityCard", () => {
             quota: [{ key: "secondary", label: "Weekly", allowed: false, window: { seconds: 604_800 } }],
           }],
         })],
-        cachedQuota: {
-          items: [{ id: "codex-auth", cachedAt: "2026-09-07T09:00:00Z", quota: [{ key: "manual", label: "5h", usedPercent: 10 }] }],
+        observations: {
+          items: [{ id: "codex-auth", observedAt: "2026-09-07T09:00:00Z", quota: [{ key: "manual", label: "5h", usedPercent: 10 }] }],
         },
       })
       const { container } = render(<LiveCapacityCard provider="" />)
 
-      // The codex skeleton always shows 5h + Weekly; the reported 5h reading fills
-      // its slot, Weekly has no reading, and probe readings stay hidden for a disabled account.
-      expect(screen.getByText("25% used · Blocked")).toBeInTheDocument()
-      expect(screen.getByLabelText("5h: 25% used · Blocked")).toBeInTheDocument()
+      // Disabled accounts retain historical readings while their refresh action stays unavailable.
+      expect(screen.getByText("10% used")).toBeInTheDocument()
+      expect(screen.getByLabelText("5h: 10% used")).toBeInTheDocument()
       expect(screen.getByText("No reading")).toBeInTheDocument()
-      expect(screen.queryByText("10% used")).not.toBeInTheDocument()
-      // Frozen at the observation instant: the 120s relative reset reads as a countdown.
-      expect(screen.getByText("in 2m")).toBeInTheDocument()
+      expect(screen.queryByText("25% used · Blocked")).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Refresh Codex Auth" })).not.toBeInTheDocument()
       // Window-less reported rows, the active limit, and model observations live
       // behind the per-tile fold.
       const fold = screen.getByText(/··· \d+ more/).closest("details")
@@ -210,8 +238,8 @@ describe("LiveCapacityCard", () => {
       expect(within(fold as HTMLElement).getByText("4.5 credits left")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("Per-model quotas (1)")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("gpt-5.3-codex")).toBeInTheDocument()
-      // Reported meters: main 5h + folded Credits + folded model Weekly.
-      expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(3)
+      // Reported meters: folded Credits + folded model Weekly; the newer manual 5h wins its window.
+      expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(2)
     } finally {
       vi.useRealTimers()
     }
@@ -230,11 +258,10 @@ describe("LiveCapacityCard", () => {
             quota: [{ key: "passive-5h", label: "5h", usedPercent: 99, window: { seconds: 18_000 } }],
           },
         })],
-        cachedQuota: {
+        observations: {
           items: [{
             id: "codex-auth",
-            cachedAt: "2026-09-07T09:00:00Z",
-            expiresAt: "2026-09-07T13:00:00Z",
+            observedAt: "2026-09-07T09:00:00Z",
             quota: [
               { key: "manual-5h", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
               { key: "spark", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 20 },
@@ -253,20 +280,20 @@ describe("LiveCapacityCard", () => {
       expect(screen.getByText("No reading")).toBeInTheDocument()
       // Freshness line: the newer of the two observation times, with both
       // sources and their absolute times on the tooltip.
-      const updated = screen.getByText("Updated 3h ago")
+      const updated = screen.getByText("Last updated 3h ago")
       expect(updated.parentElement).toHaveAttribute(
         "title",
         `Manual probe · ${formatDate("2026-09-07T09:00:00Z")}\nReported by CPA · ${formatDate("2026-09-07T08:00:00Z")}`,
       )
       // Named additional limits and timing lines live behind the fold; a shared
       // metadata/probe observation time collapses to a single "Observed" line.
-      const fold = screen.getByText("··· 3 more").closest("details")
+      const fold = screen.getByText("··· 2 more").closest("details")
       expect(fold).not.toHaveAttribute("open")
       expect(within(fold as HTMLElement).getByText("More limits (1)")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("GPT-5.3-Codex-Spark 5h")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("Observed")).toBeInTheDocument()
       expect(within(fold as HTMLElement).queryByText("Metadata observed")).not.toBeInTheDocument()
-      expect(within(fold as HTMLElement).getByText("Cache expires")).toBeInTheDocument()
+      expect(within(fold as HTMLElement).queryByText(/cache expires|stale/i)).not.toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
@@ -285,13 +312,13 @@ describe("LiveCapacityCard", () => {
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-pro", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "plain-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByText("Codex Pro")).toBeInTheDocument()
@@ -396,7 +423,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText(/zero not allowed/)).toBeInTheDocument()
   })
 
-  it("visualizes probe freshness, subscription window, and additional quota rows", () => {
+  it("visualizes observation time, subscription window, and additional quota rows", () => {
     const futureUntil = new Date(Date.now() + 30 * 86_400_000).toISOString()
     const identities = [identity({
       identity: "codex-pro",
@@ -406,11 +433,10 @@ describe("LiveCapacityCard", () => {
       active_start: "2026-08-01T00:00:00Z",
       active_until: futureUntil,
     })]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [{
         id: "codex-pro",
-        cachedAt: "2026-08-31T01:00:00Z",
-        expiresAt: "2026-08-31T01:05:00Z",
+        observedAt: "2026-08-31T01:00:00Z",
         quota: [
           { key: "primary", label: "5h", usedPercent: 10 },
           { key: "secondary", label: "Weekly", usedPercent: 20 },
@@ -418,82 +444,40 @@ describe("LiveCapacityCard", () => {
         ],
       }],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByText("Code review")).toBeInTheDocument()
-    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    const timing = screen.getByRole("group", { name: "Account and observation timing" })
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
-    expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
     // Past subscription starts are hidden; only the future end date remains,
     // folded with the other timing lines.
     expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
-    expect(timing.querySelectorAll("time")).toHaveLength(3)
+    expect(timing.querySelectorAll("time")).toHaveLength(2)
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
-    expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
     // Data freshness sits on the card surface instead of the subscription end.
-    expect(screen.getByText(/^Updated /)).toBeInTheDocument()
+    expect(screen.getByText(/^Last updated /)).toBeInTheDocument()
   })
 
-  it("renders a single cache-expiry endpoint without a connector when observedAt is missing", () => {
-    const identities = [identity({
-      identity: "codex-pro",
-      displayName: "Codex Pro",
-      provider: "Codex",
-      type: "codex",
-    })]
-    const cachedQuota: QuotaCacheResponse = {
-      items: [{
-        id: "codex-pro",
-        expiresAt: "2026-08-31T01:05:00Z",
-        quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
-      }],
-    }
-    setupMock({ identities, cachedQuota })
-    const { container } = render(<LiveCapacityCard provider="" />)
-
-    const timing = within(container).getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).getByText("Cache expires")).toBeInTheDocument()
-    expect(within(timing).queryByText("Observed")).not.toBeInTheDocument()
-    expect(timing.querySelectorAll("time")).toHaveLength(1)
-    expect(timing.querySelector("time[datetime='2026-08-31T01:05:00Z']")).toBeInTheDocument()
-    expect(timing.querySelector("svg.lucide-arrow-right")).not.toBeInTheDocument()
-  })
-
-  it("marks an expired cache as stale", () => {
+  it("keeps an old observation visible without cache-expiry or stale UI", () => {
     const identities = [identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" })]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [{
         id: "codex-pro",
-        cachedAt: "2020-01-01T00:00:00Z",
-        expiresAt: "2020-01-01T00:20:00Z",
+        observedAt: "2020-01-01T00:00:00Z",
         quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
       }],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     render(<LiveCapacityCard provider="" />)
 
-    const timing = screen.getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).getByText("Stale")).toBeInTheDocument()
-  })
-
-  it("does not mark a cache whose expiry is still ahead as stale", () => {
-    const identities = [identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" })]
-    const cachedQuota: QuotaCacheResponse = {
-      items: [{
-        id: "codex-pro",
-        cachedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 20 * 60_000).toISOString(),
-        quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
-      }],
-    }
-    setupMock({ identities, cachedQuota })
-    render(<LiveCapacityCard provider="" />)
-
-    const timing = screen.getByRole("group", { name: "Account and cache timing" })
-    expect(within(timing).queryByText("Stale")).not.toBeInTheDocument()
+    const timing = screen.getByRole("group", { name: "Account and observation timing" })
+    expect(within(timing).getByText("Observed")).toBeInTheDocument()
+    expect(screen.getByText("10% used")).toBeInTheDocument()
+    expect(screen.getByText(/^Last updated /)).toBeInTheDocument()
+    expect(screen.queryByText(/stale|cache expires|expired/i)).not.toBeInTheDocument()
   })
 
   it("truncates long auth indexes and copies the full value on click", async () => {
@@ -504,13 +488,13 @@ describe("LiveCapacityCard", () => {
       identity({ identity: longId, displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "short-id", displayName: "Short Id", provider: "Codex", type: "codex" }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
-        { id: longId, quota: [{ key: "quota", label: "5h", usedPercent: 10 }] },
-        { id: "short-id", quota: [{ key: "quota", label: "5h", usedPercent: 10 }] },
+        { id: longId, observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10 }] },
+        { id: "short-id", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10 }] },
       ],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     render(<LiveCapacityCard provider="" />)
 
     const copyButton = screen.getByRole("button", { name: `Copy auth index ${longId}` })
@@ -531,21 +515,21 @@ describe("LiveCapacityCard", () => {
       type: "codex",
       active_until: futureUntil,
     })]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [{
         id: "codex-pro",
+        observedAt: OBSERVED_AT,
         quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
       }],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     render(<LiveCapacityCard provider="" />)
 
-    const timing = screen.getByRole("group", { name: "Account and cache timing" })
+    const timing = screen.getByRole("group", { name: "Account and observation timing" })
     expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
-    // No probe or reported observation exists, so no freshness line renders.
-    expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument()
+    expect(screen.getByText(/^Last updated /)).toBeInTheDocument()
   })
 
   it("shows both subscription endpoints when the active start is still in the future", () => {
@@ -559,16 +543,17 @@ describe("LiveCapacityCard", () => {
       active_start: futureStart,
       active_until: futureUntil,
     })]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [{
         id: "codex-pro",
+        observedAt: OBSERVED_AT,
         quota: [{ key: "primary", label: "5h", usedPercent: 10 }],
       }],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     const { container } = render(<LiveCapacityCard provider="" />)
 
-    const timing = within(container).getByRole("group", { name: "Account and cache timing" })
+    const timing = within(container).getByRole("group", { name: "Account and observation timing" })
     expect(within(timing).getByText("Starts")).toBeInTheDocument()
     expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureStart}']`)).toBeInTheDocument()
@@ -580,13 +565,13 @@ describe("LiveCapacityCard", () => {
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-pro", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "plain-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     const { container } = render(<LiveCapacityCard provider="" />)
 
     // Should have two grid sections (priority + regular)
@@ -607,13 +592,13 @@ describe("LiveCapacityCard", () => {
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
       identity({ identity: "team-codex", displayName: "Team Codex", provider: "Codex", type: "codex" }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
-        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
-        { id: "team-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "plain-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "team-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     const { container } = render(<LiveCapacityCard provider="" />)
 
     // Only one grid section (regular only)
@@ -624,18 +609,18 @@ describe("LiveCapacityCard", () => {
     expect(container.querySelector("[role='separator']")).not.toBeInTheDocument()
   })
 
-  it("moves account to priority section when plan upgrades via taskState", () => {
+  it("moves an account to the priority section when a later observation upgrades its plan", () => {
     const identities = [
       identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
     ]
-    const initialCache: QuotaCacheResponse = {
+    const initialObservations: QuotaObservationsResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-pro", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "plain-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
-    setupMock({ identities, cachedQuota: initialCache })
+    setupMock({ identities, observations: initialObservations })
     const { container, rerender } = render(<LiveCapacityCard provider="" />)
 
     // Initially: 1 priority (codex-pro), 1 regular (plain-codex)
@@ -643,19 +628,18 @@ describe("LiveCapacityCard", () => {
     expect(readGridAuthIndexes(grids[0])).toEqual(["codex-pro"])
     expect(readGridAuthIndexes(grids[1])).toEqual(["plain-codex"])
 
-    // plain-codex refreshes and upgrades to pro
+    // A later successful observation upgrades plain-codex to pro.
     setupMock({
       identities,
-      cachedQuota: initialCache,
-      taskStates: {
-        "plain-codex": {
-          status: "completed",
-          taskId: "task-1",
-          quota: {
+      observations: {
+        items: [
+          initialObservations.items[0],
+          {
             id: "plain-codex",
+            observedAt: "2026-09-07T10:00:00Z",
             quota: [{ key: "quota", label: "5h", usedPercent: 20, planType: "pro" }],
           },
-        },
+        ],
       },
     })
     act(() => { rerender(<LiveCapacityCard provider="" />) })
@@ -669,36 +653,35 @@ describe("LiveCapacityCard", () => {
     expect(container.querySelector("[role='separator']")).not.toBeInTheDocument()
   })
 
-  it("preserves regular section order when taskStates change", () => {
+  it("preserves regular section order when a later observation changes a reading", () => {
     const identities = [
       identity({ identity: "alpha-codex", displayName: "Alpha", provider: "Codex", type: "codex" }),
       identity({ identity: "beta-codex", displayName: "Beta", provider: "Codex", type: "codex" }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
-        { id: "alpha-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
-        { id: "beta-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "alpha-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "beta-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     const { container, rerender } = render(<LiveCapacityCard provider="" />)
 
     const grids = getSectionGrids(container)
     const initialOrder = readGridAuthIndexes(grids[0])
 
-    // Refresh beta-codex (no plan change)
+    // A later beta-codex observation changes its reading without changing its plan.
     setupMock({
       identities,
-      cachedQuota,
-      taskStates: {
-        "beta-codex": {
-          status: "completed",
-          taskId: "task-1",
-          quota: {
+      observations: {
+        items: [
+          observations.items[0],
+          {
             id: "beta-codex",
+            observedAt: "2026-09-07T10:00:00Z",
             quota: [{ key: "quota", label: "5h", usedPercent: 50, planType: "team" }],
           },
-        },
+        ],
       },
     })
     act(() => { rerender(<LiveCapacityCard provider="" />) })
@@ -736,14 +719,14 @@ describe("LiveCapacityCard", () => {
         },
       }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
-        { id: "codex-a", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
-        { id: "codex-b", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
-        { id: "claude-a", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-a", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "codex-b", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "claude-a", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     render(<LiveCapacityCard provider="" />)
 
     const chipGroup = screen.getByRole("group", { name: "Filter accounts by provider" })
@@ -803,14 +786,14 @@ describe("LiveCapacityCard", () => {
       identity({ identity: "beta", displayName: "Beta", provider: "Claude", type: "claude" }),
       identity({ identity: "gamma", displayName: "Gamma", provider: "Codex", type: "codex" }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
-        { id: "alpha", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
-        { id: "beta", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
-        { id: "gamma", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "alpha", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "beta", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "gamma", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
       ],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     const { container } = render(<LiveCapacityCard provider="" />)
 
     const initialOrder = readGridAuthIndexes(getSectionGrids(container)[0])
@@ -893,10 +876,10 @@ describe("LiveCapacityCard", () => {
 
   it("renders a disabled account dimmed with an amber badge and no refresh action", () => {
     const identities = [identity({ identity: "codex-auth", displayName: "Codex Auth", disabled: true })]
-    const cachedQuota: QuotaCacheResponse = {
-      items: [{ id: "codex-auth", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] }],
+    const observations: QuotaObservationsResponse = {
+      items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] }],
     }
-    setupMock({ identities, cachedQuota })
+    setupMock({ identities, observations })
     const { container } = render(<LiveCapacityCard provider="" />)
 
     expect(container.querySelector(".group.opacity-60")).not.toBeNull()

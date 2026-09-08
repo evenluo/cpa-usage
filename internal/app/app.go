@@ -137,7 +137,7 @@ func NewWithConfig(cfg config.Config) (*App, error) {
 		slog.Warn("TLS certificate verification is disabled for CPA and Redis queue connections", "cpa_base_url", cfg.CPABaseURL)
 	}
 	pricingService := service.NewPricingService(db, cpaClient)
-	quotaService := quota.NewService(quota.NewRepositoryAuthFileIdentityLookup(db), cpaClient)
+	quotaService := quota.NewService(quota.NewRepository(db), cpaClient)
 	accountStatusService := service.NewAccountStatusService(db, cpaClient)
 	modelSupportService := service.NewModelSupportService(db, cpaClient)
 	sessionManager := auth.NewSessionManager(cfg.AuthSessionTTL)

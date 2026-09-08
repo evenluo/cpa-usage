@@ -17,7 +17,7 @@ The backend keeps a responsibility-based Go package layout. Choose an existing p
 - `internal/cpa`: CPA external API client boundaries and CPA DTOs, including the remote queue effect boundary that permits transport fallback only before a destructive command starts.
 - Accounting-v2 queue DTOs live in `internal/cpa/usage_accounting.go`; `internal/service` projects their allowlisted facts, and `internal/repository/usage_accounting.go` owns canonical validation, per-attempt interpretation and the materialized valid/absent SQL availability state. The [accounting contract](../design/usage-accounting-contract.md) defines consumer and storage semantics.
 - Selected-window canonical composition and state/quality counts use that materialized accounting state in the existing raw/hourly aggregation owner. `internal/api` projects summary accounting and per-attempt evidence; the existing Usage Intelligence view model and token/evidence presentation consume those facts without interpreting validity again.
-- `internal/quota`: restricted auth-file capacity probes, cache and refresh-task lifecycle, plus the allowlisted pure normalizer for passive Claude/Codex quota observations used by **Live Capacity**. It is not CPA native quota administration.
+- `internal/quota`: restricted auth-file capacity probes, successful-observation persistence orchestration and refresh-task lifecycle, plus the allowlisted pure normalizer for passive Claude/Codex quota observations used by **Live Capacity**. `internal/repository` owns the retained quota observations in SQLite. It is not CPA native quota administration.
 - `internal/poller`: background queue consumption and polling execution.
 
 Supporting backend packages keep focused ownership:
@@ -39,7 +39,7 @@ The current frontend lives in `web/` and uses React, TypeScript, Vite, Tailwind 
 - `web/src/features/usage-intelligence`: tested Usage Intelligence selected/fixed-window load planning and view-model derivation, including Model Mix, observed model mappings, deterministic Insights, and **Live Capacity** presentation facts.
 - `web/src/features/reference-data`: tested Reference Data interaction, model logic, and page workbench state for Key Aliases and Cost Rates.
 - `web/src/features/operations`: tested Operations Console presentation derivation for local runtime and ingestion observations, including explicit unavailable states.
-- `web/src/hooks`: reusable API-facing hooks and query wrappers, including cache-first **Live Capacity** reads, manual refresh-task polling, and mutation-only **Registered Model Support** loads.
+- `web/src/hooks`: reusable API-facing hooks and query wrappers, including retained **Live Capacity** observation reads, manual refresh-task polling, and mutation-only **Registered Model Support** loads.
 - `web/src/lib`: shared client utilities such as API access, formatting, and class-name helpers.
 - `web/src/components/ui`: low-level reusable UI primitives.
 - `web/src/components/charts`: chart components and chart-specific presentation helpers.

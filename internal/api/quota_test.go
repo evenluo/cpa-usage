@@ -15,18 +15,18 @@ import (
 )
 
 type quotaProviderStub struct {
-	request         quota.CheckRequest
-	response        quota.CheckResponse
-	err             error
-	refreshRequest  quota.RefreshRequest
-	refreshResponse quota.RefreshResponse
-	refreshErr      error
-	taskID          string
-	taskResponse    quota.RefreshTaskResponse
-	taskErr         error
-	cacheRequest    quota.CacheRequest
-	cacheResponse   quota.CacheResponse
-	cacheErr        error
+	request              quota.CheckRequest
+	response             quota.CheckResponse
+	err                  error
+	refreshRequest       quota.RefreshRequest
+	refreshResponse      quota.RefreshResponse
+	refreshErr           error
+	taskID               string
+	taskResponse         quota.RefreshTaskResponse
+	taskErr              error
+	observationsRequest  quota.ObservationsRequest
+	observationsResponse quota.ObservationsResponse
+	observationsErr      error
 }
 
 func (s *quotaProviderStub) Check(ctx context.Context, request quota.CheckRequest) (quota.CheckResponse, error) {
@@ -53,12 +53,12 @@ func (s *quotaProviderStub) GetRefreshTask(ctx context.Context, taskID string) (
 	return s.taskResponse, nil
 }
 
-func (s *quotaProviderStub) GetCachedQuota(ctx context.Context, request quota.CacheRequest) (quota.CacheResponse, error) {
-	s.cacheRequest = request
-	if s.cacheErr != nil {
-		return quota.CacheResponse{}, s.cacheErr
+func (s *quotaProviderStub) GetQuotaObservations(ctx context.Context, request quota.ObservationsRequest) (quota.ObservationsResponse, error) {
+	s.observationsRequest = request
+	if s.observationsErr != nil {
+		return quota.ObservationsResponse{}, s.observationsErr
 	}
-	return s.cacheResponse, nil
+	return s.observationsResponse, nil
 }
 
 func floatPtr(value float64) *float64 {
@@ -67,7 +67,8 @@ func floatPtr(value float64) *float64 {
 
 func TestQuotaCheckReturnsProviderResponse(t *testing.T) {
 	provider := &quotaProviderStub{response: quota.CheckResponse{
-		ID: "codex-auth",
+		ID:         "codex-auth",
+		ObservedAt: time.Date(2026, 9, 8, 1, 2, 3, 0, time.UTC),
 		Quota: []quota.QuotaRow{{
 			Key:       "rate_limit.primary_window",
 			Label:     "5h",
@@ -89,14 +90,15 @@ func TestQuotaCheckReturnsProviderResponse(t *testing.T) {
 		t.Fatalf("expected auth_index to be forwarded, got %+v", provider.request)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"id":"codex-auth"`) || !contains(body, `"quota":[`) || !contains(body, `"remaining":10`) || contains(body, `"auth_index"`) || contains(body, `"provider"`) || contains(body, `"type"`) || contains(body, `"result"`) || contains(body, `"planType"`) || contains(body, `"name"`) || contains(body, `"identity"`) || contains(body, `"account_id"`) || contains(body, `"project_id"`) {
+	if !contains(body, `"id":"codex-auth"`) || !contains(body, `"observedAt":"2026-09-08T01:02:03Z"`) || !contains(body, `"quota":[`) || !contains(body, `"remaining":10`) || contains(body, `"auth_index"`) || contains(body, `"provider"`) || contains(body, `"type"`) || contains(body, `"result"`) || contains(body, `"planType"`) || contains(body, `"name"`) || contains(body, `"identity"`) || contains(body, `"account_id"`) || contains(body, `"project_id"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }
 
 func TestQuotaCheckReturnsProviderSpecificResultShape(t *testing.T) {
 	provider := &quotaProviderStub{response: quota.CheckResponse{
-		ID: "gemini-auth",
+		ID:         "gemini-auth",
+		ObservedAt: time.Date(2026, 9, 8, 2, 0, 0, 0, time.UTC),
 		Quota: []quota.QuotaRow{
 			{Key: "bucket.gemini-2.5-pro_vertex.PROMPT", Label: "gemini-2.5-pro_vertex", Scope: "model", Metric: "PROMPT", RemainingFraction: floatPtr(0.7), Remaining: floatPtr(42), ResetAt: "2026-05-09T12:00:00Z"},
 			{Key: "code_assist.current_tier.GOOGLE_ONE_AI", Label: "Code Assist Credit", Scope: "credits", Metric: "GOOGLE_ONE_AI", Remaining: floatPtr(10)},
@@ -180,17 +182,15 @@ func TestQuotaCheckMapsProviderInputTo422(t *testing.T) {
 	}
 }
 
-func TestQuotaCacheReturnsCachedCurrentPageQuota(t *testing.T) {
-	provider := &quotaProviderStub{cacheResponse: quota.CacheResponse{
-		Items: []quota.CachedCheckResponse{{
-			CheckResponse: quota.CheckResponse{ID: "auth-1", Quota: []quota.QuotaRow{{Key: "rate_limit.secondary_window", Label: "Weekly", PlanType: "plus"}}},
-			CachedAt:      time.Date(2026, 8, 31, 1, 0, 0, 0, time.UTC),
-			ExpiresAt:     time.Date(2026, 8, 31, 1, 5, 0, 0, time.UTC),
+func TestQuotaObservationsReturnsCurrentPageQuota(t *testing.T) {
+	provider := &quotaProviderStub{observationsResponse: quota.ObservationsResponse{
+		Items: []quota.CheckResponse{{
+			ID: "auth-1", ObservedAt: time.Date(2026, 8, 31, 1, 0, 0, 0, time.UTC), Quota: []quota.QuotaRow{{Key: "rate_limit.secondary_window", Label: "Weekly", PlanType: "plus"}},
 		}},
 	}}
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Quota: provider})
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/quota/cache", strings.NewReader(`{"auth_indexes":["auth-1","auth-2"],"limit":20}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quota/observations", strings.NewReader(`{"auth_indexes":["auth-1","auth-2"],"limit":20}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -198,22 +198,22 @@ func TestQuotaCacheReturnsCachedCurrentPageQuota(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if got := strings.Join(provider.cacheRequest.AuthIndexes, ","); got != "auth-1,auth-2" {
-		t.Fatalf("expected auth indexes to be forwarded, got %+v", provider.cacheRequest.AuthIndexes)
+	if got := strings.Join(provider.observationsRequest.AuthIndexes, ","); got != "auth-1,auth-2" {
+		t.Fatalf("expected auth indexes to be forwarded, got %+v", provider.observationsRequest.AuthIndexes)
 	}
-	if provider.cacheRequest.Limit != 20 {
-		t.Fatalf("expected outer cache limit 20, got %d", provider.cacheRequest.Limit)
+	if provider.observationsRequest.Limit != 20 {
+		t.Fatalf("expected outer observations limit 20, got %d", provider.observationsRequest.Limit)
 	}
 	body := resp.Body.String()
 	if !contains(body, `"items"`) || !contains(body, `"id":"auth-1"`) || !contains(body, `"label":"Weekly"`) || !contains(body, `"planType":"plus"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
-	if !contains(body, `"cachedAt":"2026-08-31T01:00:00Z"`) || !contains(body, `"expiresAt":"2026-08-31T01:05:00Z"`) {
-		t.Fatalf("expected cache observation and expiry in response body: %s", body)
+	if !contains(body, `"observedAt":"2026-08-31T01:00:00Z"`) || contains(body, `"cachedAt"`) || contains(body, `"expiresAt"`) {
+		t.Fatalf("expected durable observation time without task cache metadata: %s", body)
 	}
 }
 
-func TestQuotaCacheAllowsMoreThanRefreshLimit(t *testing.T) {
+func TestQuotaObservationsAllowsMoreThanRefreshLimit(t *testing.T) {
 	provider := &quotaProviderStub{}
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Quota: provider})
 	authIndexes := make([]string, 21)
@@ -225,7 +225,7 @@ func TestQuotaCacheAllowsMoreThanRefreshLimit(t *testing.T) {
 		t.Fatalf("marshal request: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/quota/cache", strings.NewReader(string(bodyBytes)))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quota/observations", strings.NewReader(string(bodyBytes)))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -233,8 +233,19 @@ func TestQuotaCacheAllowsMoreThanRefreshLimit(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d body=%s", resp.Code, resp.Body.String())
 	}
-	if provider.cacheRequest.Limit != 50 || len(provider.cacheRequest.AuthIndexes) != 21 {
-		t.Fatalf("expected cache request to bypass refresh limit, got %+v", provider.cacheRequest)
+	if provider.observationsRequest.Limit != 50 || len(provider.observationsRequest.AuthIndexes) != 21 {
+		t.Fatalf("expected observations request to bypass refresh limit, got %+v", provider.observationsRequest)
+	}
+}
+
+func TestQuotaCacheRouteWasRemoved(t *testing.T) {
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Quota: &quotaProviderStub{}})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quota/cache", strings.NewReader(`{"auth_indexes":["auth-1"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("expected removed cache route to return 404, got %d body=%s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -309,7 +320,7 @@ func TestQuotaRefreshTaskReturnsCachedQuota(t *testing.T) {
 		TaskID:    "task-1",
 		AuthIndex: "auth-1",
 		Status:    quota.RefreshTaskStatusCompleted,
-		Quota:     &quota.CheckResponse{ID: "auth-1", Quota: []quota.QuotaRow{{Key: "rate_limit.primary_window", Label: "5h", PlanType: "pro"}}},
+		Quota:     &quota.CheckResponse{ID: "auth-1", ObservedAt: time.Date(2026, 9, 8, 1, 0, 0, 0, time.UTC), Quota: []quota.QuotaRow{{Key: "rate_limit.primary_window", Label: "5h", PlanType: "pro"}}},
 	}}
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{Quota: provider})
 
@@ -324,7 +335,7 @@ func TestQuotaRefreshTaskReturnsCachedQuota(t *testing.T) {
 		t.Fatalf("expected task id to be forwarded, got %q", provider.taskID)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"status":"completed"`) || !contains(body, `"quota":{"id":"auth-1"`) || !contains(body, `"key":"rate_limit.primary_window"`) || !contains(body, `"planType":"pro"`) {
+	if !contains(body, `"status":"completed"`) || !contains(body, `"quota":{"id":"auth-1"`) || !contains(body, `"observedAt":"2026-09-08T01:00:00Z"`) || !contains(body, `"key":"rate_limit.primary_window"`) || !contains(body, `"planType":"pro"`) || contains(body, `"cachedAt"`) || contains(body, `"expiresAt"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }

@@ -26,7 +26,7 @@ func (h *recordingProviderHandler) Check(ctx context.Context, input quota.Provid
 	return h.output, nil
 }
 
-// fakeAuthFileIdentityLookup 以内存身份表实现 quota.AuthFileIdentityLookup，dispatch 测试不再需要真实数据库。
+// fakeAuthFileIdentityLookup implements quota.Repository for dispatch tests.
 type fakeAuthFileIdentityLookup struct {
 	identities map[string]entities.UsageIdentity
 }
@@ -50,6 +50,14 @@ func (f fakeAuthFileIdentityLookup) FindActiveAuthFileIdentity(_ context.Context
 func (f fakeAuthFileIdentityLookup) HasActiveIdentity(_ context.Context, authIndex string) (bool, error) {
 	_, ok := f.identities[authIndex]
 	return ok, nil
+}
+
+func (f fakeAuthFileIdentityLookup) SaveQuotaObservation(context.Context, uint, quota.CheckResponse) error {
+	return nil
+}
+
+func (f fakeAuthFileIdentityLookup) ListQuotaObservations(context.Context, []string, int) ([]quota.CheckResponse, error) {
+	return []quota.CheckResponse{}, nil
 }
 
 func TestServiceRejectsEmptyAuthIndex(t *testing.T) {
@@ -84,7 +92,7 @@ func TestServiceDispatchesAuthFileIdentityByProviderBeforeType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Check returned error: %v", err)
 	}
-	if response.ID != "codex-auth" || len(response.Quota) != 1 || response.Quota[0].Key != "rate_limit.primary_window" || response.Quota[0].UsedPercent == nil || *response.Quota[0].UsedPercent != 25 {
+	if response.ID != "codex-auth" || response.ObservedAt.IsZero() || len(response.Quota) != 1 || response.Quota[0].Key != "rate_limit.primary_window" || response.Quota[0].UsedPercent == nil || *response.Quota[0].UsedPercent != 25 {
 		t.Fatalf("unexpected check response: %+v", response)
 	}
 	if len(handler.inputs) != 1 || handler.inputs[0].Identity.Identity != "codex-auth" || handler.inputs[0].Identity.AuthType != entities.UsageIdentityAuthTypeAuthFile {
@@ -119,7 +127,7 @@ func TestServiceReturnsUnsupportedType(t *testing.T) {
 	}
 }
 
-func TestServiceAllowsCodexQuotaWithoutAccountID(t *testing.T) {
+func TestServiceCallsCodexWithoutAccountIDButRejectsEmptyQuota(t *testing.T) {
 	lookup := newFakeAuthFileIdentityLookup(entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "codex-auth", Type: "codex", Name: "auth file"})
 	caller := &recordingManagementCaller{responses: []*apicall.Response{{
 		StatusCode: 200,
@@ -128,11 +136,11 @@ func TestServiceAllowsCodexQuotaWithoutAccountID(t *testing.T) {
 	}}}
 	service := quota.NewServiceWithRegistry(lookup, quota.NewDefaultProviderRegistry(caller, quota.DefaultProviderConfigs()))
 
-	response, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "codex-auth"})
-	if err != nil {
-		t.Fatalf("Check returned error: %v", err)
+	_, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "codex-auth"})
+	if err == nil || !strings.Contains(err.Error(), "no usable rows") {
+		t.Fatalf("expected empty quota response error, got %v", err)
 	}
-	if response.ID != "codex-auth" || len(caller.requests) != 1 {
-		t.Fatalf("expected codex quota request without account_id, got response=%+v requests=%d", response, len(caller.requests))
+	if len(caller.requests) != 1 {
+		t.Fatalf("expected codex quota request without account_id, got requests=%d", len(caller.requests))
 	}
 }

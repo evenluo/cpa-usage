@@ -41,6 +41,7 @@ const (
 	migrationAddUsageIdentityAvailability           = "20260907_add_usage_identity_availability"
 	migrationAddUsageIdentityPassiveQuota           = "20260907_add_usage_identity_passive_quota"
 	migrationMakeUsageEventCacheColumnsNullable     = "20260907_make_usage_event_cache_columns_nullable"
+	migrationCreateQuotaObservations                = "20260908_create_quota_observations"
 )
 
 type schemaMigration struct {
@@ -126,6 +127,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationAddUsageRollupAccountingFields, run: addUsageRollupAccountingFieldsMigration},
 		{version: migrationAddUsageIdentityPassiveQuota, run: addUsageIdentityPassiveQuotaMigration},
 		{version: migrationMakeUsageEventCacheColumnsNullable, run: makeUsageEventCacheColumnsNullableMigration},
+		{version: migrationCreateQuotaObservations, run: createQuotaObservationsMigration},
 	}
 }
 

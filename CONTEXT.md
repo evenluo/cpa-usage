@@ -48,6 +48,10 @@ _Avoid_: Ignored filter, stale range
 A restricted operational reading that keeps user-triggered CPA generic `api-call` probes separate from the latest supported passive quota watermarks already present in CPA auth-file metadata.
 _Avoid_: Usage quota analytics, billing quota, quota history, inferred expiry or automatic provider calls
 
+**Last updated**:
+The latest successful quota observation time for an account, whether obtained by a manual refresh or reported by CPA. Elapsed time alone does not invalidate a reading; a failed refresh or missing report does not erase the previous successful observation.
+_Avoid_: Metadata sync time, token refresh time, cache expiry, proof of present capacity
+
 **Registered Model Support**:
 An explicitly loaded, selected-scope reading of models currently registered to auth-file accounts in CPA, optionally enriched by exact-ID static capability metadata.
 _Avoid_: Live model availability, routable model catalog, provider health
@@ -100,18 +104,20 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - The frontend defaults the 30-day **Selected Analysis Window** to daily granularity and all other selectable windows to hourly granularity; an explicit user selection overrides that default.
 - **Usage Intelligence** uses the **Selected Analysis Window** for KPIs, primary trends, and ranked contributors.
 - **Usage Intelligence** may also include **Fixed Operational Windows** for activity density, attempt health, recent request evidence, and **Live Capacity**.
-- **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility. It presents cached manual CPA generic `api-call` probes and supported passive CPA auth-file observations as separate sources.
+- **Live Capacity** is a restricted **Fixed Operational Window** reading for operator visibility. It presents the latest successful manual CPA generic `api-call` probes and supported passive CPA auth-file observations with their original source times.
 - **Live Capacity** displays active auth-file accounts that can be probed for capacity. Unsupported auth-file accounts are shown explicitly instead of blocking supported accounts.
 - **Live Capacity** can disable or re-enable an auth-file account in CPA via the account power action; disabling requires an inline confirmation, enabling applies immediately. Disabled accounts stay visible with a Disabled badge, sink to the end of the account grid, and are excluded from capacity probes until re-enabled.
 - Successful account toggles re-read CPA account state before reporting success; lifecycle status and availability are never inferred from the requested disabled flag. If CPA accepted the change but readback or persistence fails, the UI reloads identities and reports the unconfirmed result; Trigger Sync is the explicit recovery path.
 - Disabled auth-file accounts remain active identities in the local read model with a disabled marker instead of being dropped during metadata sync, so their historical usage and re-enable action stay available.
 - Temporarily unavailable auth-file accounts also remain the same active local identities. Operator-disabled, temporarily unavailable, and CPA lifecycle status are independent observations; absence of a reported status or availability flag does not imply an active account.
-- **Live Capacity** keeps CPA auth-file metadata observation time separate from upstream token refresh time and capacity-probe observation/cache time. A reported next-retry time is only the earliest retry eligibility, never a recovery guarantee.
-- Claude and Codex passive quota observations keep their original CPA `observed_at`, account/model scope and allowlisted normalized rows. Missing, empty, unsupported or malformed observations are unavailable rather than zero or healthy; they do not create expiry, history, refresh state or scheduler recovery claims.
-- Passive quota watermarks never replace manual probe rows or cache times, and passive retry hints never replace auth-file `next_retry_after`.
-- Compatibility: **Compatible**. Availability columns are nullable, API fields are additive and optional, legacy SQLite rows retain `NULL`, and existing navigation, toggle, and probe behavior remain unchanged.
-- **Live Capacity** is cache-first. Loading **Usage Intelligence** reads cached quota probe results only; manual refresh is the user action that may trigger provider calls.
-- **Live Capacity** shows the probe observation and cache-expiry times, the auth-file active window, and every provider quota row returned by the existing probe contract. These timestamps and rows are operational evidence, not billing renewal or account-history claims.
+- **Live Capacity** keeps CPA auth-file metadata observation time separate from upstream token refresh time and quota observation time. A reported next-retry time is only the earliest retry eligibility, never a recovery guarantee.
+- Claude and Codex passive quota observations keep their original CPA observation time, account/model scope and supported quota readings. Missing, empty, unsupported or malformed reports provide no new observation; they do not erase previous successful readings or imply zero usage or health.
+- Manual probes and CPA reports retain their source identity. When both describe the same quota window, the newer observation supplies the displayed reading. Passive retry hints never replace the account's reported retry eligibility.
+- Availability metadata compatibility: **Compatible**. Availability columns are nullable and their API fields are additive and optional; existing rows without these observations remain unknown.
+- Loading **Usage Intelligence** reads retained quota observations; manual refresh is the user action that may trigger provider calls.
+- **Live Capacity** retains successful readings and **Last updated** across page reloads, service restarts, failed refreshes and account disabling. A newer successful observation replaces an earlier one; elapsed time alone does not clear readings or mark them expired. Accounts that have never supplied quota observations show **No reading**.
+- **Last updated** includes account and model quota observations, but excludes metadata sync and token refresh times. Per-reading source times remain available so the account timestamp does not imply that every window was observed together.
+- **Live Capacity** shows the auth-file active window and provider quota reset times as reported. These timestamps are operational evidence, not inferred cache expiry, billing renewal or account-history claims.
 - A manual **Live Capacity** refresh is rejected as unavailable once its worker lifecycle starts shutting down; it must not return a task that cannot run.
 - **Live Capacity** follows provider filtering, but the **Selected Analysis Window** and **Time Granularity** do not change its query key or probe window.
 - **Registered Model Support** is loaded only by an explicit user action for a selected auth-file account set; loading **Usage Intelligence** never fans out model-support requests.

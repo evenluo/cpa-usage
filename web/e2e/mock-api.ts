@@ -145,12 +145,11 @@ export const authFileIdentitiesPayload = {
   total_pages: 1,
 }
 
-const quotaCachePayload = {
+const quotaObservationsPayload = {
   items: [
     {
       id: "codex-auth-e2e",
-      cachedAt: "2026-08-31T09:05:00Z",
-      expiresAt: "2026-08-31T09:25:00Z",
+      observedAt: "2026-08-31T09:05:00Z",
       quota: [
         { key: "rate_limit.primary_window", label: "5h", usedPercent: 35, resetAfterSeconds: 3600, planType: "plus" },
         { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 62, resetAfterSeconds: 7200, planType: "plus" },
@@ -452,8 +451,8 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
       await route.fulfill({ json: usedModelsPayload })
       return
     }
-    if (path === "/quota/cache" && method === "POST") {
-      await route.fulfill({ json: quotaCachePayload })
+    if (path === "/quota/observations" && method === "POST") {
+      await route.fulfill({ json: quotaObservationsPayload })
       return
     }
     if (path === "/quota/refresh" && method === "POST") {

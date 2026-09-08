@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -25,6 +26,9 @@ func ReplaceUsageIdentitiesForAuthType(ctx context.Context, db *gorm.DB, identit
 	normalized, incomingIdentities := normalizeUsageIdentities(identities, authType)
 
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := mergePersistedPassiveQuota(tx, normalized); err != nil {
+			return err
+		}
 		// 先写入或恢复本次同步到的身份，确保 CPA 返回的 deleted row 会重新变为 active。
 		if err := upsertUsageIdentities(tx, normalized); err != nil {
 			return err
@@ -490,6 +494,85 @@ func trimOptionalString(value *string) *string {
 		return nil
 	}
 	return &trimmed
+}
+
+func mergePersistedPassiveQuota(tx *gorm.DB, incoming []entities.UsageIdentity) error {
+	if len(incoming) == 0 {
+		return nil
+	}
+	type identityKey struct {
+		AuthType entities.UsageIdentityAuthType
+		Identity string
+	}
+	keys := make(map[identityKey]int, len(incoming))
+	for index := range incoming {
+		keys[identityKey{AuthType: incoming[index].AuthType, Identity: incoming[index].Identity}] = index
+	}
+	identitiesByType := make(map[entities.UsageIdentityAuthType][]string)
+	for key := range keys {
+		identitiesByType[key.AuthType] = append(identitiesByType[key.AuthType], key.Identity)
+	}
+	for authType, identities := range identitiesByType {
+		for start := 0; start < len(identities); start += insertBatchSize(entities.UsageIdentity{}) {
+			end := min(start+insertBatchSize(entities.UsageIdentity{}), len(identities))
+			var persisted []entities.UsageIdentity
+			if err := tx.Select("auth_type", "identity", "passive_quota", "passive_model_quotas").
+				Where("auth_type = ? AND identity IN ?", authType, identities[start:end]).
+				Find(&persisted).Error; err != nil {
+				return fmt.Errorf("load persisted passive quota: %w", err)
+			}
+			for _, existing := range persisted {
+				index := keys[identityKey{AuthType: existing.AuthType, Identity: existing.Identity}]
+				incoming[index].PassiveQuota = newerPassiveAccountObservation(existing.PassiveQuota, incoming[index].PassiveQuota)
+				incoming[index].PassiveModelQuotas = mergePassiveModelObservations(existing.PassiveModelQuotas, incoming[index].PassiveModelQuotas)
+			}
+		}
+	}
+	return nil
+}
+
+func newerPassiveAccountObservation(existing, incoming *entities.PassiveQuotaObservation) *entities.PassiveQuotaObservation {
+	if incoming == nil || incoming.ObservedAt.IsZero() || existing != nil && !incoming.ObservedAt.After(existing.ObservedAt) {
+		return existing
+	}
+	return incoming
+}
+
+func mergePassiveModelObservations(existing, incoming []entities.PassiveModelQuotaObservation) []entities.PassiveModelQuotaObservation {
+	byModel := make(map[string]entities.PassiveModelQuotaObservation, len(existing)+len(incoming))
+	for _, observation := range existing {
+		model := strings.TrimSpace(observation.Model)
+		if model == "" || observation.ObservedAt.IsZero() {
+			continue
+		}
+		observation.Model = model
+		if current, ok := byModel[model]; !ok || observation.ObservedAt.After(current.ObservedAt) {
+			byModel[model] = observation
+		}
+	}
+	for _, observation := range incoming {
+		model := strings.TrimSpace(observation.Model)
+		if model == "" || observation.ObservedAt.IsZero() {
+			continue
+		}
+		observation.Model = model
+		if current, ok := byModel[model]; !ok || observation.ObservedAt.After(current.ObservedAt) {
+			byModel[model] = observation
+		}
+	}
+	if len(byModel) == 0 {
+		return nil
+	}
+	models := make([]string, 0, len(byModel))
+	for model := range byModel {
+		models = append(models, model)
+	}
+	sort.Strings(models)
+	merged := make([]entities.PassiveModelQuotaObservation, 0, len(models))
+	for _, model := range models {
+		merged = append(merged, byModel[model])
+	}
+	return merged
 }
 
 func normalizeProviderTypes(providerTypes []string) []string {

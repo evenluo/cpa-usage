@@ -1,7 +1,7 @@
-import type { KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaCacheResponse, QuotaRow, QuotaWindow } from "@/types/api"
+import type { KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaObservationsResponse, QuotaRow, QuotaWindow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
-export type LiveCapacityStatus = "cached" | "no_cache" | "refreshing" | "failed" | "unsupported" | "disabled"
+export type LiveCapacityStatus = "observed" | "no_observation" | "refreshing" | "failed" | "unsupported" | "disabled"
 export type ProviderKind = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unsupported"
 export type LiveCapacityPlanTone = "priority" | "ordinary" | "none"
 export type LiveCapacityAccountStateTone = "green" | "amber" | "red" | "muted"
@@ -39,10 +39,7 @@ export interface LiveCapacityRow {
   priorityLabel?: string
   isPriorityAccount: boolean
   isConstrained: boolean
-  /** True while cached quota is shown past its expiresAt — the reading is stale. */
-  isCacheStale: boolean
   observedAt?: string
-  expiresAt?: string
   metadataObservedAt?: string | null
   lastRefresh?: string | null
   nextRetryAfter?: string | null
@@ -107,10 +104,10 @@ const PROVIDER_KIND_ALIASES: Record<string, ProviderKind> = {
 
 export function buildLiveCapacityRows(input: {
   identities: KeyIdentity[]
-  cachedQuota?: QuotaCacheResponse
+  observations?: QuotaObservationsResponse
   taskStates?: Record<string, LiveCapacityTaskState>
 }): LiveCapacityRow[] {
-  const cachedByAuthIndex = new Map((input.cachedQuota?.items ?? []).map((item) => [item.id, item]))
+  const observationsByAuthIndex = new Map((input.observations?.items ?? []).map((item) => [item.id, item]))
   const taskStates = input.taskStates ?? {}
 
   return input.identities
@@ -118,9 +115,8 @@ export function buildLiveCapacityRows(input: {
       const taskState = taskStates[identity.identity]
       const providerKind = providerKindFromIdentity(identity)
       const supported = providerKind !== "unsupported"
-      const cachedQuota = cachedByAuthIndex.get(identity.identity)
-      const activeQuota = taskState?.status === "completed" ? taskState.quota : cachedQuota
-      const quotaRows = activeQuota?.quota ?? []
+      const observation = observationsByAuthIndex.get(identity.identity)
+      const quotaRows = observation?.quota ?? []
       const fiveHour = findQuotaWindow(quotaRows, "5h")
       const weekly = findQuotaWindow(quotaRows, "weekly")
       const additionalMetrics = quotaRows
@@ -133,7 +129,7 @@ export function buildLiveCapacityRows(input: {
       const passiveQuota = passiveAccountObservation(providerKind, identity.passive_quota)
       const passiveModelQuotas = passiveModelObservations(providerKind, identity.passive_model_quotas)
 
-      let status: LiveCapacityStatus = activeQuota ? "cached" : "no_cache"
+      let status: LiveCapacityStatus = observation ? "observed" : "no_observation"
       let error: string | undefined
       let errorLabel: string | undefined
       if (identity.disabled) {
@@ -147,9 +143,6 @@ export function buildLiveCapacityRows(input: {
         errorLabel = rejectionLabel(taskState.error)
         error = taskState.error
       }
-
-      const observedAt = taskState?.status === "completed" ? taskState.cachedAt : cachedQuota?.cachedAt
-      const expiresAt = taskState?.status === "completed" ? taskState.expiresAt : cachedQuota?.expiresAt
 
       return {
         id: identity.id,
@@ -176,14 +169,12 @@ export function buildLiveCapacityRows(input: {
         priorityLabel,
         isPriorityAccount: Boolean(priorityLabel),
         isConstrained,
-        observedAt,
-        expiresAt,
+        observedAt: observation?.observedAt,
         metadataObservedAt: identity.metadata_observed_at,
         lastRefresh: identity.last_refresh,
         nextRetryAfter: identity.next_retry_after,
         passiveQuota,
         passiveModelQuotas,
-        isCacheStale: status === "cached" && isPastTimestamp(expiresAt),
         // active_start only carries signal while still in the future (the
         // subscription is not yet effective); past starts are display noise.
         activeStart: isFutureTimestamp(identity.active_start) ? identity.active_start : null,
@@ -249,19 +240,10 @@ function isFutureTimestamp(value: string | null | undefined): boolean {
   return time !== undefined && time > Date.now()
 }
 
-function isPastTimestamp(value: string | null | undefined): boolean {
-  const time = parseTime(value)
-  return time !== undefined && time <= Date.now()
-}
-
-export function mergeCapacityEntries(row: LiveCapacityRow, options?: { includeManualProbe?: boolean }): CapacityEntry[] {
+export function mergeCapacityEntries(row: LiveCapacityRow): CapacityEntry[] {
   const candidates: CapacityEntry[] = []
-  // Disabled accounts never surface manual-probe readings: merging must happen
-  // after that exclusion so a winning probe entry cannot swallow the reported one.
-  if (options?.includeManualProbe ?? true) {
-    for (const metric of [row.fiveHour, row.weekly, ...row.additionalMetrics]) {
-      if (metric) candidates.push(capacityEntry(metric, "probe", row.observedAt))
-    }
+  for (const metric of [row.fiveHour, row.weekly, ...row.additionalMetrics]) {
+    if (metric) candidates.push(capacityEntry(metric, "probe", row.observedAt))
   }
   for (const metric of row.passiveQuota?.metrics ?? []) {
     candidates.push(capacityEntry(metric, "reported", row.passiveQuota?.observedAt))

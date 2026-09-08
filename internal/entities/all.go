@@ -7,6 +7,7 @@ func All() []any {
 		&RedisUsageInbox{},
 		&ModelPriceSetting{},
 		&UsageIdentity{},
+		&QuotaObservation{},
 		&KeyAlias{},
 		&UsageRollupBackfillState{},
 		&UsageRollupHourly{},

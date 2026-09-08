@@ -7,7 +7,8 @@ import { apiFetch } from "@/lib/api"
 import {
   QUOTA_REFRESH_LIMIT,
   fetchAllAuthFileIdentities,
-  quotaCacheQueryKey,
+  mergeQuotaObservations,
+  quotaObservationsQueryKey,
   resolveRefreshTaskUpdates,
   selectRefreshAuthIndexes,
   useLiveCapacity,
@@ -72,18 +73,18 @@ describe("quota hooks", () => {
     await expect(fetchAllAuthFileIdentities()).rejects.toThrow("invalid total_pages")
   })
 
-  it("keys the cache query by provider and auth-file identities, not analysis range or granularity", () => {
+  it("keys the observation query by provider and auth-file identities, not analysis range or granularity", () => {
     const identities = [identity("b-auth", "Codex"), identity("a-auth", "Codex")]
 
-    expect(quotaCacheQueryKey("Codex", identities)).toEqual([
+    expect(quotaObservationsQueryKey("Codex", identities)).toEqual([
       "quota",
-      "cache",
+      "observations",
       "Codex",
       "a-auth|b-auth",
     ])
-    expect(quotaCacheQueryKey("Claude", identities)).toEqual([
+    expect(quotaObservationsQueryKey("Claude", identities)).toEqual([
       "quota",
-      "cache",
+      "observations",
       "Claude",
       "a-auth|b-auth",
     ])
@@ -103,7 +104,7 @@ describe("quota hooks", () => {
         taskId,
         authIndex: "b-auth",
         status: "completed",
-        quota: { id: "b-auth", quota: [] },
+        quota: { id: "b-auth", observedAt: "2026-09-08T10:00:00Z", quota: [] },
       }
     })
 
@@ -116,7 +117,42 @@ describe("quota hooks", () => {
       status: "completed",
       taskId: "completed-task",
     })
-    expect(result.hasCompleted).toBe(true)
+    expect(result.completedObservations).toEqual([
+      { id: "b-auth", observedAt: "2026-09-08T10:00:00Z", quota: [] },
+    ])
+  })
+
+  it("keeps a newer successful observation when an older server snapshot arrives", () => {
+    const current = {
+      items: [{ id: "a-auth", observedAt: "2026-09-08T10:00:00Z", quota: [{ key: "5h", usedPercent: 40 }] }],
+    }
+    const incoming = {
+      items: [{ id: "a-auth", observedAt: "2026-09-08T09:00:00Z", quota: [{ key: "5h", usedPercent: 10 }] }],
+    }
+
+    expect(mergeQuotaObservations(current, incoming)).toEqual(current)
+  })
+
+  it("replaces an observation only when a later successful one arrives", () => {
+    const current = {
+      items: [{ id: "a-auth", observedAt: "2026-09-08T09:00:00Z", quota: [{ key: "5h", usedPercent: 10 }] }],
+    }
+    const incoming = {
+      items: [{ id: "a-auth", observedAt: "2026-09-08T10:00:00Z", quota: [{ key: "5h", usedPercent: 40 }] }],
+    }
+
+    expect(mergeQuotaObservations(current, incoming)).toEqual(incoming)
+  })
+
+  it("keeps the current observation when timestamps are equal", () => {
+    const current = {
+      items: [{ id: "a-auth", observedAt: "2026-09-08T10:00:00Z", quota: [{ key: "5h", usedPercent: 40 }] }],
+    }
+    const incoming = {
+      items: [{ id: "a-auth", observedAt: "2026-09-08T10:00:00Z", quota: [{ key: "5h", usedPercent: 10 }] }],
+    }
+
+    expect(mergeQuotaObservations(current, incoming)).toEqual(current)
   })
 
   it("caps refresh-all selection to the backend refresh limit", () => {
@@ -157,7 +193,7 @@ describe("useLiveCapacity refresh targeting", () => {
       if (String(path).startsWith("/usage/identities/page")) {
         return { identities, total_count: identities.length, page: 1, page_size: 100, total_pages: 1 }
       }
-      if (path === "/quota/cache") return { items: [] }
+      if (path === "/quota/observations") return { items: [] }
       if (path === "/quota/refresh") {
         return { tasks: [], rejected: [], accepted: 0, skipped: 0, limit: QUOTA_REFRESH_LIMIT }
       }
@@ -209,13 +245,77 @@ describe("useLiveCapacity refresh targeting", () => {
     expect(await dispatchedRefreshIndexes()).toEqual([["a-auth", "c-auth"]])
   })
 
+  it("publishes a completed observation immediately and preserves it across an older snapshot and later failure", async () => {
+    let refreshCallCount = 0
+    let observationReadCount = 0
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (String(path).startsWith("/usage/identities/page")) {
+        return { identities, total_count: identities.length, page: 1, page_size: 100, total_pages: 1 }
+      }
+      if (path === "/quota/observations") {
+        observationReadCount += 1
+        return {
+          items: [{
+            id: "a-auth",
+            observedAt: "2026-09-08T09:00:00Z",
+            quota: [{ key: "5h", label: "5h", usedPercent: 10 }],
+          }],
+        }
+      }
+      if (path === "/quota/refresh") {
+        refreshCallCount += 1
+        if (refreshCallCount === 1) {
+          return {
+            tasks: [{ authIndex: "a-auth", taskId: "task-a" }],
+            rejected: [],
+            accepted: 1,
+            skipped: 0,
+            limit: QUOTA_REFRESH_LIMIT,
+          }
+        }
+        throw new Error("refresh unavailable")
+      }
+      if (path === "/quota/refresh/task-a") {
+        return {
+          taskId: "task-a",
+          authIndex: "a-auth",
+          status: "completed",
+          quota: {
+            id: "a-auth",
+            observedAt: "2026-09-08T10:00:00Z",
+            quota: [{ key: "5h", label: "5h", usedPercent: 40 }],
+          },
+        }
+      }
+      throw new Error(`unexpected path: ${String(path)}`)
+    })
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.observations?.items[0].quota[0].usedPercent).toBe(10))
+
+    act(() => { result.current.refresh("a-auth") })
+    await waitFor(() => {
+      expect(result.current.observations?.items[0]).toMatchObject({
+        observedAt: "2026-09-08T10:00:00Z",
+        quota: [{ usedPercent: 40 }],
+      })
+    })
+    await waitFor(() => expect(observationReadCount).toBeGreaterThan(1))
+
+    act(() => { result.current.refresh("a-auth") })
+    await waitFor(() => expect(result.current.taskStates["a-auth"]?.status).toBe("failed"))
+    expect(result.current.observations?.items[0]).toMatchObject({
+      observedAt: "2026-09-08T10:00:00Z",
+      quota: [{ usedPercent: 40 }],
+    })
+  })
+
   it("excludes disabled accounts from refresh-all and single-target refreshes", async () => {
     const disabledIdentity: KeyIdentity = { ...identity("d-auth", "Codex"), disabled: true }
     mockedApiFetch.mockImplementation(async (path) => {
       if (String(path).startsWith("/usage/identities/page")) {
         return { identities: [...identities, disabledIdentity], total_count: 4, page: 1, page_size: 100, total_pages: 1 }
       }
-      if (path === "/quota/cache") return { items: [] }
+      if (path === "/quota/observations") return { items: [] }
       if (path === "/quota/refresh") {
         return { tasks: [], rejected: [], accepted: 0, skipped: 0, limit: QUOTA_REFRESH_LIMIT }
       }

@@ -71,6 +71,8 @@ Do not run full runtime verification for docs-only changes unless the change als
 
 ## Current Operational Contracts
 
+- [Quota observation retention](../design/quota-observation-retention.md) owns the Live Capacity direct cut: retain successful quota readings and their source times across refresh failures, page reloads and service restarts; internal task retention does not invalidate observations. Backend and frontend replace the cache API together without aliases.
+
 - The frontend targets modern browsers: Safari 16.4+, Chrome 111+, and Firefox 128+, matching [Tailwind CSS 4 requirements](https://tailwindcss.com/docs/compatibility). The Tailwind 4 migration preserves the existing theme, layout, and interactions; older browser support is intentionally retired.
 
 - [CPA data contract](../design/cpa-data-contract.md) owns the supported Accounting v2 producer contract and direct-cut upgrade. Historical facts remain stored; old scalars are not a metric fallback. The accounting migration preserves existing rollup coverage and requires a separate pre-upgrade backup.

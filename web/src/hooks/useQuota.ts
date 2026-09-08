@@ -5,7 +5,8 @@ import { collectPaginatedItems } from "@/lib/pagination"
 import type {
   KeyIdentity,
   KeyIdentityPage,
-  QuotaCacheResponse,
+  QuotaCheckResponse,
+  QuotaObservationsResponse,
   QuotaRefreshResponse,
   QuotaRefreshTaskResponse,
 } from "@/types/api"
@@ -16,13 +17,7 @@ export const QUOTA_REFRESH_LIMIT = 20
 export type LiveCapacityTaskState =
   | { status: "starting" }
   | { status: "queued" | "running"; taskId: string }
-  | {
-      status: "completed"
-      taskId: string
-      quota: QuotaRefreshTaskResponse["quota"]
-      cachedAt?: string
-      expiresAt?: string
-    }
+  | { status: "completed"; taskId: string }
   | { status: "failed"; taskId?: string; error: string }
 
 interface QuotaRefreshBatchResult {
@@ -32,7 +27,7 @@ interface QuotaRefreshBatchResult {
 
 interface RefreshTaskUpdates {
   updates: Record<string, LiveCapacityTaskState>
-  hasCompleted: boolean
+  completedObservations: QuotaCheckResponse[]
 }
 
 type RefreshTaskPollResult =
@@ -57,12 +52,12 @@ function identityFingerprint(identities: KeyIdentity[]): string {
   return identities.map((identity) => identity.identity).sort().join("|")
 }
 
-export function quotaCacheQueryKey(provider: string, identities: KeyIdentity[]) {
-  return ["quota", "cache", provider || "all", identityFingerprint(identities)] as const
+export function quotaObservationsQueryKey(provider: string, identities: KeyIdentity[]) {
+  return ["quota", "observations", provider || "all", identityFingerprint(identities)] as const
 }
 
-async function fetchQuotaCache(authIndexes: string[]): Promise<QuotaCacheResponse> {
-  return apiFetch("/quota/cache", {
+async function fetchQuotaObservations(authIndexes: string[]): Promise<QuotaObservationsResponse> {
+  return apiFetch("/quota/observations", {
     method: "POST",
     body: JSON.stringify({ auth_indexes: authIndexes, limit: authIndexes.length }),
   })
@@ -149,7 +144,7 @@ export async function resolveRefreshTaskUpdates(
   )
 
   const updates: Record<string, LiveCapacityTaskState> = {}
-  let hasCompleted = false
+  const completedObservations: QuotaCheckResponse[] = []
   for (const result of results) {
     if ("error" in result) {
       updates[result.authIndex] = { status: "failed", taskId: result.taskId, error: result.error }
@@ -157,21 +152,43 @@ export async function resolveRefreshTaskUpdates(
     }
     const { authIndex, task } = result
     if (task.status === "completed") {
-      updates[authIndex] = {
-        status: "completed",
-        taskId: task.taskId,
-        quota: task.quota,
-        cachedAt: task.cachedAt,
-        expiresAt: task.expiresAt,
+      if (task.quota) {
+        updates[authIndex] = { status: "completed", taskId: task.taskId }
+        completedObservations.push(task.quota)
+      } else {
+        updates[authIndex] = {
+          status: "failed",
+          taskId: task.taskId,
+          error: "Refresh completed without an observation",
+        }
       }
-      hasCompleted = true
     } else if (task.status === "failed") {
       updates[authIndex] = { status: "failed", taskId: task.taskId, error: task.error || "failed" }
     } else {
       updates[authIndex] = { status: task.status, taskId: task.taskId }
     }
   }
-  return { updates, hasCompleted }
+  return { updates, completedObservations }
+}
+
+function observationTime(observation: QuotaCheckResponse): number {
+  const parsed = Date.parse(observation.observedAt)
+  return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY
+}
+
+/** Merge observation snapshots by account; a later successful observation is authoritative. */
+export function mergeQuotaObservations(
+  current: QuotaObservationsResponse | undefined,
+  incoming: QuotaObservationsResponse,
+): QuotaObservationsResponse {
+  const byAuthIndex = new Map((current?.items ?? []).map((item) => [item.id, item]))
+  for (const observation of incoming.items) {
+    const existing = byAuthIndex.get(observation.id)
+    if (!existing || observationTime(observation) > observationTime(existing)) {
+      byAuthIndex.set(observation.id, observation)
+    }
+  }
+  return { items: [...byAuthIndex.values()] }
 }
 
 function refreshErrorMessage(error: unknown): string {
@@ -199,9 +216,16 @@ export function useLiveCapacity(provider: string) {
     [visibleIdentities],
   )
 
-  const cacheQuery = useQuery({
-    queryKey: quotaCacheQueryKey(provider, visibleIdentities),
-    queryFn: () => fetchQuotaCache(visibleAuthIndexes),
+  const observationsQueryKey = quotaObservationsQueryKey(provider, visibleIdentities)
+  const observationsQuery = useQuery({
+    queryKey: observationsQueryKey,
+    queryFn: async () => {
+      const snapshot = await fetchQuotaObservations(visibleAuthIndexes)
+      return mergeQuotaObservations(
+        queryClient.getQueryData<QuotaObservationsResponse>(observationsQueryKey),
+        snapshot,
+      )
+    },
     enabled: visibleAuthIndexes.length > 0,
     staleTime: 30_000,
   })
@@ -272,8 +296,12 @@ export function useLiveCapacity(provider: string) {
         }
         return next
       })
-      if (result.hasCompleted) {
-        void queryClient.invalidateQueries({ queryKey: ["quota", "cache"] })
+      if (result.completedObservations.length > 0) {
+        queryClient.setQueryData<QuotaObservationsResponse>(
+          observationsQueryKey,
+          (current) => mergeQuotaObservations(current, { items: result.completedObservations }),
+        )
+        void queryClient.invalidateQueries({ queryKey: ["quota", "observations"] })
       }
       return result
     },
@@ -283,12 +311,12 @@ export function useLiveCapacity(provider: string) {
 
   return {
     identities: visibleIdentities,
-    cachedQuota: cacheQuery.data,
+    observations: observationsQuery.data,
     taskStates,
     refresh,
     refreshLimit: QUOTA_REFRESH_LIMIT,
-    isLoading: identitiesQuery.isLoading || cacheQuery.isLoading,
+    isLoading: identitiesQuery.isLoading || observationsQuery.isLoading,
     isRefreshing: refreshMutation.isPending || Object.values(taskStates).some(isAnyRefreshState),
-    error: identitiesQuery.error ?? cacheQuery.error,
+    error: identitiesQuery.error ?? observationsQuery.error,
   }
 }

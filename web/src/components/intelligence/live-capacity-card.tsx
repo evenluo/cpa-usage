@@ -42,11 +42,11 @@ import type { AccountModelSupport, ModelCapability, ModelSupportResponse, Regist
 import { ProviderBrandIcon } from "./provider-brand-icon"
 
 export function LiveCapacityCard({ provider }: { provider: string }) {
-  const { identities, cachedQuota, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider)
+  const { identities, observations, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider)
   const modelSupport = useModelSupport()
   const derivedRows = useMemo(
-    () => buildLiveCapacityRows({ identities, cachedQuota, taskStates }),
-    [identities, cachedQuota, taskStates],
+    () => buildLiveCapacityRows({ identities, observations, taskStates }),
+    [identities, observations, taskStates],
   )
 
   const providerGroups = useMemo(() => {
@@ -187,7 +187,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
             Live Capacity
             <Gauge className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed live capacity probe" />
           </CardTitle>
-          <CardDescription>Manual probes and CPA passive observations</CardDescription>
+          <CardDescription>Latest quota readings</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="blue">live probe</Badge>
@@ -467,13 +467,12 @@ function LiveCapacityAccountTile({
           ? "Capacity constrained"
           : undefined
 
-  const layout = capacityLayout(mergeCapacityEntries(row, { includeManualProbe: !row.disabled }), row.providerKind)
+  const layout = capacityLayout(mergeCapacityEntries(row), row.providerKind)
   const sharedObservation = Boolean(row.metadataObservedAt && row.observedAt && row.metadataObservedAt === row.observedAt)
   const timingLineCount =
     (sharedObservation ? 1 : (row.metadataObservedAt ? 1 : 0) + (row.observedAt ? 1 : 0)) +
     (row.lastRefresh ? 1 : 0) +
     (row.nextRetryAfter ? 1 : 0) +
-    (row.expiresAt ? 1 : 0) +
     (row.activeStart ? 1 : 0) +
     (row.activeUntil ? 1 : 0)
   const foldedCount =
@@ -484,6 +483,10 @@ function LiveCapacityAccountTile({
   const observationSources: Array<[string, string]> = [
     ...(row.observedAt ? [["Manual probe", row.observedAt] as [string, string]] : []),
     ...(row.passiveQuota?.observedAt ? [["Reported by CPA", row.passiveQuota.observedAt] as [string, string]] : []),
+    ...row.passiveModelQuotas.map((observation) => [
+      `Reported by CPA (${observation.model})`,
+      observation.observedAt,
+    ] as [string, string]),
   ]
   const latestObservedAt = observationSources.reduce<string | undefined>(
     (latest, [, at]) => (latest === undefined || Date.parse(at) > Date.parse(latest) ? at : latest),
@@ -501,7 +504,7 @@ function LiveCapacityAccountTile({
         isRowRefreshing && "border-amber-500/25 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]",
       )}
     >
-      {/* 不再渲染状态 chip：cached 由配额数据和 Cache expires 表达，refreshing 由刷新按钮动画表达，
+      {/* 不再渲染状态 chip：额度观测由读数本身表达，refreshing 由刷新按钮动画表达，
           failed 由 ⚠️ 与红色边框表达，disabled 由标题旁徽章表达。 */}
       <div className="flex items-center gap-2">
         <div
@@ -519,9 +522,6 @@ function LiveCapacityAccountTile({
             ) : null}
             {row.disabled ? (
               <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Disabled</Badge>
-            ) : null}
-            {row.isCacheStale ? (
-              <Badge variant="amber" className="shrink-0 px-1.5 py-0 text-[10px] leading-4">Stale</Badge>
             ) : null}
           </div>
           <button
@@ -682,10 +682,8 @@ function LiveCapacityAccountTile({
                 lastRefresh={row.lastRefresh}
                 nextRetryAfter={row.nextRetryAfter}
                 observedAt={row.observedAt}
-                expiresAt={row.expiresAt}
                 activeStart={row.activeStart}
                 activeUntil={row.activeUntil}
-                cacheStale={row.isCacheStale}
               />
             ) : null}
           </div>
@@ -701,7 +699,7 @@ function LiveCapacityAccountTile({
           className="mt-2 flex items-center justify-end gap-1 text-[10px] text-muted-foreground"
           title={observationSources.map(([label, at]) => `${label} · ${formatDate(at)}`).join("\n")}
         >
-          <span>Updated {formatRelativeAge(latestObservedAt)}</span>
+          <span>Last updated {formatRelativeAge(latestObservedAt)}</span>
         </div>
       ) : null}
     </div>
@@ -887,26 +885,22 @@ function AccountTiming({
   lastRefresh,
   nextRetryAfter,
   observedAt,
-  expiresAt,
   activeStart,
   activeUntil,
-  cacheStale = false,
 }: {
   metadataObservedAt?: string | null
   lastRefresh?: string | null
   nextRetryAfter?: string | null
   observedAt?: string | null
-  expiresAt?: string | null
   activeStart?: string | null
   activeUntil?: string | null
-  cacheStale?: boolean
 }) {
   // activeStart arrives pre-filtered by buildLiveCapacityRows: it is only set
   // while the subscription start is still in the future.
   const sharedObservation = metadataObservedAt && observedAt && metadataObservedAt === observedAt ? observedAt : null
 
   return (
-    <div className="grid gap-1.5" role="group" aria-label="Account and cache timing">
+    <div className="grid gap-1.5" role="group" aria-label="Account and observation timing">
       {sharedObservation ? (
         <TimingLine label="Observed" value={sharedObservation} title="Auth-file metadata and capacity probe share this observation time." />
       ) : (
@@ -919,7 +913,6 @@ function AccountTiming({
       {nextRetryAfter ? (
         <TimingLine label="Retry eligible" value={nextRetryAfter} title="Eligibility time only, not a recovery guarantee." />
       ) : null}
-      {expiresAt ? <TimingLine label="Cache expires" value={expiresAt} stale={cacheStale} /> : null}
       {activeStart ? <TimingLine label="Starts" value={activeStart} /> : null}
       {activeUntil ? <TimingLine label="Ends" value={activeUntil} /> : null}
     </div>
@@ -930,23 +923,16 @@ function TimingLine({
   label,
   value,
   title,
-  stale = false,
 }: {
   label: string
   value: string
   title?: string
-  stale?: boolean
 }) {
   return (
     <div className="flex min-w-0 items-center gap-2 text-[10px] text-foreground/70" title={title}>
       <span className="font-medium">{label}</span>
-      {stale ? (
-        <span className="rounded-full bg-amber-500/15 px-1.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-          Stale
-        </span>
-      ) : null}
       <time
-        className={cn("ml-auto truncate font-medium", stale ? "text-amber-700 dark:text-amber-300" : "text-foreground/90")}
+        className="ml-auto truncate font-medium text-foreground/90"
         dateTime={value}
         title={value}
       >

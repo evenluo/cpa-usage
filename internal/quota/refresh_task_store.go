@@ -8,25 +8,21 @@ import (
 
 const defaultRefreshTaskTTL = 20 * time.Minute
 
-// refreshTaskStore 拥有 refresh 任务队列与 TTL 缓存的全部状态：
-// tasks 是任务本体，activeTaskIDsByAuth 用于 queued/running 去重，
-// latestCompletedTaskIDsByAuth 索引每个 auth_index 最近一次完成的任务缓存。
-// 目前只有内存实现；出现第二个适配器之前不抽接口。
+// refreshTaskStore owns only transient refresh task state. Its TTL controls
+// terminal task cleanup and has no effect on persisted quota observations.
 type refreshTaskStore struct {
-	mu                           sync.Mutex
-	tasks                        map[string]*RefreshTaskRecord
-	activeTaskIDsByAuth          map[string]string
-	latestCompletedTaskIDsByAuth map[string]string
-	ttl                          time.Duration
-	seq                          uint64
+	mu                  sync.Mutex
+	tasks               map[string]*RefreshTaskRecord
+	activeTaskIDsByAuth map[string]string
+	ttl                 time.Duration
+	seq                 uint64
 }
 
 func newRefreshTaskStore(ttl time.Duration) *refreshTaskStore {
 	return &refreshTaskStore{
-		tasks:                        make(map[string]*RefreshTaskRecord),
-		activeTaskIDsByAuth:          make(map[string]string),
-		latestCompletedTaskIDsByAuth: make(map[string]string),
-		ttl:                          ttl,
+		tasks:               make(map[string]*RefreshTaskRecord),
+		activeTaskIDsByAuth: make(map[string]string),
+		ttl:                 ttl,
 	}
 }
 
@@ -63,21 +59,6 @@ func (s *refreshTaskStore) snapshot(taskID string) (RefreshTaskRecord, bool) {
 	return *task, true
 }
 
-// latestCompleted 返回 auth_index 最近一次完成且带缓存结果的任务。
-func (s *refreshTaskStore) latestCompleted(authIndex string) (RefreshTaskRecord, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	taskID, ok := s.latestCompletedTaskIDsByAuth[authIndex]
-	if !ok {
-		return RefreshTaskRecord{}, false
-	}
-	task, ok := s.tasks[taskID]
-	if !ok || task.Status != RefreshTaskStatusCompleted || task.Quota == nil {
-		return RefreshTaskRecord{}, false
-	}
-	return *task, true
-}
-
 // markRunning 把 queued 任务推进到 running 并返回其 auth_index；任务缺失或已被清理时 ok=false。
 func (s *refreshTaskStore) markRunning(taskID string) (authIndex string, ok bool) {
 	now := time.Now().UTC()
@@ -102,10 +83,8 @@ func (s *refreshTaskStore) markCompleted(taskID string, response CheckResponse) 
 	}
 	task.Status = RefreshTaskStatusCompleted
 	task.FinishedAt = now
-	task.CachedAt = now
 	task.ExpiresAt = now.Add(s.ttl)
 	task.Quota = &response
-	s.latestCompletedTaskIDsByAuth[task.AuthIndex] = taskID
 }
 
 func (s *refreshTaskStore) markFailed(taskID string, message string) {
@@ -133,9 +112,6 @@ func (s *refreshTaskStore) cleanupExpired(now time.Time) {
 		delete(s.tasks, taskID)
 		if s.activeTaskIDsByAuth[task.AuthIndex] == taskID {
 			delete(s.activeTaskIDsByAuth, task.AuthIndex)
-		}
-		if s.latestCompletedTaskIDsByAuth[task.AuthIndex] == taskID {
-			delete(s.latestCompletedTaskIDsByAuth, task.AuthIndex)
 		}
 	}
 }

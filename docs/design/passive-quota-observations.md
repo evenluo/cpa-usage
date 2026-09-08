@@ -1,6 +1,6 @@
 # Passive quota observation contract
 
-CPA Usage reads passive quota watermarks only from the existing successful `/management/auth-files` metadata snapshot. It does not call a provider while serving the page, add a worker, or merge these facts into the manual capacity-probe cache.
+CPA Usage reads passive quota watermarks only from the existing successful `/management/auth-files` metadata snapshot. It does not call a provider while serving the page, add a worker, or merge these facts into the retained manual capacity-probe observations. [Quota observation retention](quota-observation-retention.md) defines their shared user-facing lifetime and **Last updated** semantics.
 
 ## Producer and shape
 
@@ -9,7 +9,7 @@ The pinned producer is CLIProxyAPI commit `c76dfd4e0edabab9000628b1560ab8ab379ea
 - `quota`: the latest account observation as `observed_at` plus bounded `signals`;
 - `model_quotas`: zero or more model observations with the same shape.
 
-Only Claude and Codex are supported. Missing observations on these supported providers remain unavailable. A response with no new provider signal may retain an older observation in CPA, so CPA Usage persists its original `observed_at`; metadata sync time is not substituted. Missing, empty, malformed and unsupported observations produce no passive fact. A successful complete auth-file snapshot still owns identity absence/deletion as documented by the account lifecycle contract.
+Only Claude and Codex are supported. A response with no new provider signal may retain an older observation in CPA, so CPA Usage persists its original `observed_at`; metadata sync time is not substituted. Missing, empty, malformed and unsupported observations produce no new passive fact and do not clear a previously stored successful observation. Each account and model retains its latest successful observation; older or equal-time reports do not replace it. A successful complete auth-file snapshot still owns identity absence/deletion as documented by the account lifecycle contract.
 
 ## Allowlisted interpretation
 
@@ -34,6 +34,6 @@ Unknown signal names, non-string values, control characters, oversized values, i
 
 ## Read-model semantics
 
-The identity projection emits only normalized `passive_quota` and `passive_model_quotas`, each with `source=cpa_passive`, explicit scope and original observation time. Passive data does not alter identity status, unavailable/disabled state, plan ordering, manual probe status, `next_retry_after`, or refresh eligibility. It has no inferred expiry or local history.
+The identity projection emits only normalized `passive_quota` and `passive_model_quotas`, each with `source=cpa_passive`, explicit scope and original observation time. Passive data does not alter identity status, unavailable/disabled state, plan ordering, manual probe status, `next_retry_after`, or refresh eligibility. It has no inferred expiry or observation-history collection; only the latest successful observation per scope is retained.
 
 The dashboard display layer may union passive and manual-probe readings per window (newer observation wins) as long as each meter keeps its own source and observation time in the tooltip; this merging never writes back or changes the backend semantics above. For Claude and Codex the card surface renders a fixed per-provider skeleton (5h and Weekly slots with a "No reading" placeholder when absent); reported-only rows without a known window (unknown-window "Window" rows, credit balances) are demoted to the folded section.

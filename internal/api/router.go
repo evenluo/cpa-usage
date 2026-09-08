@@ -51,7 +51,7 @@ type SyncRunner interface {
 
 type QuotaProvider interface {
 	Check(context.Context, quota.CheckRequest) (quota.CheckResponse, error)
-	GetCachedQuota(context.Context, quota.CacheRequest) (quota.CacheResponse, error)
+	GetQuotaObservations(context.Context, quota.ObservationsRequest) (quota.ObservationsResponse, error)
 	Refresh(context.Context, quota.RefreshRequest) (quota.RefreshResponse, error)
 	GetRefreshTask(context.Context, string) (quota.RefreshTaskResponse, error)
 }

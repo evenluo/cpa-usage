@@ -5,7 +5,7 @@ import {
   buildLiveCapacityRows,
   type LiveCapacityRow,
 } from "@/features/usage-intelligence/live-capacity"
-import type { KeyIdentity, QuotaCacheResponse, QuotaRow } from "@/types/api"
+import type { KeyIdentity, QuotaObservationsResponse, QuotaRow } from "@/types/api"
 
 const mockUseLiveCapacity = vi.fn()
 
@@ -43,7 +43,7 @@ interface LiveCapacityFixture {
   accountCount: number
   quotaRowsPerAccount: number
   identities: KeyIdentity[]
-  cachedQuota: QuotaCacheResponse
+  observations: QuotaObservationsResponse
   taskStates: Record<string, LiveCapacityTaskState>
   refresh: (authIndex?: string) => void
   refreshLimit: number
@@ -93,8 +93,12 @@ function createFixture(accountCount: number, quotaRowsPerAccount: number): LiveC
     accountCount,
     quotaRowsPerAccount,
     identities,
-    cachedQuota: {
-      items: identities.map((identity) => ({ id: identity.identity, quota: rows })),
+    observations: {
+      items: identities.map((identity) => ({
+        id: identity.identity,
+        observedAt: "2026-09-07T09:00:00Z",
+        quota: rows,
+      })),
     },
     taskStates: {},
     refresh: () => {},
@@ -113,7 +117,7 @@ let liveCapacityRowsSink: LiveCapacityRow[] = []
 function capacityRows(fixture: LiveCapacityFixture): LiveCapacityRow[] {
   return buildLiveCapacityRows({
     identities: fixture.identities,
-    cachedQuota: fixture.cachedQuota,
+    observations: fixture.observations,
     taskStates: fixture.taskStates,
   })
 }

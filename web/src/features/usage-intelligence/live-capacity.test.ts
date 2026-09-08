@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import type { KeyIdentity, QuotaCacheResponse } from "@/types/api"
+import type { KeyIdentity, QuotaObservationsResponse } from "@/types/api"
 import {
   buildLiveCapacityRows,
   capacityLayout,
@@ -10,6 +10,8 @@ import {
   providerKindFromIdentity,
   resetCountdown,
 } from "./live-capacity"
+
+const OBSERVED_AT = "2026-09-07T09:00:00Z"
 
 function identity(overrides: Partial<KeyIdentity>): KeyIdentity {
   return {
@@ -84,12 +86,12 @@ describe("Live Capacity view model", () => {
     })
   })
 
-  it("maps 5h and Weekly quota windows from cached probe rows", () => {
-    const cache: QuotaCacheResponse = {
+  it("maps 5h and Weekly quota windows from manual observations", () => {
+    const observationSnapshot: QuotaObservationsResponse = {
       items: [{
         id: "codex-auth",
-        cachedAt: "2026-08-31T01:00:00Z",
-        expiresAt: "2026-08-31T01:05:00Z",
+        observedAt: "2026-08-31T01:00:00Z",
+
         quota: [
           { key: "rate_limit.primary_window", label: "5h", usedPercent: 25, resetAfterSeconds: 3600, planType: "plus" },
           { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 80, resetAfterSeconds: 7200, planType: "plus" },
@@ -103,19 +105,19 @@ describe("Live Capacity view model", () => {
         active_start: "2026-08-01T00:00:00Z",
         active_until: "2026-09-01T00:00:00Z",
       })],
-      cachedQuota: cache,
+      observations: observationSnapshot,
     })
 
     expect(rows[0]).toMatchObject({
       authIndex: "codex-auth",
-      status: "cached",
+      status: "observed",
       planType: "plus",
       planLabel: "Plus",
       planTone: "ordinary",
       fiveHour: { valueLabel: "25% used", resetAfterSeconds: 3600, progress: 25, tone: "green" },
       weekly: { valueLabel: "80% used", resetAfterSeconds: 7200, progress: 80, tone: "amber" },
       observedAt: "2026-08-31T01:00:00Z",
-      expiresAt: "2026-08-31T01:05:00Z",
+
       // Stale subscription metadata is suppressed: past starts and past ends
       // are both display noise.
       activeStart: null,
@@ -126,9 +128,10 @@ describe("Live Capacity view model", () => {
   it("prefers window.seconds over label-only rows regardless of array position", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
+          observedAt: OBSERVED_AT,
           quota: [
             { key: "legacy_5h", label: "5h", usedPercent: 10 },
             { key: "rate_limit.primary_window", label: "Codex 5h", usedPercent: 25, window: { seconds: 18_000 } },
@@ -146,9 +149,10 @@ describe("Live Capacity view model", () => {
   it("derives metric window seconds from Kimi duration+unit windows", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "kimi-auth", provider: "Kimi", type: "kimi" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "kimi-auth",
+          observedAt: OBSERVED_AT,
           quota: [
             { key: "limits.hourly", label: "Hourly quota", usedPercent: 10, window: { duration: 5, unit: "hour" } },
             { key: "limits.weekly", label: "Weekly quota", usedPercent: 20, window: { duration: 7, unit: "day" } },
@@ -165,9 +169,10 @@ describe("Live Capacity view model", () => {
   it("slots normalized Kimi summary and limits rows into Weekly and 5h", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "kimi-auth", provider: "Kimi", type: "kimi" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "kimi-auth",
+          observedAt: OBSERVED_AT,
           quota: [
             { key: "usage", label: "Weekly", scope: "summary", usedPercent: 10.4, window: { seconds: 604_800 } },
             { key: "limits.0", label: "5h", usedPercent: 69.5, window: { duration: 300, unit: "minute", seconds: 18_000 } },
@@ -196,9 +201,10 @@ describe("Live Capacity view model", () => {
   it("retains every additional quota row returned by the probe", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
+          observedAt: OBSERVED_AT,
           quota: [
             { key: "primary", label: "5h", usedPercent: 25 },
             { key: "secondary", label: "Weekly", usedPercent: 50 },
@@ -219,13 +225,13 @@ describe("Live Capacity view model", () => {
     ])
   })
 
-  it("keeps empty cache explicit without starting a probe", () => {
+  it("keeps missing observations explicit without starting a probe", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "claude-auth", provider: "Claude", type: "claude" })],
-      cachedQuota: { items: [] },
+      observations: { items: [] },
     })
 
-    expect(rows[0].status).toBe("no_cache")
+    expect(rows[0].status).toBe("no_observation")
     expect(rows[0].errorLabel).toBeUndefined()
     expect(rows[0].fiveHour).toBeUndefined()
   })
@@ -239,11 +245,11 @@ describe("Live Capacity view model", () => {
         last_refresh: "2026-09-07T07:45:00Z",
         next_retry_after: "2026-09-07T08:30:00Z",
       })],
-      cachedQuota: { items: [] },
+      observations: { items: [] },
     })
 
     expect(rows[0]).toMatchObject({
-      status: "no_cache",
+      status: "no_observation",
       unavailable: true,
       accountState: { kind: "error", label: "Error", tone: "red" },
       metadataObservedAt: "2026-09-07T08:00:00Z",
@@ -278,11 +284,11 @@ describe("Live Capacity view model", () => {
           },
         ],
       })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
-          cachedAt: "2026-09-07T09:00:00Z",
-          expiresAt: "2026-09-07T09:05:00Z",
+          observedAt: "2026-09-07T09:00:00Z",
+
           quota: [{ key: "manual", label: "5h", usedPercent: 10, planType: "team" }],
         }],
       },
@@ -294,7 +300,7 @@ describe("Live Capacity view model", () => {
       isPriorityAccount: false,
       isConstrained: false,
       observedAt: "2026-09-07T09:00:00Z",
-      expiresAt: "2026-09-07T09:05:00Z",
+
       fiveHour: { valueLabel: "10% used" },
       passiveQuota: {
         source: "cpa_passive",
@@ -415,12 +421,13 @@ describe("Live Capacity view model", () => {
     expect(rows[0].accountState).toMatchObject({ kind: status, label, tone })
   })
 
-  it("builds a disabled row whose status wins over cached quota and task state", () => {
+  it("builds a disabled row whose status wins over an observation and task state", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ id: 42, identity: "codex-auth", disabled: true, unavailable: true, status: "error" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 25 }],
         }],
       },
@@ -461,35 +468,35 @@ describe("Live Capacity view model", () => {
 
     expect(rows.map((row) => [row.authIndex, row.status])).toEqual([
       ["alpha-codex", "disabled"],
-      ["beta-codex", "no_cache"],
+      ["beta-codex", "no_observation"],
     ])
   })
 
-  it("uses identity plan type for initial priority before quota cache exists", () => {
+  it("uses identity plan type for initial priority before a quota observation exists", () => {
     const rows = buildLiveCapacityRows({
       identities: [
         identity({ identity: "plain-codex", displayName: "Codex Team", provider: "Codex", type: "codex", plan_type: "team" }),
         identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex", plan_type: "pro" }),
         identity({ identity: "claude-max", displayName: "Claude Max", provider: "Claude", type: "claude", plan_type: "max20" }),
       ],
-      cachedQuota: { items: [] },
+      observations: { items: [] },
     })
 
     expect(rows.map((row) => row.authIndex)).toEqual(["codex-pro", "claude-max", "plain-codex"])
     expect(rows.map((row) => [row.authIndex, row.planLabel, row.planTone, row.status])).toEqual([
-      ["codex-pro", "Pro", "priority", "no_cache"],
-      ["claude-max", "Max", "priority", "no_cache"],
-      ["plain-codex", "Team", "ordinary", "no_cache"],
+      ["codex-pro", "Pro", "priority", "no_observation"],
+      ["claude-max", "Max", "priority", "no_observation"],
+      ["plain-codex", "Team", "ordinary", "no_observation"],
     ])
   })
 
   it("marks priority accounts only from normalized provider kind and plan type", () => {
-    const cache: QuotaCacheResponse = {
+    const observationSnapshot: QuotaObservationsResponse = {
       items: [
-        { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
-        { id: "codex-team", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
-        { id: "claude-max", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "max20" }] },
-        { id: "claude-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "codex-pro", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+        { id: "codex-team", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+        { id: "claude-max", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "max20" }] },
+        { id: "claude-pro", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
       ],
     }
 
@@ -500,7 +507,7 @@ describe("Live Capacity view model", () => {
         identity({ identity: "claude-max", displayName: "Claude Priority", provider: "Claude", type: "claude" }),
         identity({ identity: "claude-pro", displayName: "Claude Pro", provider: "Claude", type: "claude" }),
       ],
-      cachedQuota: cache,
+      observations: observationSnapshot,
     })
 
     const priorityByAuthIndex = Object.fromEntries(rows.map((row) => [row.authIndex, {
@@ -517,12 +524,13 @@ describe("Live Capacity view model", () => {
     })
   })
 
-  it("keeps cached metrics visible when a later refresh failed", () => {
+  it("keeps the last successful metrics visible when a later refresh failed", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 25 }],
         }],
       },
@@ -550,9 +558,10 @@ describe("Live Capacity view model", () => {
   it("marks a row refreshing immediately while refresh request is starting", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 25 }],
         }],
       },
@@ -569,9 +578,10 @@ describe("Live Capacity view model", () => {
   it("renders supported non-window quota rows as capacity metrics", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "gemini-auth", provider: "Gemini", type: "gemini-cli" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "gemini-auth",
+          observedAt: OBSERVED_AT,
           quota: [
             {
               key: "bucket.gemini-2.5-pro_vertex.PROMPT",
@@ -593,7 +603,7 @@ describe("Live Capacity view model", () => {
       },
     })
 
-    expect(rows[0].status).toBe("cached")
+    expect(rows[0].status).toBe("observed")
     expect(rows[0].additionalMetrics[0]).toMatchObject({
       label: "gemini-2.5-pro_vertex",
       valueLabel: "98% used",
@@ -611,9 +621,10 @@ describe("Live Capacity view model", () => {
   it("treats remaining-only zero quota as constrained", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "gemini-auth", provider: "Gemini", type: "gemini-cli" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "gemini-auth",
+          observedAt: OBSERVED_AT,
           quota: [{
             key: "code_assist.current_tier.GOOGLE_ONE_AI",
             label: "Code Assist Credit",
@@ -634,14 +645,16 @@ describe("Live Capacity view model", () => {
   })
 
   it("keeps failed, refreshing, and constrained states out of ordering priority", () => {
-    const cache: QuotaCacheResponse = {
+    const observationSnapshot: QuotaObservationsResponse = {
       items: [
         {
           id: "codex-pro",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 99, planType: "pro" }],
         },
         {
           id: "claude-max",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "max" }],
         },
       ],
@@ -652,7 +665,7 @@ describe("Live Capacity view model", () => {
         identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
         identity({ identity: "claude-max", displayName: "Claude Max", provider: "Claude", type: "claude" }),
       ],
-      cachedQuota: cache,
+      observations: observationSnapshot,
       taskStates: {
         "z-codex": { status: "failed", error: "API error 500" },
         "claude-max": { status: "running", taskId: "task-claude-max" },
@@ -666,26 +679,31 @@ describe("Live Capacity view model", () => {
   })
 
   it("sorts fixed business priority by plan type and supported provider", () => {
-    const cache: QuotaCacheResponse = {
+    const observationSnapshot: QuotaObservationsResponse = {
       items: [
         {
           id: "plain-codex",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "team" }],
         },
         {
           id: "codex-pro",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }],
         },
         {
           id: "plain-claude",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }],
         },
         {
           id: "claude-max",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "max20" }],
         },
         {
           id: "gemini-auth",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "quota", label: "Code Assist", remaining: 20 }],
         },
       ],
@@ -700,7 +718,7 @@ describe("Live Capacity view model", () => {
         identity({ identity: "plain-claude", displayName: "Claude Pro Name", provider: "Claude", type: "claude" }),
         identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
       ],
-      cachedQuota: cache,
+      observations: observationSnapshot,
     })
 
     expect(rows.map((row) => row.authIndex)).toEqual([
@@ -718,33 +736,34 @@ describe("Live Capacity view model", () => {
       identity({ identity: "codex-pro", displayName: "Zulu Codex Pro", provider: "Codex", type: "codex" }),
       identity({ identity: "plain-codex", displayName: "Alpha Codex", provider: "Codex", type: "codex" }),
     ]
-    const cachedQuota: QuotaCacheResponse = {
+    const observations: QuotaObservationsResponse = {
       items: [
         {
           id: "codex-pro",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "pro" }],
         },
         {
           id: "plain-codex",
+          observedAt: OBSERVED_AT,
           quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 10, planType: "team" }],
         },
       ],
     }
-    const initialRows = buildLiveCapacityRows({ identities, cachedQuota })
+    const initialRows = buildLiveCapacityRows({ identities, observations })
     const currentOrder = mergeLiveCapacityRowOrder([], initialRows)
 
     const refreshedRows = buildLiveCapacityRows({
       identities,
-      cachedQuota,
-      taskStates: {
-        "plain-codex": {
-          status: "completed",
-          taskId: "task-plain-codex",
-          quota: {
+      observations: {
+        items: [
+          ...observations.items.filter((observation) => observation.id !== "plain-codex"),
+          {
             id: "plain-codex",
+            observedAt: "2026-09-07T10:00:00Z",
             quota: [{ key: "rate_limit.primary_window", label: "5h", usedPercent: 20, planType: "pro" }],
           },
-        },
+        ],
       },
     })
 
@@ -759,10 +778,10 @@ describe("Live Capacity view model", () => {
         identity({ identity: "codex-pro", displayName: "Codex Pro", provider: "Codex", type: "codex" }),
         identity({ identity: "plain-codex", displayName: "Codex Team", provider: "Codex", type: "codex" }),
       ],
-      cachedQuota: {
+      observations: {
         items: [
-          { id: "codex-pro", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
-          { id: "plain-codex", quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
+          { id: "codex-pro", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "pro" }] },
+          { id: "plain-codex", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] },
         ],
       },
     })
@@ -773,9 +792,10 @@ describe("Live Capacity view model", () => {
   it("passes metric reset hints through per quota row and keeps missing reset explicit", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
+          observedAt: OBSERVED_AT,
           quota: [
             { key: "rate_limit.primary_window", label: "5h", usedPercent: 25, resetAfterSeconds: 3600 },
             { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 80 },
@@ -832,9 +852,10 @@ describe("metric reset pass-through", () => {
   it("keeps resetAt and resetAfterSeconds on metrics for countdown rendering", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "codex-auth" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
+          observedAt: OBSERVED_AT,
           quota: [
             { key: "rate_limit.primary_window", label: "5h", usedPercent: 25, resetAt: "2026-09-07T14:13:00Z", window: { seconds: 18_000 } },
             { key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 80, resetAfterSeconds: 7200, window: { seconds: 604_800 } },
@@ -850,19 +871,19 @@ describe("metric reset pass-through", () => {
 
 describe("mergeCapacityEntries", () => {
   function rowWithProbeAndPassive(input: {
-    probeQuota: QuotaCacheResponse["items"][number]["quota"]
-    probeCachedAt: string
+    probeQuota: QuotaObservationsResponse["items"][number]["quota"]
+    probeObservedAt: string
     passiveQuota?: KeyIdentity["passive_quota"]
   }) {
     return buildLiveCapacityRows({
       identities: [identity({ passive_quota: input.passiveQuota ?? null })],
-      cachedQuota: { items: [{ id: "codex-auth", cachedAt: input.probeCachedAt, quota: input.probeQuota }] },
+      observations: { items: [{ id: "codex-auth", observedAt: input.probeObservedAt, quota: input.probeQuota }] },
     })[0]
   }
 
   it("keeps the newer probe reading when both sources report the same base window", () => {
     const row = rowWithProbeAndPassive({
-      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeObservedAt: "2026-09-07T09:00:00Z",
       probeQuota: [{ key: "manual", label: "5h", usedPercent: 10 }],
       passiveQuota: {
         source: "cpa_passive",
@@ -880,7 +901,7 @@ describe("mergeCapacityEntries", () => {
 
   it("lets a newer reported reading replace an older probe reading of the same window", () => {
     const row = rowWithProbeAndPassive({
-      probeCachedAt: "2026-09-07T07:00:00Z",
+      probeObservedAt: "2026-09-07T07:00:00Z",
       probeQuota: [{ key: "manual", label: "Weekly", usedPercent: 10, window: { seconds: 604_800 } }],
       passiveQuota: {
         source: "cpa_passive",
@@ -898,7 +919,7 @@ describe("mergeCapacityEntries", () => {
 
   it("prefers the probe reading when both sources share an observation time", () => {
     const row = rowWithProbeAndPassive({
-      probeCachedAt: "2026-09-07T08:00:00Z",
+      probeObservedAt: "2026-09-07T08:00:00Z",
       probeQuota: [{ key: "manual", label: "5h", usedPercent: 10, window: { seconds: 18_000 } }],
       passiveQuota: {
         source: "cpa_passive",
@@ -915,7 +936,7 @@ describe("mergeCapacityEntries", () => {
 
   it("never merges an unknown-window row into a short or long window row", () => {
     const row = rowWithProbeAndPassive({
-      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeObservedAt: "2026-09-07T09:00:00Z",
       probeQuota: [{ key: "manual", label: "5h", usedPercent: 10 }],
       passiveQuota: {
         source: "cpa_passive",
@@ -933,7 +954,7 @@ describe("mergeCapacityEntries", () => {
 
   it("passes rows without window semantics through unmerged", () => {
     const row = rowWithProbeAndPassive({
-      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeObservedAt: "2026-09-07T09:00:00Z",
       probeQuota: [{ key: "credits", label: "Credits", remaining: 5, unit: "credits" }],
       passiveQuota: {
         source: "cpa_passive",
@@ -952,7 +973,7 @@ describe("mergeCapacityEntries", () => {
 
   it("classifies named additional limits as non-base and merges matching label stems", () => {
     const row = rowWithProbeAndPassive({
-      probeCachedAt: "2026-09-07T09:00:00Z",
+      probeObservedAt: "2026-09-07T09:00:00Z",
       probeQuota: [
         { key: "primary", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
         { key: "spark-primary", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 20 },
@@ -1005,10 +1026,10 @@ describe("capacityLayout", () => {
           ],
         },
       })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
-          cachedAt: "2026-09-07T09:00:00Z",
+          observedAt: "2026-09-07T09:00:00Z",
           quota: [
             { key: "primary", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
             { key: "secondary", label: "Weekly", usedPercent: 20, window: { seconds: 604_800 } },
@@ -1029,10 +1050,10 @@ describe("capacityLayout", () => {
   it("keeps the flat surface split for providers without a window skeleton", () => {
     const row = buildLiveCapacityRows({
       identities: [identity({ provider: "Kimi", type: "kimi" })],
-      cachedQuota: {
+      observations: {
         items: [{
           id: "codex-auth",
-          cachedAt: "2026-09-07T09:00:00Z",
+          observedAt: "2026-09-07T09:00:00Z",
           quota: [
             { key: "primary", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
             { key: "credits", label: "Credits", remaining: 5, unit: "credits" },

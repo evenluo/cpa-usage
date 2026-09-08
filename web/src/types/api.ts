@@ -355,16 +355,12 @@ export interface PassiveModelQuotaObservation {
 
 export interface QuotaCheckResponse {
   id: string
+  observedAt: string
   quota: QuotaRow[]
 }
 
-export interface QuotaCacheItem extends QuotaCheckResponse {
-  cachedAt?: string
-  expiresAt?: string
-}
-
-export interface QuotaCacheResponse {
-  items: QuotaCacheItem[]
+export interface QuotaObservationsResponse {
+  items: QuotaCheckResponse[]
 }
 
 export interface QuotaRefreshTaskID {
@@ -393,8 +389,6 @@ export interface QuotaRefreshTaskResponse {
   status: QuotaRefreshTaskStatus
   quota?: QuotaCheckResponse
   error?: string
-  cachedAt?: string
-  expiresAt?: string
 }
 
 export interface APIKeyAliasTargetPage {

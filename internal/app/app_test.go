@@ -744,6 +744,14 @@ func (lifecycleIdentityLookup) HasActiveIdentity(context.Context, string) (bool,
 	return true, nil
 }
 
+func (lifecycleIdentityLookup) SaveQuotaObservation(context.Context, uint, quota.CheckResponse) error {
+	return nil
+}
+
+func (lifecycleIdentityLookup) ListQuotaObservations(context.Context, []string, int) ([]quota.CheckResponse, error) {
+	return []quota.CheckResponse{}, nil
+}
+
 type lifecycleQuotaHandler struct{}
 
 func (lifecycleQuotaHandler) Check(context.Context, quota.ProviderInput) (quota.ProviderOutput, error) {

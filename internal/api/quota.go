@@ -62,13 +62,14 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 		c.JSON(http.StatusOK, response)
 	})
 
-	router.POST("/quota/cache", func(c *gin.Context) {
+	router.POST("/quota/observations", func(c *gin.Context) {
 		if provider == nil {
 			writeInternalError(c, "quota provider is not configured", nil)
 			return
 		}
 
-		// 缓存读取只校验查询列表，不套用刷新队列的 20 条上限。
+		// Observation reads only validate the requested page and do not use the
+		// refresh queue's 20-account admission limit.
 		var request quotaRefreshRequest
 		if err := c.ShouldBindJSON(&request); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "auth_indexes are required"})
@@ -82,7 +83,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			request.Limit = len(request.AuthIndexes)
 		}
 
-		response, err := provider.GetCachedQuota(c.Request.Context(), quota.CacheRequest{
+		response, err := provider.GetQuotaObservations(c.Request.Context(), quota.ObservationsRequest{
 			AuthIndexes: request.AuthIndexes,
 			Limit:       request.Limit,
 		})
@@ -91,7 +92,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			case errors.Is(err, quota.ErrValidation):
 				c.JSON(http.StatusBadRequest, gin.H{"error": "auth_indexes are required"})
 			default:
-				writeInternalError(c, "quota cache lookup failed", err)
+				writeInternalError(c, "quota observations lookup failed", err)
 			}
 			return
 		}
@@ -155,7 +156,7 @@ func registerQuotaRoutes(router gin.IRoutes, provider QuotaProvider) {
 			return
 		}
 
-		// 前端轮询只根据 task_id 查询任务状态，完成时直接带回缓存中的 quota。
+		// 前端轮询只根据 task_id 查询任务状态，完成时直接带回本次观测结果。
 		response, err := provider.GetRefreshTask(c.Request.Context(), taskID)
 		if err != nil {
 			switch {

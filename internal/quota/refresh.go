@@ -18,19 +18,13 @@ const (
 	refreshUnavailableCode                       = "refresh_unavailable"
 )
 
-type CacheRequest struct {
+type ObservationsRequest struct {
 	AuthIndexes []string `json:"auth_indexes"`
 	Limit       int      `json:"limit"`
 }
 
-type CacheResponse struct {
-	Items []CachedCheckResponse `json:"items"`
-}
-
-type CachedCheckResponse struct {
-	CheckResponse
-	CachedAt  time.Time `json:"cachedAt"`
-	ExpiresAt time.Time `json:"expiresAt"`
+type ObservationsResponse struct {
+	Items []CheckResponse `json:"items"`
 }
 
 type RefreshRequest struct {
@@ -62,8 +56,6 @@ type RefreshTaskResponse struct {
 	Status    RefreshTaskStatus `json:"status"`
 	Quota     *CheckResponse    `json:"quota,omitempty"`
 	Error     string            `json:"error,omitempty"`
-	CachedAt  *time.Time        `json:"cachedAt,omitempty"`
-	ExpiresAt *time.Time        `json:"expiresAt,omitempty"`
 }
 
 type RefreshTaskRecord struct {
@@ -75,7 +67,6 @@ type RefreshTaskRecord struct {
 	CreatedAt  time.Time
 	StartedAt  time.Time
 	FinishedAt time.Time
-	CachedAt   time.Time
 	ExpiresAt  time.Time
 }
 
@@ -107,40 +98,21 @@ func (s *Service) StopRefreshWorkers() {
 	s.refreshWorkerWG.Wait()
 }
 
-func (s *Service) GetCachedQuota(ctx context.Context, request CacheRequest) (CacheResponse, error) {
-	_ = ctx
-	// 缓存读取只返回已完成任务的结果，不触发新的 provider 请求。
+func (s *Service) GetQuotaObservations(ctx context.Context, request ObservationsRequest) (ObservationsResponse, error) {
+	// Observation reads only consult persisted successful snapshots and never
+	// trigger provider requests.
 	limit := request.Limit
 	if limit <= 0 {
-		return CacheResponse{}, fmt.Errorf("%w: limit is required", ErrValidation)
+		return ObservationsResponse{}, fmt.Errorf("%w: limit is required", ErrValidation)
 	}
-	response := CacheResponse{Items: make([]CachedCheckResponse, 0, min(limit, len(request.AuthIndexes)))}
-	s.refreshTasks.cleanupExpired(time.Now())
-	// 按请求顺序去重并读取每个 auth_index 最近一次完成的任务缓存。
-	seen := make(map[string]struct{}, len(request.AuthIndexes))
-	for _, rawAuthIndex := range request.AuthIndexes {
-		if len(response.Items) >= limit {
-			break
-		}
-		authIndex := strings.TrimSpace(rawAuthIndex)
-		if authIndex == "" {
-			continue
-		}
-		if _, ok := seen[authIndex]; ok {
-			continue
-		}
-		seen[authIndex] = struct{}{}
-		task, ok := s.refreshTasks.latestCompleted(authIndex)
-		if !ok {
-			continue
-		}
-		response.Items = append(response.Items, CachedCheckResponse{
-			CheckResponse: *task.Quota,
-			CachedAt:      task.CachedAt,
-			ExpiresAt:     task.ExpiresAt,
-		})
+	items, err := s.repository.ListQuotaObservations(ctx, request.AuthIndexes, limit)
+	if err != nil {
+		return ObservationsResponse{}, err
 	}
-	return response, nil
+	if items == nil {
+		items = []CheckResponse{}
+	}
+	return ObservationsResponse{Items: items}, nil
 }
 
 func (s *Service) Refresh(ctx context.Context, request RefreshRequest) (RefreshResponse, error) {
@@ -204,7 +176,7 @@ func (s *Service) GetRefreshTask(ctx context.Context, taskID string) (RefreshTas
 
 func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string) (string, error) {
 	// 先按 auth-file 身份查找；查不到时再区分“非 auth file”和“不存在”。
-	identity, found, err := s.identityLookup.FindActiveAuthFileIdentity(ctx, authIndex)
+	identity, found, err := s.repository.FindActiveAuthFileIdentity(ctx, authIndex)
 	if err != nil {
 		return "", err
 	}
@@ -218,7 +190,7 @@ func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string
 		return "", nil
 	}
 
-	active, err := s.identityLookup.HasActiveIdentity(ctx, authIndex)
+	active, err := s.repository.HasActiveIdentity(ctx, authIndex)
 	if err != nil {
 		return "", err
 	}
@@ -306,14 +278,6 @@ func (t *RefreshTaskRecord) response() RefreshTaskResponse {
 	if t.Quota != nil {
 		quota := *t.Quota
 		response.Quota = &quota
-	}
-	if !t.CachedAt.IsZero() {
-		cachedAt := t.CachedAt
-		response.CachedAt = &cachedAt
-	}
-	if !t.ExpiresAt.IsZero() {
-		expiresAt := t.ExpiresAt
-		response.ExpiresAt = &expiresAt
 	}
 	return response
 }

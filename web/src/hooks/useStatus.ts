@@ -11,7 +11,7 @@ const METRICS_QUERY_KEY = ["metrics"] as const
  *
  * Excluded on purpose:
  * - ["status"] is refreshed onSettled so operators see sync state after success or failure
- * - ["quota"] is Live Capacity probe cache, not a usage-event read model
+ * - ["quota"] is Live Capacity quota observations, not a usage-event read model
  * - ["auth"] is session state, not a sync read model
  */
 export const MANUAL_SYNC_READ_MODEL_QUERY_KEYS = [

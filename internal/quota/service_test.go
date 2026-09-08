@@ -43,12 +43,15 @@ func (s *refreshHandlerStub) callCount() int {
 	return len(s.calls)
 }
 
-// fakeAuthFileIdentityLookup 以内存身份表实现 AuthFileIdentityLookup，测试不再需要真实数据库。
+// fakeAuthFileIdentityLookup implements Repository with in-memory observations.
 type fakeAuthFileIdentityLookup struct {
-	identities map[string]entities.UsageIdentity
+	mu           sync.Mutex
+	identities   map[string]entities.UsageIdentity
+	observations map[string]CheckResponse
+	saveErr      error
 }
 
-func (f fakeAuthFileIdentityLookup) FindActiveAuthFileIdentity(_ context.Context, authIndex string) (entities.UsageIdentity, bool, error) {
+func (f *fakeAuthFileIdentityLookup) FindActiveAuthFileIdentity(_ context.Context, authIndex string) (entities.UsageIdentity, bool, error) {
 	identity, ok := f.identities[strings.TrimSpace(authIndex)]
 	if !ok || identity.AuthType != entities.UsageIdentityAuthTypeAuthFile {
 		return entities.UsageIdentity{}, false, nil
@@ -56,20 +59,60 @@ func (f fakeAuthFileIdentityLookup) FindActiveAuthFileIdentity(_ context.Context
 	return identity, true, nil
 }
 
-func (f fakeAuthFileIdentityLookup) HasActiveIdentity(_ context.Context, authIndex string) (bool, error) {
+func (f *fakeAuthFileIdentityLookup) HasActiveIdentity(_ context.Context, authIndex string) (bool, error) {
 	_, ok := f.identities[authIndex]
 	return ok, nil
 }
 
+func (f *fakeAuthFileIdentityLookup) SaveQuotaObservation(_ context.Context, _ uint, response CheckResponse) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.saveErr != nil {
+		return f.saveErr
+	}
+	if current, ok := f.observations[response.ID]; !ok || response.ObservedAt.After(current.ObservedAt) {
+		f.observations[response.ID] = response
+	}
+	return nil
+}
+
+func (f *fakeAuthFileIdentityLookup) ListQuotaObservations(_ context.Context, authIndexes []string, limit int) ([]CheckResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	items := make([]CheckResponse, 0, min(limit, len(authIndexes)))
+	seen := map[string]struct{}{}
+	for _, authIndex := range authIndexes {
+		authIndex = strings.TrimSpace(authIndex)
+		if authIndex == "" || len(items) >= limit {
+			continue
+		}
+		if _, ok := seen[authIndex]; ok {
+			continue
+		}
+		seen[authIndex] = struct{}{}
+		if observation, ok := f.observations[authIndex]; ok {
+			items = append(items, observation)
+		}
+	}
+	return items, nil
+}
+
 func newRefreshTestService(identities map[string]entities.UsageIdentity, handler ProviderHandler) *Service {
-	return NewServiceWithRegistry(fakeAuthFileIdentityLookup{identities: identities}, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+	for authIndex, identity := range identities {
+		if identity.ID == 0 {
+			identity.ID = uint(len(authIndex) + 1)
+			identities[authIndex] = identity
+		}
+	}
+	repository := &fakeAuthFileIdentityLookup{identities: identities, observations: map[string]CheckResponse{}}
+	return NewServiceWithRegistry(repository, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
 }
 
 func claudeAuthFileIdentity(authIndex string) entities.UsageIdentity {
 	return entities.UsageIdentity{Identity: authIndex, Provider: "claude", Type: "auth-file", AuthType: entities.UsageIdentityAuthTypeAuthFile}
 }
 
-func TestRefreshCreatesTaskPerAuthIndexAndCachesCompletedQuota(t *testing.T) {
+func TestRefreshCreatesTaskPerAuthIndexAndPersistsCompletedQuota(t *testing.T) {
 	handler := &refreshHandlerStub{output: ProviderOutput{Result: ClaudeResult{Usage: &ClaudeUsagePayload{FiveHour: &ClaudeUsageWindow{Utilization: 25}}}}}
 	service := newRefreshTestService(map[string]entities.UsageIdentity{"auth-1": claudeAuthFileIdentity("auth-1")}, handler)
 
@@ -83,100 +126,141 @@ func TestRefreshCreatesTaskPerAuthIndexAndCachesCompletedQuota(t *testing.T) {
 
 	task := waitForRefreshTask(t, service, response.Tasks[0].TaskID, RefreshTaskStatusCompleted)
 	if task.AuthIndex != "auth-1" || task.Quota == nil || task.Quota.ID != "auth-1" || len(task.Quota.Quota) != 1 {
-		t.Fatalf("expected completed task to expose cached quota, got %+v", task)
+		t.Fatalf("expected completed task to expose observed quota, got %+v", task)
 	}
 	if handler.callCount() != 1 {
 		t.Fatalf("expected one provider call, got %d", handler.callCount())
 	}
 }
 
-func TestRefreshKeepsLatestCompletedCacheWhileNewRefreshRuns(t *testing.T) {
+func TestRefreshKeepsLatestObservationWhileNewRefreshRuns(t *testing.T) {
 	block := make(chan struct{})
 	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
 	service := newRefreshTestService(map[string]entities.UsageIdentity{"auth-1": claudeAuthFileIdentity("auth-1")}, handler)
 
 	first := refreshAuthIndex(t, service, "auth-1")
 	waitForRefreshTask(t, service, first, RefreshTaskStatusCompleted)
-	assertCachedUsagePercent(t, service, "auth-1", 25)
+	assertObservedUsagePercent(t, service, "auth-1", 25)
 
 	handler.output = claudeUsageOutput(80)
 	handler.block = block
 	second := refreshAuthIndex(t, service, "auth-1")
 	waitForRefreshTask(t, service, second, RefreshTaskStatusRunning)
 
-	assertCachedUsagePercent(t, service, "auth-1", 25)
+	assertObservedUsagePercent(t, service, "auth-1", 25)
 	if handler.callCount() != 1 {
-		t.Fatalf("cache lookup should not trigger provider calls while refresh is running, got %d", handler.callCount())
+		t.Fatalf("observation lookup should not trigger provider calls while refresh is running, got %d", handler.callCount())
 	}
 	close(block)
 	waitForRefreshTask(t, service, second, RefreshTaskStatusCompleted)
-	assertCachedUsagePercent(t, service, "auth-1", 80)
+	assertObservedUsagePercent(t, service, "auth-1", 80)
 }
 
-func TestRefreshFailureKeepsLatestCompletedCache(t *testing.T) {
+func TestRefreshFailureKeepsLatestSuccessfulObservation(t *testing.T) {
 	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
 	service := newRefreshTestService(map[string]entities.UsageIdentity{"auth-1": claudeAuthFileIdentity("auth-1")}, handler)
 
 	first := refreshAuthIndex(t, service, "auth-1")
 	waitForRefreshTask(t, service, first, RefreshTaskStatusCompleted)
-	assertCachedUsagePercent(t, service, "auth-1", 25)
+	assertObservedUsagePercent(t, service, "auth-1", 25)
 
 	handler.err = errors.New("upstream exploded")
 	second := refreshAuthIndex(t, service, "auth-1")
 	waitForRefreshTask(t, service, second, RefreshTaskStatusFailed)
 
-	assertCachedUsagePercent(t, service, "auth-1", 25)
+	assertObservedUsagePercent(t, service, "auth-1", 25)
 	if handler.callCount() != 2 {
-		t.Fatalf("expected one failed refresh provider call and no cache provider calls, got %d", handler.callCount())
+		t.Fatalf("expected one failed refresh provider call and no observation-read provider calls, got %d", handler.callCount())
 	}
 }
 
-func TestRefreshSuccessReplacesLatestCompletedCache(t *testing.T) {
+func TestCheckPersistenceFailureIsExplicitAndKeepsPreviousObservation(t *testing.T) {
+	handler := &refreshHandlerStub{output: claudeUsageOutput(80)}
+	identity := claudeAuthFileIdentity("auth-1")
+	identity.ID = 1
+	observedAt := time.Date(2026, 9, 8, 1, 0, 0, 0, time.UTC)
+	repository := &fakeAuthFileIdentityLookup{
+		identities: map[string]entities.UsageIdentity{"auth-1": identity},
+		observations: map[string]CheckResponse{"auth-1": {
+			ID: "auth-1", ObservedAt: observedAt, Quota: claudeUsageOutput(25).Result.(ClaudeResult).QuotaRows(),
+		}},
+		saveErr: errors.New("disk unavailable"),
+	}
+	service := NewServiceWithRegistry(repository, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+
+	if _, err := service.Check(context.Background(), CheckRequest{AuthIndex: "auth-1"}); err == nil || !strings.Contains(err.Error(), "persist quota observation") {
+		t.Fatalf("expected explicit persistence failure, got %v", err)
+	}
+	items, err := service.GetQuotaObservations(context.Background(), ObservationsRequest{AuthIndexes: []string{"auth-1"}, Limit: 1})
+	if err != nil || len(items.Items) != 1 || !items.Items[0].ObservedAt.Equal(observedAt) || *items.Items[0].Quota[0].UsedPercent != 25 {
+		t.Fatalf("expected previous observation to survive persistence failure, items=%+v err=%v", items, err)
+	}
+}
+
+func TestCheckEmptyNormalizedQuotaFailsAndKeepsPreviousObservation(t *testing.T) {
+	handler := &refreshHandlerStub{output: ProviderOutput{Result: ClaudeResult{Usage: &ClaudeUsagePayload{}}}}
+	identity := claudeAuthFileIdentity("auth-1")
+	identity.ID = 1
+	observedAt := time.Date(2026, 9, 8, 1, 0, 0, 0, time.UTC)
+	repository := &fakeAuthFileIdentityLookup{
+		identities: map[string]entities.UsageIdentity{"auth-1": identity},
+		observations: map[string]CheckResponse{"auth-1": {
+			ID: "auth-1", ObservedAt: observedAt, Quota: claudeUsageOutput(25).Result.(ClaudeResult).QuotaRows(),
+		}},
+	}
+	service := NewServiceWithRegistry(repository, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+
+	if _, err := service.Check(context.Background(), CheckRequest{AuthIndex: "auth-1"}); err == nil || !strings.Contains(err.Error(), "no usable rows") {
+		t.Fatalf("expected empty normalized quota failure, got %v", err)
+	}
+	items, err := service.GetQuotaObservations(context.Background(), ObservationsRequest{AuthIndexes: []string{"auth-1"}, Limit: 1})
+	if err != nil || len(items.Items) != 1 || !items.Items[0].ObservedAt.Equal(observedAt) || *items.Items[0].Quota[0].UsedPercent != 25 {
+		t.Fatalf("expected previous observation to survive empty response, items=%+v err=%v", items, err)
+	}
+}
+
+func TestRefreshSuccessReplacesLatestObservation(t *testing.T) {
 	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
 	service := newRefreshTestService(map[string]entities.UsageIdentity{"auth-1": claudeAuthFileIdentity("auth-1")}, handler)
 
 	first := refreshAuthIndex(t, service, "auth-1")
 	waitForRefreshTask(t, service, first, RefreshTaskStatusCompleted)
-	assertCachedUsagePercent(t, service, "auth-1", 25)
+	assertObservedUsagePercent(t, service, "auth-1", 25)
 
 	handler.output = claudeUsageOutput(80)
 	second := refreshAuthIndex(t, service, "auth-1")
 	waitForRefreshTask(t, service, second, RefreshTaskStatusCompleted)
 
-	assertCachedUsagePercent(t, service, "auth-1", 80)
+	assertObservedUsagePercent(t, service, "auth-1", 80)
 	if handler.callCount() != 2 {
-		t.Fatalf("expected two refresh provider calls and no cache provider calls, got %d", handler.callCount())
+		t.Fatalf("expected two refresh provider calls and no observation-read provider calls, got %d", handler.callCount())
 	}
 }
 
-func TestRefreshCleanupRemovesExpiredLatestCompletedCache(t *testing.T) {
+func TestRefreshCleanupRemovesExpiredTaskButKeepsObservation(t *testing.T) {
 	handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
 	service := newRefreshTestService(map[string]entities.UsageIdentity{"auth-1": claudeAuthFileIdentity("auth-1")}, handler)
 
 	taskID := refreshAuthIndex(t, service, "auth-1")
 	waitForRefreshTask(t, service, taskID, RefreshTaskStatusCompleted)
-	assertCachedUsagePercent(t, service, "auth-1", 25)
+	assertObservedUsagePercent(t, service, "auth-1", 25)
 
 	service.refreshTasks.mu.Lock()
 	service.refreshTasks.tasks[taskID].ExpiresAt = time.Now().Add(-time.Second)
 	service.refreshTasks.mu.Unlock()
 
-	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{"auth-1"}, Limit: 1})
-	if err != nil {
-		t.Fatalf("GetCachedQuota returned error: %v", err)
-	}
-	if len(cache.Items) != 0 {
-		t.Fatalf("expected expired cache to be removed, got %+v", cache.Items)
+	if _, err := service.GetRefreshTask(context.Background(), taskID); !errors.Is(err, ErrTaskNotFound) {
+		t.Fatalf("expected expired task to be removed, got %v", err)
 	}
 	service.refreshTasks.mu.Lock()
-	_, latestOK := service.refreshTasks.latestCompletedTaskIDsByAuth["auth-1"]
 	_, activeOK := service.refreshTasks.activeTaskIDsByAuth["auth-1"]
 	service.refreshTasks.mu.Unlock()
-	if latestOK || activeOK {
-		t.Fatalf("expected expired task indexes to be removed, latest=%v active=%v", latestOK, activeOK)
+	if activeOK {
+		t.Fatalf("expected expired task index to be removed")
 	}
+	assertObservedUsagePercent(t, service, "auth-1", 25)
 	if handler.callCount() != 1 {
-		t.Fatalf("cache cleanup should not trigger provider calls, got %d", handler.callCount())
+		t.Fatalf("task cleanup and observation read should not trigger provider calls, got %d", handler.callCount())
 	}
 }
 
@@ -376,8 +460,8 @@ func TestStopRefreshWorkersMarksQueuedTasksFailed(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GetRefreshTask(%s) returned error: %v", accepted.TaskID, err)
 		}
-		if task.Status != RefreshTaskStatusFailed || task.ExpiresAt == nil {
-			t.Fatalf("expected stopped task %s to be failed with an expiry, got %+v", accepted.TaskID, task)
+		if task.Status != RefreshTaskStatusFailed {
+			t.Fatalf("expected stopped task %s to be failed, got %+v", accepted.TaskID, task)
 		}
 	}
 }
@@ -412,20 +496,20 @@ func refreshAuthIndex(t *testing.T, service *Service, authIndex string) string {
 	return response.Tasks[0].TaskID
 }
 
-func assertCachedUsagePercent(t *testing.T, service *Service, authIndex string, want float64) {
+func assertObservedUsagePercent(t *testing.T, service *Service, authIndex string, want float64) {
 	t.Helper()
-	cache, err := service.GetCachedQuota(context.Background(), CacheRequest{AuthIndexes: []string{authIndex}, Limit: 1})
+	observations, err := service.GetQuotaObservations(context.Background(), ObservationsRequest{AuthIndexes: []string{authIndex}, Limit: 1})
 	if err != nil {
-		t.Fatalf("GetCachedQuota returned error: %v", err)
+		t.Fatalf("GetQuotaObservations returned error: %v", err)
 	}
-	if len(cache.Items) != 1 || cache.Items[0].ID != authIndex || len(cache.Items[0].Quota) != 1 || cache.Items[0].Quota[0].UsedPercent == nil {
-		t.Fatalf("expected one cached quota row for %s, got %+v", authIndex, cache.Items)
+	if len(observations.Items) != 1 || observations.Items[0].ID != authIndex || len(observations.Items[0].Quota) != 1 || observations.Items[0].Quota[0].UsedPercent == nil {
+		t.Fatalf("expected one persisted quota row for %s, got %+v", authIndex, observations.Items)
 	}
-	if got := *cache.Items[0].Quota[0].UsedPercent; got != want {
-		t.Fatalf("expected cached usage percent %.0f, got %.0f", want, got)
+	if got := *observations.Items[0].Quota[0].UsedPercent; got != want {
+		t.Fatalf("expected observed usage percent %.0f, got %.0f", want, got)
 	}
-	if cache.Items[0].CachedAt.IsZero() || cache.Items[0].ExpiresAt.IsZero() || !cache.Items[0].ExpiresAt.After(cache.Items[0].CachedAt) {
-		t.Fatalf("expected cache observation and expiry metadata, got %+v", cache.Items[0])
+	if observations.Items[0].ObservedAt.IsZero() {
+		t.Fatalf("expected observation time, got %+v", observations.Items[0])
 	}
 }
 

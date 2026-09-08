@@ -159,13 +159,12 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   await expect(page.getByText("Unavailable", { exact: true }).first()).toBeVisible()
   await expect(page.getByText("Disabled", { exact: true }).first()).toBeVisible()
 
-  // One merged 5h meter: the newer reported reading replaces the stale probe cache.
+  // One merged 5h meter: the newer reported reading replaces the older manual observation.
   await expect(page.getByText("25% used · Blocked")).toBeVisible()
   await expect(page.getByText("62% used")).toBeVisible()
-  await expect(page.getByText("Stale", { exact: true }).first()).toBeVisible()
   await expect(page.getByText("Manual capacity probe")).toHaveCount(0)
   // Data freshness sits on the card surface.
-  await expect(page.getByText(/^Updated /)).toBeVisible()
+  await expect(page.getByText(/^Last updated /)).toBeVisible()
 
   // The active limit, subscription end, per-model quotas, and timing lines live
   // behind the per-tile fold.
@@ -173,16 +172,15 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   await expect(page.getByText("Active limit codex_primary")).toBeVisible()
   await expect(page.getByText("Per-model quotas (1)")).toBeVisible()
   await expect(page.locator("time[datetime='2026-09-07T07:30:00Z']")).toBeVisible()
-  const timing = page.getByRole("group", { name: "Account and cache timing" }).first()
+  const timing = page.getByRole("group", { name: "Account and observation timing" }).first()
   await expect(timing.locator("time[datetime='2026-08-31T09:05:00Z']")).toBeVisible()
-  await expect(timing.locator("time[datetime='2026-08-31T09:25:00Z']")).toBeVisible()
   await expect(timing.locator("time[datetime='2026-09-07T08:00:00Z']")).toBeVisible()
   await expect(timing.getByText("Ends", { exact: true })).toBeVisible()
   await expect(timing.locator("time[datetime='2026-09-25T07:15:00Z']")).toBeVisible()
 
   expect(requests.filter((request) => request.path === "/quota/refresh")).toHaveLength(0)
   expect(requests.filter((request) => request.path === "/usage/identities/model-support")).toHaveLength(0)
-  expect(requests.filter((request) => request.path === "/quota/cache")).toHaveLength(1)
+  expect(requests.filter((request) => request.path === "/quota/observations")).toHaveLength(1)
 
   await page.getByText("Model support", { exact: true }).click()
   await page.getByRole("button", { name: "Select displayed" }).click()

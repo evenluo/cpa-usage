@@ -929,7 +929,7 @@ func TestSyncMetadataPersistsPassiveQuotaWithOriginalObservationTimes(t *testing
 	}
 }
 
-func TestSyncMetadataClearsAbsentPassiveQuotaWithoutInventingZeroState(t *testing.T) {
+func TestSyncMetadataPreservesLastSuccessfulPassiveQuotaWhenIncomingIsUnavailable(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	ctx := context.Background()
 	seed := entities.UsageIdentity{
@@ -955,8 +955,57 @@ func TestSyncMetadataClearsAbsentPassiveQuotaWithoutInventingZeroState(t *testin
 	if err != nil {
 		t.Fatalf("load updated identity: %v", err)
 	}
-	if row.PassiveQuota != nil || len(row.PassiveModelQuotas) != 0 {
-		t.Fatalf("malformed or absent passive observations must be unavailable, got account=%+v models=%+v", row.PassiveQuota, row.PassiveModelQuotas)
+	if row.PassiveQuota == nil || !row.PassiveQuota.ObservedAt.Equal(seed.PassiveQuota.ObservedAt) || len(row.PassiveModelQuotas) != 1 || !row.PassiveModelQuotas[0].ObservedAt.Equal(seed.PassiveModelQuotas[0].ObservedAt) {
+		t.Fatalf("malformed or absent passive observations must preserve prior success, got account=%+v models=%+v", row.PassiveQuota, row.PassiveModelQuotas)
+	}
+}
+
+func TestSyncMetadataMergesPassiveQuotaWithIndependentNewerWins(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	ctx := context.Background()
+	seed := entities.UsageIdentity{
+		Name: "Codex", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "codex-passive", Type: "codex", Provider: "Codex",
+		PassiveQuota: &entities.PassiveQuotaObservation{
+			ObservedAt: time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC),
+			Quota:      []entities.PassiveQuotaMetric{{Key: "account-current", Label: "5h", Scope: "account"}},
+		},
+		PassiveModelQuotas: []entities.PassiveModelQuotaObservation{
+			{Model: "gpt-z", ObservedAt: time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC), Quota: []entities.PassiveQuotaMetric{{Key: "z-current", Label: "5h", Scope: "model"}}},
+			{Model: "gpt-a", ObservedAt: time.Date(2026, 9, 7, 8, 0, 0, 0, time.UTC), Quota: []entities.PassiveQuotaMetric{{Key: "a-old", Label: "5h", Scope: "model"}}},
+		},
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed passive quota identity: %v", err)
+	}
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return time.Date(2026, 9, 7, 13, 0, 0, 0, time.UTC) },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex: seed.Identity, Type: "codex", Provider: "Codex",
+			Quota: &authfiles.QuotaObservation{ObservedAt: "2026-09-07T09:00:00Z", Signals: map[string]any{"X-Codex-Primary-Used-Percent": "30", "X-Codex-Primary-Window-Minutes": "300"}},
+			ModelQuotas: map[string]authfiles.QuotaObservation{
+				"gpt-a": {ObservedAt: "2026-09-07T11:00:00Z", Signals: map[string]any{"X-Codex-Primary-Used-Percent": "40", "X-Codex-Primary-Window-Minutes": "300"}},
+			},
+		}}}}},
+	})
+	if err := service.SyncMetadata(ctx); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	row, err := repository.GetUsageIdentityByID(ctx, db, seed.ID)
+	if err != nil {
+		t.Fatalf("load merged identity: %v", err)
+	}
+	if row.PassiveQuota == nil || row.PassiveQuota.Quota[0].Key != "account-current" || !row.PassiveQuota.ObservedAt.Equal(seed.PassiveQuota.ObservedAt) {
+		t.Fatalf("older account observation replaced current value: %+v", row.PassiveQuota)
+	}
+	if len(row.PassiveModelQuotas) != 2 || row.PassiveModelQuotas[0].Model != "gpt-a" || row.PassiveModelQuotas[1].Model != "gpt-z" {
+		t.Fatalf("expected deterministic model merge order, got %+v", row.PassiveModelQuotas)
+	}
+	if !row.PassiveModelQuotas[0].ObservedAt.Equal(time.Date(2026, 9, 7, 11, 0, 0, 0, time.UTC)) || row.PassiveModelQuotas[0].Quota[0].Key == "a-old" {
+		t.Fatalf("newer model observation did not replace older value: %+v", row.PassiveModelQuotas[0])
+	}
+	if !row.PassiveModelQuotas[1].ObservedAt.Equal(seed.PassiveModelQuotas[0].ObservedAt) || row.PassiveModelQuotas[1].Quota[0].Key != "z-current" {
+		t.Fatalf("missing model observation did not preserve prior value: %+v", row.PassiveModelQuotas[1])
 	}
 }
 

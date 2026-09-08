@@ -20,7 +20,7 @@ The application owns one bounded shutdown path for HTTP and background work. Que
 
 ## What It Does
 
-- **Usage Intelligence**: selected-window KPIs, hourly or daily trends, provider filters, key leaderboards, model distribution, deterministic insights, activity heatmap, request health, recent request evidence, and restricted cache-first Live Capacity.
+- **Usage Intelligence**: selected-window KPIs, hourly or daily trends, provider filters, key leaderboards, model distribution, deterministic insights, activity heatmap, request health, recent request evidence, and restricted Live Capacity with retained quota observations and explicit manual refresh.
 - **Reference Data**: human-readable Key Aliases and Cost Rates that make raw CPA usage data understandable without writing alias data back to CPA.
 - **Operations Console**: lightweight sync, runtime, shared-login access, and logout state for the usage dashboard.
 - **Self-hosted persistence**: local SQLite data, migrations, backups, and logs under the configured work directory.
