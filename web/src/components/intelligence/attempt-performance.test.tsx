@@ -45,10 +45,11 @@ describe("AttemptPerformance", () => {
   it("keeps the provider selector accessible while loading or showing an error", () => {
     const onSelect = vi.fn()
     const { rerender } = render(<AttemptPerformance onRetryProviders={vi.fn()} provider="claude" providers={["claude", "openai"]} onSelectProvider={onSelect} data={undefined} isLoading error={null} onRetry={vi.fn()} />)
-    fireEvent.change(screen.getByRole("combobox", { name: "Performance provider" }), { target: { value: "openai" } })
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Performance provider" }), { key: "ArrowDown" })
+    fireEvent.click(screen.getByRole("option", { name: "openai" }))
     expect(onSelect).toHaveBeenCalledWith("openai")
     rerender(<AttemptPerformance onRetryProviders={vi.fn()} provider="openai" providers={["claude", "openai"]} onSelectProvider={onSelect} data={undefined} isLoading={false} error={new Error("failed")} onRetry={vi.fn()} />)
-    expect(screen.getByRole("combobox", { name: "Performance provider" })).toHaveValue("openai")
+    expect(screen.getByRole("combobox", { name: "Performance provider" })).toHaveTextContent("openai")
     expect(screen.getByText("Failed to load attempt performance")).toBeVisible()
   })
 

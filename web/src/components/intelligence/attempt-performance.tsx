@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router"
-import { ArrowUpRight } from "lucide-react"
+import * as Select from "@radix-ui/react-select"
+import { ArrowUpRight, Check, ChevronDown, ChevronUp } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -43,25 +44,35 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
 
   return (
     <Card className="min-w-0 overflow-hidden">
-      <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+      <CardHeader className="flex flex-col items-start justify-between gap-3 pb-4 *:not-first:mt-0 sm:flex-row sm:items-center">
         <div>
           <CardTitle>Attempt performance</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">Last 24h</p>
         </div>
-        <div className="w-full sm:w-48">
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Provider
-            <select
-              aria-label="Performance provider"
-              value={provider}
-              onChange={(event) => onSelectProvider(event.target.value)}
-              disabled={providers.length === 0}
-              className="min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
-            >
-              {providers.length === 0 ? <option value="">{isLoading ? "Loading providers…" : error ? "Providers unavailable" : "No providers"}</option> : null}
-              {providers.map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </label>
+        <div className="w-full sm:w-auto">
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 text-xs text-muted-foreground">Provider</span>
+            <Select.Root value={provider} onValueChange={onSelectProvider} disabled={providers.length === 0}>
+              <Select.Trigger aria-label="Performance provider" className="flex min-h-10 min-w-0 flex-1 items-center justify-between sm:w-48 sm:flex-none gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground outline-hidden transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 data-[state=open]:border-terracotta-500">
+                <Select.Value placeholder={isLoading ? "Loading providers…" : error ? "Providers unavailable" : "No providers"} />
+                <Select.Icon><ChevronDown className="h-4 w-4 text-muted-foreground" /></Select.Icon>
+              </Select.Trigger>
+              <Select.Portal>
+                <Select.Content position="popper" sideOffset={6} collisionPadding={12} className="z-50 max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
+                  <Select.ScrollUpButton className="flex justify-center py-1"><ChevronUp className="h-4 w-4" /></Select.ScrollUpButton>
+                  <Select.Viewport className="p-1">
+                    {providers.map((value) => (
+                      <Select.Item key={value} value={value} className="relative flex min-h-9 cursor-default select-none items-center rounded-md py-2 pr-8 pl-3 text-sm outline-hidden data-highlighted:bg-muted data-[state=checked]:bg-terracotta-500/10 data-[state=checked]:text-terracotta-700 dark:data-[state=checked]:text-terracotta-300">
+                        <Select.ItemText>{value}</Select.ItemText>
+                        <Select.ItemIndicator className="absolute right-2"><Check className="h-4 w-4" /></Select.ItemIndicator>
+                      </Select.Item>
+                    ))}
+                  </Select.Viewport>
+                  <Select.ScrollDownButton className="flex justify-center py-1"><ChevronDown className="h-4 w-4" /></Select.ScrollDownButton>
+                </Select.Content>
+              </Select.Portal>
+            </Select.Root>
+          </div>
           {providersError && providers.length > 0 ? <div className="mt-1 text-xs text-red-500">Provider list refresh failed. <button type="button" onClick={onRetryProviders} className="underline">Retry provider list</button></div> : null}
         </div>
         {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
@@ -77,8 +88,8 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
         ) : !data || data.total_attempts === 0 ? (
           <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">{provider ? "No attempts for this provider in the last 24 hours" : "No providers with attempts in the last 24 hours"}</div>
         ) : (
-          <div className="space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border pb-4">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-border pb-3">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="font-serif text-2xl font-semibold">{formatCompact(data.total_attempts)}</span>
                 <span className="text-xs text-muted-foreground">attempts · {formatCompact(data.failed_attempts)} failed</span>
@@ -96,7 +107,7 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
             </div>
 
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <ControlGroup label="Performance metric" hideLabel>
+              <ControlGroup label="Performance metric">
                 {performanceMetrics.map((option) => (
                   <button
                     key={option.value}
@@ -161,10 +172,10 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
   )
 }
 
-function ControlGroup({ label, children, hideLabel = false }: { label: string; children: React.ReactNode; hideLabel?: boolean }) {
+function ControlGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      {!hideLabel ? <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">{label}</p> : null}
+      <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">{label}</p>
       <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-card p-1" aria-label={label}>{children}</div>
     </div>
   )

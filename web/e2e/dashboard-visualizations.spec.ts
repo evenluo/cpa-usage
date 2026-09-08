@@ -115,7 +115,7 @@ for (const theme of ["light", "dark"]) {
     await expect(breakdown.getByRole("link")).toHaveCount(0)
     await breakdown.getByRole("button", { name: "Output TPS", exact: true }).click()
     await expect(breakdown.getByRole("img")).toHaveCount(0)
-    await expect(breakdown.getByRole("combobox", { name: "Performance provider" })).not.toHaveValue("")
+    await expect(breakdown.getByRole("combobox", { name: "Performance provider" })).not.toHaveText("")
     await expect(breakdown.getByText("No valid samples").first()).toBeVisible()
     expect(requests.filter((request) => request.path === "/usage/performance")).toHaveLength(performanceRequests)
     await breakdown.getByRole("button", { name: "Successful latency", exact: true }).click()
