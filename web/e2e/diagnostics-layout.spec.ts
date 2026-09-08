@@ -24,7 +24,7 @@ const performance = {
     generating_streaming: { population_count: 1199, sample_count: 1199, coverage: 1, p50: 4930, p95: 8990 },
     unknown_execution: { population_count: 0, sample_count: 0, coverage: null, p50: null, p95: null },
   },
-  output_tps: { generating_streaming: { population_count: 1199, sample_count: 0, coverage: 0, p50: null, p95: null } },
+  output_tps: { generating_streaming: { population_count: 1199, sample_count: 1199, coverage: 1, p50: 43.6, p95: 145.2 } },
   providers: { items: [], other_count: 1200 },
   accounts: { items: [], other_count: 1200 },
   models: {
@@ -80,6 +80,24 @@ for (const theme of ["light", "dark"]) {
       expect(bounds!.x).toBeCloseTo(firstTrack!.x, 1)
       expect(bounds!.width).toBeCloseTo(firstTrack!.width, 1)
     }
+    const metricControls = performanceCard.getByLabel("Performance metric", { exact: true })
+    await metricControls.scrollIntoViewIfNeeded()
+    const controlsTop = await metricControls.evaluate((element) => element.getBoundingClientRect().top + window.scrollY)
+    await metricControls.getByRole("button", { name: "TTFT", exact: true }).click()
+    expect(await metricControls.evaluate((element) => element.getBoundingClientRect().top + window.scrollY)).toBeCloseTo(controlsTop, 1)
+    const info = performanceCard.getByRole("button", { name: "About TTFT execution unknown" })
+    await info.focus()
+    await page.keyboard.press("Enter")
+    const detail = page.getByRole("dialog", { name: "Unknown execution TTFT" })
+    await expect(detail).toBeVisible()
+    await expect(detail).toContainText("0 / 0 samples · Coverage unavailable")
+    expect(await metricControls.evaluate((element) => element.getBoundingClientRect().top + window.scrollY)).toBeCloseTo(controlsTop, 1)
+    await page.keyboard.press("Escape")
+    await expect(detail).not.toBeVisible()
+    await expect(info).toBeFocused()
+    await metricControls.getByRole("button", { name: "Output TPS", exact: true }).click()
+    expect(await metricControls.evaluate((element) => element.getBoundingClientRect().top + window.scrollY)).toBeCloseTo(controlsTop, 1)
+    await metricControls.getByRole("button", { name: "Successful latency", exact: true }).click()
     const failures = page.getByRole("region", { name: "Failure analysis" })
     await expect(failures).toContainText("1 failed attempt")
     await expect(failures.locator("details")).not.toHaveAttribute("open", "")
@@ -99,3 +117,21 @@ for (const theme of ["light", "dark"]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 }
+
+test("performance summary stays stable at intermediate widths with numeric TPS", async ({ page }) => {
+  await installMockAPI(page)
+  await page.route(/\/api\/v1\/usage\/performance(?:\?|$)/, (route) => route.fulfill({ json: performance }))
+  await page.goto("/")
+  const card = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: "Attempt performance", exact: true }) })
+  await page.evaluate(() => document.fonts.ready)
+  const controls = card.getByLabel("Performance metric", { exact: true })
+  for (const width of [360, 430, 540, 640, 820, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 })
+    await controls.getByRole("button", { name: "Successful latency", exact: true }).click()
+    const top = await controls.evaluate((element) => element.getBoundingClientRect().top - element.closest(".rounded-xl")!.getBoundingClientRect().top)
+    for (const name of ["TTFT", "Output TPS"]) {
+      await controls.getByRole("button", { name, exact: true }).click()
+      expect(await controls.evaluate((element) => element.getBoundingClientRect().top - element.closest(".rounded-xl")!.getBoundingClientRect().top), `width ${width}, ${name}`).toBeCloseTo(top, 1)
+    }
+  }
+})

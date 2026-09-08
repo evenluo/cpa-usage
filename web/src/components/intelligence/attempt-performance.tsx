@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
+import * as Popover from "@radix-ui/react-popover"
 import * as Select from "@radix-ui/react-select"
-import { ArrowUpRight, Check, ChevronDown, ChevronUp } from "lucide-react"
+import { ArrowUpRight, Info, Check, ChevronDown, ChevronUp } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -89,19 +90,18 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
           <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">{provider ? "No attempts for this provider in the last 24 hours" : "No providers with attempts in the last 24 hours"}</div>
         ) : (
           <div className="space-y-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-border pb-3">
+            <div className="flex flex-col items-start justify-between gap-x-6 gap-y-2 border-b lg:flex-row lg:items-baseline border-border pb-3">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="font-serif text-2xl font-semibold">{formatCompact(data.total_attempts)}</span>
                 <span className="text-xs text-muted-foreground">attempts · {formatCompact(data.failed_attempts)} failed</span>
               </div>
               {metric !== "output-tps" || provider ? (
-                <div className="space-y-1">
+                <div>
                   <AggregateReading
                     metric={getPerformanceMetric(data, metric)}
                     kind={metric === "output-tps" ? "tps" : "latency"}
                     slowLink={metric === "successful-latency" ? { provider, windowEnd: data.window_end, result: "success" } : undefined}
                   />
-                  {metric === "ttft" ? <UnknownExecutionReading metric={data.ttft_ms.unknown_execution} /> : null}
                 </div>
               ) : null}
             </div>
@@ -109,15 +109,17 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <ControlGroup label="Performance metric">
                 {performanceMetrics.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setMetric(option.value)}
-                    aria-pressed={metric === option.value}
-                    className={`min-h-10 min-w-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors sm:min-h-0 ${metric === option.value ? "bg-terracotta-500 text-white" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                  >
-                    {option.label}
-                  </button>
+                  <div key={option.value} className={`flex items-center justify-center rounded-md ${metric === option.value ? "bg-terracotta-500 text-white" : "text-muted-foreground hover:bg-muted"}`}>
+                    <button
+                      type="button"
+                      onClick={() => setMetric(option.value)}
+                      aria-pressed={metric === option.value}
+                      className={`min-h-10 min-w-0 rounded-md py-1.5 text-xs font-medium transition-colors sm:min-h-0 ${option.value === "ttft" ? "pl-2 pr-1" : "flex-1 px-3"}`}
+                    >
+                      {option.label}
+                    </button>
+                    {option.value === "ttft" ? <UnknownExecutionInfo metric={data.ttft_ms.unknown_execution} /> : null}
+                  </div>
                 ))}
               </ControlGroup>
               <ControlGroup label="Compare by">
@@ -183,7 +185,7 @@ function ControlGroup({ label, children }: { label: string; children: React.Reac
 
 function AggregateReading({ metric, kind, slowLink }: { metric: UsagePercentileDistribution; kind: "latency" | "tps"; slowLink?: { provider: string; windowEnd: string; result: "success" | "failed" } }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums" aria-label="Overall selected metric">
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] tabular-nums sm:gap-x-4 sm:text-xs" aria-label="Overall selected metric">
       <span><span className="text-muted-foreground">Overall p50 </span>{formatMetricValue(metric.p50, kind)}</span>
       {slowLink && metric.p95 !== null ? (
         <Link
@@ -202,14 +204,27 @@ function AggregateReading({ metric, kind, slowLink }: { metric: UsagePercentileD
   )
 }
 
-function UnknownExecutionReading({ metric }: { metric: UsagePercentileDistribution }) {
+function UnknownExecutionInfo({ metric }: { metric: UsagePercentileDistribution }) {
+  const coverage = formatSampleCoverage(metric)
   return (
-    <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-muted-foreground tabular-nums" aria-label="Unknown execution TTFT">
-      <span>Execution unknown</span>
-      <span>p50 {formatMetricValue(metric.p50, "latency")}</span>
-      <span>p95 {formatMetricValue(metric.p95, "latency")}</span>
-      <SampleCoverage metric={metric} label="Unknown execution TTFT" />
-    </div>
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button type="button" aria-label="About TTFT execution unknown" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-sm opacity-75 hover:opacity-100 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+          <Info className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content sideOffset={8} collisionPadding={12} aria-label="Unknown execution TTFT" className="z-50 w-72 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
+          <p className="font-medium">Execution unknown</p>
+          <p className="mt-1 text-muted-foreground">Attempts with unknown execution type are shown separately from the successful streaming generation used for Overall TTFT.</p>
+          <div className="mt-3 flex gap-4 tabular-nums">
+            <span>p50 {formatMetricValue(metric.p50, "latency")}</span>
+            <span>p95 {formatMetricValue(metric.p95, "latency")}</span>
+          </div>
+          <p className="mt-2 text-muted-foreground" title={coverage.title}>{metric.sample_count.toLocaleString("en")} / {metric.population_count.toLocaleString("en")} samples · {metric.coverage === null ? "Coverage unavailable" : `${coverage.text} coverage`}</p>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }
 
