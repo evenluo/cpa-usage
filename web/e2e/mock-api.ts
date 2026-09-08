@@ -322,6 +322,7 @@ export interface MockAPIOptions {
   authenticated?: boolean
   /** 覆盖 /analytics/core 响应；可基于请求 URL 返回不同数据。 */
   analyticsCore?: (url: URL) => Record<string, unknown>
+  analyticsHeatmap?: (url: URL) => Record<string, unknown>
   /** 每次 API 请求回调，用于断言请求参数。 */
   onRequest?: (request: RecordedAPIRequest) => void
 }
@@ -364,7 +365,7 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
       return
     }
     if (path === "/analytics/heatmap") {
-      await route.fulfill({ json: { ...dashboardAnalyticsCore, heatmap } })
+      await route.fulfill({ json: options.analyticsHeatmap ? options.analyticsHeatmap(url) : { ...dashboardAnalyticsCore, heatmap } })
       return
     }
     if (path === "/usage/overview") {

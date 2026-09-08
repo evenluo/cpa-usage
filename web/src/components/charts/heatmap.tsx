@@ -1,87 +1,121 @@
-import type { HeatmapData, HeatmapCell } from "@/types/api"
-import { formatCompact, formatCost } from "@/lib/format"
-import { useRef, useState, useEffect, useMemo } from "react"
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { FocusEvent, MouseEvent } from "react"
+import type { HeatmapCell, HeatmapData } from "@/types/api"
+import { formatCompact, formatCost } from "@/lib/format"
 import {
   computeLayout,
   flattenCells,
+  heatmapCellDatum,
   heatmapLabelWidth,
+  metricMaximum,
   splitRowLabel,
   type FlatCell,
+  type HeatmapMetric,
   type HeatmapRowLabel,
 } from "@/features/usage-intelligence/heatmap-model"
 
-interface HeatmapProps {
-  data: HeatmapData
-}
+interface HeatmapProps { data: HeatmapData }
+
+interface HeatmapTooltip { label: string; x: number; y: number }
+
+const metricOptions: Array<{ value: HeatmapMetric; label: string }> = [
+  { value: "tokens", label: "Tokens" },
+  { value: "attempts", label: "Attempts" },
+  { value: "failures", label: "Failures" },
+]
+
+const exactNumber = new Intl.NumberFormat("en-US")
 
 function cellCostLabel(cell: Pick<HeatmapCell, "cost_available" | "cost_status" | "total_cost">): string {
-  if (!cell.cost_available) {
-    return cell.cost_status === "partial" ? "partial" : "n/a"
-  }
-  return formatCost(cell.total_cost)
+  if (!cell.cost_available) return cell.cost_status === "partial" ? "Cost partial" : "Cost unavailable"
+  return `Cost ${formatCost(cell.total_cost)}`
 }
 
-interface HeatmapTooltip {
-  label: string
-  x: number
-  y: number
+function tokenLabel(fc: FlatCell): string {
+  if (!fc.cell || fc.cell.canonical_valid_attempts === 0) return "Tokens unavailable"
+  return `Tokens ${exactNumber.format(fc.cell.total_tokens)}`
 }
 
 function cellTooltipLabel(fc: FlatCell): string {
-  if (!fc.cell) return ""
-  const tokens = fc.cell.canonical_valid_attempts > 0 ? `${formatCompact(fc.cell.total_tokens, 1)} canonical tokens` : "tokens n/a"
-  return `${fc.dateLabel} ${fc.hour}:00 · ${tokens} · ${fc.cell.request_count}a · ${cellCostLabel(fc.cell)}`
+  if (!fc.cell || !fc.cell.in_range) return ""
+  const hour = `${fc.hour.toString().padStart(2, "0")}:00`
+  return [
+    `${fc.dateLabel} ${hour}`,
+    fc.cell.request_count === 0 ? "No activity" : "Activity observed",
+    `Attempts ${exactNumber.format(fc.cell.request_count)}`,
+    `Failures ${exactNumber.format(fc.cell.failure_count)}`,
+    tokenLabel(fc),
+    `Token coverage ${exactNumber.format(fc.cell.canonical_valid_attempts)}/${exactNumber.format(fc.cell.request_count)}`,
+    cellCostLabel(fc.cell),
+  ].join(" · ")
+}
+
+function metricColor(metric: HeatmapMetric, alpha: number): string {
+  return metric === "failures" ? `rgba(220, 78, 70, ${alpha})` : `rgba(217, 119, 87, ${alpha})`
 }
 
 export function Heatmap({ data }: HeatmapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [metric, setMetric] = useState<HeatmapMetric>("tokens")
   const [tooltip, setTooltip] = useState<HeatmapTooltip | null>(null)
 
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const ro = new ResizeObserver((entries) => {
-      setContainerWidth(entries[0].contentRect.width)
-    })
+    const ro = new ResizeObserver((entries) => setContainerWidth(entries[0].contentRect.width))
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  const { cells: flatCells, maxTokens } = useMemo(() => flattenCells(data), [data])
+  useLayoutEffect(() => {
+    const el = tooltipRef.current
+    if (!el || !tooltip) return
+    const rect = el.getBoundingClientRect()
+    const nextX = Math.max(8, Math.min(tooltip.x, window.innerWidth - rect.width - 8))
+    const nextY = Math.max(8, Math.min(tooltip.y, window.innerHeight - rect.height - 8))
+    if (nextX !== tooltip.x || nextY !== tooltip.y) {
+      setTooltip({ ...tooltip, x: nextX, y: nextY })
+    }
+  }, [tooltip])
 
-  const { daysPerRow, cellSize } = useMemo(
+  const flatCells = useMemo(() => flattenCells(data).cells, [data])
+  const maximum = metricMaximum(data, metric)
+  const hasActivity = flatCells.some((fc) => Boolean(fc.cell?.in_range && fc.cell.request_count > 0))
+  const { daysPerRow, cellSize, needsHorizontalScroll } = useMemo(
     () => computeLayout(containerWidth || 1200),
-    [containerWidth]
+    [containerWidth],
   )
 
   if (data.rows.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-        No heatmap data in this range
-      </div>
-    )
+    return <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">No heatmap data in this range</div>
   }
 
   const colsPerRow = 24 * daysPerRow
 
+  const placeTooltip = (label: string, x: number, y: number) => {
+    if (!label) return
+    setTooltip({
+      label,
+      x: Math.max(x, 8),
+      y: Math.max(y, 8),
+    })
+  }
+
   const showPointerTooltip = (event: MouseEvent<HTMLElement>, fc: FlatCell) => {
-    const label = cellTooltipLabel(fc)
-    if (!label) return
-    setTooltip({ label, x: event.clientX + 12, y: event.clientY + 12 })
+    placeTooltip(cellTooltipLabel(fc), event.clientX + 12, event.clientY + 12)
   }
-
   const showFocusTooltip = (event: FocusEvent<HTMLElement>, fc: FlatCell) => {
-    const label = cellTooltipLabel(fc)
-    if (!label) return
     const rect = event.currentTarget.getBoundingClientRect()
-    setTooltip({ label, x: rect.left + rect.width + 8, y: rect.top + rect.height + 8 })
+    placeTooltip(cellTooltipLabel(fc), rect.left + rect.width + 8, rect.top + rect.height + 8)
   }
-
+  const showClickTooltip = (event: MouseEvent<HTMLElement>, fc: FlatCell) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    placeTooltip(cellTooltipLabel(fc), rect.left + rect.width + 8, rect.top + rect.height + 8)
+  }
   const hideTooltip = () => setTooltip(null)
 
-  // Split into rows
   const rows: Array<{ label: HeatmapRowLabel; cells: FlatCell[] }> = []
   for (let i = 0; i < flatCells.length; i += colsPerRow) {
     const rowCells = flatCells.slice(i, i + colsPerRow)
@@ -92,137 +126,130 @@ export function Heatmap({ data }: HeatmapProps) {
     })
   }
 
-  // Build grid columns: label + [24 cells + separator] × (daysPerRow - 1) + 24 cells
   const daySep = 3
   const gridCols: string[] = [`${heatmapLabelWidth}px`]
   for (let d = 0; d < daysPerRow; d++) {
     if (d > 0) gridCols.push(`${daySep}px`)
-    for (let h = 0; h < 24; h++) {
-      gridCols.push(`${cellSize}px`)
-    }
+    for (let h = 0; h < 24; h++) gridCols.push(`${cellSize}px`)
   }
-  const gridTemplateColumns = gridCols.join(' ')
+  const gridTemplateColumns = gridCols.join(" ")
+  const metricLabel = metricOptions.find((option) => option.value === metric)?.label ?? "Tokens"
 
   return (
-    <div ref={containerRef} className="overflow-x-auto pb-1">
-      <div className="space-y-2">
-        {rows.map((row, rowIdx) => {
-          const cells = row.cells
-
-          return (
-            <div
-              key={`row-${rowIdx}`}
-              className="grid gap-[1px]"
-              style={{ gridTemplateColumns }}
+    <div ref={containerRef}>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-md bg-muted/60 p-0.5" role="group" aria-label="Heatmap metric">
+          {metricOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={metric === option.value}
+              className={`rounded px-2 py-1 text-xs font-medium transition-colors ${metric === option.value ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => { setMetric(option.value); hideTooltip() }}
             >
-              {/* Row start date label */}
-              <div className="grid h-full grid-cols-[5ch_3ch] items-center gap-1 pr-2 text-[10px] font-medium text-muted-foreground/60">
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground" aria-label={`${metricLabel} legend`}>
+          <span className="inline-flex items-center gap-1">
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-8 rounded-[2px]"
+              style={{ backgroundImage: `linear-gradient(90deg, ${metricColor(metric, 0.12)}, ${metricColor(metric, 0.95)})` }}
+            />
+            {metricLabel}: 0–{formatCompact(maximum, 1)}
+          </span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-muted/40" />No activity</span>
+          <span className="inline-flex items-center gap-1"><span className="relative h-2.5 w-2.5 rounded-[2px] bg-terracotta-500/10"><span className="absolute inset-0 m-auto h-[2px] w-[2px] rounded-full bg-foreground/45" /></span>Observed zero</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-muted/10 ring-1 ring-border/30" />Outside range</span>
+          {metric === "tokens" ? (
+            <>
+              <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] border border-terracotta-400 bg-[repeating-linear-gradient(135deg,transparent_0_2px,rgba(217,119,87,0.35)_2px_3px)]" />Partial</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-[repeating-linear-gradient(45deg,rgba(113,113,122,0.15)_0_2px,rgba(113,113,122,0.45)_2px_3px)]" />Unavailable</span>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {metric === "failures" && hasActivity && maximum === 0 ? <p className="mb-2 text-xs text-muted-foreground" role="status">No failures in this period</p> : null}
+
+      {needsHorizontalScroll ? (
+        <p className="mb-1 flex items-center justify-end gap-1 text-[11px] text-muted-foreground" role="note">
+          Swipe horizontally to view all hours <span aria-hidden="true">→</span>
+        </p>
+      ) : null}
+
+      <div className="relative overflow-x-auto pb-1">
+        <div className="w-max min-w-full space-y-2">
+          {rows.map((row, rowIdx) => (
+            <div key={`row-${rowIdx}`} className="grid gap-[1px]" style={{ gridTemplateColumns }}>
+              <div className="sticky left-0 z-20 grid h-full grid-cols-[5ch_3ch] items-center gap-1 border-r border-border/30 bg-card pr-2 text-[10px] font-medium text-muted-foreground/60">
                 <span className="text-right tabular-nums">{row.label.dateLabel}</span>
                 <span className="text-left">{row.label.weekdayLabel}</span>
               </div>
 
-              {/* Cells + separators */}
-              {cells.map((fc, ci) => {
-                const isDayStart = ci > 0 && ci % 24 === 0
-
-                if (isDayStart) {
-                  // Weak separator between days
-                  const sep = (
-                    <div
-                      key={`sep-${rowIdx}-${ci}`}
-                      className="rounded-full bg-border/20"
-                      style={{ width: `${daySep - 1}px`, marginLeft: '1px' }}
-                    />
-                  )
-                  const cell = (() => {
-                    if (!fc.cell) {
-                      return (
-                        <div
-                          key={`${rowIdx}-${ci}`}
-                          className="aspect-square rounded-[2px] bg-muted/20"
-                        />
-                      )
-                    }
-                    const intensity = fc.cell.in_range && fc.cell.canonical_valid_attempts > 0
-                      ? Math.min(fc.cell.total_tokens / maxTokens, 1)
-                      : 0
-                    const alpha = fc.cell.in_range ? 0.1 + intensity * 0.85 : 0.04
-                    return (
-                      <button
-                        key={`${rowIdx}-${ci}`}
-                        className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-terracotta-500"
-                        style={{
-                          backgroundColor: fc.cell.in_range
-                            ? `rgba(217, 119, 87, ${alpha})`
-                            : "rgba(113, 113, 122, 0.04)",
-                        }}
-                        onMouseEnter={(event) => showPointerTooltip(event, fc)}
-                        onMouseMove={(event) => showPointerTooltip(event, fc)}
-                        onMouseLeave={hideTooltip}
-                        onFocus={(event) => showFocusTooltip(event, fc)}
-                        onBlur={hideTooltip}
-                      >
-                        {intensity > 0.6 && (
-                          <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
-                        )}
-                      </button>
-                    )
-                  })()
-                  return (
-                    <div key={`day-${rowIdx}-${ci}`} className="contents">
-                      {sep}
-                      {cell}
-                    </div>
-                  )
-                }
-
-                if (!fc.cell) {
-                  return (
-                    <div
-                      key={`${rowIdx}-${ci}`}
-                      className="aspect-square rounded-[2px] bg-muted/20"
-                    />
-                  )
-                }
-
-                const intensity = fc.cell.in_range && fc.cell.canonical_valid_attempts > 0
-                  ? Math.min(fc.cell.total_tokens / maxTokens, 1)
-                  : 0
-                const alpha = fc.cell.in_range ? 0.1 + intensity * 0.85 : 0.04
-
-                return (
+              {row.cells.map((fc, cellIndex) => {
+                const datum = heatmapCellDatum(fc.cell, metric, maximum)
+                const label = cellTooltipLabel(fc)
+                const isPartial = datum.state === "token-partial"
+                const isUnavailable = datum.state === "token-unavailable"
+                const style = datum.state === "out-of-range"
+                  ? { backgroundColor: "rgba(113, 113, 122, 0.04)" }
+                  : datum.state === "no-activity"
+                    ? { backgroundColor: "rgba(113, 113, 122, 0.12)" }
+                    : isUnavailable
+                      ? { backgroundImage: "repeating-linear-gradient(45deg, rgba(113,113,122,0.12) 0 2px, rgba(113,113,122,0.42) 2px 3px)" }
+                      : {
+                          backgroundColor: metricColor(metric, 0.12 + datum.intensity * 0.83),
+                          backgroundImage: isPartial ? "repeating-linear-gradient(135deg, transparent 0 3px, rgba(255,255,255,0.55) 3px 4px)" : undefined,
+                        }
+                const cell = label ? (
                   <button
-                    key={`${rowIdx}-${ci}`}
-                    className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:z-10 hover:scale-150 hover:rounded-sm hover:border-terracotta-300 hover:shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-terracotta-500"
-                    style={{
-                      backgroundColor: fc.cell.in_range
-                        ? `rgba(217, 119, 87, ${alpha})`
-                        : "rgba(113, 113, 122, 0.04)",
-                    }}
+                    type="button"
+                    aria-label={label}
+                    data-state={datum.state}
+                    className="group relative aspect-square rounded-[2px] border border-transparent transition-all duration-200 hover:border-terracotta-300 hover:shadow-xs md:hover:z-10 md:hover:scale-150 md:hover:rounded-sm focus-visible:z-10 focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-terracotta-500"
+                    style={style}
                     onMouseEnter={(event) => showPointerTooltip(event, fc)}
                     onMouseMove={(event) => showPointerTooltip(event, fc)}
                     onMouseLeave={hideTooltip}
                     onFocus={(event) => showFocusTooltip(event, fc)}
                     onBlur={hideTooltip}
+                    onClick={(event) => showClickTooltip(event, fc)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") hideTooltip()
+                    }}
                   >
-                    {intensity > 0.6 && (
-                      <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-terracotta-500/60" />
-                    )}
+                    {datum.hasActivity && datum.value === 0 && !isUnavailable ? <span className="absolute inset-0 m-auto block h-[2px] w-[2px] rounded-full bg-foreground/45" /> : null}
+                    {isPartial ? <span className="sr-only">Partial token coverage</span> : null}
                   </button>
+                ) : (
+                  <div
+                    aria-label={`${fc.dateLabel} ${fc.hour.toString().padStart(2, "0")}:00 · Outside selected range`}
+                    data-state="out-of-range"
+                    className="aspect-square rounded-[2px]"
+                    style={style}
+                  />
+                )
+
+                return (
+                  <Fragment key={`${fc.date}-${fc.hour}`}>
+                    {cellIndex > 0 && cellIndex % 24 === 0 ? <div className="rounded-full bg-border/20" style={{ width: `${daySep - 1}px`, marginLeft: "1px" }} /> : null}
+                    {cell}
+                  </Fragment>
                 )
               })}
             </div>
-          )
-        })}
+          ))}
+        </div>
       </div>
-      {tooltip && (
-        <div
-          className="pointer-events-none fixed z-50 rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-lg"
-          style={{ left: tooltip.x, top: tooltip.y }}
-        >
+
+      {tooltip ? (
+        <div ref={tooltipRef} role="tooltip" className="pointer-events-none fixed z-50 max-w-[min(320px,calc(100vw-16px))] rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-lg" style={{ left: tooltip.x, top: tooltip.y }}>
           {tooltip.label}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

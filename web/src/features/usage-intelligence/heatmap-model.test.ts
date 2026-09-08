@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest"
 import type { HeatmapCell, HeatmapData } from "@/types/api"
-import { computeLayout, flattenCells, splitRowLabel } from "./heatmap-model"
+import {
+  computeLayout,
+  flattenCells,
+  heatmapCellDatum,
+  metricMaximum,
+  metricValue,
+  splitRowLabel,
+} from "./heatmap-model"
 
 function heatmapCell(overrides: Partial<HeatmapCell> = {}): HeatmapCell {
   return {
@@ -91,18 +98,55 @@ describe("splitRowLabel", () => {
 
 describe("computeLayout", () => {
   it("fits three days per row on wide containers", () => {
-    expect(computeLayout(1200)).toEqual({ daysPerRow: 3, cellSize: 14 })
+    expect(computeLayout(1200)).toEqual({ daysPerRow: 3, cellSize: 14, needsHorizontalScroll: false })
   })
 
-  it("drops to two days per row when three no longer fit", () => {
-    expect(computeLayout(720)).toEqual({ daysPerRow: 2, cellSize: 12 })
+  it("uses one 24px-cell day below the mobile breakpoint", () => {
+    expect(computeLayout(720)).toEqual({ daysPerRow: 1, cellSize: 24, needsHorizontalScroll: false })
   })
 
-  it("drops to one day per row on narrow containers", () => {
-    expect(computeLayout(400)).toEqual({ daysPerRow: 1, cellSize: 12 })
+  it("preserves 24px cells and reports overflow on narrow containers", () => {
+    expect(computeLayout(400)).toEqual({ daysPerRow: 1, cellSize: 24, needsHorizontalScroll: true })
   })
 
-  it("falls back to a single day at the default cell size below the minimum", () => {
-    expect(computeLayout(100)).toEqual({ daysPerRow: 1, cellSize: 12 })
+  it("keeps the mobile target size even when the container is extremely narrow", () => {
+    expect(computeLayout(100)).toEqual({ daysPerRow: 1, cellSize: 24, needsHorizontalScroll: true })
+  })
+})
+
+describe("metric presentation", () => {
+  it("uses the backend maximum and value for each selectable metric", () => {
+    const data = heatmapData({ max_tokens: 300, max_requests: 12, max_failures: 4 })
+    const cell = heatmapCell({ total_tokens: 120, request_count: 7, failure_count: 2 })
+
+    expect(metricMaximum(data, "tokens")).toBe(300)
+    expect(metricMaximum(data, "attempts")).toBe(12)
+    expect(metricMaximum(data, "failures")).toBe(4)
+    expect(metricValue(cell, "tokens")).toBe(120)
+    expect(metricValue(cell, "attempts")).toBe(7)
+    expect(metricValue(cell, "failures")).toBe(2)
+  })
+
+  it("distinguishes range, activity, token coverage, partial coverage, and true zero", () => {
+    expect(heatmapCellDatum(null, "tokens", 100).state).toBe("out-of-range")
+    expect(heatmapCellDatum(heatmapCell({ in_range: false }), "tokens", 100).state).toBe("out-of-range")
+    expect(heatmapCellDatum(heatmapCell({ request_count: 0, canonical_valid_attempts: 0 }), "tokens", 100).state).toBe("no-activity")
+    expect(heatmapCellDatum(heatmapCell({ request_count: 2, canonical_valid_attempts: 0 }), "tokens", 100).state).toBe("token-unavailable")
+    expect(heatmapCellDatum(heatmapCell({ request_count: 2, canonical_valid_attempts: 1 }), "tokens", 100).state).toBe("token-partial")
+    expect(heatmapCellDatum(heatmapCell({ request_count: 2, canonical_valid_attempts: 2, total_tokens: 0 }), "tokens", 100)).toMatchObject({
+      state: "observed",
+      value: 0,
+      intensity: 0,
+      hasActivity: true,
+    })
+  })
+
+  it("keeps active zero-failure cells distinct from cells without activity", () => {
+    expect(heatmapCellDatum(heatmapCell({ request_count: 3, failure_count: 0 }), "failures", 0)).toMatchObject({
+      state: "observed",
+      value: 0,
+      hasActivity: true,
+    })
+    expect(heatmapCellDatum(heatmapCell({ request_count: 0, failure_count: 0 }), "failures", 0).state).toBe("no-activity")
   })
 })

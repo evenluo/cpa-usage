@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { UsageFailureDistribution } from "@/types/api"
@@ -35,6 +35,10 @@ describe("FailureDistribution", () => {
     expect(statusLink).toHaveAttribute("href", expect.stringContaining("result=failed"))
     expect(statusLink).toHaveAttribute("href", expect.stringContaining("windowEnd=2026-09-07T12%3A00%3A00.123456789Z"))
     expect(screen.getByRole("region", { name: "Exact statuses" })).toBeInTheDocument()
+    expect(statusLink).toHaveTextContent("66.7%")
+    expect(statusLink).toHaveAttribute("title", "HTTP 429: 2 of 3 failed attempts")
+    expect(within(screen.getByRole("region", { name: "Exact statuses" })).getByText("Other or unavailable")).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "Exact statuses" })).queryByRole("button")).not.toBeInTheDocument()
   })
 
   it("keeps initial API error and successful empty state distinct", async () => {
@@ -65,10 +69,13 @@ describe("FailureDistribution", () => {
 
     const section = screen.getByRole("region", { name: "Status families" })
     expect(section).not.toHaveTextContent("5XX")
-    expect(section).toHaveTextContent("9 attempts")
-    await userEvent.click(screen.getAllByRole("button", { name: /Show lower ranks/ })[0])
+    expect(section).toHaveTextContent("7 attempts")
+    expect(section).toHaveTextContent("Other or unavailable2")
+    await userEvent.click(within(section).getByRole("button", { name: /Show 2 more/ }))
     expect(section).toHaveTextContent("5XX")
     expect(section).toHaveTextContent("Unknown status")
     expect(section).toHaveTextContent("Other or unavailable2")
+    expect(within(section).getAllByRole("link")).toHaveLength(6)
+    expect(within(section).queryByRole("button")).not.toBeInTheDocument()
   })
 })

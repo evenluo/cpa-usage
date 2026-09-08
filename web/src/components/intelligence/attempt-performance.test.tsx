@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { UsageAttemptPerformance, UsageAttemptPerformanceSummary, UsagePercentileDistribution } from "@/types/api"
 
@@ -72,6 +72,71 @@ describe("AttemptPerformance", () => {
     expect(slowLink).toHaveAttribute("data-search", expect.stringContaining('"result":"success"'))
   })
 
+  it("switches the three ordered breakdowns between qualified percentile views", () => {
+    const data = performance()
+    data.models.items[0] = {
+      ...data.models.items[0],
+      latency_ms: { ...data.models.items[0].latency_ms, successful: metric(18, 18, 400, 6_000) },
+      ttft_ms: { ...data.models.items[0].ttft_ms, generating_streaming: metric(10, 0, null, null) },
+    }
+    data.accounts.items[0] = {
+      ...data.accounts.items[0],
+      latency_ms: { ...data.accounts.items[0].latency_ms, successful: metric(18, 18, 300, 3_000) },
+      output_tps: { generating_streaming: metric(10, 7, 42, 42) },
+    }
+    render(<AttemptPerformance provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+
+    const controls = screen.getByLabelText("Performance breakdown metric")
+    expect(within(controls).getByRole("button", { name: "Successful latency" })).toHaveAttribute("aria-pressed", "true")
+    const providers = screen.getByRole("region", { name: "Providers" })
+    const models = screen.getByRole("region", { name: "Actual models" })
+    const accounts = screen.getByRole("region", { name: "Accounts" })
+    expect(within(providers).getByLabelText("Shared linear axis from zero to 9s")).toBeInTheDocument()
+    expect(within(models).getByLabelText("Shared linear axis from zero to 6s")).toBeInTheDocument()
+    expect(within(accounts).getByLabelText("Shared linear axis from zero to 3s")).toBeInTheDocument()
+    expect(within(providers).getByRole("img", { name: "claude: p50 0.5s, p95 9s" })).toBeInTheDocument()
+
+    fireEvent.click(within(controls).getByRole("button", { name: "Failed latency" }))
+    expect(within(controls).getByRole("button", { name: "Failed latency" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getAllByLabelText("Shared linear axis from zero to 12s")).toHaveLength(3)
+    const failedLink = screen.getByRole("link", { name: "Inspect sonnet failed attempts at or above p95 latency" })
+    expect(failedLink).toHaveAttribute("data-search", expect.stringContaining('"result":"failed"'))
+    expect(failedLink).toHaveAttribute("data-search", expect.stringContaining('"minLatencyMS":"12000"'))
+    expect(failedLink).toHaveAttribute("data-search", expect.stringContaining('"model":"sonnet"'))
+
+    fireEvent.click(within(controls).getByRole("button", { name: "TTFT" }))
+    expect(within(providers).getByLabelText("Shared linear axis from zero to 1.5s")).toBeInTheDocument()
+    expect(within(models).getByLabelText("Shared linear axis from zero to 0s")).toBeInTheDocument()
+    expect(within(models).getByText("No valid samples")).toBeInTheDocument()
+    expect(within(accounts).getByText("8 / 10 samples")).toBeInTheDocument()
+    expect(within(accounts).getByText("80% coverage")).toHaveAttribute("title", "8 of 10 attempts sampled")
+
+    fireEvent.click(within(controls).getByRole("button", { name: "Output TPS" }))
+    expect(within(providers).getByLabelText("Shared linear axis from zero to 88.0 tok/s")).toBeInTheDocument()
+    expect(within(models).getByLabelText("Shared linear axis from zero to 88.0 tok/s")).toBeInTheDocument()
+    expect(within(accounts).getByLabelText("Shared linear axis from zero to 42.0 tok/s")).toBeInTheDocument()
+    expect(within(providers).getByRole("img", { name: "claude: p50 42.0 tok/s, p95 88.0 tok/s" })).toBeInTheDocument()
+    const equalPercentiles = within(accounts).getByRole("img", { name: "Claude Primary: p50 42.0 tok/s, p95 42.0 tok/s" })
+    expect(equalPercentiles.querySelector('[data-percentile="p50"]')).toHaveStyle({ left: "100%" })
+    expect(equalPercentiles.querySelector('[data-percentile="p95"]')).toHaveStyle({ left: "100%" })
+  })
+
+  it("keeps cross-provider throughput numeric and requires a provider for model and account comparisons", () => {
+    const data = performance()
+    data.providers.items[0].output_tps.generating_streaming = metric(10, 5, 42, 42)
+    render(<AttemptPerformance provider="" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Output TPS" }))
+    const providers = screen.getByRole("region", { name: "Providers" })
+    expect(within(providers).queryByRole("img")).not.toBeInTheDocument()
+    expect(within(providers).getAllByText("42.0 tok/s")).toHaveLength(2)
+    expect(within(providers).getByText(/select one provider for a shared comparison axis/i)).toBeInTheDocument()
+    const models = screen.getByRole("region", { name: "Actual models" })
+    expect(within(models).getByText("Select a provider to compare actual models.")).toBeInTheDocument()
+    expect(within(models).getByText("Other or unavailable").parentElement).toHaveTextContent("3 attempts")
+    expect(within(screen.getByRole("region", { name: "Accounts" })).getByText("Select a provider to compare accounts.")).toBeInTheDocument()
+  })
+
   it("keeps unavailable, empty, initial error, and stale retry states explicit", () => {
     const retry = vi.fn()
     const { rerender } = render(<AttemptPerformance provider="" data={undefined} isLoading={false} error={new Error("offline")} onRetry={retry} />)
@@ -87,6 +152,5 @@ describe("AttemptPerformance", () => {
     expect(screen.getByRole("button", { name: "Retry refresh" })).toBeInTheDocument()
     expect(screen.getByText("0%")).toHaveAttribute("title", "0 of 5 attempts sampled")
     expect(screen.getAllByText("Select a provider for comparable throughput.")).toHaveLength(1)
-    expect(screen.getAllByText(/TPS Select provider/)).toHaveLength(2)
   })
 })

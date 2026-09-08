@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it } from "vitest"
 import type { AccountingSummary } from "@/types/api"
@@ -22,7 +22,7 @@ const accounting: AccountingSummary = {
 afterEach(cleanup)
 
 describe("Canonical token composition", () => {
-  it("expands within the token surface and qualifies mixed coverage and quality separately from Cost", async () => {
+  it("expands natively and qualifies mixed coverage and quality separately from Cost", async () => {
     const user = userEvent.setup()
     render(<CanonicalTokenComposition accounting={accounting} costStatus="available" />)
     const summary = screen.getByText("Token breakdown").closest("summary")!
@@ -33,19 +33,41 @@ describe("Canonical token composition", () => {
     expect(screen.getByText(/complete 1 · inconsistent 1 · unclassified 1/)).toBeInTheDocument()
     expect(screen.getByText(/Canonical facts absent 7/)).toBeInTheDocument()
     expect(screen.getByText(/Local estimate \(available\)/)).toBeInTheDocument()
-    expect(screen.getByText("Canonical total").nextElementSibling).toHaveTextContent("155")
-    expect(screen.getByText("Canonical input total").nextElementSibling).toHaveTextContent("100")
-    expect(screen.getByText("Canonical output total").nextElementSibling).toHaveTextContent("50")
-    expect(screen.getByText("Input = uncached + cache read + cache write; output = non-reasoning + reasoning.")).toBeInTheDocument()
+    expect(screen.getByText("Total tokens").nextElementSibling).toHaveTextContent("155")
+    const input = within(screen.getByRole("region", { name: "Input composition" }))
+    const output = within(screen.getByRole("region", { name: "Output composition" }))
+    expect(input.getByText("100 tokens")).toBeInTheDocument()
+    expect(output.getByText("50 tokens")).toBeInTheDocument()
+    expect(input.getByText("Cache read").nextElementSibling).toHaveTextContent("20 · 20.0%")
+    expect(output.getByText("Reasoning").nextElementSibling).toHaveTextContent("10 · 20.0%")
+    expect(screen.getByText("Unclassified tokens").nextElementSibling).toHaveTextContent("5")
+    expect(screen.getByText(/Input = uncached \+ cache read \+ cache write; output = non-reasoning \+ reasoning\./)).toHaveTextContent("Total = input + output + unclassified")
   })
 
   it("keeps canonical-absent or empty windows unavailable instead of displaying zero canonical totals", () => {
     const unavailable = { ...accounting, valid_attempts: 0, coverage_pct: 0, valid_quality: { complete: 0, inconsistent: 0, unclassified: 0 } }
     render(<CanonicalTokenComposition accounting={unavailable} costStatus="partial" />)
-    expect(screen.getByText(/Canonical totals unavailable/)).toBeInTheDocument()
-    expect(screen.queryByText("Canonical total")).not.toBeInTheDocument()
+    expect(screen.getByText(/Token totals unavailable/)).toBeInTheDocument()
+    expect(screen.queryByText("Total tokens")).not.toBeInTheDocument()
     expect(getAccountingCaption(unavailable)).toBe("Canonical tokens unavailable")
     expect(getAccountingCaption({ ...unavailable, total_attempts: 0, coverage_pct: null })).toBe("No attempts")
+  })
+
+  it("keeps an observed zero input unavailable for percentages while output remains independently scaled", async () => {
+    render(<CanonicalTokenComposition accounting={{
+      ...accounting,
+      composition: {
+        ...accounting.composition,
+        total_tokens: 55,
+        input: { total_tokens: 0, uncached_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
+      },
+    }} costStatus="partial" />)
+    await userEvent.click(screen.getByText("Token breakdown"))
+    const input = screen.getByRole("region", { name: "Input composition" })
+    expect(input).toHaveTextContent("0 tokens")
+    expect(input).not.toHaveTextContent("%")
+    expect(screen.getByRole("region", { name: "Output composition" })).toHaveTextContent("20.0%")
+    expect(screen.getByText("Total tokens").nextElementSibling).toHaveTextContent("55")
   })
 
   it("does not promote valid inconsistent quality or double-add the reasoning and cache subsets", () => {

@@ -2,7 +2,7 @@ import { Link } from "@tanstack/react-router"
 import { ArrowUpRight } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCompact } from "@/lib/format"
 import type { UsageFailureBreakdown, UsageFailureDistribution } from "@/types/api"
@@ -34,6 +34,7 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
       <CardHeader className="flex flex-col items-start justify-between gap-3 sm:flex-row">
         <div>
           <CardTitle>Failure concentration</CardTitle>
+          <CardDescription>Share of failed attempts · each dimension is independent</CardDescription>
         </div>
         {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
       </CardHeader>
@@ -55,7 +56,7 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
               <span className="font-serif text-2xl font-semibold">{formatCompact(data.total_failures)}</span>
               <span className="text-xs text-muted-foreground">failed attempts</span>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
               {sections.map((section) => (
                 <FailureBreakdownSection
                   key={section.field}
@@ -64,6 +65,7 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
                   selectionKey={section.key}
                   provider={provider}
                   windowEnd={data.window_end}
+                  totalFailures={data.total_failures}
                 />
               ))}
             </div>
@@ -80,21 +82,26 @@ function FailureBreakdownSection({
   selectionKey,
   provider,
   windowEnd,
+  totalFailures,
 }: {
   title: string
   breakdown: UsageFailureBreakdown
   selectionKey: BreakdownKey
   provider: string
   windowEnd: string
+  totalFailures: number
 }) {
   const [expanded, setExpanded] = useState(false)
   const visibleItems = expanded ? breakdown.items : breakdown.items.slice(0, 4)
-  const hiddenAttempts = breakdown.other_count + breakdown.items.slice(visibleItems.length).reduce((total, item) => total + item.count, 0)
+  const hiddenItems = breakdown.items.slice(visibleItems.length)
+  const hiddenAttempts = hiddenItems.reduce((total, item) => total + item.count, 0)
   return (
     <section className="min-w-0" aria-label={title}>
       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
       <div className="space-y-1.5">
         {visibleItems.map((item) => {
+          const share = item.count / totalFailures * 100
+          const shareLabel = share > 0 && share < 0.1 ? "<0.1%" : `${share.toFixed(1)}%`
           const search = {
             provider,
             model: "",
@@ -113,25 +120,32 @@ function FailureBreakdownSection({
               to="/requests"
               search={search}
               aria-label={`Inspect ${item.label} failures`}
-              className="flex min-w-0 items-center justify-between gap-2 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
+              title={`${item.label}: ${item.count.toLocaleString("en")} of ${totalFailures.toLocaleString("en")} failed attempts`}
+              className="block min-w-0 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
             >
-              <span className="truncate">{item.label}</span>
-              <span className="flex shrink-0 items-center gap-1 font-medium">
-                {formatCompact(item.count)}
-                <ArrowUpRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+              <span className="flex items-start justify-between gap-2">
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">{item.label}</span>
+                <span className="flex shrink-0 items-center gap-1 font-medium tabular-nums">
+                  {formatCompact(item.count)}
+                  <span className="text-muted-foreground">· {shareLabel}</span>
+                  <ArrowUpRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                </span>
+              </span>
+              <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                <span className="block h-full rounded-full bg-terracotta-500/75" style={{ width: `${share}%` }} />
               </span>
             </Link>
           )
         })}
-        {expanded && breakdown.other_count > 0 ? (
+        {breakdown.other_count > 0 ? (
           <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-xs text-muted-foreground">
             <span>Other or unavailable</span>
             <span>{formatCompact(breakdown.other_count)}</span>
           </div>
         ) : null}
-        {!expanded && hiddenAttempts > 0 ? (
+        {!expanded && hiddenItems.length > 0 ? (
           <Button type="button" variant="ghost" size="sm" className="h-auto w-full justify-between px-2 py-1.5 text-xs text-muted-foreground" onClick={() => setExpanded(true)}>
-            <span>Show lower ranks</span>
+            <span>Show {hiddenItems.length} more</span>
             <span>{formatCompact(hiddenAttempts)} attempts</span>
           </Button>
         ) : null}
