@@ -25,6 +25,11 @@ interface DashboardAttentionProps {
   modelMappingsData?: UsageModelMappingDistribution
   isModelMappingsLoading: boolean
   modelMappingsError: unknown
+  attemptPerformanceProvider: string
+  attemptPerformanceProviders: string[]
+  onSelectPerformanceProvider: (provider: string) => void
+  performanceProvidersError: unknown
+  onRetryPerformanceProviders: () => void
   attemptPerformanceData?: UsageAttemptPerformance
   isAttemptPerformanceLoading: boolean
   attemptPerformanceError: unknown
@@ -49,6 +54,11 @@ export function DashboardAttention({
   modelMappingsData,
   isModelMappingsLoading,
   modelMappingsError,
+  attemptPerformanceProvider,
+  attemptPerformanceProviders,
+  onSelectPerformanceProvider,
+  performanceProvidersError,
+  onRetryPerformanceProviders,
   attemptPerformanceData,
   isAttemptPerformanceLoading,
   attemptPerformanceError,
@@ -76,7 +86,11 @@ export function DashboardAttention({
       <SectionDivider icon={Pin} label="Performance & health" />
 
       <AttemptPerformance
-        provider={requestEvidenceProvider}
+        provider={attemptPerformanceProvider}
+        providers={attemptPerformanceProviders}
+        providersError={performanceProvidersError}
+        onRetryProviders={onRetryPerformanceProviders}
+        onSelectProvider={onSelectPerformanceProvider}
         data={attemptPerformanceData}
         isLoading={isAttemptPerformanceLoading}
         error={attemptPerformanceError}

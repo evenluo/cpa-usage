@@ -44,6 +44,7 @@ for (const theme of ["light", "dark"]) {
 
     const costCard = page.locator(".rounded-xl").filter({ has: page.getByTestId("kpi-value-cost") })
     await expect(costCard).toBeVisible()
+    await page.evaluate(() => document.fonts.ready)
     const collapsedKpiBounds = await costCard.boundingBox()
     await page.getByText("Token breakdown", { exact: true }).click()
     await expect(page.getByRole("region", { name: "Input composition" })).toBeVisible()
@@ -114,7 +115,8 @@ for (const theme of ["light", "dark"]) {
     await expect(breakdown.getByRole("link")).toHaveCount(0)
     await breakdown.getByRole("button", { name: "Output TPS", exact: true }).click()
     await expect(breakdown.getByRole("img")).toHaveCount(0)
-    await expect(breakdown.getByText("Select a provider to compare output speed.")).toBeVisible()
+    await expect(breakdown.getByRole("combobox", { name: "Performance provider" })).not.toHaveValue("")
+    await expect(breakdown.getByText("No valid samples").first()).toBeVisible()
     expect(requests.filter((request) => request.path === "/usage/performance")).toHaveLength(performanceRequests)
     await breakdown.getByRole("button", { name: "Successful latency", exact: true }).click()
     await breakdown.screenshot({ path: testInfo.outputPath(`performance-${theme}.png`) })

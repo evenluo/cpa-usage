@@ -61,6 +61,7 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await page.getByRole("link", { name: "Inspect successful attempts at or above p95 latency" }).click()
   await expectEvidenceSelection(page, requests, {
     windowEnd: "2026-09-07T12:00:00.123456789Z",
+    provider: "OpenAI",
     minLatencyMS: "9000",
     result: "success",
   })

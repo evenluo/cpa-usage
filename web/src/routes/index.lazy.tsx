@@ -135,6 +135,11 @@ function DashboardPage() {
         modelMappingsData={dashboard.modelMappingsData}
         isModelMappingsLoading={dashboard.isModelMappingsLoading}
         modelMappingsError={dashboard.modelMappingsError}
+        attemptPerformanceProvider={dashboard.attemptPerformanceProvider}
+        attemptPerformanceProviders={dashboard.attemptPerformanceProviders}
+        onSelectPerformanceProvider={dashboard.setAttemptPerformanceProvider}
+        performanceProvidersError={dashboard.performanceProvidersError}
+        onRetryPerformanceProviders={dashboard.retryPerformanceProviders}
         attemptPerformanceData={dashboard.attemptPerformanceData}
         isAttemptPerformanceLoading={dashboard.isAttemptPerformanceLoading}
         attemptPerformanceError={dashboard.attemptPerformanceError}

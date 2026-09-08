@@ -7,6 +7,7 @@ describe("Usage Intelligence load plan", () => {
       range: "30d",
       granularity: "day",
       provider: "OpenAI",
+      attemptPerformanceProvider: "Anthropic",
     })
 
     expect(plan.selectedWindow.analytics).toEqual({
@@ -30,7 +31,7 @@ describe("Usage Intelligence load plan", () => {
     })
     expect(plan.fixedWindow.failureDistribution).toEqual({ range: "24h", provider: "OpenAI" })
     expect(plan.fixedWindow.modelMappings).toEqual({ range: "24h", provider: "OpenAI" })
-    expect(plan.fixedWindow.attemptPerformance).toEqual({ range: "24h", provider: "OpenAI" })
+    expect(plan.fixedWindow.attemptPerformance).toEqual({ range: "24h", provider: "Anthropic" })
     expect(plan.fixedWindow.liveCapacity).toEqual({
       provider: "OpenAI",
     })

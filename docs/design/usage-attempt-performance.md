@@ -48,7 +48,9 @@ A successful or failed latency p95 may open Request Evidence with the same provi
 
 Performance is the first comparison in the fixed 24-hour diagnostic section, after selected-window consumption analysis. The chart is visible by default and initially compares actual models. Metric controls switch successful latency, generating/streaming TTFT and Output TPS; dimension controls switch actual models, providers and accounts locally without another fetch. All visible rows use an aligned linear scale, with p50 and p95 markers. Partial or unavailable sample coverage stays visible; complete coverage and exact sample counts are available through the clickable attempt count or Samples details. These are the most-used returned groups, not a slowest-model ranking.
 
-Failed latency remains a separate collapsed comparison with its own aggregate and matching evidence links. Unknown-execution TTFT remains separately qualified. Without a selected provider, Output TPS cannot display a pooled aggregate or a cross-provider comparison axis; provider readings remain individually qualified numeric observations.
+The card owns a Provider selector independent of global dashboard filters. Its full option list comes from unfiltered fixed-24h analytics provider options, not the bounded performance breakdown. The first selection uses request count descending and provider name ascending; it remains stable after initialization, including when refreshes reorder options or an inactive selection disappears from the returned list. A provider change fetches a separate scoped performance result and shows loading/error until that result is available; previous-provider data is not relabelled. With no observed provider, the selector is disabled and the card shows an explicit empty state.
+
+Failed latency remains a separate collapsed comparison with its own aggregate and matching evidence links. Unknown-execution TTFT remains separately qualified. Every populated dashboard performance card has a selected provider, including Output TPS. Cross-provider pooled TPS and shared comparison axes remain prohibited.
 
 ## Selection and failure policy
 

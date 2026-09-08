@@ -8,10 +8,11 @@ export function buildAttemptPerformancePath(provider: string): string {
   return `/usage/performance?${params.toString()}`
 }
 
-export function useAttemptPerformance(provider: string) {
+export function useAttemptPerformance(provider: string, enabled = true) {
   return useQuery({
     queryKey: ["usage", "performance", "24h", provider],
     queryFn: () => apiFetch<UsageAttemptPerformance>(buildAttemptPerformancePath(provider)),
+    enabled,
     staleTime: 30_000,
   })
 }

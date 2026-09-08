@@ -5,6 +5,7 @@ import {
   useUsageDashboard,
   writeStoredTimeRange,
 } from "./use-usage-dashboard"
+import analyticsFixture from "@/test/contracts/analytics_summary.json"
 import { DEFAULT_TIME_RANGE, SELECTED_TIME_RANGE_STORAGE_KEY } from "./view-model"
 
 vi.mock("@/hooks/useAnalytics", () => ({
@@ -138,11 +139,12 @@ describe("useUsageDashboard", () => {
 
     const analyticsCalls = vi.mocked(useAnalyticsCore).mock.calls
     const eventsCalls = vi.mocked(useEvents).mock.calls
-    expect(analyticsCalls[0].slice(0, 3)).toEqual(["7d", "hour", ""])
+    expect(analyticsCalls[0].slice(0, 3)).toEqual(["24h", "hour", ""])
+    expect(analyticsCalls[1].slice(0, 3)).toEqual(["7d", "hour", ""])
     expect(eventsCalls[0].slice(0, 4)).toEqual(["24h", 1, "", 1])
     expect(useFailureDistribution).toHaveBeenCalledWith("")
     expect(useModelMappings).toHaveBeenCalledWith("")
-    expect(useAttemptPerformance).toHaveBeenCalledWith("")
+    expect(useAttemptPerformance).toHaveBeenCalledWith("", false)
   })
 
   it("refreshDashboard refetches the core analytics and fixed diagnostic queries", async () => {
@@ -174,11 +176,11 @@ describe("useUsageDashboard", () => {
     })
 
     await vi.waitFor(() => {
-      expect(refetchCore).toHaveBeenCalledTimes(1)
+      expect(refetchCore).toHaveBeenCalledTimes(2)
       expect(refetchEvidence).toHaveBeenCalledTimes(1)
       expect(refetchFailures).toHaveBeenCalledTimes(1)
       expect(refetchMappings).toHaveBeenCalledTimes(1)
-      expect(refetchPerformance).toHaveBeenCalledTimes(1)
+      expect(refetchPerformance).not.toHaveBeenCalled()
     })
   })
 
@@ -209,12 +211,78 @@ describe("useUsageDashboard", () => {
       result.current.retryAttemptPerformance()
     })
 
-    expect(retryCore).toHaveBeenCalledTimes(1)
+    expect(retryCore).toHaveBeenCalledTimes(2)
     expect(retryHeatmap).toHaveBeenCalledTimes(1)
     expect(retryEvidence).toHaveBeenCalledTimes(1)
     expect(retryHealth).toHaveBeenCalledTimes(1)
     expect(retryFailures).toHaveBeenCalledTimes(1)
     expect(retryMappings).toHaveBeenCalledTimes(1)
-    expect(retryPerformance).toHaveBeenCalledTimes(1)
+    expect(retryPerformance).not.toHaveBeenCalled()
+  })
+})
+
+
+describe("performance provider selection", () => {
+  afterEach(() => vi.clearAllMocks())
+
+  it("defaults from the complete 24h catalog once and isolates manual selection", () => {
+    const options = Array.from({ length: 9 }, (_, index) => ({ provider: `provider-${index}`, request_count: index + 1 }))
+    let catalog: object | undefined
+    vi.mocked(useAnalyticsCore).mockImplementation(() => ({ data: catalog, isLoading: !catalog, error: null, refetch: vi.fn() }) as never)
+    vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: false, error: null, refetch: vi.fn() } as never)
+    const { result, rerender } = renderHook(() => useUsageDashboard())
+    expect(useAttemptPerformance).toHaveBeenLastCalledWith("", false)
+    catalog = { ...analyticsFixture, provider_options: options }
+    rerender()
+    expect(result.current.attemptPerformanceProvider).toBe("provider-8")
+    expect(result.current.attemptPerformanceProviders).toHaveLength(9)
+    expect(useAttemptPerformance).toHaveBeenLastCalledWith("provider-8", true)
+    catalog = { ...analyticsFixture, provider_options: [{ provider: "changed-leader", request_count: 100 }] }
+    rerender()
+    expect(result.current.attemptPerformanceProvider).toBe("provider-8")
+    expect(result.current.attemptPerformanceProviders).toContain("provider-8")
+    act(() => {
+      result.current.setAttemptPerformanceProvider("changed-leader")
+      result.current.setProvider("global-provider")
+      result.current.selectRange("30d")
+    })
+    expect(result.current.attemptPerformanceProvider).toBe("changed-leader")
+    expect(useAttemptPerformance).toHaveBeenLastCalledWith("changed-leader", true)
+    expect(result.current.loadPlan.fixedWindow.attemptPerformance.provider).toBe("changed-leader")
+    expect(result.current.loadPlan.fixedWindow.requestHealth.provider).toBe("global-provider")
+  })
+
+  it("separates provider-list refresh errors from scoped result errors and retry owners", () => {
+    const retryCatalog = vi.fn()
+    const retryScoped = vi.fn()
+    const catalogError = new Error("catalog refresh failed")
+    vi.mocked(useAnalyticsCore).mockReturnValue({ data: { ...analyticsFixture, provider_options: [{ provider: "a", request_count: 1 }] }, isLoading: false, error: catalogError, refetch: retryCatalog } as never)
+    vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: true, error: null, refetch: retryScoped } as never)
+    const { result, rerender } = renderHook(() => useUsageDashboard())
+    expect(result.current.performanceProvidersError).toBe(catalogError)
+    expect(result.current.attemptPerformanceError).toBeNull()
+    expect(result.current.isAttemptPerformanceLoading).toBe(true)
+    act(() => result.current.retryAttemptPerformance())
+    expect(retryScoped).toHaveBeenCalledTimes(1)
+    expect(retryCatalog).not.toHaveBeenCalled()
+    act(() => result.current.retryPerformanceProviders())
+    expect(retryCatalog).toHaveBeenCalledTimes(1)
+    const scopedError = new Error("selected provider failed")
+    vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: false, error: scopedError, refetch: retryScoped } as never)
+    rerender()
+    expect(result.current.attemptPerformanceError).toBe(scopedError)
+  })
+
+  it("breaks default request-count ties by provider and exposes discovery failures for retry", () => {
+    const retry = vi.fn()
+    vi.mocked(useAnalyticsCore).mockReturnValue({ data: undefined, isLoading: false, error: new Error("catalog unavailable"), refetch: retry } as never)
+    const { result, rerender } = renderHook(() => useUsageDashboard())
+    expect(result.current.attemptPerformanceProvider).toBe("")
+    expect(result.current.attemptPerformanceError).toBeTruthy()
+    act(() => result.current.retryAttemptPerformance())
+    expect(retry).toHaveBeenCalledTimes(1)
+    vi.mocked(useAnalyticsCore).mockReturnValue({ data: { ...analyticsFixture, provider_options: [{ provider: "z", request_count: 10 }, { provider: "a", request_count: 10 }] }, isLoading: false, error: null, refetch: retry } as never)
+    rerender()
+    expect(result.current.attemptPerformanceProvider).toBe("a")
   })
 })

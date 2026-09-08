@@ -10,6 +10,10 @@ import type { UsageAttemptPerformance, UsageAttemptPerformanceSummary, UsagePerc
 
 interface AttemptPerformanceProps {
   provider: string
+  providers: string[]
+  providersError?: unknown
+  onRetryProviders: () => void
+  onSelectProvider: (provider: string) => void
   data: UsageAttemptPerformance | undefined
   isLoading: boolean
   error: unknown
@@ -32,7 +36,7 @@ const comparisonDimensions: Array<{ value: ComparisonDimension; label: string }>
   { value: "account", label: "Accounts" },
 ]
 
-export function AttemptPerformance({ provider, data, isLoading, error, onRetry }: AttemptPerformanceProps) {
+export function AttemptPerformance({ provider, providers, providersError, onRetryProviders, onSelectProvider, data, isLoading, error, onRetry }: AttemptPerformanceProps) {
   const hasCompleteData = data !== undefined
   const [metric, setMetric] = useState<PrimaryMetric>("successful-latency")
   const [dimension, setDimension] = useState<ComparisonDimension>("model")
@@ -43,6 +47,22 @@ export function AttemptPerformance({ provider, data, isLoading, error, onRetry }
         <div>
           <CardTitle>Attempt performance</CardTitle>
           <p className="mt-1 text-xs text-muted-foreground">Last 24h</p>
+        </div>
+        <div className="w-full sm:w-48">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Provider
+            <select
+              aria-label="Performance provider"
+              value={provider}
+              onChange={(event) => onSelectProvider(event.target.value)}
+              disabled={providers.length === 0}
+              className="min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              {providers.length === 0 ? <option value="">{isLoading ? "Loading providers…" : error ? "Providers unavailable" : "No providers"}</option> : null}
+              {providers.map((value) => <option key={value} value={value}>{value}</option>)}
+            </select>
+          </label>
+          {providersError && providers.length > 0 ? <div className="mt-1 text-xs text-red-500">Provider list refresh failed. <button type="button" onClick={onRetryProviders} className="underline">Retry provider list</button></div> : null}
         </div>
         {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
       </CardHeader>
@@ -55,7 +75,7 @@ export function AttemptPerformance({ provider, data, isLoading, error, onRetry }
             <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry attempt performance</Button>
           </div>
         ) : !data || data.total_attempts === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">No attempts in the last 24 hours</div>
+          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">{provider ? "No attempts for this provider in the last 24 hours" : "No providers with attempts in the last 24 hours"}</div>
         ) : (
           <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-border pb-4">

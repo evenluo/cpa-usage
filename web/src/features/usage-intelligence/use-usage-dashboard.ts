@@ -45,6 +45,11 @@ export interface UseUsageDashboardResult {
   modelMappingsData?: UsageModelMappingDistribution
   isModelMappingsLoading: boolean
   modelMappingsError: unknown
+  attemptPerformanceProvider: string
+  attemptPerformanceProviders: string[]
+  setAttemptPerformanceProvider: (provider: string) => void
+  performanceProvidersError: unknown
+  retryPerformanceProviders: () => void
   attemptPerformanceData?: UsageAttemptPerformance
   isAttemptPerformanceLoading: boolean
   attemptPerformanceError: unknown
@@ -86,6 +91,7 @@ export function useUsageDashboard(): UseUsageDashboardResult {
   const [range, setRange] = useState<TimeRange>(readStoredTimeRange)
   const [granularity, setGranularity] = useState<TimeGranularity | null>(null)
   const [provider, setProvider] = useState("")
+  const [selectedPerformanceProvider, setAttemptPerformanceProvider] = useState<string | null>(null)
   const [trendView, setTrendView] = useState<TrendView>("cost-token")
   const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("api-key")
 
@@ -98,10 +104,24 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     setGranularity(null)
   }, [])
 
+  const performanceOptions = useAnalyticsCore("24h", "hour", "", false)
+  const attemptPerformanceProviders = [...(performanceOptions.data?.provider_options ?? [])]
+    .filter((option) => option.provider !== "")
+    .sort((a, b) => b.request_count - a.request_count || a.provider.localeCompare(b.provider))
+    .map((option) => option.provider)
+  const attemptPerformanceProvider = selectedPerformanceProvider ?? attemptPerformanceProviders[0] ?? ""
+  if (selectedPerformanceProvider === null && attemptPerformanceProvider) {
+    setAttemptPerformanceProvider(attemptPerformanceProvider)
+  }
+  // Keep an explicit choice available even when its last-24h activity disappears.
+  if (attemptPerformanceProvider && !attemptPerformanceProviders.includes(attemptPerformanceProvider)) {
+    attemptPerformanceProviders.push(attemptPerformanceProvider)
+  }
+
   const effectiveGranularity = getEffectiveGranularity(range, granularity)
   const loadPlan = useMemo(
-    () => buildUsageIntelligenceLoadPlan({ range, granularity: effectiveGranularity, provider }),
-    [range, effectiveGranularity, provider],
+    () => buildUsageIntelligenceLoadPlan({ range, granularity: effectiveGranularity, provider, attemptPerformanceProvider }),
+    [range, effectiveGranularity, provider, attemptPerformanceProvider],
   )
   const selectedAnalytics = loadPlan.selectedWindow.analytics
   const fixedWindow = loadPlan.fixedWindow
@@ -151,14 +171,23 @@ export function useUsageDashboard(): UseUsageDashboardResult {
   } = useModelMappings(fixedWindow.modelMappings.provider)
   const {
     data: attemptPerformanceData,
-    isLoading: isAttemptPerformanceLoading,
+    isLoading: isScopedPerformanceLoading,
     refetch: refetchAttemptPerformance,
-    error: attemptPerformanceError,
-  } = useAttemptPerformance(fixedWindow.attemptPerformance.provider)
+    error: scopedPerformanceError,
+  } = useAttemptPerformance(fixedWindow.attemptPerformance.provider, Boolean(attemptPerformanceProvider))
+
+  const isAttemptPerformanceLoading = attemptPerformanceProvider ? isScopedPerformanceLoading : performanceOptions.isLoading
+  const attemptPerformanceError = attemptPerformanceProvider ? scopedPerformanceError : performanceOptions.error
+  const refetchPerformanceOptions = performanceOptions.refetch
 
   const refreshDashboard = useCallback(() => {
-    void Promise.allSettled([refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution(), refetchModelMappings(), refetchAttemptPerformance()])
-  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappings, refetchAttemptPerformance])
+    const queries: Promise<unknown>[] = [refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution(), refetchModelMappings()]
+    if (selectedAnalytics.range !== "24h" || selectedAnalytics.granularity !== "hour" || selectedAnalytics.provider) {
+      queries.push(refetchPerformanceOptions())
+    }
+    if (attemptPerformanceProvider) queries.push(refetchAttemptPerformance())
+    void Promise.allSettled(queries)
+  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappings, refetchAttemptPerformance, refetchPerformanceOptions, attemptPerformanceProvider, selectedAnalytics.range, selectedAnalytics.granularity, selectedAnalytics.provider])
   useVisibilityRefresh(refreshDashboard)
 
   const viewModel = useMemo(
@@ -217,7 +246,12 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     modelMappingsData,
     isModelMappingsLoading,
     modelMappingsError,
-    attemptPerformanceData,
+    attemptPerformanceProvider,
+    attemptPerformanceProviders,
+    setAttemptPerformanceProvider,
+    performanceProvidersError: performanceOptions.error,
+    retryPerformanceProviders: () => { void refetchPerformanceOptions() },
+    attemptPerformanceData: attemptPerformanceProvider ? attemptPerformanceData : undefined,
     isAttemptPerformanceLoading,
     attemptPerformanceError,
     retryCore: () => {
@@ -239,7 +273,8 @@ export function useUsageDashboard(): UseUsageDashboardResult {
       void refetchModelMappings()
     },
     retryAttemptPerformance: () => {
-      void refetchAttemptPerformance()
+      if (attemptPerformanceProvider) void refetchAttemptPerformance()
+      else void refetchPerformanceOptions()
     },
     refreshDashboard,
   }

@@ -42,8 +42,18 @@ function performance(): UsageAttemptPerformance {
 }
 
 describe("AttemptPerformance", () => {
+  it("keeps the provider selector accessible while loading or showing an error", () => {
+    const onSelect = vi.fn()
+    const { rerender } = render(<AttemptPerformance onRetryProviders={vi.fn()} provider="claude" providers={["claude", "openai"]} onSelectProvider={onSelect} data={undefined} isLoading error={null} onRetry={vi.fn()} />)
+    fireEvent.change(screen.getByRole("combobox", { name: "Performance provider" }), { target: { value: "openai" } })
+    expect(onSelect).toHaveBeenCalledWith("openai")
+    rerender(<AttemptPerformance onRetryProviders={vi.fn()} provider="openai" providers={["claude", "openai"]} onSelectProvider={onSelect} data={undefined} isLoading={false} error={new Error("failed")} onRetry={vi.fn()} />)
+    expect(screen.getByRole("combobox", { name: "Performance provider" })).toHaveValue("openai")
+    expect(screen.getByText("Failed to load attempt performance")).toBeVisible()
+  })
+
   it("shows an actual-model percentile chart by default and preserves the exact slow-evidence window", () => {
-    render(<AttemptPerformance provider="claude" data={performance()} isLoading={false} error={null} onRetry={vi.fn()} />)
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={performance()} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     expect(screen.getByRole("heading", { name: "Attempt performance" })).toBeInTheDocument()
     expect(screen.getByText("Last 24h")).toBeInTheDocument()
@@ -71,7 +81,7 @@ describe("AttemptPerformance", () => {
     const data = performance()
     data.models.items[0] = { ...data.models.items[0], ttft_ms: { ...data.models.items[0].ttft_ms, generating_streaming: metric(10, 0, null, null) } }
     data.accounts.items[0] = { ...data.accounts.items[0], output_tps: { generating_streaming: metric(10, 7, 42, 42) } }
-    render(<AttemptPerformance provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     const metrics = screen.getByLabelText("Performance metric")
     const dimensions = screen.getByLabelText("Compare by")
@@ -102,14 +112,14 @@ describe("AttemptPerformance", () => {
       { ...data.models.items[0], value: "partial", label: "Partial model", latency_ms: { ...data.latency_ms, successful: metric(1000, 999, 500, 9000) } },
       { ...data.models.items[0], value: "missing", label: "Missing model", latency_ms: { ...data.latency_ms, successful: metric(0, 0, null, null) } },
     ]
-    render(<AttemptPerformance provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
     const models = screen.getByRole("region", { name: "Actual models" })
     expect(within(models).getByText("<100% coverage", { exact: true })).toBeVisible()
     expect(within(models).getByText("Coverage unavailable", { exact: true })).toBeVisible()
   })
 
   it("keeps failed latency separate with aggregate and dimension drill-down links", () => {
-    render(<AttemptPerformance provider="claude" data={performance()} isLoading={false} error={null} onRetry={vi.fn()} />)
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={performance()} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     const failedSummary = screen.getByText(/Failed attempt latency/)
     fireEvent.click(failedSummary)
@@ -123,7 +133,7 @@ describe("AttemptPerformance", () => {
   it("keeps unscoped provider throughput numeric while requiring a provider for model and account axes", () => {
     const data = performance()
     data.providers.items[0].output_tps.generating_streaming = metric(10, 5, 42, 42)
-    render(<AttemptPerformance provider="" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     fireEvent.click(within(screen.getByLabelText("Performance metric")).getByRole("button", { name: "Output TPS" }))
     expect(screen.getByLabelText("Overall selected metric")).not.toBeVisible()
@@ -142,7 +152,7 @@ describe("AttemptPerformance", () => {
   it("plots observed zero percentiles instead of treating them as missing", () => {
     const data = performance()
     data.models.items[0] = { ...data.models.items[0], latency_ms: { ...data.models.items[0].latency_ms, successful: metric(18, 18, 0, 0) } }
-    render(<AttemptPerformance provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     const chart = within(screen.getByRole("region", { name: "Actual models" })).getByRole("img", { name: "sonnet: p50 0s, p95 0s" })
     expect(chart.querySelector('[data-percentile="p50"]')).toHaveStyle({ left: "0%" })
@@ -151,16 +161,16 @@ describe("AttemptPerformance", () => {
 
   it("keeps unavailable, empty, initial error, and stale retry states explicit", () => {
     const retry = vi.fn()
-    const { rerender } = render(<AttemptPerformance provider="" data={undefined} isLoading={false} error={new Error("offline")} onRetry={retry} />)
+    const { rerender } = render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={undefined} isLoading={false} error={new Error("offline")} onRetry={retry} />)
     fireEvent.click(screen.getByRole("button", { name: "Retry attempt performance" }))
     expect(retry).toHaveBeenCalledTimes(1)
 
     const empty = performance()
     empty.total_attempts = 0
-    rerender(<AttemptPerformance provider="" data={empty} isLoading={false} error={null} onRetry={retry} />)
-    expect(screen.getByText("No attempts in the last 24 hours")).toBeInTheDocument()
+    rerender(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={empty} isLoading={false} error={null} onRetry={retry} />)
+    expect(screen.getByText("No providers with attempts in the last 24 hours")).toBeInTheDocument()
 
-    rerender(<AttemptPerformance provider="" data={performance()} isLoading={false} error={new Error("refresh")} onRetry={retry} />)
+    rerender(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={performance()} isLoading={false} error={new Error("refresh")} onRetry={retry} />)
     expect(screen.getByRole("button", { name: "Retry refresh" })).toBeInTheDocument()
   })
 })

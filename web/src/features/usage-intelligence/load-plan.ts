@@ -50,6 +50,7 @@ export function buildUsageIntelligenceLoadPlan(input: {
   range: TimeRange
   granularity: TimeGranularity
   provider: string
+  attemptPerformanceProvider: string
 }): UsageIntelligenceLoadPlan {
   return {
     selectedWindow: {
@@ -84,7 +85,7 @@ export function buildUsageIntelligenceLoadPlan(input: {
       },
       attemptPerformance: {
         range: FIXED_OPERATIONAL_WINDOW,
-        provider: input.provider,
+        provider: input.attemptPerformanceProvider,
       },
       liveCapacity: {
         provider: input.provider,
