@@ -347,7 +347,7 @@ func TestInsertUsageEventsPersistsModelAlias(t *testing.T) {
 	}
 }
 
-func TestCleanupStorageCleansRedisInboxAndVacuums(t *testing.T) {
+func TestCleanupStorageCleansRedisInboxAndSkipsVacuumWithoutFreePages(t *testing.T) {
 	previousLocal := time.Local
 	location, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
@@ -376,6 +376,9 @@ func TestCleanupStorageCleansRedisInboxAndVacuums(t *testing.T) {
 	if result.RedisInbox.ProcessedDeleted != 1 {
 		t.Fatalf("unexpected cleanup result: %+v", result)
 	}
+	if result.Vacuum.Vacuumed || result.Vacuum.ReclaimablePages != 0 {
+		t.Fatalf("expected no full database rewrite without reclaimable pages, got %+v", result.Vacuum)
+	}
 
 	var inboxRemaining []entities.RedisUsageInbox
 	if err := db.Order("id asc").Find(&inboxRemaining).Error; err != nil {
@@ -383,6 +386,41 @@ func TestCleanupStorageCleansRedisInboxAndVacuums(t *testing.T) {
 	}
 	if len(inboxRemaining) != 1 || inboxRemaining[0].ID != inboxRows[1].ID {
 		t.Fatalf("expected only pending inbox row to remain, got %+v", inboxRemaining)
+	}
+}
+
+func TestCleanupStorageVacuumsReclaimablePages(t *testing.T) {
+	db := openTestDatabase(t)
+	if err := db.Exec("CREATE TABLE vacuum_fixture (payload BLOB)").Error; err != nil {
+		t.Fatalf("create vacuum fixture: %v", err)
+	}
+	if err := db.Exec(`
+		WITH RECURSIVE counter(value) AS (
+			VALUES(1)
+			UNION ALL
+			SELECT value + 1 FROM counter WHERE value < 512
+		)
+		INSERT INTO vacuum_fixture(payload) SELECT zeroblob(4096) FROM counter
+	`).Error; err != nil {
+		t.Fatalf("seed vacuum fixture: %v", err)
+	}
+	if err := db.Exec("DELETE FROM vacuum_fixture").Error; err != nil {
+		t.Fatalf("delete vacuum fixture: %v", err)
+	}
+
+	result, err := CleanupStorage(db, time.Now())
+	if err != nil {
+		t.Fatalf("CleanupStorage returned error: %v", err)
+	}
+	if result.Vacuum.ReclaimablePages == 0 || !result.Vacuum.Vacuumed {
+		t.Fatalf("expected reclaimable pages to trigger vacuum, got %+v", result.Vacuum)
+	}
+	var remainingFreePages int64
+	if err := db.Raw("PRAGMA freelist_count").Scan(&remainingFreePages).Error; err != nil {
+		t.Fatalf("inspect free pages after vacuum: %v", err)
+	}
+	if remainingFreePages != 0 {
+		t.Fatalf("expected vacuum to reclaim all free pages, got %d", remainingFreePages)
 	}
 }
 

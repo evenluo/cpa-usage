@@ -64,7 +64,9 @@ type UsageProvider interface {
 	ListUsageEvents(context.Context, repodto.UsageEventListFilter) (*repodto.UsageEventsPageRecord, error)
 	GetUsageFailureDistribution(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageFailureDistributionRecord, error)
 	GetUsageModelMappings(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageModelMappingDistributionRecord, error)
+	GetUsageModelMappingsSummary(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageModelMappingSummaryRecord, error)
 	GetUsageAttemptPerformance(context.Context, repodto.UsageDiagnosticFilter) (*repodto.UsageAttemptPerformanceRecord, error)
+	ListUsagePerformanceProviders(context.Context, repodto.UsageTimeScope) (*repodto.UsagePerformanceProviderOptionsRecord, error)
 	ListUsageEventFilterOptions(context.Context, repodto.UsageTimeScope) (*repodto.UsageEventFilterOptionsRecord, error)
 	GetUsageAnalysis(context.Context, repodto.UsageTimeScope) ([]repodto.UsageAnalysisAPIStatRecord, []repodto.UsageAnalysisModelStatRecord, error)
 }
@@ -109,8 +111,8 @@ func NewRouter(
 	router.Use(gin.Recovery())
 
 	appGroup := router.Group(basePath)
-	registerHealthRoutes(appGroup)
 	registerMetricsRoute(appGroup, optionalProviders.Metrics)
+	registerHealthRoutes(appGroup)
 
 	apiV1 := appGroup.Group("/api/v1")
 	apiV1.GET("/ping", func(c *gin.Context) {
@@ -134,6 +136,7 @@ func NewRouter(
 	registerUsageEventsRoute(protected, usageProvider, optionalProviders.UsageIdentity, optionalProviders.KeyAlias)
 	registerUsageFailuresRoute(protected, usageProvider, optionalProviders.UsageIdentity)
 	registerUsageModelMappingsRoute(protected, usageProvider)
+	registerUsagePerformanceProvidersRoute(protected, usageProvider)
 	registerUsagePerformanceRoute(protected, usageProvider, optionalProviders.UsageIdentity)
 	registerUsageIdentityRoutes(protected, optionalProviders.UsageIdentity, optionalProviders.KeyAlias, optionalProviders.AccountStatus)
 	registerModelSupportRoute(protected, optionalProviders.ModelSupport)

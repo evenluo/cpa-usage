@@ -133,8 +133,12 @@ function DashboardPage() {
         isFailureDistributionLoading={dashboard.isFailureDistributionLoading}
         failureDistributionError={dashboard.failureDistributionError}
         modelMappingsData={dashboard.modelMappingsData}
-        isModelMappingsLoading={dashboard.isModelMappingsLoading}
-        modelMappingsError={dashboard.modelMappingsError}
+        modelMappingsSummaryData={dashboard.modelMappingsSummaryData}
+        isModelMappingsSummaryLoading={dashboard.isModelMappingsSummaryLoading}
+        modelMappingsSummaryError={dashboard.modelMappingsSummaryError}
+        isModelMappingDetailsLoading={dashboard.isModelMappingDetailsLoading}
+        modelMappingDetailsError={dashboard.modelMappingDetailsError}
+        onModelMappingsExpandedChange={dashboard.setModelMappingsExpanded}
         attemptPerformanceProvider={dashboard.attemptPerformanceProvider}
         attemptPerformanceProviders={dashboard.attemptPerformanceProviders}
         onSelectPerformanceProvider={dashboard.setAttemptPerformanceProvider}
@@ -147,7 +151,8 @@ function DashboardPage() {
         onRetryRequestHealth={dashboard.retryRequestHealth}
         onRetryRequestEvidence={dashboard.retryRequestEvidence}
         onRetryFailureDistribution={dashboard.retryFailureDistribution}
-        onRetryModelMappings={dashboard.retryModelMappings}
+        onRetryModelMappingsSummary={dashboard.retryModelMappingsSummary}
+        onRetryModelMappingDetails={dashboard.retryModelMappingDetails}
         onRetryAttemptPerformance={dashboard.retryAttemptPerformance}
       />
       {/* Supporting operational views keep their own time scopes. */}

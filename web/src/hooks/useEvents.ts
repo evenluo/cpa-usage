@@ -3,8 +3,8 @@ import { apiFetch, apiFetchBlob } from "@/lib/api"
 import { validatePaginatedPage } from "@/lib/pagination"
 import type { UsageDiagnosticSelection, UsageEventsPage } from "@/types/api"
 
-export async function fetchEvents(path: string, page: number, pageSize: number): Promise<UsageEventsPage> {
-  const payload = await apiFetch<UsageEventsPage>(path)
+export async function fetchEvents(path: string, page: number, pageSize: number, signal?: AbortSignal): Promise<UsageEventsPage> {
+  const payload = await apiFetch<UsageEventsPage>(path, { signal })
   validatePaginatedPage<UsageEventsPage, UsageEventsPage["events"][number]>({
     payload,
     expectedPage: page,
@@ -76,8 +76,8 @@ export function useEvents(
 
   return useQuery({
     queryKey: ["events", range, pageSize, provider, page, filters.model || "", filters.modelAlias || "", filters.account || "", filters.endpoint || "", filters.status || "", filters.requestId || "", filters.minLatencyMS || "", filters.windowEnd || "", filters.result || ""],
-    queryFn: () => fetchEvents(path, page, pageSize),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => fetchEvents(path, page, pageSize, signal),
+    staleTime: 60_000,
     refetchInterval: () => {
       if (refetchInterval === false) return false
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {

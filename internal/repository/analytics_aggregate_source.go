@@ -3,6 +3,7 @@ package repository
 import (
 	"fmt"
 
+	"cpa-usage/internal/entities"
 	"cpa-usage/internal/repository/dto"
 	"gorm.io/gorm"
 )
@@ -40,7 +41,10 @@ type analyticsAggregateSource struct {
 	apiKeyIdentityExpr   string
 	accounting           analyticsAccountingAggregateSource
 	bucketExpr           func(bucketByDay bool) string
-	query                func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
+	// baseQuery applies the source's exact time/provider scope without pricing.
+	// Narrow count projections use it to avoid an unrelated pricing join.
+	baseQuery func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
+	query     func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	// identityQuery/apiKeyQuery 在 query 基础上附加身份/别名 join 与非空身份过滤。
 	identityQuery func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB
 	apiKeyQuery   func(db *gorm.DB, scope dto.UsageTimeScope) *gorm.DB
@@ -91,9 +95,12 @@ func analyticsEventsAggregateSource() analyticsAggregateSource {
 		apiKeyIdentityExpr:          analyticsAPIKeyIdentitySQLExpression(),
 		accounting:                  accounting,
 		bucketExpr:                  analyticsBucketSQLExpression,
-		query:                       analyticsEventsWithPricingQuery,
-		identityQuery:               analyticsIdentityEventsWithPricingQuery,
-		apiKeyQuery:                 apiKeyEventsWithPricingQuery,
+		baseQuery: func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
+			return applyAnalyticsQueryFilter(db.Model(&entities.UsageEvent{}), filter)
+		},
+		query:         analyticsEventsWithPricingQuery,
+		identityQuery: analyticsIdentityEventsWithPricingQuery,
+		apiKeyQuery:   apiKeyEventsWithPricingQuery,
 	}
 }
 
@@ -140,9 +147,12 @@ func analyticsRollupsAggregateSource() analyticsAggregateSource {
 		apiKeyIdentityExpr:               analyticsRollupAPIKeyIdentitySQLExpression(),
 		accounting:                       analyticsRollupsAccountingAggregateSource(),
 		bucketExpr:                       analyticsRollupBucketSQLExpression,
-		query:                            analyticsRollupsWithPricingQuery,
-		identityQuery:                    analyticsRollupIdentityWithPricingQuery,
-		apiKeyQuery:                      rollupAPIKeyWithPricingQuery,
+		baseQuery: func(db *gorm.DB, filter dto.AnalyticsFilter) *gorm.DB {
+			return applyAnalyticsRollupQueryFilter(db.Model(&entities.UsageRollupHourly{}), filter)
+		},
+		query:         analyticsRollupsWithPricingQuery,
+		identityQuery: analyticsRollupIdentityWithPricingQuery,
+		apiKeyQuery:   rollupAPIKeyWithPricingQuery,
 	}
 }
 

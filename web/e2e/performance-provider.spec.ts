@@ -8,7 +8,13 @@ for (const theme of ["light", "dark"]) {
     const requests: RecordedAPIRequest[] = []
     const providers = Array.from({ length: 9 }, (_, index) => ({ ...analytics.provider_options[0], provider: `provider-${index}`, request_count: index + 1 }))
     await installMockAPI(page, { onRequest: (request) => requests.push(request) })
-    await page.route(/\/api\/v1\/analytics\/core(?:\?|$)/, (route) => route.fulfill({ json: { ...analytics, provider_options: providers } }))
+    await page.route(/\/api\/v1\/usage\/performance\/providers(?:\?|$)/, (route) => route.fulfill({
+      json: {
+        window_start: analytics.range_start,
+        window_end: analytics.range_end,
+        provider_options: providers,
+      },
+    }))
     let releaseResponse: () => void = () => {}
     const pendingResponse = new Promise<void>((resolve) => { releaseResponse = resolve })
     await page.route(/\/api\/v1\/usage\/performance(?:\?|$)/, async (route) => {
@@ -33,14 +39,14 @@ for (const theme of ["light", "dark"]) {
     await page.screenshot({ animations: "disabled", path: testInfo.outputPath(`provider-menu-${theme}.png`) })
     await page.keyboard.press("Escape")
     await expect(selector).toBeFocused()
-    const globalRequests = requests.filter((request) => request.path !== "/usage/performance").length
+    const globalRequests = requests.filter((request) => !request.path.startsWith("/usage/performance")).length
     await selector.click()
     await page.getByRole("option", { name: "provider-0", exact: true }).click()
     await expect(selector).toHaveText("provider-0")
     await expect(card.getByRole("img", { name: /provider-8-model/ })).toHaveCount(0)
     releaseResponse()
     await expect(card.getByRole("img", { name: /provider-0-model/ })).toBeVisible()
-    expect(requests.filter((request) => request.path !== "/usage/performance")).toHaveLength(globalRequests)
+    expect(requests.filter((request) => !request.path.startsWith("/usage/performance"))).toHaveLength(globalRequests)
     await card.getByRole("button", { name: "Successful latency", exact: true }).click()
     await expect(card.getByRole("link", { name: /Inspect provider-0-model success attempts/ })).toHaveAttribute("href", /provider=provider-0/)
     await card.screenshot({ animations: "disabled", path: testInfo.outputPath(`provider-selector-${theme}.png`) })

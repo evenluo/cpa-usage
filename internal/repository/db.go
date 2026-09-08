@@ -199,7 +199,7 @@ func InsertUsageEvents(db *gorm.DB, events []entities.UsageEvent) (int, int, err
 		if err := tx.Where("event_key IN ?", keys).Find(&affectedEvents).Error; err != nil {
 			return fmt.Errorf("load affected usage events for hourly rollup rebuild: %w", err)
 		}
-		if err := RebuildUsageRollupsForEvents(tx, affectedEvents); err != nil {
+		if err := incrementUsageRollupsForEvents(tx, affectedEvents); err != nil {
 			return err
 		}
 		return nil
@@ -211,17 +211,40 @@ func InsertUsageEvents(db *gorm.DB, events []entities.UsageEvent) (int, int, err
 	return inserted, deduped, nil
 }
 
-// CleanupStorage 是每日维护任务的统一仓储清理入口：先清 Redis inbox，最后执行 VACUUM。
-// VACUUM 必须在删除完成后单独执行，任何一步失败都会停止后续步骤并把已完成部分的结果返回给上层日志。
+// CleanupStorage 是每日维护任务的统一仓储清理入口：先清 Redis inbox，再检查
+// SQLite 是否确有完整空闲页可回收。VACUUM 只在可缩减文件时单独执行。
 func CleanupStorage(db *gorm.DB, now time.Time) (dto.StorageCleanupResult, error) {
 	redisResult, err := CleanupRedisUsageInbox(db, now)
 	if err != nil {
 		return dto.StorageCleanupResult{RedisInbox: redisResult}, err
 	}
-	if err := db.Exec("VACUUM").Error; err != nil {
-		return dto.StorageCleanupResult{RedisInbox: redisResult}, err
+	vacuumResult, err := inspectStorageVacuum(db)
+	result := dto.StorageCleanupResult{RedisInbox: redisResult, Vacuum: vacuumResult}
+	if err != nil {
+		return result, err
 	}
-	return dto.StorageCleanupResult{RedisInbox: redisResult}, nil
+	if vacuumResult.ReclaimablePages == 0 {
+		return result, nil
+	}
+	if err := db.Exec("VACUUM").Error; err != nil {
+		return result, err
+	}
+	result.Vacuum.Vacuumed = true
+	return result, nil
+}
+
+func inspectStorageVacuum(db *gorm.DB) (dto.StorageVacuumResult, error) {
+	if db == nil {
+		return dto.StorageVacuumResult{}, fmt.Errorf("database is nil")
+	}
+	result := dto.StorageVacuumResult{}
+	if err := db.Raw("PRAGMA page_count").Scan(&result.DatabasePages).Error; err != nil {
+		return result, fmt.Errorf("inspect sqlite page count before vacuum: %w", err)
+	}
+	if err := db.Raw("PRAGMA freelist_count").Scan(&result.ReclaimablePages).Error; err != nil {
+		return result, fmt.Errorf("inspect sqlite reclaimable pages before vacuum: %w", err)
+	}
+	return result, nil
 }
 
 func Vacuum(db *gorm.DB) error {

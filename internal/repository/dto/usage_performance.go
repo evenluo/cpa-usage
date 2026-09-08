@@ -54,4 +54,15 @@ type UsagePercentileRecord struct {
 	Coverage        *float64
 	P50             *float64
 	P95             *float64
+	Histogram       *UsageHistogramRecord
 }
+
+// UsageHistogramRecord counts the same valid samples used by the exact
+// percentiles. Bins start at zero and have equal width; the last includes
+// UpperBound. Comparable breakdowns share their overall population's bound.
+type UsageHistogramRecord struct {
+	UpperBound float64
+	Counts     []int64
+}
+
+const UsagePerformanceHistogramBins = 24

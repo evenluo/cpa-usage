@@ -122,6 +122,22 @@ describe("Heatmap", () => {
     expect(screen.getByRole("tooltip")).toBeInTheDocument()
   })
 
+  it("retains focused details when adjacent loading moves the pointer away", async () => {
+    const user = userEvent.setup()
+    render(<Heatmap data={data([cell(0)])} />)
+    const activityCell = screen.getByRole("button", { name: /05\/11 Mon 00:00/ })
+    await user.click(activityCell)
+    expect(activityCell).toHaveFocus()
+    fireEvent.mouseLeave(activityCell)
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Attempts 2")
+    await user.tab()
+    expect(activityCell).not.toHaveFocus()
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+    fireEvent.mouseEnter(activityCell)
+    fireEvent.mouseLeave(activityCell)
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  })
+
   it("keeps an active all-zero failure grid and explains the zero state", async () => {
     const user = userEvent.setup()
     render(<Heatmap data={data([cell(0)], { max_failures: 0 })} />)

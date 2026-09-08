@@ -52,6 +52,34 @@ func TestRedisUsageProcessorBatchMarksProcessedRows(t *testing.T) {
 	}
 }
 
+func TestRedisUsageProcessorReportsMoreWorkAtBatchLimit(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	poppedAt := time.Date(2026, 4, 27, 8, 0, 0, 0, time.UTC)
+	message := withAccountingV2(t, `{"timestamp":"2026-04-27T08:00:00Z","provider":"claude","model":"sonnet","request_id":"shared-request"}`)
+	inserts := make([]dto.RedisInboxInsert, redisInboxProcessLimit+1)
+	for index := range inserts {
+		inserts[index] = dto.RedisInboxInsert{QueueKey: cpa.ManagementUsageQueueKey, RawMessage: message, PoppedAt: poppedAt}
+	}
+	if _, err := repository.InsertRedisUsageInboxMessages(db, inserts); err != nil {
+		t.Fatalf("seed inbox rows: %v", err)
+	}
+
+	result, err := newRedisUsageProcessor(db).process(context.Background(), poppedAt)
+	if err != nil {
+		t.Fatalf("processor returned error: %v", err)
+	}
+	if result == nil || !result.BatchLimitReached || result.InsertedEvents != redisInboxProcessLimit {
+		t.Fatalf("expected full batch to report remaining work, got %+v", result)
+	}
+	var pending int64
+	if err := db.Model(&entities.RedisUsageInbox{}).Where("status = ?", repository.RedisUsageInboxStatusPending).Count(&pending).Error; err != nil {
+		t.Fatalf("count pending inbox rows: %v", err)
+	}
+	if pending != 1 {
+		t.Fatalf("expected one pending row after full batch, got %d", pending)
+	}
+}
+
 func TestRedisUsageProcessorPreservesAttemptsAndDedupesOnlyInboxReplay(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	poppedAt := time.Date(2026, 8, 31, 8, 0, 0, 0, time.UTC)

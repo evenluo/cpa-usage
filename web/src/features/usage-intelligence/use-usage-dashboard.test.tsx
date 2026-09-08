@@ -5,7 +5,6 @@ import {
   useUsageDashboard,
   writeStoredTimeRange,
 } from "./use-usage-dashboard"
-import analyticsFixture from "@/test/contracts/analytics_summary.json"
 import { DEFAULT_TIME_RANGE, SELECTED_TIME_RANGE_STORAGE_KEY } from "./view-model"
 
 vi.mock("@/hooks/useAnalytics", () => ({
@@ -23,9 +22,13 @@ vi.mock("@/hooks/useFailureDistribution", () => ({
 }))
 vi.mock("@/hooks/useModelMappings", () => ({
   useModelMappings: vi.fn(() => ({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined })),
+  useModelMappingsSummary: vi.fn(() => ({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined })),
 }))
 vi.mock("@/hooks/useAttemptPerformance", () => ({
   useAttemptPerformance: vi.fn(() => ({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined })),
+}))
+vi.mock("@/hooks/usePerformanceProviders", () => ({
+  usePerformanceProviders: vi.fn(() => ({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined })),
 }))
 vi.mock("./refresh", () => ({
   useVisibilityRefresh: vi.fn(),
@@ -35,8 +38,9 @@ import { useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useEvents } from "@/hooks/useEvents"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { useFailureDistribution } from "@/hooks/useFailureDistribution"
-import { useModelMappings } from "@/hooks/useModelMappings"
+import { useModelMappings, useModelMappingsSummary } from "@/hooks/useModelMappings"
 import { useAttemptPerformance } from "@/hooks/useAttemptPerformance"
+import { usePerformanceProviders } from "@/hooks/usePerformanceProviders"
 
 describe("stored time range helpers", () => {
   beforeEach(() => {
@@ -47,7 +51,9 @@ describe("stored time range helpers", () => {
     vi.mocked(useRequestHealth).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
     vi.mocked(useFailureDistribution).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
     vi.mocked(useModelMappings).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
+    vi.mocked(useModelMappingsSummary).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
     vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
+    vi.mocked(usePerformanceProviders).mockReturnValue({ data: undefined, isLoading: false, refetch: vi.fn(), error: undefined } as never)
   })
 
   it("defaults to the dashboard default when nothing is stored", () => {
@@ -139,11 +145,11 @@ describe("useUsageDashboard", () => {
 
     const analyticsCalls = vi.mocked(useAnalyticsCore).mock.calls
     const eventsCalls = vi.mocked(useEvents).mock.calls
-    expect(analyticsCalls[0].slice(0, 3)).toEqual(["24h", "hour", ""])
-    expect(analyticsCalls[1].slice(0, 3)).toEqual(["7d", "hour", ""])
+    expect(analyticsCalls[0].slice(0, 3)).toEqual(["7d", "hour", ""])
     expect(eventsCalls[0].slice(0, 4)).toEqual(["24h", 1, "", 1])
     expect(useFailureDistribution).toHaveBeenCalledWith("")
-    expect(useModelMappings).toHaveBeenCalledWith("")
+    expect(useModelMappings).toHaveBeenCalledWith("", false, "")
+    expect(useModelMappingsSummary).toHaveBeenCalledWith("")
     expect(useAttemptPerformance).toHaveBeenCalledWith("", false)
   })
 
@@ -167,7 +173,7 @@ describe("useUsageDashboard", () => {
       error: undefined,
     } as never)
     vi.mocked(useFailureDistribution).mockReturnValue({ data: undefined, isLoading: false, refetch: refetchFailures, error: undefined } as never)
-    vi.mocked(useModelMappings).mockReturnValue({ data: undefined, isLoading: false, refetch: refetchMappings, error: undefined } as never)
+    vi.mocked(useModelMappingsSummary).mockReturnValue({ data: undefined, isLoading: false, refetch: refetchMappings, error: undefined } as never)
     vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: false, refetch: refetchPerformance, error: undefined } as never)
 
     const { result } = renderHook(() => useUsageDashboard())
@@ -176,7 +182,7 @@ describe("useUsageDashboard", () => {
     })
 
     await vi.waitFor(() => {
-      expect(refetchCore).toHaveBeenCalledTimes(2)
+      expect(refetchCore).toHaveBeenCalledTimes(1)
       expect(refetchEvidence).toHaveBeenCalledTimes(1)
       expect(refetchFailures).toHaveBeenCalledTimes(1)
       expect(refetchMappings).toHaveBeenCalledTimes(1)
@@ -197,7 +203,7 @@ describe("useUsageDashboard", () => {
     vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, isFetching: false, refetch: retryEvidence, error: new Error("evidence") } as never)
     vi.mocked(useRequestHealth).mockReturnValue({ data: undefined, isLoading: false, refetch: retryHealth, error: new Error("health") } as never)
     vi.mocked(useFailureDistribution).mockReturnValue({ data: undefined, isLoading: false, refetch: retryFailures, error: new Error("failures") } as never)
-    vi.mocked(useModelMappings).mockReturnValue({ data: undefined, isLoading: false, refetch: retryMappings, error: new Error("mappings") } as never)
+    vi.mocked(useModelMappingsSummary).mockReturnValue({ data: undefined, isLoading: false, refetch: retryMappings, error: new Error("mappings") } as never)
     vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: false, refetch: retryPerformance, error: new Error("performance") } as never)
 
     const { result } = renderHook(() => useUsageDashboard())
@@ -207,17 +213,51 @@ describe("useUsageDashboard", () => {
       result.current.retryRequestEvidence()
       result.current.retryRequestHealth()
       result.current.retryFailureDistribution()
-      result.current.retryModelMappings()
+      result.current.retryModelMappingsSummary()
       result.current.retryAttemptPerformance()
     })
 
-    expect(retryCore).toHaveBeenCalledTimes(2)
+    expect(retryCore).toHaveBeenCalledTimes(1)
     expect(retryHeatmap).toHaveBeenCalledTimes(1)
     expect(retryEvidence).toHaveBeenCalledTimes(1)
     expect(retryHealth).toHaveBeenCalledTimes(1)
     expect(retryFailures).toHaveBeenCalledTimes(1)
     expect(retryMappings).toHaveBeenCalledTimes(1)
     expect(retryPerformance).not.toHaveBeenCalled()
+  })
+
+  it("loads model-mapping rows only after expansion against the summary snapshot", () => {
+    const windowEnd = "2026-09-08T12:00:00Z"
+    let summary = {
+      window_start: "2026-09-07T12:00:00Z",
+      window_end: windowEnd,
+      total_attempts: 3,
+      observed_alias_attempts: 2,
+      missing_alias_attempts: 1,
+      alias_coverage: 200 / 3,
+      displayed_mappings: 2,
+    }
+    vi.mocked(useModelMappingsSummary).mockImplementation(() => ({
+      data: summary,
+      isLoading: false,
+      refetch: vi.fn(),
+      error: null,
+    }) as never)
+
+    const { result, rerender } = renderHook(() => useUsageDashboard())
+    expect(useModelMappings).toHaveBeenLastCalledWith("", false, "")
+
+    act(() => result.current.setModelMappingsExpanded(true))
+
+    expect(useModelMappings).toHaveBeenLastCalledWith("", true, windowEnd)
+    summary = { ...summary, window_start: "2026-09-07T12:01:00Z", window_end: "2026-09-08T12:01:00Z" }
+    rerender()
+    expect(result.current.modelMappingsSummaryData?.window_end).toBe(windowEnd)
+    expect(useModelMappings).toHaveBeenLastCalledWith("", true, windowEnd)
+
+    act(() => result.current.setModelMappingsExpanded(false))
+    expect(result.current.modelMappingsSummaryData?.window_end).toBe("2026-09-08T12:01:00Z")
+    expect(useModelMappings).toHaveBeenLastCalledWith("", false, windowEnd)
   })
 })
 
@@ -228,16 +268,16 @@ describe("performance provider selection", () => {
   it("defaults from the complete 24h catalog once and isolates manual selection", () => {
     const options = Array.from({ length: 9 }, (_, index) => ({ provider: `provider-${index}`, request_count: index + 1 }))
     let catalog: object | undefined
-    vi.mocked(useAnalyticsCore).mockImplementation(() => ({ data: catalog, isLoading: !catalog, error: null, refetch: vi.fn() }) as never)
+    vi.mocked(usePerformanceProviders).mockImplementation(() => ({ data: catalog, isLoading: !catalog, error: null, refetch: vi.fn() }) as never)
     vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: false, error: null, refetch: vi.fn() } as never)
     const { result, rerender } = renderHook(() => useUsageDashboard())
     expect(useAttemptPerformance).toHaveBeenLastCalledWith("", false)
-    catalog = { ...analyticsFixture, provider_options: options }
+    catalog = { window_start: "2026-09-07T00:00:00Z", window_end: "2026-09-08T00:00:00Z", provider_options: options }
     rerender()
     expect(result.current.attemptPerformanceProvider).toBe("provider-8")
     expect(result.current.attemptPerformanceProviders).toHaveLength(9)
     expect(useAttemptPerformance).toHaveBeenLastCalledWith("provider-8", true)
-    catalog = { ...analyticsFixture, provider_options: [{ provider: "changed-leader", request_count: 100 }] }
+    catalog = { window_start: "2026-09-07T00:00:00Z", window_end: "2026-09-08T00:00:00Z", provider_options: [{ provider: "changed-leader", request_count: 100 }] }
     rerender()
     expect(result.current.attemptPerformanceProvider).toBe("provider-8")
     expect(result.current.attemptPerformanceProviders).toContain("provider-8")
@@ -256,7 +296,7 @@ describe("performance provider selection", () => {
     const retryCatalog = vi.fn()
     const retryScoped = vi.fn()
     const catalogError = new Error("catalog refresh failed")
-    vi.mocked(useAnalyticsCore).mockReturnValue({ data: { ...analyticsFixture, provider_options: [{ provider: "a", request_count: 1 }] }, isLoading: false, error: catalogError, refetch: retryCatalog } as never)
+    vi.mocked(usePerformanceProviders).mockReturnValue({ data: { window_start: "", window_end: "", provider_options: [{ provider: "a", request_count: 1 }] }, isLoading: false, error: catalogError, refetch: retryCatalog } as never)
     vi.mocked(useAttemptPerformance).mockReturnValue({ data: undefined, isLoading: true, error: null, refetch: retryScoped } as never)
     const { result, rerender } = renderHook(() => useUsageDashboard())
     expect(result.current.performanceProvidersError).toBe(catalogError)
@@ -275,13 +315,13 @@ describe("performance provider selection", () => {
 
   it("breaks default request-count ties by provider and exposes discovery failures for retry", () => {
     const retry = vi.fn()
-    vi.mocked(useAnalyticsCore).mockReturnValue({ data: undefined, isLoading: false, error: new Error("catalog unavailable"), refetch: retry } as never)
+    vi.mocked(usePerformanceProviders).mockReturnValue({ data: undefined, isLoading: false, error: new Error("catalog unavailable"), refetch: retry } as never)
     const { result, rerender } = renderHook(() => useUsageDashboard())
     expect(result.current.attemptPerformanceProvider).toBe("")
     expect(result.current.attemptPerformanceError).toBeTruthy()
     act(() => result.current.retryAttemptPerformance())
     expect(retry).toHaveBeenCalledTimes(1)
-    vi.mocked(useAnalyticsCore).mockReturnValue({ data: { ...analyticsFixture, provider_options: [{ provider: "z", request_count: 10 }, { provider: "a", request_count: 10 }] }, isLoading: false, error: null, refetch: retry } as never)
+    vi.mocked(usePerformanceProviders).mockReturnValue({ data: { window_start: "", window_end: "", provider_options: [{ provider: "z", request_count: 10 }, { provider: "a", request_count: 10 }] }, isLoading: false, error: null, refetch: retry } as never)
     rerender()
     expect(result.current.attemptPerformanceProvider).toBe("a")
   })

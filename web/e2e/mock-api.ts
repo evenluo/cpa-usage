@@ -5,6 +5,22 @@ import usageFailureDistribution from "../src/test/contracts/usage_failure_distri
 import usageIdentities from "../src/test/contracts/usage_identities_page.json" with { type: "json" }
 import usageModelMappings from "../src/test/contracts/usage_model_mappings.json" with { type: "json" }
 
+export const usagePerformanceProviders = {
+  window_start: usageModelMappings.window_start,
+  window_end: usageModelMappings.window_end,
+  provider_options: analyticsSummary.provider_options,
+}
+
+export const usageModelMappingsSummary = {
+  window_start: usageModelMappings.window_start,
+  window_end: usageModelMappings.window_end,
+  total_attempts: usageModelMappings.total_attempts,
+  observed_alias_attempts: usageModelMappings.observed_alias_attempts,
+  missing_alias_attempts: usageModelMappings.missing_alias_attempts,
+  alias_coverage: usageModelMappings.alias_coverage,
+  displayed_mappings: usageModelMappings.mappings.length,
+}
+
 export const statusPayload = {
   running: true,
   sync_running: false,
@@ -174,12 +190,16 @@ const usedModelsPayload = {
 }
 
 function percentile(populationCount: number, sampleCount: number, p50: number | null, p95: number | null) {
+  const counts = Array<number>(24).fill(0)
+  counts[2] = Math.floor(sampleCount / 2)
+  counts[23] = sampleCount - counts[2]
   return {
     population_count: populationCount,
     sample_count: sampleCount,
     coverage: populationCount === 0 ? null : sampleCount / populationCount,
     p50,
     p95,
+    histogram: sampleCount > 0 ? { upper_bound: p95 ?? 0, counts } : null,
   }
 }
 
@@ -379,8 +399,16 @@ export async function installMockAPI(page: Page, options: MockAPIOptions = {}) {
       await route.fulfill({ json: usageFailureDistribution })
       return
     }
+    if (path === "/usage/performance/providers") {
+      await route.fulfill({ json: usagePerformanceProviders })
+      return
+    }
     if (path === "/usage/performance") {
       await route.fulfill({ json: usageAttemptPerformance })
+      return
+    }
+    if (path === "/usage/model-mappings/summary") {
+      await route.fulfill({ json: usageModelMappingsSummary })
       return
     }
     if (path === "/usage/model-mappings") {

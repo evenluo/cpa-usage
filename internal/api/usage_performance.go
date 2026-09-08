@@ -45,11 +45,17 @@ type usageTTFTPercentilesPayload struct {
 }
 
 type usagePercentilePayload struct {
-	PopulationCount int64    `json:"population_count"`
-	SampleCount     int64    `json:"sample_count"`
-	Coverage        *float64 `json:"coverage"`
-	P50             *float64 `json:"p50"`
-	P95             *float64 `json:"p95"`
+	PopulationCount int64                  `json:"population_count"`
+	SampleCount     int64                  `json:"sample_count"`
+	Coverage        *float64               `json:"coverage"`
+	P50             *float64               `json:"p50"`
+	P95             *float64               `json:"p95"`
+	Histogram       *usageHistogramPayload `json:"histogram"`
+}
+
+type usageHistogramPayload struct {
+	UpperBound float64 `json:"upper_bound"`
+	Counts     []int64 `json:"counts"`
 }
 
 type usagePerformanceBreakdownPayload struct {
@@ -168,11 +174,16 @@ func buildUsagePerformanceBreakdownPayload(record repodto.UsagePerformanceBreakd
 }
 
 func buildUsagePercentilePayload(record repodto.UsagePercentileRecord) usagePercentilePayload {
+	var histogram *usageHistogramPayload
+	if record.Histogram != nil {
+		histogram = &usageHistogramPayload{UpperBound: record.Histogram.UpperBound, Counts: record.Histogram.Counts}
+	}
 	return usagePercentilePayload{
 		PopulationCount: record.PopulationCount,
 		SampleCount:     record.SampleCount,
 		Coverage:        record.Coverage,
 		P50:             record.P50,
 		P95:             record.P95,
+		Histogram:       histogram,
 	}
 }

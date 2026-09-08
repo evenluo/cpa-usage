@@ -32,9 +32,13 @@ for (const theme of ["light", "dark"]) {
       },
       { ...baseIdentity, id: 603, identity: "never-observed", name: "No observation account", displayName: "No observation account" },
     ]
-    await page.route(/\/api\/v1\/usage\/identities\/page(?:\?|$)/, (route) => route.fulfill({
-      json: { identities, total_count: identities.length, page: 1, page_size: 100, total_pages: 1 },
-    }))
+    let identityReads = 0
+    await page.route(/\/api\/v1\/usage\/identities\/page(?:\?|$)/, (route) => {
+      identityReads++
+      return route.fulfill({
+        json: { identities, total_count: identities.length, page: 1, page_size: 100, total_pages: 1 },
+      })
+    })
 
     let observation = {
       id: "manual-observation", observedAt: "2026-09-08T00:00:00Z",
@@ -67,6 +71,10 @@ for (const theme of ["light", "dark"]) {
     })
     await page.goto("/")
     const capacity = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: /^Live Capacity/ }) })
+    await expect(capacity.getByRole("heading", { name: /^Live Capacity/ })).toBeAttached()
+    expect(identityReads).toBe(0)
+    await capacity.scrollIntoViewIfNeeded()
+    await expect.poll(() => identityReads).toBe(1)
     const cardFor = (name: string) => capacity.locator(".group").filter({ has: page.getByRole("button", { name: `Refresh ${name}`, exact: true }) })
     const manual = cardFor("Manual account")
     const reported = cardFor("Reported account")
@@ -87,6 +95,7 @@ for (const theme of ["light", "dark"]) {
 
     const readsBeforeReload = observationReads
     await page.reload()
+    await capacity.scrollIntoViewIfNeeded()
     await expect(manual.getByText("Last updated 4h ago", { exact: true })).toBeVisible()
     await expect(manual.getByText("25% used", { exact: true })).toBeVisible()
     expect(observationReads).toBeGreaterThan(readsBeforeReload)
@@ -96,6 +105,7 @@ for (const theme of ["light", "dark"]) {
     await expect(manual.getByText("30% used", { exact: true })).toBeVisible()
     await expect(manual.getByText("Last updated just now", { exact: true })).toBeVisible()
     await page.reload()
+    await capacity.scrollIntoViewIfNeeded()
     await expect(manual.getByText("30% used", { exact: true })).toBeVisible()
     await expect(manual.getByText("Last updated just now", { exact: true })).toBeVisible()
     expect(refreshCalls).toBe(2)

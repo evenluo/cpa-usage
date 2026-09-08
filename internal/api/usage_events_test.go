@@ -304,6 +304,10 @@ func (s *usageEventsStub) GetUsageModelMappings(_ context.Context, filter dto.Us
 	return &dto.UsageModelMappingDistributionRecord{}, s.err
 }
 
+func (s *usageEventsStub) GetUsageModelMappingsSummary(context.Context, dto.UsageDiagnosticFilter) (*dto.UsageModelMappingSummaryRecord, error) {
+	return &dto.UsageModelMappingSummaryRecord{}, s.err
+}
+
 func (s *usageEventsStub) GetUsageAttemptPerformance(_ context.Context, filter dto.UsageDiagnosticFilter) (*dto.UsageAttemptPerformanceRecord, error) {
 	s.lastPerformanceFilter = filter
 	s.performanceCalls++
@@ -311,6 +315,10 @@ func (s *usageEventsStub) GetUsageAttemptPerformance(_ context.Context, filter d
 		return s.performanceRecord, s.err
 	}
 	return &dto.UsageAttemptPerformanceRecord{}, s.err
+}
+
+func (s *usageEventsStub) ListUsagePerformanceProviders(context.Context, dto.UsageTimeScope) (*dto.UsagePerformanceProviderOptionsRecord, error) {
+	return &dto.UsagePerformanceProviderOptionsRecord{}, s.err
 }
 
 func (s *usageEventsStub) ListUsageEventFilterOptions(_ context.Context, filter dto.UsageTimeScope) (*dto.UsageEventFilterOptionsRecord, error) {

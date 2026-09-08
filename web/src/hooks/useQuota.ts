@@ -34,13 +34,13 @@ type RefreshTaskPollResult =
   | { authIndex: string; task: QuotaRefreshTaskResponse }
   | { authIndex: string; taskId: string; error: string }
 
-async function fetchAuthFileIdentitiesPage(page: number): Promise<KeyIdentityPage> {
-  return apiFetch(`/usage/identities/page?auth_type=1&page=${page}&page_size=${PAGE_SIZE}`)
+async function fetchAuthFileIdentitiesPage(page: number, signal?: AbortSignal): Promise<KeyIdentityPage> {
+  return apiFetch(`/usage/identities/page?auth_type=1&page=${page}&page_size=${PAGE_SIZE}`, { signal })
 }
 
-export async function fetchAllAuthFileIdentities(): Promise<KeyIdentity[]> {
+export async function fetchAllAuthFileIdentities(signal?: AbortSignal): Promise<KeyIdentity[]> {
   const identities = await collectPaginatedItems<KeyIdentityPage, KeyIdentity>({
-    fetchPage: fetchAuthFileIdentitiesPage,
+    fetchPage: (page) => fetchAuthFileIdentitiesPage(page, signal),
     getItems: (page) => page.identities,
     resource: "Auth-file accounts",
     expectedPageSize: PAGE_SIZE,
@@ -56,10 +56,11 @@ export function quotaObservationsQueryKey(provider: string, identities: KeyIdent
   return ["quota", "observations", provider || "all", identityFingerprint(identities)] as const
 }
 
-async function fetchQuotaObservations(authIndexes: string[]): Promise<QuotaObservationsResponse> {
+async function fetchQuotaObservations(authIndexes: string[], signal?: AbortSignal): Promise<QuotaObservationsResponse> {
   return apiFetch("/quota/observations", {
     method: "POST",
     body: JSON.stringify({ auth_indexes: authIndexes, limit: authIndexes.length }),
+    signal,
   })
 }
 
@@ -70,8 +71,8 @@ async function refreshQuotaBatch(authIndexes: string[]): Promise<QuotaRefreshRes
   })
 }
 
-async function fetchRefreshTask(taskId: string): Promise<QuotaRefreshTaskResponse> {
-  return apiFetch(`/quota/refresh/${encodeURIComponent(taskId)}`)
+async function fetchRefreshTask(taskId: string, signal?: AbortSignal): Promise<QuotaRefreshTaskResponse> {
+  return apiFetch(`/quota/refresh/${encodeURIComponent(taskId)}`, { signal })
 }
 
 async function requestQuotaRefresh(authIndexes: string[]): Promise<QuotaRefreshBatchResult> {
@@ -196,13 +197,14 @@ function refreshErrorMessage(error: unknown): string {
   return "Refresh failed"
 }
 
-export function useLiveCapacity(provider: string) {
+export function useLiveCapacity(provider: string, enabled = true) {
   const queryClient = useQueryClient()
   const [taskStates, setTaskStates] = useState<Record<string, LiveCapacityTaskState>>({})
 
   const identitiesQuery = useQuery({
     queryKey: ["quota", "auth-file-identities"],
-    queryFn: fetchAllAuthFileIdentities,
+    queryFn: ({ signal }) => fetchAllAuthFileIdentities(signal),
+    enabled,
     staleTime: 60_000,
   })
 
@@ -219,15 +221,15 @@ export function useLiveCapacity(provider: string) {
   const observationsQueryKey = quotaObservationsQueryKey(provider, visibleIdentities)
   const observationsQuery = useQuery({
     queryKey: observationsQueryKey,
-    queryFn: async () => {
-      const snapshot = await fetchQuotaObservations(visibleAuthIndexes)
+    queryFn: async ({ signal }) => {
+      const snapshot = await fetchQuotaObservations(visibleAuthIndexes, signal)
       return mergeQuotaObservations(
         queryClient.getQueryData<QuotaObservationsResponse>(observationsQueryKey),
         snapshot,
       )
     },
-    enabled: visibleAuthIndexes.length > 0,
-    staleTime: 30_000,
+    enabled: enabled && visibleAuthIndexes.length > 0,
+    staleTime: 60_000,
   })
 
   const refreshMutation = useMutation({
@@ -287,8 +289,8 @@ export function useLiveCapacity(provider: string) {
       "refresh-tasks",
       activeTaskFingerprint(taskStates),
     ],
-    queryFn: async () => {
-      const result = await resolveRefreshTaskUpdates(taskStates, fetchRefreshTask)
+    queryFn: async ({ signal }) => {
+      const result = await resolveRefreshTaskUpdates(taskStates, (taskId) => fetchRefreshTask(taskId, signal))
       setTaskStates((current) => {
         const next = { ...current }
         for (const [authIndex, update] of Object.entries(result.updates)) {
@@ -305,7 +307,7 @@ export function useLiveCapacity(provider: string) {
       }
       return result
     },
-    enabled: hasActiveTasks(taskStates),
+    enabled: enabled && hasActiveTasks(taskStates),
     refetchInterval: 1_500,
   })
 

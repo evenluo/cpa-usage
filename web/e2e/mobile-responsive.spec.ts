@@ -32,6 +32,10 @@ test("mobile uses bottom navigation without the fixed desktop sidebar", async ({
 })
 
 test("dashboard controls and evidence stay inside each responsive viewport", async ({ page }) => {
+  let identityReads = 0
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/api/v1/usage/identities/page")) identityReads++
+  })
   await page.addInitScript(() => {
     localStorage.setItem("cpa-theme", "dark")
   })
@@ -53,7 +57,11 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(page.getByText("priced-model")).toBeVisible()
   await expect(page.getByText("Needs attention", { exact: true })).toBeVisible()
   await expect(page.getByText("Pricing Missing")).toBeVisible()
-  await expect(page.getByText("Live Capacity")).toBeVisible()
+  const capacity = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: /^Live Capacity/ }) })
+  await expect(capacity.getByRole("heading", { name: /^Live Capacity/ })).toBeAttached()
+  expect(identityReads).toBe(0)
+  await capacity.scrollIntoViewIfNeeded()
+  await expect.poll(() => identityReads).toBe(1)
   await expect(page.getByText("Agent Codex")).toBeVisible()
   await expect(page.getByText("Plus", { exact: true })).toBeVisible()
   await expect(page.getByText(/^Last updated /)).toBeVisible()

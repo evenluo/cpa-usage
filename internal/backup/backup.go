@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -49,7 +50,13 @@ func (w *Writer) WriteDatabase(ctx context.Context, db *sql.DB, backupAt time.Ti
 	fullPath := filepath.Join(dayDir, fileName)
 	tempPath := fullPath + ".tmp"
 	_ = os.Remove(tempPath)
-	if err := copySQLiteDatabase(ctx, db, tempPath); err != nil {
+	backupSource, closeBackupSource, err := openBackupSource(ctx, db)
+	if err != nil {
+		_ = os.Remove(tempPath)
+		return "", err
+	}
+	defer closeBackupSource()
+	if err := copySQLiteDatabase(ctx, backupSource, tempPath); err != nil {
 		_ = os.Remove(tempPath)
 		return "", err
 	}
@@ -62,6 +69,54 @@ func (w *Writer) WriteDatabase(ctx context.Context, db *sql.DB, backupAt time.Ti
 		return "", fmt.Errorf("finalize backup file: %w", err)
 	}
 	return fullPath, nil
+}
+
+// openBackupSource uses a dedicated read-only connection for file-backed
+// databases so a long online backup does not occupy the application's single
+// pooled connection. In-memory databases have no second-connectable file and
+// therefore retain the supplied handle.
+func openBackupSource(ctx context.Context, sourceDB *sql.DB) (*sql.DB, func(), error) {
+	rows, err := sourceDB.QueryContext(ctx, "PRAGMA database_list")
+	if err != nil {
+		return nil, nil, fmt.Errorf("inspect source database path: %w", err)
+	}
+	defer rows.Close()
+	sourcePath := ""
+	for rows.Next() {
+		var sequence int
+		var name, file string
+		if err := rows.Scan(&sequence, &name, &file); err != nil {
+			return nil, nil, fmt.Errorf("read source database path: %w", err)
+		}
+		if name == "main" {
+			sourcePath = file
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("inspect source database path rows: %w", err)
+	}
+	if sourcePath == "" {
+		return sourceDB, func() {}, nil
+	}
+	absPath, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve source database path: %w", err)
+	}
+	query := url.Values{}
+	query.Set("mode", "ro")
+	query.Set("_busy_timeout", "5000")
+	query.Set("_query_only", "1")
+	dsn := (&url.URL{Scheme: "file", Path: absPath, RawQuery: query.Encode()}).String()
+	dedicated, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open dedicated backup source: %w", err)
+	}
+	if err := dedicated.PingContext(ctx); err != nil {
+		_ = dedicated.Close()
+		return nil, nil, fmt.Errorf("connect dedicated backup source: %w", err)
+	}
+	return dedicated, func() { _ = dedicated.Close() }, nil
 }
 
 func copySQLiteDatabase(ctx context.Context, sourceDB *sql.DB, destPath string) error {

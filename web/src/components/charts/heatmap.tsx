@@ -213,7 +213,11 @@ export function Heatmap({ data }: HeatmapProps) {
                     style={style}
                     onMouseEnter={(event) => showPointerTooltip(event, fc)}
                     onMouseMove={(event) => showPointerTooltip(event, fc)}
-                    onMouseLeave={hideTooltip}
+                    onMouseLeave={(event) => {
+                      // Loading adjacent sections can move a clicked cell out
+                      // from under the pointer while it still owns focus.
+                      if (event.currentTarget !== document.activeElement) hideTooltip()
+                    }}
                     onFocus={(event) => showFocusTooltip(event, fc)}
                     onBlur={hideTooltip}
                     onClick={(event) => showClickTooltip(event, fc)}

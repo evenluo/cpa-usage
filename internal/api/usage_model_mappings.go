@@ -23,6 +23,16 @@ type usageModelMappingDistributionResponse struct {
 	OtherAttempts          int64                      `json:"other_attempts"`
 }
 
+type usageModelMappingSummaryResponse struct {
+	WindowStart           string  `json:"window_start"`
+	WindowEnd             string  `json:"window_end"`
+	TotalAttempts         int64   `json:"total_attempts"`
+	ObservedAliasAttempts int64   `json:"observed_alias_attempts"`
+	MissingAliasAttempts  int64   `json:"missing_alias_attempts"`
+	AliasCoverage         float64 `json:"alias_coverage"`
+	DisplayedMappings     int64   `json:"displayed_mappings"`
+}
+
 type usageModelMappingPayload struct {
 	ModelAlias             string  `json:"model_alias"`
 	Model                  string  `json:"model"`
@@ -39,6 +49,24 @@ type usageModelMappingPayload struct {
 }
 
 func registerUsageModelMappingsRoute(router gin.IRoutes, usageProvider UsageProvider) {
+	router.GET("/usage/model-mappings/summary", func(c *gin.Context) {
+		filter, err := parseFixedUsageDiagnosticFilterQuery(c.Request, time.Now().UTC())
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if usageProvider == nil {
+			c.JSON(http.StatusOK, buildUsageModelMappingSummaryPayload(filter, nil))
+			return
+		}
+		record, err := usageProvider.GetUsageModelMappingsSummary(c.Request.Context(), filter.repositoryFilter())
+		if err != nil {
+			writeInternalError(c, "get usage model mapping summary failed", err)
+			return
+		}
+		c.JSON(http.StatusOK, buildUsageModelMappingSummaryPayload(filter, record))
+	})
+
 	router.GET("/usage/model-mappings", func(c *gin.Context) {
 		filter, err := parseFixedUsageDiagnosticFilterQuery(c.Request, time.Now().UTC())
 		if err != nil {
@@ -56,6 +84,25 @@ func registerUsageModelMappingsRoute(router gin.IRoutes, usageProvider UsageProv
 		}
 		c.JSON(http.StatusOK, buildUsageModelMappingDistributionPayload(filter, record))
 	})
+}
+
+func buildUsageModelMappingSummaryPayload(filter usageDiagnosticFilter, record *repodto.UsageModelMappingSummaryRecord) usageModelMappingSummaryResponse {
+	if record == nil {
+		record = &repodto.UsageModelMappingSummaryRecord{}
+	}
+	coverage := float64(0)
+	if record.TotalAttempts > 0 {
+		coverage = float64(record.ObservedAliasAttempts) / float64(record.TotalAttempts) * 100
+	}
+	return usageModelMappingSummaryResponse{
+		WindowStart:           filter.StartTime.UTC().Format(time.RFC3339Nano),
+		WindowEnd:             filter.EndTime.UTC().Format(time.RFC3339Nano),
+		TotalAttempts:         record.TotalAttempts,
+		ObservedAliasAttempts: record.ObservedAliasAttempts,
+		MissingAliasAttempts:  record.MissingAliasAttempts,
+		AliasCoverage:         coverage,
+		DisplayedMappings:     record.DisplayedMappings,
+	}
 }
 
 func buildUsageModelMappingDistributionPayload(filter usageDiagnosticFilter, record *repodto.UsageModelMappingDistributionRecord) usageModelMappingDistributionResponse {

@@ -42,7 +42,20 @@ import type { AccountModelSupport, ModelCapability, ModelSupportResponse, Regist
 import { ProviderBrandIcon } from "./provider-brand-icon"
 
 export function LiveCapacityCard({ provider }: { provider: string }) {
-  const { identities, observations, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const [isActivated, setIsActivated] = useState(() => typeof IntersectionObserver === "undefined")
+  useEffect(() => {
+    if (isActivated || !cardRef.current || typeof IntersectionObserver === "undefined") return
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return
+      setIsActivated(true)
+      observer.disconnect()
+    }, { rootMargin: "240px 0px" })
+    observer.observe(cardRef.current)
+    return () => observer.disconnect()
+  }, [isActivated])
+
+  const { identities, observations, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider, isActivated)
   const modelSupport = useModelSupport()
   const derivedRows = useMemo(
     () => buildLiveCapacityRows({ identities, observations, taskStates }),
@@ -180,7 +193,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   }
 
   return (
-    <Card>
+    <Card ref={cardRef}>
       <CardHeader className="flex flex-col items-start justify-between gap-3 pb-3 sm:flex-row sm:items-center">
         <div>
           <CardTitle className="flex items-center gap-2">
@@ -200,7 +213,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
         </div>
       </CardHeader>
       <CardContent>
-        {isLoading ? (
+        {!isActivated || isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-14 w-full" />
             <Skeleton className="h-14 w-full" />

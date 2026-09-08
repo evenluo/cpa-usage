@@ -50,9 +50,9 @@ export function useAnalyticsCore(
 ) {
   return useQuery({
     queryKey: ["analytics", "core", range, granularity, provider],
-    queryFn: () =>
-      apiFetch<AnalyticsCoreResponse>(buildAnalyticsCorePath(range, granularity, provider)),
-    staleTime: 30_000,
+    queryFn: ({ signal }) =>
+      apiFetch<AnalyticsCoreResponse>(buildAnalyticsCorePath(range, granularity, provider), { signal }),
+    staleTime: 60_000,
     refetchInterval: () => {
       if (refetchInterval === false) return false
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
@@ -70,9 +70,9 @@ export function useAnalyticsHeatmap(
 ) {
   return useQuery({
     queryKey: ["analytics", "heatmap", range, granularity, provider],
-    queryFn: () =>
-      apiFetch<AnalyticsHeatmapResponse>(buildAnalyticsHeatmapPath(range, granularity, provider)),
-    staleTime: 30_000,
+    queryFn: ({ signal }) =>
+      apiFetch<AnalyticsHeatmapResponse>(buildAnalyticsHeatmapPath(range, granularity, provider), { signal }),
+    staleTime: 60_000,
     refetchInterval: () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false

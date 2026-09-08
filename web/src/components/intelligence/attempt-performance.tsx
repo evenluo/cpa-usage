@@ -238,13 +238,14 @@ function PerformanceBreakdown({ title, breakdown, provider, windowEnd, selection
 }) {
   const metricKind = metric === "output-tps" ? "tps" : "latency"
   const metrics = breakdown.items.map((item) => getPerformanceMetric(item, metric))
-  const axisMaximum = metrics.reduce((maximum, distribution) => Math.max(maximum, distribution.p95 ?? 0), 0)
+  const axisMaximum = metrics.reduce((maximum, distribution) => Math.max(maximum, distribution.histogram?.upper_bound ?? 0, distribution.p95 ?? 0), 0)
   const showChart = metric !== "output-tps" || Boolean(provider)
   const needsProvider = metric === "output-tps" && !provider && selection !== "provider"
 
   return (
     <section className="min-w-0" aria-label={title}>
-      <div className="mb-2 flex justify-end">
+      <div className="mb-2 flex flex-wrap items-center justify-end gap-x-4 gap-y-1.5">
+        {!needsProvider && showChart && metrics.some((distribution) => distribution.histogram !== null) ? <DensityLegend /> : null}
         {!needsProvider && breakdown.items.length > 0 && showChart ? <PerformanceAxis maximum={axisMaximum} kind={metricKind} /> : null}
       </div>
       {needsProvider ? (
@@ -290,6 +291,17 @@ function PerformanceAxis({ maximum, kind }: { maximum: number; kind: "latency" |
   )
 }
 
+function DensityLegend() {
+  return (
+    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title="Each interval shows its share of this row's valid samples. The same color scale applies to every row.">
+      <span className="flex overflow-hidden rounded-sm" aria-hidden="true">
+        {[0.05, 0.2, 0.5, 1].map((share) => <span key={share} className="h-1.5 w-2.5 bg-sky-700 dark:bg-sky-400" style={{ opacity: densityOpacity(share) }} />)}
+      </span>
+      <span>Stronger color = higher sample share</span>
+    </div>
+  )
+}
+
 function PerformanceRow({ item, distribution, kind, axisMaximum, showChart, slowLink }: {
   item: UsagePerformanceBreakdown["items"][number]
   distribution: UsagePercentileDistribution
@@ -310,12 +322,7 @@ function PerformanceRow({ item, distribution, kind, axisMaximum, showChart, slow
         distribution.p50 === null && distribution.p95 === null ? (
           <div className="flex h-5 items-center justify-center rounded bg-muted/50 text-[10px] text-muted-foreground">No valid samples</div>
         ) : (
-          <div className="relative mx-1.5 h-5" role="img" aria-label={`${item.label}: p50 ${formatMetricValue(distribution.p50, kind)}, p95 ${formatMetricValue(distribution.p95, kind)}`}>
-            <div className="absolute top-1/2 h-px w-full -translate-y-1/2 bg-border" />
-            {p50Position !== null && p95Position !== null ? <div className="absolute top-1/2 h-0.5 -translate-y-1/2 bg-slate-400 dark:bg-slate-500" style={{ left: `${Math.min(p50Position, p95Position)}%`, width: `${Math.abs(p95Position - p50Position)}%` }} /> : null}
-            {p50Position !== null ? <span data-percentile="p50" className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-600 bg-background dark:border-slate-300" style={{ left: `${p50Position}%` }} aria-hidden="true" /> : null}
-            {p95Position !== null ? <span data-percentile="p95" className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-terracotta-600 bg-background dark:border-terracotta-300" style={{ left: `${p95Position}%` }} aria-hidden="true" /> : null}
-          </div>
+          <DistributionTrack label={item.label} distribution={distribution} kind={kind} axisMaximum={axisMaximum} p50Position={p50Position} p95Position={p95Position} />
         )
       ) : <div />}
       <div className="flex min-w-36 items-center justify-between gap-3 tabular-nums sm:justify-end">
@@ -333,6 +340,69 @@ function PerformanceRow({ item, distribution, kind, axisMaximum, showChart, slow
       </div>
     </div>
   )
+}
+
+function DistributionTrack({ label, distribution, kind, axisMaximum, p50Position, p95Position }: {
+  label: string
+  distribution: UsagePercentileDistribution
+  kind: "latency" | "tps"
+  axisMaximum: number
+  p50Position: number | null
+  p95Position: number | null
+}) {
+  const histogram = distribution.histogram
+  const sampleCount = distribution.sample_count
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button type="button" aria-label={`View sample distribution for ${label}`} disabled={!histogram} className="mx-1.5 block min-w-0 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+          <span className="relative block h-7" role="img" aria-label={`${label}: p50 ${formatMetricValue(distribution.p50, kind)}, p95 ${formatMetricValue(distribution.p95, kind)}`}>
+            <span className="absolute top-1/2 h-px w-full -translate-y-1/2 bg-border" />
+            {histogram?.counts.map((count, index) => {
+              const share = sampleCount > 0 ? count / sampleCount : 0
+              const scale = axisMaximum > 0 ? histogram.upper_bound / axisMaximum : 1
+              return <span key={index} data-heatmap-bin={index} data-count={count} data-share={share} title={`${histogramInterval(histogram, index, kind)} · ${count.toLocaleString("en")} samples · ${formatSampleShare(share)}`} className="absolute top-1/2 h-2 -translate-y-1/2 bg-sky-700 dark:bg-sky-400" style={{ left: `${index / histogram.counts.length * scale * 100}%`, width: `${scale * 100 / histogram.counts.length}%`, opacity: densityOpacity(share) }} />
+            })}
+            {p50Position !== null && p95Position !== null ? <span className="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-slate-400/70 dark:bg-slate-300/50" style={{ left: `${Math.min(p50Position, p95Position)}%`, width: `${Math.abs(p95Position - p50Position)}%` }} /> : null}
+            {p50Position !== null ? <span data-percentile="p50" className="pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-600 bg-background dark:border-slate-300" style={{ left: `${p50Position}%` }} aria-hidden="true" /> : null}
+            {p95Position !== null ? <span data-percentile="p95" className="pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-terracotta-600 bg-background dark:border-terracotta-300" style={{ left: `${p95Position}%` }} aria-hidden="true" /> : null}
+          </span>
+        </button>
+      </Popover.Trigger>
+      {histogram ? (
+        <Popover.Portal>
+          <Popover.Content sideOffset={8} collisionPadding={12} aria-label={`${label} sample distribution`} className="z-50 w-80 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
+            <p className="break-words font-medium">{label}</p>
+            <p className="mt-1 text-muted-foreground">{sampleCount.toLocaleString("en")} valid {sampleCount === 1 ? "sample" : "samples"} · {histogram.counts.length} equal intervals</p>
+            {sampleCount < 10 ? <p className="mt-1 text-muted-foreground">Few samples; the distribution may change substantially with more requests.</p> : null}
+            <div className="mt-3 max-h-64 overflow-y-auto overscroll-contain">
+              <table className="w-full text-left tabular-nums">
+                <thead className="sticky top-0 bg-popover text-[10px] text-muted-foreground"><tr><th className="pb-2 font-normal">Interval</th><th className="pb-2 text-right font-normal">Samples</th><th className="pb-2 text-right font-normal">Share</th></tr></thead>
+                <tbody>{histogram.counts.map((count, index) => <tr key={index} className="border-t border-border/50"><td className="py-1.5">{histogramInterval(histogram, index, kind)}</td><td className="py-1.5 text-right">{count.toLocaleString("en")}</td><td className="py-1.5 text-right">{formatSampleShare(sampleCount > 0 ? count / sampleCount : 0)}</td></tr>)}</tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground">Color shows share within this row. The final interval includes its upper value.</p>
+          </Popover.Content>
+        </Popover.Portal>
+      ) : null}
+    </Popover.Root>
+  )
+}
+
+function densityOpacity(share: number): number {
+  return share <= 0 ? 0 : 0.12 + 0.88 * Math.sqrt(share)
+}
+
+function formatSampleShare(share: number): string {
+  return share > 0 && share < 0.001 ? "<0.1%" : `${(share * 100).toFixed(1)}%`
+}
+
+function histogramInterval(histogram: NonNullable<UsagePercentileDistribution["histogram"]>, index: number, kind: "latency" | "tps"): string {
+  const lower = histogram.upper_bound * index / histogram.counts.length
+  const upper = histogram.upper_bound * (index + 1) / histogram.counts.length
+  const format = (value: number) => value.toLocaleString("en", { maximumFractionDigits: 2 })
+  const unit = kind === "tps" ? "tok/s" : "ms"
+  return `${format(lower)}–${format(upper)} ${unit}`
 }
 
 function requestSearch({ provider, model, account, result, windowEnd, p95 }: { provider: string; model: string; account: string; result: "success" | "failed"; windowEnd: string; p95: number }) {

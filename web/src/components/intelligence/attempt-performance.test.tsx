@@ -13,7 +13,10 @@ import { AttemptPerformance } from "./attempt-performance"
 afterEach(cleanup)
 
 function metric(population: number, samples: number, p50: number | null, p95: number | null): UsagePercentileDistribution {
-  return { population_count: population, sample_count: samples, coverage: population === 0 ? null : samples / population, p50, p95 }
+  const counts = Array<number>(24).fill(0)
+  counts[0] = Math.floor(samples / 2)
+  counts[23] = samples - counts[0]
+  return { population_count: population, sample_count: samples, coverage: population === 0 ? null : samples / population, p50, p95, histogram: samples > 0 ? { upper_bound: p95 ?? 0, counts } : null }
 }
 
 function summary(): UsageAttemptPerformanceSummary {
@@ -42,6 +45,50 @@ function performance(): UsageAttemptPerformance {
 }
 
 describe("AttemptPerformance", () => {
+  it("colors equal sample shares equally across different request volumes and plots the full observed tail", () => {
+    const data = performance()
+    const dense = Array<number>(24).fill(0)
+    dense[4] = 500
+    dense[23] = 500
+    const sparse = Array<number>(24).fill(0)
+    sparse[4] = 5
+    sparse[23] = 5
+    data.models.items = [
+      { ...data.models.items[0], value: "busy", label: "Busy model", attempt_count: 1000, latency_ms: { ...data.latency_ms, successful: { ...metric(1000, 1000, 500, 1000), histogram: { upper_bound: 2000, counts: dense } } } },
+      { ...data.models.items[0], value: "partial", label: "Partial model", attempt_count: 1000, latency_ms: { ...data.latency_ms, successful: { ...metric(1000, 10, 500, 1000), histogram: { upper_bound: 2000, counts: sparse } } } },
+    ]
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+    const models = screen.getByRole("region", { name: "Actual models" })
+    const busy = within(models).getByRole("img", { name: /Busy model/ })
+    const partial = within(models).getByRole("img", { name: /Partial model/ })
+    expect(busy.querySelectorAll("[data-heatmap-bin]")).toHaveLength(24)
+    expect(busy.querySelector('[data-heatmap-bin="4"]')).toHaveAttribute("data-share", "0.5")
+    expect(partial.querySelector('[data-heatmap-bin="4"]')).toHaveAttribute("data-share", "0.5")
+    expect(busy.querySelector<HTMLElement>('[data-heatmap-bin="4"]')?.style.opacity).toBe(partial.querySelector<HTMLElement>('[data-heatmap-bin="4"]')?.style.opacity)
+    expect(partial.querySelector('[data-heatmap-bin="5"]')).toHaveStyle({ opacity: "0" })
+    expect(within(models).getByLabelText("Shared linear axis from zero to 2s")).toBeVisible()
+    expect(busy.querySelector('[data-percentile="p95"]')).toHaveStyle({ left: "50%" })
+  })
+
+  it("opens interval counts and shares for keyboard and touch inspection, qualifying a small sample", () => {
+    const data = performance()
+    const counts = Array<number>(24).fill(0)
+    counts[2] = 2
+    counts[23] = 1
+    data.models.items[0].latency_ms.successful = { ...metric(5, 3, 25, 240), histogram: { upper_bound: 240, counts } }
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+    const models = screen.getByRole("region", { name: "Actual models" })
+    fireEvent.click(within(models).getByRole("button", { name: "View sample distribution for sonnet" }))
+    const details = screen.getByRole("dialog", { name: "sonnet sample distribution" })
+    expect(within(details).getByText("3 valid samples · 24 equal intervals")).toBeVisible()
+    expect(within(details).getByText(/Few samples/)).toBeVisible()
+    const bin = within(details).getByText("20–30 ms").closest("tr")!
+    expect(within(bin).getByText("2", { exact: true })).toBeVisible()
+    expect(within(bin).getByText("66.7%", { exact: true })).toBeVisible()
+    fireEvent.keyDown(details, { key: "Escape" })
+    expect(screen.queryByRole("dialog", { name: "sonnet sample distribution" })).not.toBeInTheDocument()
+  })
+
   it("keeps the provider selector accessible while loading or showing an error", () => {
     const onSelect = vi.fn()
     const { rerender } = render(<AttemptPerformance onRetryProviders={vi.fn()} provider="claude" providers={["claude", "openai"]} onSelectProvider={onSelect} data={undefined} isLoading error={null} onRetry={vi.fn()} />)

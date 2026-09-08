@@ -3,9 +3,11 @@ import { useAnalyticsCore, useAnalyticsHeatmap } from "@/hooks/useAnalytics"
 import { useEvents } from "@/hooks/useEvents"
 import { useRequestHealth } from "@/hooks/useRequestHealth"
 import { useFailureDistribution } from "@/hooks/useFailureDistribution"
-import { useModelMappings } from "@/hooks/useModelMappings"
+import { useModelMappings, useModelMappingsSummary } from "@/hooks/useModelMappings"
 import { useAttemptPerformance } from "@/hooks/useAttemptPerformance"
+import { usePerformanceProviders } from "@/hooks/usePerformanceProviders"
 import type { AnalyticsCoreResponse, TimeGranularity, TimeRange, UsageAttemptPerformance, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
+import type { UsageModelMappingSummary } from "./model-mapping-summary"
 import { buildUsageIntelligenceLoadPlan, type UsageIntelligenceLoadPlan } from "./load-plan"
 import { useVisibilityRefresh } from "./refresh"
 import { buildUsageDashboardSurfaces, type UsageDashboardSurfaces } from "./surfaces"
@@ -43,8 +45,12 @@ export interface UseUsageDashboardResult {
   isFailureDistributionLoading: boolean
   failureDistributionError: unknown
   modelMappingsData?: UsageModelMappingDistribution
-  isModelMappingsLoading: boolean
-  modelMappingsError: unknown
+  modelMappingsSummaryData?: UsageModelMappingSummary
+  isModelMappingsSummaryLoading: boolean
+  modelMappingsSummaryError: unknown
+  isModelMappingDetailsLoading: boolean
+  modelMappingDetailsError: unknown
+  setModelMappingsExpanded: (expanded: boolean) => void
   attemptPerformanceProvider: string
   attemptPerformanceProviders: string[]
   setAttemptPerformanceProvider: (provider: string) => void
@@ -58,7 +64,8 @@ export interface UseUsageDashboardResult {
   retryRequestHealth: () => void
   retryRequestEvidence: () => void
   retryFailureDistribution: () => void
-  retryModelMappings: () => void
+  retryModelMappingsSummary: () => void
+  retryModelMappingDetails: () => void
   retryAttemptPerformance: () => void
   refreshDashboard: () => void
 }
@@ -90,8 +97,14 @@ export function writeStoredTimeRange(range: TimeRange) {
 export function useUsageDashboard(): UseUsageDashboardResult {
   const [range, setRange] = useState<TimeRange>(readStoredTimeRange)
   const [granularity, setGranularity] = useState<TimeGranularity | null>(null)
-  const [provider, setProvider] = useState("")
+  const [provider, setProviderState] = useState("")
   const [selectedPerformanceProvider, setAttemptPerformanceProvider] = useState<string | null>(null)
+  const [modelMappingsExpanded, setModelMappingsExpandedState] = useState(false)
+  const [modelMappingDetailScope, setModelMappingDetailScope] = useState<{
+    provider: string
+    windowEnd: string
+    summary: UsageModelMappingSummary
+  } | null>(null)
   const [trendView, setTrendView] = useState<TrendView>("cost-token")
   const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScope>("api-key")
 
@@ -104,7 +117,13 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     setGranularity(null)
   }, [])
 
-  const performanceOptions = useAnalyticsCore("24h", "hour", "", false)
+  const setProvider = useCallback((nextProvider: string) => {
+    setProviderState(nextProvider)
+    setModelMappingsExpandedState(false)
+    setModelMappingDetailScope(null)
+  }, [])
+
+  const performanceOptions = usePerformanceProviders()
   const attemptPerformanceProviders = [...(performanceOptions.data?.provider_options ?? [])]
     .filter((option) => option.provider !== "")
     .sort((a, b) => b.request_count - a.request_count || a.provider.localeCompare(b.provider))
@@ -164,11 +183,35 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     error: failureDistributionError,
   } = useFailureDistribution(fixedWindow.failureDistribution.provider)
   const {
-    data: modelMappingsData,
-    isLoading: isModelMappingsLoading,
+    data: latestModelMappingsSummaryData,
+    isLoading: isModelMappingsSummaryLoading,
+    refetch: refetchModelMappingsSummary,
+    error: modelMappingsSummaryError,
+  } = useModelMappingsSummary(fixedWindow.modelMappings.provider)
+  const modelMappingDetailScopeMatches = modelMappingDetailScope?.provider === fixedWindow.modelMappings.provider
+  const {
+    data: scopedModelMappingsData,
+    isLoading: isModelMappingDetailsLoading,
     refetch: refetchModelMappings,
-    error: modelMappingsError,
-  } = useModelMappings(fixedWindow.modelMappings.provider)
+    error: modelMappingDetailsError,
+  } = useModelMappings(
+    fixedWindow.modelMappings.provider,
+    modelMappingsExpanded && Boolean(modelMappingDetailScopeMatches),
+    modelMappingDetailScopeMatches ? modelMappingDetailScope.windowEnd : "",
+  )
+  const modelMappingsData = modelMappingDetailScopeMatches ? scopedModelMappingsData : undefined
+  const setModelMappingsExpanded = useCallback((expanded: boolean) => {
+    setModelMappingsExpandedState(expanded)
+    if (!expanded || !latestModelMappingsSummaryData?.window_end) return
+    setModelMappingDetailScope({
+      provider: fixedWindow.modelMappings.provider,
+      windowEnd: latestModelMappingsSummaryData.window_end,
+      summary: latestModelMappingsSummaryData,
+    })
+  }, [fixedWindow.modelMappings.provider, latestModelMappingsSummaryData])
+  const modelMappingsSummaryData = modelMappingsExpanded && modelMappingDetailScopeMatches
+    ? modelMappingDetailScope.summary
+    : latestModelMappingsSummaryData
   const {
     data: attemptPerformanceData,
     isLoading: isScopedPerformanceLoading,
@@ -181,13 +224,16 @@ export function useUsageDashboard(): UseUsageDashboardResult {
   const refetchPerformanceOptions = performanceOptions.refetch
 
   const refreshDashboard = useCallback(() => {
-    const queries: Promise<unknown>[] = [refetchCoreAnalytics(), refetchRequestEvidence(), refetchFailureDistribution(), refetchModelMappings()]
-    if (selectedAnalytics.range !== "24h" || selectedAnalytics.granularity !== "hour" || selectedAnalytics.provider) {
-      queries.push(refetchPerformanceOptions())
-    }
-    if (attemptPerformanceProvider) queries.push(refetchAttemptPerformance())
+    const queries: Promise<unknown>[] = [
+      refetchCoreAnalytics({ cancelRefetch: false }),
+      refetchRequestEvidence({ cancelRefetch: false }),
+      refetchFailureDistribution({ cancelRefetch: false }),
+      refetchModelMappingsSummary({ cancelRefetch: false }),
+      refetchPerformanceOptions({ cancelRefetch: false }),
+    ]
+    if (attemptPerformanceProvider) queries.push(refetchAttemptPerformance({ cancelRefetch: false }))
     void Promise.allSettled(queries)
-  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappings, refetchAttemptPerformance, refetchPerformanceOptions, attemptPerformanceProvider, selectedAnalytics.range, selectedAnalytics.granularity, selectedAnalytics.provider])
+  }, [refetchCoreAnalytics, refetchRequestEvidence, refetchFailureDistribution, refetchModelMappingsSummary, refetchAttemptPerformance, refetchPerformanceOptions, attemptPerformanceProvider])
   useVisibilityRefresh(refreshDashboard)
 
   const viewModel = useMemo(
@@ -244,8 +290,12 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     isFailureDistributionLoading,
     failureDistributionError,
     modelMappingsData,
-    isModelMappingsLoading,
-    modelMappingsError,
+    modelMappingsSummaryData,
+    isModelMappingsSummaryLoading,
+    modelMappingsSummaryError,
+    isModelMappingDetailsLoading,
+    modelMappingDetailsError,
+    setModelMappingsExpanded,
     attemptPerformanceProvider,
     attemptPerformanceProviders,
     setAttemptPerformanceProvider,
@@ -269,8 +319,11 @@ export function useUsageDashboard(): UseUsageDashboardResult {
     retryFailureDistribution: () => {
       void refetchFailureDistribution()
     },
-    retryModelMappings: () => {
-      void refetchModelMappings()
+    retryModelMappingsSummary: () => {
+      void refetchModelMappingsSummary({ cancelRefetch: false })
+    },
+    retryModelMappingDetails: () => {
+      if (modelMappingsExpanded && modelMappingDetailScopeMatches) void refetchModelMappings({ cancelRefetch: false })
     },
     retryAttemptPerformance: () => {
       if (attemptPerformanceProvider) void refetchAttemptPerformance()

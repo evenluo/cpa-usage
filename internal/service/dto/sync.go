@@ -9,10 +9,11 @@ type SyncResult struct {
 
 // RedisBatchSyncResult 是 Redis 批次同步的结果。
 type RedisBatchSyncResult struct {
-	Empty          bool
-	Status         string
-	InsertedEvents int
-	DedupedEvents  int
+	Empty             bool
+	BatchLimitReached bool
+	Status            string
+	InsertedEvents    int
+	DedupedEvents     int
 }
 
 // RedisInboxPullResult 是 Redis inbox 拉取结果。

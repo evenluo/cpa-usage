@@ -30,7 +30,11 @@ func (p redisUsageProcessor) process(ctx context.Context, now time.Time) (*servi
 		return &servicedto.RedisBatchSyncResult{Empty: true, Status: "empty"}, nil
 	}
 	slog.Debug("redis usage inbox rows found for processing", "row_count", len(processableRows))
-	return p.processRows(ctx, processableRows, now.UTC())
+	result, processErr := p.processRows(ctx, processableRows, now.UTC())
+	if result != nil {
+		result.BatchLimitReached = len(processableRows) == redisInboxProcessLimit
+	}
+	return result, processErr
 }
 
 // processRows 从已落库原始消息解码并写入事件；坏消息标记为 decode_failed，不阻塞同批其它数据。

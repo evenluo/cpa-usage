@@ -11,7 +11,7 @@ export function buildFailureDistributionPath(provider: string): string {
 export function useFailureDistribution(provider: string) {
   return useQuery({
     queryKey: ["usage", "failures", "24h", provider],
-    queryFn: () => apiFetch<UsageFailureDistribution>(buildFailureDistributionPath(provider)),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => apiFetch<UsageFailureDistribution>(buildFailureDistributionPath(provider), { signal }),
+    staleTime: 60_000,
   })
 }
