@@ -10,7 +10,7 @@ const modelRows = [
   { name: "gpt-5.6-terra", attempts: 8, p50: 3700, p95: 8900 },
   { name: "gpt-5.6-luna", attempts: 5, p50: 1900, p95: 6200 },
 ]
-const performance = {
+const performance = withHistograms({
   ...usageAttemptPerformance,
   total_attempts: 1200,
   successful_attempts: 1199,
@@ -48,6 +48,31 @@ const performance = {
       },
     })),
   },
+})
+
+
+// Deterministic samples preserve the fixture's exact nearest-rank percentiles
+// while exercising shared bins, the full tail and low-sample states.
+function withHistograms<T>(value: T, upper = 60000): T {
+  if (!value || typeof value !== "object") return value
+  if (Array.isArray(value)) return value.map((item) => withHistograms(item, upper)) as T
+  const record = value as Record<string, unknown>
+  if (typeof record.sample_count === "number") {
+    const count = record.sample_count
+    const counts = Array<number>(24).fill(0)
+    const p50 = Number(record.p50)
+    const p95 = Number(record.p95)
+    const rank50 = Math.ceil(count * 0.5)
+    const rank95 = Math.ceil(count * 0.95)
+    for (let rank = 1; rank <= count; rank++) {
+      const sample = rank <= rank50 ? p50 * rank / rank50
+        : rank <= rank95 ? p50 + (p95 - p50) * (rank - rank50) / (rank95 - rank50)
+          : p95 + (upper - p95) * (rank - rank95) / (count - rank95)
+      counts[Math.min(23, Math.floor(sample / upper * 24))]++
+    }
+    return { ...record, histogram: count > 0 ? { upper_bound: upper, counts } : null } as T
+  }
+  return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, withHistograms(item, key === "ttft_ms" ? 30000 : key === "output_tps" ? 200 : upper)])) as T
 }
 
 for (const theme of ["light", "dark"]) {
@@ -67,6 +92,20 @@ for (const theme of ["light", "dark"]) {
     const performanceCard = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: "Attempt performance", exact: true }) })
     await expect(performanceCard.getByRole("img")).toHaveCount(5)
     await expect(performanceCard.getByRole("img").first()).toBeVisible()
+    const density = performanceCard.getByRole("button", { name: "View sample distribution for gpt-5.6-sol", exact: true })
+    await expect(density.locator("[data-heatmap-bin]")).toHaveCount(24)
+    const sum = await density.locator("[data-heatmap-bin]").evaluateAll((bins) => bins.reduce((n, bin) => n + Number(bin.getAttribute("data-count")), 0))
+    expect(sum).toBe(994)
+    await density.focus()
+    await page.keyboard.press("Enter")
+    await expect(page.getByRole("dialog")).toContainText("994 valid samples")
+    await expect(page.getByRole("dialog").getByRole("row")).toHaveCount(25)
+    await page.keyboard.press("Escape")
+    await expect(density).toBeFocused()
+    await performanceCard.getByRole("button", { name: "View sample distribution for gpt-5.6-luna", exact: true }).click()
+    await expect(page.getByRole("dialog")).toContainText("5 valid samples")
+    await expect(page.getByRole("dialog")).toContainText("Few samples")
+    await page.keyboard.press("Escape")
     await expect(performanceCard).toContainText("54.44s")
     await expect(performanceCard.getByText("100% coverage", { exact: true })).toHaveCount(0)
     const sampleToggle = performanceCard.getByLabel("Sample details for gpt-5.6-sol", { exact: true }).first()

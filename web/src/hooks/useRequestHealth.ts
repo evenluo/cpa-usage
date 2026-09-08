@@ -11,8 +11,8 @@ export function buildRequestHealthPath(range: string, provider: string): string 
 export function useRequestHealth(range: string, provider: string) {
   return useQuery({
     queryKey: ["usage", "request-health", range, provider],
-    queryFn: () => apiFetch<RequestHealthResponse>(buildRequestHealthPath(range, provider)),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => apiFetch<RequestHealthResponse>(buildRequestHealthPath(range, provider), { signal }),
+    staleTime: 60_000,
     refetchInterval: () => {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
         return false

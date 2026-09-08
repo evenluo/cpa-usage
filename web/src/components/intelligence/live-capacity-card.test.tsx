@@ -117,7 +117,39 @@ function readGridAuthIndexes(grid: Element): string[] {
 }
 
 describe("LiveCapacityCard", () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllGlobals()
+  })
+
+  it("defers account reads until the card approaches the viewport", () => {
+    let notifyIntersection: IntersectionObserverCallback | undefined
+    class MockIntersectionObserver {
+      constructor(callback: IntersectionObserverCallback) {
+        notifyIntersection = callback
+      }
+      observe = vi.fn()
+      disconnect = vi.fn()
+      unobserve = vi.fn()
+      takeRecords = () => []
+      root = null
+      rootMargin = "240px 0px"
+      thresholds = [0]
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+    setupMock({ isLoading: true })
+
+    render(<LiveCapacityCard provider="" />)
+
+    expect(mockUseLiveCapacity).toHaveBeenLastCalledWith("", false)
+    expect(screen.getByText("Live Capacity")).toBeInTheDocument()
+    expect(screen.queryByText("No auth-file accounts")).not.toBeInTheDocument()
+
+    act(() => {
+      notifyIntersection?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    })
+    expect(mockUseLiveCapacity).toHaveBeenLastCalledWith("", true)
+  })
 
   it("shows skeleton while loading", () => {
     setupMock({ isLoading: true })

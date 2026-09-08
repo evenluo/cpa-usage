@@ -37,8 +37,11 @@ function attention(surfaces: UsageDashboardSurfaces, onRetryCore = vi.fn()) {
         requestEvidenceError={null}
         isFailureDistributionLoading={false}
         failureDistributionError={null}
-        isModelMappingsLoading={false}
-        modelMappingsError={null}
+        isModelMappingsSummaryLoading={false}
+        modelMappingsSummaryError={null}
+        isModelMappingDetailsLoading={false}
+        modelMappingDetailsError={null}
+        onModelMappingsExpandedChange={vi.fn()}
         performanceProvidersError={null}
         onRetryPerformanceProviders={vi.fn()}
         attemptPerformanceProvider="claude"
@@ -50,7 +53,8 @@ function attention(surfaces: UsageDashboardSurfaces, onRetryCore = vi.fn()) {
         onRetryRequestHealth={vi.fn()}
         onRetryRequestEvidence={vi.fn()}
         onRetryFailureDistribution={vi.fn()}
-        onRetryModelMappings={vi.fn()}
+        onRetryModelMappingsSummary={vi.fn()}
+        onRetryModelMappingDetails={vi.fn()}
         onRetryAttemptPerformance={vi.fn()}
       />
     ),

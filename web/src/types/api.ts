@@ -500,6 +500,10 @@ export interface UsagePercentileDistribution {
   coverage: number | null
   p50: number | null
   p95: number | null
+  histogram: {
+    upper_bound: number
+    counts: number[]
+  } | null
 }
 
 export interface UsageExecutionPopulation {

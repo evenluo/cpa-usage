@@ -10,6 +10,7 @@ import { ModelMappings } from "@/components/intelligence/model-mappings"
 import { AttemptPerformance } from "@/components/intelligence/attempt-performance"
 import { SectionDivider } from "@/components/intelligence/section-divider"
 import type { UsageDashboardSurfaces } from "@/features/usage-intelligence/surfaces"
+import type { UsageModelMappingSummary } from "@/features/usage-intelligence/model-mapping-summary"
 import type { UsageAttemptPerformance, UsageEventsPage, UsageFailureDistribution, UsageModelMappingDistribution } from "@/types/api"
 
 interface DashboardAttentionProps {
@@ -23,8 +24,12 @@ interface DashboardAttentionProps {
   isFailureDistributionLoading: boolean
   failureDistributionError: unknown
   modelMappingsData?: UsageModelMappingDistribution
-  isModelMappingsLoading: boolean
-  modelMappingsError: unknown
+  modelMappingsSummaryData?: UsageModelMappingSummary
+  isModelMappingsSummaryLoading: boolean
+  modelMappingsSummaryError: unknown
+  isModelMappingDetailsLoading: boolean
+  modelMappingDetailsError: unknown
+  onModelMappingsExpandedChange: (expanded: boolean) => void
   attemptPerformanceProvider: string
   attemptPerformanceProviders: string[]
   onSelectPerformanceProvider: (provider: string) => void
@@ -37,7 +42,8 @@ interface DashboardAttentionProps {
   onRetryRequestHealth: () => void
   onRetryRequestEvidence: () => void
   onRetryFailureDistribution: () => void
-  onRetryModelMappings: () => void
+  onRetryModelMappingsSummary: () => void
+  onRetryModelMappingDetails: () => void
   onRetryAttemptPerformance: () => void
 }
 
@@ -52,8 +58,12 @@ export function DashboardAttention({
   isFailureDistributionLoading,
   failureDistributionError,
   modelMappingsData,
-  isModelMappingsLoading,
-  modelMappingsError,
+  modelMappingsSummaryData,
+  isModelMappingsSummaryLoading,
+  modelMappingsSummaryError,
+  isModelMappingDetailsLoading,
+  modelMappingDetailsError,
+  onModelMappingsExpandedChange,
   attemptPerformanceProvider,
   attemptPerformanceProviders,
   onSelectPerformanceProvider,
@@ -66,7 +76,8 @@ export function DashboardAttention({
   onRetryRequestHealth,
   onRetryRequestEvidence,
   onRetryFailureDistribution,
-  onRetryModelMappings,
+  onRetryModelMappingsSummary,
+  onRetryModelMappingDetails,
   onRetryAttemptPerformance,
 }: DashboardAttentionProps) {
   return (
@@ -146,10 +157,16 @@ export function DashboardAttention({
       </div>
 
       <ModelMappings
+        key={requestEvidenceProvider}
+        summary={modelMappingsSummaryData}
         data={modelMappingsData}
-        isLoading={isModelMappingsLoading}
-        error={modelMappingsError}
-        onRetry={onRetryModelMappings}
+        isSummaryLoading={isModelMappingsSummaryLoading}
+        summaryError={modelMappingsSummaryError}
+        isDetailsLoading={isModelMappingDetailsLoading}
+        detailsError={modelMappingDetailsError}
+        onExpandedChange={onModelMappingsExpandedChange}
+        onRetrySummary={onRetryModelMappingsSummary}
+        onRetryDetails={onRetryModelMappingDetails}
       />
     </>
   )

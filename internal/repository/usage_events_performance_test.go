@@ -36,7 +36,12 @@ func BenchmarkUsageAttemptPerformanceHighCardinality(b *testing.B) {
 	if err := db.Exec(`UPDATE usage_events SET
 		ttft_ms = CASE WHEN latency_ms > 1 THEN latency_ms / 2 ELSE 1 END,
 		generate = 1, stream = 1,
-		output_tokens = CASE WHEN output_tokens > 0 THEN output_tokens ELSE 1 END`).Error; err != nil {
+		token_quality = 'complete', accounting_state = 'valid',
+		canonical_total_tokens = 130, canonical_input_tokens = 100,
+		canonical_uncached_tokens = 50, canonical_cache_read_tokens = 40,
+		canonical_cache_write_tokens = 10, canonical_output_tokens = 30,
+		canonical_non_reasoning_tokens = 18, canonical_reasoning_tokens = 12,
+		canonical_unclassified_tokens = 0`).Error; err != nil {
 		b.Fatalf("prepare attempt performance execution facts: %v", err)
 	}
 	windowEnd := fixture.end

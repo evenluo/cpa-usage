@@ -110,15 +110,22 @@ func buildUsageAttemptPerformanceSnapshot(ctx context.Context, db *gorm.DB, filt
 		}
 	}
 
-	providers, err := loadUsagePerformanceBreakdown(base, "provider", resultCounts.Total, true)
+	bounds := usagePerformanceHistogramBounds{
+		successLatency: histogramUpperBound(successLatency),
+		failedLatency:  histogramUpperBound(failedLatency),
+		streamingTTFT:  histogramUpperBound(streamingTTFT),
+		unknownTTFT:    histogramUpperBound(unknownTTFT),
+		streamingTPS:   histogramUpperBound(streamingTPS),
+	}
+	providers, err := loadUsagePerformanceBreakdown(base, "provider", resultCounts.Total, true, bounds)
 	if err != nil {
 		return nil, fmt.Errorf("load provider performance breakdown: %w", err)
 	}
-	models, err := loadUsagePerformanceBreakdown(base, "model", resultCounts.Total, providerSelected)
+	models, err := loadUsagePerformanceBreakdown(base, "model", resultCounts.Total, providerSelected, bounds)
 	if err != nil {
 		return nil, fmt.Errorf("load model performance breakdown: %w", err)
 	}
-	accounts, err := loadUsagePerformanceBreakdown(base, "auth_index", resultCounts.Total, providerSelected)
+	accounts, err := loadUsagePerformanceBreakdown(base, "auth_index", resultCounts.Total, providerSelected, bounds)
 	if err != nil {
 		return nil, fmt.Errorf("load account performance breakdown: %w", err)
 	}
@@ -169,7 +176,22 @@ const usagePerformanceAttemptColumns = `failed, latency_ms, ttft_ms, generate, s
 	canonical_cache_write_tokens, canonical_output_tokens, canonical_non_reasoning_tokens,
 	canonical_reasoning_tokens, canonical_unclassified_tokens`
 
-func loadUsagePerformanceBreakdown(base func() *gorm.DB, dimension string, total int64, includeOutputTPS bool) (dto.UsagePerformanceBreakdownRecord, error) {
+type usagePerformanceHistogramBounds struct {
+	successLatency float64
+	failedLatency  float64
+	streamingTTFT  float64
+	unknownTTFT    float64
+	streamingTPS   float64
+}
+
+func histogramUpperBound(distribution dto.UsagePercentileRecord) float64 {
+	if distribution.Histogram == nil {
+		return 0
+	}
+	return distribution.Histogram.UpperBound
+}
+
+func loadUsagePerformanceBreakdown(base func() *gorm.DB, dimension string, total int64, includeOutputTPS bool, bounds usagePerformanceHistogramBounds) (dto.UsagePerformanceBreakdownRecord, error) {
 	expression := "TRIM(" + dimension + ")"
 	var ranked []usagePerformanceDimensionCount
 	if err := base().Select(expression + " AS value, COUNT(*) AS count").
@@ -202,7 +224,7 @@ func loadUsagePerformanceBreakdown(base func() *gorm.DB, dimension string, total
 	visibleCount := int64(0)
 	for _, row := range ranked {
 		value := strings.TrimSpace(row.Value)
-		item := summarizeUsagePerformanceGroup(value, groups[value], includeOutputTPS)
+		item := summarizeUsagePerformanceGroup(value, groups[value], includeOutputTPS, bounds)
 		visibleCount += item.AttemptCount
 		items = append(items, item)
 	}
@@ -231,7 +253,7 @@ func (attempt usagePerformanceAttempt) entity() entities.UsageEvent {
 	}
 }
 
-func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAttempt, includeOutputTPS bool) dto.UsagePerformanceBreakdownItemRecord {
+func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAttempt, includeOutputTPS bool, bounds usagePerformanceHistogramBounds) dto.UsagePerformanceBreakdownItemRecord {
 	item := dto.UsagePerformanceBreakdownItemRecord{Value: value, AttemptCount: int64(len(attempts))}
 	successLatency := make([]float64, 0, len(attempts))
 	failedLatency := make([]float64, 0, len(attempts))
@@ -273,11 +295,11 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 			}
 		}
 	}
-	item.SuccessfulLatencyMS = usagePercentileRecord(successLatency, item.SuccessfulAttempts)
-	item.FailedLatencyMS = usagePercentileRecord(failedLatency, item.FailedAttempts)
-	item.StreamingTTFTMS = usagePercentileRecord(streamingTTFT, item.SuccessfulExecution.GeneratingStreaming)
-	item.UnknownExecutionTTFTMS = usagePercentileRecord(unknownTTFT, item.SuccessfulExecution.Unknown)
-	item.StreamingOutputTPS = usagePercentileRecord(streamingTPS, item.SuccessfulExecution.GeneratingStreaming)
+	item.SuccessfulLatencyMS = usagePercentileRecordWithHistogram(successLatency, item.SuccessfulAttempts, bounds.successLatency)
+	item.FailedLatencyMS = usagePercentileRecordWithHistogram(failedLatency, item.FailedAttempts, bounds.failedLatency)
+	item.StreamingTTFTMS = usagePercentileRecordWithHistogram(streamingTTFT, item.SuccessfulExecution.GeneratingStreaming, bounds.streamingTTFT)
+	item.UnknownExecutionTTFTMS = usagePercentileRecordWithHistogram(unknownTTFT, item.SuccessfulExecution.Unknown, bounds.unknownTTFT)
+	item.StreamingOutputTPS = usagePercentileRecordWithHistogram(streamingTPS, item.SuccessfulExecution.GeneratingStreaming, bounds.streamingTPS)
 	return item
 }
 
@@ -326,6 +348,10 @@ func loadUsageOutputTPSPercentiles(query *gorm.DB, populationCount int64) (dto.U
 }
 
 func usagePercentileRecord(values []float64, populationCount int64) dto.UsagePercentileRecord {
+	return usagePercentileRecordWithHistogram(values, populationCount, 0)
+}
+
+func usagePercentileRecordWithHistogram(values []float64, populationCount int64, upperBound float64) dto.UsagePercentileRecord {
 	record := dto.UsagePercentileRecord{PopulationCount: populationCount, SampleCount: int64(len(values))}
 	if populationCount > 0 {
 		coverage := float64(len(values)) / float64(populationCount)
@@ -339,6 +365,18 @@ func usagePercentileRecord(values []float64, populationCount int64) dto.UsagePer
 	p95 := nearestRankPercentile(values, 0.95)
 	record.P50 = &p50
 	record.P95 = &p95
+	if upperBound == 0 {
+		upperBound = values[len(values)-1]
+	}
+	counts := make([]int64, dto.UsagePerformanceHistogramBins)
+	for _, value := range values {
+		index := 0
+		if upperBound > 0 {
+			index = min(int(value/upperBound*float64(len(counts))), len(counts)-1)
+		}
+		counts[index]++
+	}
+	record.Histogram = &dto.UsageHistogramRecord{UpperBound: upperBound, Counts: counts}
 	return record
 }
 

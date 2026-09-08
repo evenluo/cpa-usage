@@ -155,7 +155,7 @@ func TestUsageAttemptPerformanceLeavesInvalidTimingAndTokensUnavailable(t *testi
 	for index, output := range []int64{10, 10, 10, 0, 10, 10} {
 		setPerformanceAttemptAccounting(&attempts[index], performanceAccountingWithOutput("complete", output))
 	}
-	item := summarizeUsagePerformanceGroup("edge-cases", attempts, true)
+	item := summarizeUsagePerformanceGroup("edge-cases", attempts, true, usagePerformanceHistogramBounds{})
 	if item.AttemptCount != 6 || item.SuccessfulAttempts != 5 || item.FailedAttempts != 1 {
 		t.Fatalf("unexpected edge-case populations: %+v", item)
 	}

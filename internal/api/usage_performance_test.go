@@ -65,7 +65,9 @@ func TestUsagePerformancePayloadPreservesCoverageTopNAndSafeAccountLabel(t *test
 	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 	p50, p95, coverage := 100.0, 900.0, 0.5
-	metric := dto.UsagePercentileRecord{PopulationCount: 4, SampleCount: 2, Coverage: &coverage, P50: &p50, P95: &p95}
+	counts := make([]int64, dto.UsagePerformanceHistogramBins)
+	counts[0], counts[23] = 1, 1
+	metric := dto.UsagePercentileRecord{PopulationCount: 4, SampleCount: 2, Coverage: &coverage, P50: &p50, P95: &p95, Histogram: &dto.UsageHistogramRecord{UpperBound: 900, Counts: counts}}
 	item := dto.UsagePerformanceBreakdownItemRecord{
 		Value: "auth-1", AttemptCount: 5, SuccessfulAttempts: 4, FailedAttempts: 1,
 		SuccessfulExecution: dto.UsageExecutionPopulationRecord{GeneratingStreaming: 2, NonGenerating: 1, Unknown: 1},
@@ -99,5 +101,8 @@ func TestUsagePerformancePayloadPreservesCoverageTopNAndSafeAccountLabel(t *test
 	}
 	if len(decoded.Accounts.Items) != 1 || decoded.Accounts.Items[0].Label != "Claude Primary" || decoded.Accounts.OtherCount != 3 {
 		t.Fatalf("lost safe account label or excluded count: %s", encoded)
+	}
+	if got := decoded.LatencyMS.Successful.Histogram; got == nil || got.UpperBound != 900 || len(got.Counts) != 24 || got.Counts[0] != 1 || got.Counts[23] != 1 {
+		t.Fatalf("lost histogram counts or shared range: %s", encoded)
 	}
 }

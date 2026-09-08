@@ -15,6 +15,10 @@ import (
 // Redis inbox 处理频率固定为 5 秒：拉取任务只负责把 Redis 原始消息落库，处理任务按这个间隔独立消费本地 inbox。
 const redisInboxProcessInterval = 5 * time.Second
 
+// redisInboxProcessBurstBatches bounds one process turn so sustained local
+// backlog drains faster without monopolizing the single SQLite writer.
+const redisInboxProcessBurstBatches = 4
+
 type RedisBatchSyncer interface {
 	PullRedisUsageInbox(ctx context.Context) (*servicedto.RedisInboxPullResult, error)
 	ProcessRedisUsageInbox(ctx context.Context) (*servicedto.RedisBatchSyncResult, error)
@@ -101,19 +105,25 @@ func (d *RedisDrain) runPullLoop(ctx context.Context) {
 	}
 }
 
-// runProcessLoop 固定每 5 秒处理已落库的 inbox 行，失败行保留为可重试状态，坏消息单独标记不阻塞后续行。
+// runProcessLoop 空闲时每 5 秒检查一次；存在明确积压时单轮最多连续处理四批，
+// 然后固定让出一个间隔。失败行保留为可重试状态，坏消息单独标记不阻塞后续行。
 func (d *RedisDrain) runProcessLoop(ctx context.Context) {
 	slog.Info("redis inbox process task started", "interval", redisInboxProcessInterval.String())
 	for {
 		if !d.sleep(ctx, redisInboxProcessInterval) {
 			return
 		}
-		result, err := d.runRedisProcess(ctx)
-		if err != nil && !errors.Is(err, ErrSyncCompletedWithWarnings) {
-			if shouldLogSyncError(err) {
-				d.logBatchFailure(result, err)
+		for range redisInboxProcessBurstBatches {
+			result, err := d.runRedisProcess(ctx)
+			if err != nil {
+				if !errors.Is(err, ErrSyncCompletedWithWarnings) && shouldLogSyncError(err) {
+					d.logBatchFailure(result, err)
+				}
+				break
 			}
-			continue
+			if result == nil || !result.BatchLimitReached {
+				break
+			}
 		}
 	}
 }

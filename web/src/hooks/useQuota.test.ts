@@ -201,13 +201,22 @@ describe("useLiveCapacity refresh targeting", () => {
     })
   })
 
-  function renderLiveCapacity() {
+  function renderLiveCapacity(enabled = true) {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    return renderHook(() => useLiveCapacity(""), {
+    return renderHook(() => useLiveCapacity("", enabled), {
       wrapper: ({ children }: { children: ReactNode }) =>
         createElement(QueryClientProvider, { client }, children),
     })
   }
+
+  it("does not scan identities before an offscreen card is enabled", async () => {
+    const { result } = renderLiveCapacity(false)
+
+    await Promise.resolve()
+
+    expect(result.current.identities).toEqual([])
+    expect(mockedApiFetch).not.toHaveBeenCalled()
+  })
 
   async function dispatchedRefreshIndexes(): Promise<string[][]> {
     await waitFor(() => {

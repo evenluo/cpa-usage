@@ -4,33 +4,49 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatCompact, formatCost, formatDate, formatPercent } from "@/lib/format"
+import type { UsageModelMappingSummary } from "@/features/usage-intelligence/model-mapping-summary"
 import type { CostStatus, UsageModelMapping, UsageModelMappingDistribution } from "@/types/api"
 
 interface ModelMappingsProps {
+  summary?: UsageModelMappingSummary
   data?: UsageModelMappingDistribution
-  isLoading: boolean
-  error: unknown
-  onRetry: () => void
+  isSummaryLoading: boolean
+  summaryError: unknown
+  isDetailsLoading: boolean
+  detailsError: unknown
+  onExpandedChange: (expanded: boolean) => void
+  onRetrySummary: () => void
+  onRetryDetails: () => void
 }
 
-export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappingsProps) {
-  if (data && data.total_attempts > 0) {
+export function ModelMappings({
+  summary,
+  data,
+  isSummaryLoading,
+  summaryError,
+  isDetailsLoading,
+  detailsError,
+  onExpandedChange,
+  onRetrySummary,
+  onRetryDetails,
+}: ModelMappingsProps) {
+  if (summary && summary.total_attempts > 0) {
     return (
       <Card className="min-w-0 overflow-hidden">
-        <details className="group">
+        <details className="group" onToggle={(event) => onExpandedChange(event.currentTarget.open)}>
           <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 rounded-xl px-4 py-4 transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 [&::-webkit-details-marker]:hidden">
             <CardTitle>Observed model mappings</CardTitle>
             <ChevronDown className="row-span-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
             <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span title={`${formatDate(data.window_start)} – ${formatDate(data.window_end)}`}>Last 24h</span>
-              <span><strong className="font-medium text-foreground">{formatCompact(data.mappings.length)}</strong> mappings displayed</span>
-              <span><strong className="font-medium text-foreground">{formatPercent(data.alias_coverage)}</strong> alias coverage</span>
-              <span><strong className="font-medium text-foreground">{formatCompact(data.missing_alias_attempts)}</strong> missing alias</span>
+              <span title={`${formatDate(summary.window_start)} – ${formatDate(summary.window_end)}`}>Last 24h</span>
+              <span><strong className="font-medium text-foreground">{formatCompact(summary.displayed_mappings)}</strong> mappings displayed</span>
+              <span><strong className="font-medium text-foreground">{formatPercent(summary.alias_coverage)}</strong> alias coverage</span>
+              <span><strong className="font-medium text-foreground">{formatCompact(summary.missing_alias_attempts)}</strong> missing alias</span>
             </span>
           </summary>
 
           <CardContent className="border-t border-border px-4 pb-5 pt-5 sm:px-6">
-            <div className="space-y-5">
+            {data ? <div className="space-y-5">
               <div className="flex flex-wrap items-start justify-between gap-2 text-xs text-muted-foreground">
                 <p>Share of alias-bearing attempts</p>
                 <details className="max-w-lg">
@@ -62,10 +78,23 @@ export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappings
               {data.other_attempts > 0 ? (
                 <p className="text-xs text-muted-foreground">Other observed attempts · {formatCompact(data.other_attempts)}</p>
               ) : null}
-            </div>
+            </div> : isDetailsLoading ? (
+              <div className="space-y-2" aria-label="Loading model mapping details">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+            ) : detailsError ? (
+              <div className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
+                <span>Failed to load model mapping details</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryDetails}>Retry model mapping details</Button>
+              </div>
+            ) : (
+              <Skeleton className="h-16 w-full" />
+            )}
           </CardContent>
         </details>
-        {error ? <RefreshFailure onRetry={onRetry} /> : null}
+        {summaryError ? <RefreshFailure onRetry={onRetrySummary} /> : null}
+        {data && detailsError ? <RefreshFailure onRetry={onRetryDetails} /> : null}
       </Card>
     )
   }
@@ -79,18 +108,18 @@ export function ModelMappings({ data, isLoading, error, onRetry }: ModelMappings
         </div>
       </CardHeader>
       <CardContent>
-        {!data && isLoading ? (
+        {!summary && isSummaryLoading ? (
           <Skeleton className="h-12 w-full" />
-        ) : !data && error ? (
+        ) : !summary && summaryError ? (
           <div className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
             <span>Failed to load observed model mappings</span>
-            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry model mappings</Button>
+            <Button type="button" size="sm" variant="outline" onClick={onRetrySummary}>Retry model mappings</Button>
           </div>
         ) : (
           <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">No attempts in the last 24 hours</div>
         )}
       </CardContent>
-      {data && error ? <RefreshFailure onRetry={onRetry} /> : null}
+      {summary && summaryError ? <RefreshFailure onRetry={onRetrySummary} /> : null}
     </Card>
   )
 }

@@ -179,6 +179,88 @@ func TestRedisDrainProcessLoopUsesFixedInterval(t *testing.T) {
 	}
 }
 
+func TestRedisDrainProcessLoopDrainsBoundedBacklogBurst(t *testing.T) {
+	results := make([]*servicedto.RedisBatchSyncResult, redisInboxProcessBurstBatches)
+	for index := range results {
+		results[index] = &servicedto.RedisBatchSyncResult{Status: "completed", InsertedEvents: 1, BatchLimitReached: true}
+	}
+	syncer := &redisDrainSyncStub{processResults: results}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+	ctx, cancel := context.WithCancel(context.Background())
+	sleeps := 0
+	drain.sleep = func(_ context.Context, d time.Duration) bool {
+		sleeps++
+		if d != redisInboxProcessInterval {
+			t.Fatalf("expected process interval %s, got %s", redisInboxProcessInterval, d)
+		}
+		if sleeps == 1 {
+			return true
+		}
+		cancel()
+		return false
+	}
+
+	drain.runProcessLoop(ctx)
+
+	_, processes := syncer.counts()
+	if processes != redisInboxProcessBurstBatches {
+		t.Fatalf("expected one bounded burst of %d batches, got %d", redisInboxProcessBurstBatches, processes)
+	}
+	if sleeps != 2 {
+		t.Fatalf("expected process loop to yield after the burst, got %d sleeps", sleeps)
+	}
+}
+
+func TestRedisDrainProcessLoopStopsBurstWhenBacklogClears(t *testing.T) {
+	syncer := &redisDrainSyncStub{processResults: []*servicedto.RedisBatchSyncResult{
+		{Status: "completed", InsertedEvents: 1, BatchLimitReached: true},
+		{Status: "completed", InsertedEvents: 1},
+	}}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+	ctx, cancel := context.WithCancel(context.Background())
+	sleeps := 0
+	drain.sleep = func(context.Context, time.Duration) bool {
+		sleeps++
+		if sleeps == 1 {
+			return true
+		}
+		cancel()
+		return false
+	}
+
+	drain.runProcessLoop(ctx)
+
+	_, processes := syncer.counts()
+	if processes != 2 {
+		t.Fatalf("expected burst to stop after backlog cleared, got %d batches", processes)
+	}
+}
+
+func TestRedisDrainProcessLoopStopsBurstAfterWarning(t *testing.T) {
+	syncer := &redisDrainSyncStub{
+		processResults: []*servicedto.RedisBatchSyncResult{{Status: "completed_with_warnings", BatchLimitReached: true}},
+		processErrs:    []error{errors.New("one row could not be decoded")},
+	}
+	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})
+	ctx, cancel := context.WithCancel(context.Background())
+	sleeps := 0
+	drain.sleep = func(context.Context, time.Duration) bool {
+		sleeps++
+		if sleeps == 1 {
+			return true
+		}
+		cancel()
+		return false
+	}
+
+	drain.runProcessLoop(ctx)
+
+	_, processes := syncer.counts()
+	if processes != 1 {
+		t.Fatalf("expected warning to end the backlog burst, got %d batches", processes)
+	}
+}
+
 func TestRedisDrainSyncNowPullsThenProcesses(t *testing.T) {
 	syncer := &redisDrainSyncStub{}
 	drain := NewRedisDrain(syncer, RedisDrainConfig{IdleInterval: time.Hour, ErrorBackoff: time.Hour})

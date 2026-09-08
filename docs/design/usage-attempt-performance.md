@@ -17,7 +17,8 @@ Every distribution returns:
 - `population_count`: attempts eligible for that named result/execution population before metric validity checks;
 - `sample_count`: attempts in that population with a valid metric sample;
 - `coverage`: `sample_count / population_count`, or `null` when the population is empty;
-- nullable `p50` and `p95`.
+- nullable `p50` and `p95`;
+- nullable `histogram: { upper_bound, counts }` over exactly the same valid samples.
 
 Missing or invalid evidence is unavailable, never zero.
 
@@ -46,9 +47,9 @@ A successful or failed latency p95 may open Request Evidence with the same provi
 
 ## Dashboard presentation
 
-Performance is the first comparison in the fixed 24-hour diagnostic section, after selected-window consumption analysis. The chart is visible by default and initially compares actual models. Metric controls switch successful latency, generating/streaming TTFT and Output TPS; dimension controls switch actual models, providers and accounts locally without another fetch. All visible rows use an aligned linear scale, with p50 and p95 markers. Partial or unavailable sample coverage stays visible; complete coverage and exact sample counts are available through the clickable attempt count or Samples details. These are the most-used returned groups, not a slowest-model ranking.
+Performance is the first comparison in the fixed 24-hour diagnostic section, after selected-window consumption analysis. The chart is visible by default and initially compares actual models. Metric controls switch successful latency, generating/streaming TTFT and Output TPS; dimension controls switch actual models, providers and accounts locally without another fetch. All visible rows use an aligned linear scale, with p50 and p95 markers over a 24-interval density strip. Bins start at zero, are left-closed/right-open, and the last includes the exact maximum. Each metric and result/execution population shares its overall upper bound across provider/model/account rows, including the tail beyond p95. Counts sum to the valid sample count; empty distributions have no histogram. Color uses each bin's share of the row's valid samples with the same square-root opacity scale across rows, never row-relative peak normalization or attempt volume. A bin hover shows interval/count/share; the row button opens the complete interval table for keyboard and touch users, with a low-sample explanation below ten samples. Partial or unavailable sample coverage stays visible; complete coverage and exact sample counts are available through the clickable attempt count or Samples details. These are the most-used returned groups, not a slowest-model ranking.
 
-The card owns a Provider selector independent of global dashboard filters. Its full option list comes from unfiltered fixed-24h analytics provider options, not the bounded performance breakdown. The first selection uses request count descending and provider name ascending; it remains stable after initialization, including when refreshes reorder options or an inactive selection disappears from the returned list. A provider change fetches a separate scoped performance result and shows loading/error until that result is available; previous-provider data is not relabelled. With no observed provider, the selector is disabled and the card shows an explicit empty state.
+The card owns a Provider selector independent of global dashboard filters. Its full option list comes from the narrow unfiltered fixed-24h `/usage/performance/providers` endpoint, not the bounded performance breakdown. The first selection uses request count descending and provider name ascending; it remains stable after initialization, including when refreshes reorder options or an inactive selection disappears from the returned list. A provider change fetches a separate scoped performance result and shows loading/error until that result is available; previous-provider data is not relabelled. With no observed provider, the selector is disabled and the card shows an explicit empty state.
 
 Failed latency remains a separate collapsed comparison with its own aggregate and matching evidence links. Unknown-execution TTFT remains separately qualified. Every populated dashboard performance card has a selected provider, including Output TPS. Cross-provider pooled TPS and shared comparison axes remain prohibited.
 
@@ -65,3 +66,7 @@ Invalid selection returns HTTP 400 before any repository read. A successful zero
 An initial all-columns/all-groups implementation over the full 48-hour fixture took 2.28 s and allocated 1,285,473,624 B. It was rejected before delivery. That earlier run is directional rather than a like-for-like comparison with the corrected 24-hour benchmark. The delivered read restricts raw projections to interpretation fields and SQL-ranked visible Top-N groups without changing exact percentile, coverage, or `other_count` semantics.
 
 This is representative local evidence, not a production SLA. Space remains linear in the valid overall Output TPS populations plus raw attempts for the returned Top-N groups inside the selected 24-hour window. No cache, sketch, background worker, or historical rollup hides that bound.
+
+## Performance governance (2026-09-08)
+
+Histogram construction reuses the existing exact-sample projection and sorted arrays, adding no SQL or client fetch. A populated provider-scoped read still executes 13 SELECT statements. See [performance budget](performance-budget.md) for shared query, ingestion and maintenance budgets and reproducible mixed-load evidence.

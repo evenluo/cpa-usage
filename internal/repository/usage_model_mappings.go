@@ -32,6 +32,61 @@ type usageModelMappingAggregateRow struct {
 	PricedBillableEvents   int64
 }
 
+const usageModelMappingObservedAliasPredicate = "model_alias IS NOT NULL AND TRIM(model_alias) <> ''"
+
+func usageModelMappingBase(ctx context.Context, db *gorm.DB, filter dto.UsageDiagnosticFilter) *gorm.DB {
+	return applyUsageDiagnosticQuery(
+		db.WithContext(ctx).Table("usage_events INDEXED BY idx_usage_events_timestamp_id"),
+		filter,
+	)
+}
+
+// BuildUsageModelMappingsSummaryWithFilter returns the collapsed-view facts
+// without loading mapping rows or joining pricing.
+func BuildUsageModelMappingsSummaryWithFilter(ctx context.Context, db *gorm.DB, filter dto.UsageDiagnosticFilter) (*dto.UsageModelMappingSummaryRecord, error) {
+	if db == nil {
+		return nil, fmt.Errorf("database is nil")
+	}
+	if filter.StartTime == nil || filter.EndTime == nil {
+		return nil, fmt.Errorf("model mapping summary requires bounded start and end times")
+	}
+
+	var record *dto.UsageModelMappingSummaryRecord
+	if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		base := func() *gorm.DB { return usageModelMappingBase(ctx, tx, filter) }
+		var population struct {
+			TotalAttempts         int64
+			ObservedAliasAttempts int64
+		}
+		if err := base().Select(`
+			COUNT(*) AS total_attempts,
+			COALESCE(SUM(CASE WHEN ` + usageModelMappingObservedAliasPredicate + ` THEN 1 ELSE 0 END), 0) AS observed_alias_attempts`).
+			Scan(&population).Error; err != nil {
+			return fmt.Errorf("summarize usage model mapping population: %w", err)
+		}
+
+		grouped := base().
+			Select("1").
+			Where(usageModelMappingObservedAliasPredicate).
+			Group("TRIM(model_alias), TRIM(usage_events.model), TRIM(usage_events.provider)")
+		var mappingCount int64
+		if err := tx.Table("(?) AS observed_model_mappings", grouped).Count(&mappingCount).Error; err != nil {
+			return fmt.Errorf("count usage model mappings: %w", err)
+		}
+
+		record = &dto.UsageModelMappingSummaryRecord{
+			TotalAttempts:         population.TotalAttempts,
+			ObservedAliasAttempts: population.ObservedAliasAttempts,
+			MissingAliasAttempts:  max(population.TotalAttempts-population.ObservedAliasAttempts, 0),
+			DisplayedMappings:     min(mappingCount, int64(dto.UsageModelMappingLimit)),
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return record, nil
+}
+
 // BuildUsageModelMappingsWithFilter returns a bounded fixed-window projection
 // of observed CPA alias labels to actual model/provider pairs. Blank aliases
 // stay outside the mapping rows and are reported as a coverage gap.
@@ -46,22 +101,19 @@ func BuildUsageModelMappingsWithFilter(ctx context.Context, db *gorm.DB, filter 
 	var record *dto.UsageModelMappingDistributionRecord
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		source := analyticsEventsAggregateSource()
-		observedAliasPredicate := "model_alias IS NOT NULL AND TRIM(model_alias) <> ''"
 		base := func() *gorm.DB {
-			return applyUsageDiagnosticQuery(
-				tx.WithContext(ctx).Table("usage_events INDEXED BY idx_usage_events_timestamp_id"),
-				filter,
-			).Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_events.model)")
+			return usageModelMappingBase(ctx, tx, filter).
+				Joins("LEFT JOIN model_price_settings ON TRIM(model_price_settings.model) = TRIM(usage_events.model)")
 		}
 
 		var summary usageModelMappingSummaryRow
 		if err := base().Select(`
 		COUNT(*) AS total_attempts,
-			COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN 1 ELSE 0 END), 0) AS observed_alias_attempts,
+			COALESCE(SUM(CASE WHEN ` + usageModelMappingObservedAliasPredicate + ` THEN 1 ELSE 0 END), 0) AS observed_alias_attempts,
 			COALESCE(SUM(` + source.accounting.stateAttemptsExpr(AccountingValid) + `), 0) AS canonical_valid_attempts,
-		COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN ` + analyticsSourceCostSQLExpression(source) + ` ELSE 0 END), 0) AS observed_total_cost,
-		COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN ` + analyticsSourceMissingPricingSQLExpression(source) + ` ELSE 0 END), 0) AS missing_pricing_events,
-		COALESCE(SUM(CASE WHEN ` + observedAliasPredicate + ` THEN ` + analyticsSourcePricedBillableSQLExpression(source) + ` ELSE 0 END), 0) AS priced_billable_events`).
+		COALESCE(SUM(CASE WHEN ` + usageModelMappingObservedAliasPredicate + ` THEN ` + analyticsSourceCostSQLExpression(source) + ` ELSE 0 END), 0) AS observed_total_cost,
+		COALESCE(SUM(CASE WHEN ` + usageModelMappingObservedAliasPredicate + ` THEN ` + analyticsSourceMissingPricingSQLExpression(source) + ` ELSE 0 END), 0) AS missing_pricing_events,
+		COALESCE(SUM(CASE WHEN ` + usageModelMappingObservedAliasPredicate + ` THEN ` + analyticsSourcePricedBillableSQLExpression(source) + ` ELSE 0 END), 0) AS priced_billable_events`).
 			Scan(&summary).Error; err != nil {
 			return fmt.Errorf("summarize usage model mapping population: %w", err)
 		}
@@ -79,7 +131,7 @@ func BuildUsageModelMappingsWithFilter(ctx context.Context, db *gorm.DB, filter 
 		COALESCE(SUM(` + analyticsSourceCostSQLExpression(source) + `), 0) AS total_cost,
 		COALESCE(SUM(` + analyticsSourceMissingPricingSQLExpression(source) + `), 0) AS missing_pricing_events,
 		COALESCE(SUM(` + analyticsSourcePricedBillableSQLExpression(source) + `), 0) AS priced_billable_events`).
-			Where(observedAliasPredicate).
+			Where(usageModelMappingObservedAliasPredicate).
 			Group("TRIM(model_alias), TRIM(usage_events.model), TRIM(usage_events.provider)").
 			Order("attempt_count DESC, model_alias ASC, model ASC, provider ASC").
 			Limit(dto.UsageModelMappingLimit).

@@ -73,6 +73,7 @@ type App struct {
 	metricsMu              sync.Mutex
 	lastMetricsSampleAt    time.Time
 	lastMetricsEventsTotal int64
+	httpMetrics            httpRequestMetrics
 }
 
 type appCloseAttempt struct {

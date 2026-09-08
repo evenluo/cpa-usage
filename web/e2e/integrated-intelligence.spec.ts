@@ -155,6 +155,11 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
 
   await page.goto("/")
   await expect(page.locator("html")).toHaveClass(/dark/)
+  const capacity = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: /^Live Capacity/ }) })
+  await expect(capacity.getByRole("heading", { name: /^Live Capacity/ })).toBeAttached()
+  expect(requests.filter((request) => request.path === "/usage/identities/page")).toHaveLength(0)
+  await capacity.scrollIntoViewIfNeeded()
+  await expect.poll(() => requests.filter((request) => request.path === "/usage/identities/page").length).toBe(1)
   await expect(page.getByText("Agent Codex")).toBeVisible()
   await expect(page.getByText("Unavailable", { exact: true }).first()).toBeVisible()
   await expect(page.getByText("Disabled", { exact: true }).first()).toBeVisible()

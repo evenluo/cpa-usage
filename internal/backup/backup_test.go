@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -45,6 +46,92 @@ func TestWriterWriteDatabaseBacksUpSQLiteDatabase(t *testing.T) {
 	}
 	if name != "saved" {
 		t.Fatalf("expected backed up row name saved, got %q", name)
+	}
+}
+
+func TestOpenBackupSourceUsesDedicatedReadOnlyConnection(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), " source db #1?.db ")
+	sourceDSN := (&url.URL{Scheme: "file", Path: sourcePath}).String()
+	source := openTestSQLiteDB(t, sourceDSN)
+	defer source.Close()
+	source.SetMaxOpenConns(1)
+	if _, err := source.Exec(`CREATE TABLE records (id INTEGER PRIMARY KEY, name TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := source.Exec(`INSERT INTO records (name) VALUES ('saved')`); err != nil {
+		t.Fatalf("insert row: %v", err)
+	}
+
+	backupSource, closeBackupSource, err := openBackupSource(context.Background(), source)
+	if err != nil {
+		t.Fatalf("openBackupSource returned error: %v", err)
+	}
+	defer closeBackupSource()
+	if backupSource == source {
+		t.Fatal("expected file-backed database to use a dedicated connection")
+	}
+	if _, err := backupSource.Exec(`INSERT INTO records (name) VALUES ('forbidden')`); err == nil {
+		t.Fatal("expected dedicated backup source to be read-only")
+	}
+
+	heldApplicationConnection, err := source.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("hold application connection: %v", err)
+	}
+	defer heldApplicationConnection.Close()
+	destination := filepath.Join(t.TempDir(), "copy.db")
+	if err := copySQLiteDatabase(context.Background(), backupSource, destination); err != nil {
+		t.Fatalf("copy with application pool occupied: %v", err)
+	}
+	copyDB := openTestSQLiteDB(t, destination)
+	defer copyDB.Close()
+	var name string
+	if err := copyDB.QueryRow(`SELECT name FROM records WHERE id = 1`).Scan(&name); err != nil {
+		t.Fatalf("read copied row: %v", err)
+	}
+	if name != "saved" {
+		t.Fatalf("expected copied row, got %q", name)
+	}
+}
+
+func TestWriterWriteDatabaseIncludesUncheckpointedWALData(t *testing.T) {
+	source := openTestSQLiteDB(t, filepath.Join(t.TempDir(), "source.db"))
+	defer source.Close()
+	if _, err := source.Exec(`PRAGMA journal_mode=WAL`); err != nil {
+		t.Fatalf("enable WAL: %v", err)
+	}
+	if _, err := source.Exec(`CREATE TABLE records (id INTEGER PRIMARY KEY, name TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+	if _, err := source.Exec(`INSERT INTO records (name) VALUES ('wal-row')`); err != nil {
+		t.Fatalf("insert WAL row: %v", err)
+	}
+
+	path, err := NewWriter(t.TempDir()).WriteDatabase(context.Background(), source, time.Now())
+	if err != nil {
+		t.Fatalf("WriteDatabase returned error: %v", err)
+	}
+	backupDB := openTestSQLiteDB(t, path)
+	defer backupDB.Close()
+	var name string
+	if err := backupDB.QueryRow(`SELECT name FROM records WHERE id = 1`).Scan(&name); err != nil {
+		t.Fatalf("query WAL-backed backup row: %v", err)
+	}
+	if name != "wal-row" {
+		t.Fatalf("expected WAL row in backup, got %q", name)
+	}
+}
+
+func TestOpenBackupSourceKeepsInMemoryHandle(t *testing.T) {
+	source := openTestSQLiteDB(t, ":memory:")
+	defer source.Close()
+	backupSource, closeBackupSource, err := openBackupSource(context.Background(), source)
+	if err != nil {
+		t.Fatalf("openBackupSource returned error: %v", err)
+	}
+	defer closeBackupSource()
+	if backupSource != source {
+		t.Fatal("expected in-memory database to retain the supplied handle")
 	}
 }
 
