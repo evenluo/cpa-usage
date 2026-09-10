@@ -41,6 +41,53 @@ func TestQuotaObservationSurvivesDatabaseReopen(t *testing.T) {
 	}
 }
 
+func TestDisabledIdentityQuotaQueriesPersistObservationWithoutEnablingIdentity(t *testing.T) {
+	for _, mode := range []string{"check", "refresh"} {
+		t.Run(mode, func(t *testing.T) {
+			ctx := context.Background()
+			db := openQuotaTestDatabase(t, filepath.Join(t.TempDir(), "disabled-quota.db"))
+			defer closeQuotaTestDatabase(t, db)
+			identity := createQuotaTestIdentity(t, db, "auth-disabled")
+			observedAt := time.Date(2026, 9, 10, 1, 2, 3, 0, time.UTC)
+			if err := dbrepository.SetUsageIdentityDisabled(ctx, db, identity.ID, true, observedAt.Add(-time.Minute)); err != nil {
+				t.Fatalf("disable identity: %v", err)
+			}
+			repository := NewRepository(db)
+			handler := &refreshHandlerStub{output: claudeUsageOutput(25)}
+			service := NewServiceWithRegistry(repository, NewProviderRegistry(map[string]ProviderHandler{"claude": handler}))
+			defer service.StopRefreshWorkers()
+			service.now = func() time.Time { return observedAt }
+
+			var response CheckResponse
+			if mode == "check" {
+				var err error
+				response, err = service.Check(ctx, CheckRequest{AuthIndex: identity.Identity})
+				if err != nil {
+					t.Fatalf("check disabled identity: %v", err)
+				}
+			} else {
+				taskID := refreshAuthIndex(t, service, identity.Identity)
+				task := waitForRefreshTask(t, service, taskID, RefreshTaskStatusCompleted)
+				if task.Quota == nil {
+					t.Fatalf("completed refresh must return quota: %+v", task)
+				}
+				response = *task.Quota
+			}
+			if response.ID != identity.Identity || !response.ObservedAt.Equal(observedAt) {
+				t.Fatalf("unexpected quota response: %+v", response)
+			}
+			if handler.callCount() != 1 {
+				t.Fatalf("expected one provider call, got %d", handler.callCount())
+			}
+			assertRepositoryObservation(t, repository, identity.Identity, observedAt, 25)
+			persisted, found, err := repository.FindActiveAuthFileIdentity(ctx, identity.Identity)
+			if err != nil || !found || !persisted.Disabled {
+				t.Fatalf("quota query must preserve disabled identity: identity=%+v found=%v err=%v", persisted, found, err)
+			}
+		})
+	}
+}
+
 func TestQuotaObservationOnlyReplacesWithStrictlyNewerObservation(t *testing.T) {
 	db := openQuotaTestDatabase(t, filepath.Join(t.TempDir(), "newer-wins.db"))
 	defer closeQuotaTestDatabase(t, db)

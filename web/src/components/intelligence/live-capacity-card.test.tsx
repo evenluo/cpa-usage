@@ -256,12 +256,12 @@ describe("LiveCapacityCard", () => {
       })
       const { container } = render(<LiveCapacityCard provider="" />)
 
-      // Disabled accounts retain historical readings while their refresh action stays unavailable.
+      // Disabled accounts retain historical readings and can refresh their quota.
       expect(screen.getByText("10% used")).toBeInTheDocument()
       expect(screen.getByLabelText("5h: 10% used")).toBeInTheDocument()
       expect(screen.getByText("No reading")).toBeInTheDocument()
       expect(screen.queryByText("25% used · Blocked")).not.toBeInTheDocument()
-      expect(screen.queryByRole("button", { name: "Refresh Codex Auth" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
       // Window-less reported rows, the active limit, and model observations live
       // behind the per-tile fold.
       const fold = screen.getByText(/··· \d+ more/).closest("details")
@@ -906,12 +906,14 @@ describe("LiveCapacityCard", () => {
     )
   })
 
-  it("renders a disabled account dimmed with an amber badge and no refresh action", () => {
+  it("refreshes a disabled account without enabling it and retains its disabled presentation", async () => {
+    const user = userEvent.setup()
     const identities = [identity({ identity: "codex-auth", displayName: "Codex Auth", disabled: true })]
     const observations: QuotaObservationsResponse = {
       items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] }],
     }
-    setupMock({ identities, observations })
+    const mock = setupMock({ identities, observations })
+    mockSetIdentityDisabled.mutate.mockClear()
     const { container } = render(<LiveCapacityCard provider="" />)
 
     expect(container.querySelector(".group.opacity-60")).not.toBeNull()
@@ -920,8 +922,41 @@ describe("LiveCapacityCard", () => {
     const amberBadge = screen.getAllByText("Disabled").find((el) => el.className.includes("bg-amber-500/10"))
     expect(amberBadge).toBeDefined()
     expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Refresh Codex Auth" })).not.toBeInTheDocument()
+    const refresh = screen.getByRole("button", { name: "Refresh Codex Auth" })
+    expect(refresh).toBeEnabled()
+    await user.click(refresh)
+    expect(mock.refresh).toHaveBeenCalledWith("codex-auth")
+    expect(mockSetIdentityDisabled.mutate).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Enable Codex Auth" })).toBeInTheDocument()
+  })
+
+  it.each(["starting", "queued", "running"] as const)("shows %s quota refresh progress on a disabled account", (status) => {
+    setupMock({
+      identities: [identity({ disabled: true })],
+      taskStates: { "codex-auth": { status, taskId: "task-1" } },
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(screen.getByText("Disabled")).toBeInTheDocument()
+    const refresh = screen.getByRole("button", { name: "Refresh Codex Auth" })
+    expect(refresh).toBeDisabled()
+    expect(refresh.querySelector(".animate-spin")).not.toBeNull()
+  })
+
+  it("shows a disabled account's quota refresh error with a retry action and retained reading", () => {
+    setupMock({
+      identities: [identity({ disabled: true })],
+      observations: {
+        items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "primary", label: "5h", usedPercent: 10 }] }],
+      },
+      taskStates: { "codex-auth": { status: "failed", error: "HTTP 401" } },
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(screen.getByText("Disabled")).toBeInTheDocument()
+    expect(screen.getByTitle("Refresh failed: HTTP 401")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
+    expect(screen.getByText("10% used")).toBeInTheDocument()
   })
 
   it("sinks disabled accounts to the end of the regular section", () => {

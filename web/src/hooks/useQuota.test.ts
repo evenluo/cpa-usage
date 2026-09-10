@@ -318,7 +318,7 @@ describe("useLiveCapacity refresh targeting", () => {
     })
   })
 
-  it("excludes disabled accounts from refresh-all and single-target refreshes", async () => {
+  it.each(["all", "single", "selected"] as const)("includes disabled accounts in %s refreshes", async (mode) => {
     const disabledIdentity: KeyIdentity = { ...identity("d-auth", "Codex"), disabled: true }
     mockedApiFetch.mockImplementation(async (path) => {
       if (String(path).startsWith("/usage/identities/page")) {
@@ -333,10 +333,12 @@ describe("useLiveCapacity refresh targeting", () => {
     const { result } = renderLiveCapacity()
     await waitFor(() => expect(result.current.identities).toHaveLength(4))
 
-    act(() => { result.current.refresh() })
-    expect(await dispatchedRefreshIndexes()).toEqual([["a-auth", "b-auth", "c-auth"]])
-
-    await act(async () => { result.current.refresh("d-auth") })
-    expect(mockedApiFetch.mock.calls.filter(([path]) => path === "/quota/refresh")).toHaveLength(1)
+    act(() => {
+      result.current.refresh(mode === "all" ? undefined : mode === "single" ? "d-auth" : ["a-auth", "d-auth"])
+    })
+    expect(await dispatchedRefreshIndexes()).toEqual([
+      mode === "all" ? ["a-auth", "b-auth", "c-auth", "d-auth"] : mode === "single" ? ["d-auth"] : ["a-auth", "d-auth"],
+    ])
+    expect(result.current.identities.find((entry) => entry.identity === "d-auth")?.disabled).toBe(true)
   })
 })

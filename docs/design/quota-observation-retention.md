@@ -11,6 +11,10 @@ Keep the last successful reading and its original time until a later successful 
 
 Account and model observations retain their scopes. Different windows may have different ages: the newest observation wins when sources describe the same window, and each reading keeps its own source/time tooltip. The card's **Last updated** is the newest successful observation across its manual, account and model quota sources; it does not imply every visible reading was fetched together.
 
+Disabled auth-file accounts support manual quota checks, individual refreshes and displayed-batch refreshes. The Disabled badge and account ordering remain independent of quota progress, failure and readings. A quota query does not enable the account or change its CPA dispatch state; provider errors remain visible and leave the last successful reading intact.
+
+Compatibility change (2026-09-10): quota check and refresh intentionally stop rejecting accounts solely because they are disabled. The request/response shapes, supported-provider checks, deleted-identity exclusion, refresh limits, concurrency and observation retention stay the same. This uses the existing CPA management `api-call` path: in the pinned CPA v7.2.152 (`c76dfd4e0edabab9000628b1560ab8ab379eadb8`), [credential lookup and token substitution](https://github.com/router-for-me/CLIProxyAPI/blob/c76dfd4e0edabab9000628b1560ab8ab379eadb8/internal/api/handlers/management/api_tools.go) do not exclude disabled auth files. Successful quota retrieval still depends on valid credentials and the provider response.
+
 ## Ownership and transitions
 
 - SQLite owns the latest successful manual observation for each auth-file identity. Persist only the normalized quota response and observation time; never store credentials, raw provider payloads or headers.
@@ -33,5 +37,6 @@ Existing passive snapshots retain their source timestamps. Manual results alread
 - Save a successful probe, expire/clean its task receipt, recreate the service/database connection and read the same quota and timestamp without a provider call.
 - A failed subsequent provider call or persistence write leaves the previous successful observation readable; a newer success replaces it and an older observation does not.
 - Missing or older passive snapshots preserve the latest account/model readings across metadata sync; account deletion still governs visibility.
+- Disabled accounts can complete both direct checks and asynchronous refreshes, save a newer observation and keep their disabled state. The UI exposes individual and batch refreshes, shows progress/errors and retains the Disabled badge through success, failure and reload.
 - Fresh page loading, refresh success/failure and reads of observations older than 20 minutes retain the appropriate data and **Last updated**. Model-only observations contribute their real timestamp; metadata-only accounts do not.
 - No cache-expiry/stale indicator or retired cache API remains in the current application contract. Theme, responsive layout, refresh controls and source/time tooltips continue to work.

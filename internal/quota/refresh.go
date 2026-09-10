@@ -181,9 +181,6 @@ func (s *Service) validateRefreshAuthIndex(ctx context.Context, authIndex string
 		return "", err
 	}
 	if found {
-		if identity.Disabled {
-			return "disabled", nil
-		}
 		if _, _, ok := s.resolveQuotaHandler(identity.Provider, identity.Type); !ok {
 			return "unsupported", nil
 		}

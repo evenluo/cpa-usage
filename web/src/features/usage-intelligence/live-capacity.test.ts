@@ -421,7 +421,7 @@ describe("Live Capacity view model", () => {
     expect(rows[0].accountState).toMatchObject({ kind: status, label, tone })
   })
 
-  it("builds a disabled row whose status wins over an observation and task state", () => {
+  it("shows quota refresh progress independently of the disabled account state", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ id: 42, identity: "codex-auth", disabled: true, unavailable: true, status: "error" })],
       observations: {
@@ -441,21 +441,27 @@ describe("Live Capacity view model", () => {
       disabled: true,
       unavailable: true,
       accountState: { kind: "error" },
-      status: "disabled",
+      status: "refreshing",
     })
     expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
   })
 
-  it("maps the disabled refresh rejection to a Disabled label", () => {
+  it("shows a disabled account's refresh failure while retaining its reading", () => {
     const rows = buildLiveCapacityRows({
-      identities: [identity({ identity: "codex-auth" })],
+      identities: [identity({ identity: "codex-auth", disabled: true })],
+      observations: {
+        items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "primary", label: "5h", usedPercent: 25 }] }],
+      },
       taskStates: {
-        "codex-auth": { status: "failed", error: "disabled" },
+        "codex-auth": { status: "failed", error: "HTTP 401" },
       },
     })
 
     expect(rows[0].status).toBe("failed")
-    expect(rows[0].errorLabel).toBe("Disabled")
+    expect(rows[0].disabled).toBe(true)
+    expect(rows[0].errorLabel).toBe("HTTP 401")
+    expect(rows[0].fiveHour).toMatchObject({ valueLabel: "25% used", progress: 25 })
+    expect(rows[0].observedAt).toBe(OBSERVED_AT)
   })
 
   it("keeps disabled rows in base business order so the card can sink them at render time", () => {
@@ -467,7 +473,7 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows.map((row) => [row.authIndex, row.status])).toEqual([
-      ["alpha-codex", "disabled"],
+      ["alpha-codex", "no_observation"],
       ["beta-codex", "no_observation"],
     ])
   })

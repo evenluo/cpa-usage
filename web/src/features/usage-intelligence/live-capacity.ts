@@ -1,7 +1,7 @@
 import type { KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaObservationsResponse, QuotaRow, QuotaWindow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
-export type LiveCapacityStatus = "observed" | "no_observation" | "refreshing" | "failed" | "unsupported" | "disabled"
+export type LiveCapacityStatus = "observed" | "no_observation" | "refreshing" | "failed" | "unsupported"
 export type ProviderKind = "antigravity" | "claude" | "codex" | "gemini-cli" | "kimi" | "unsupported"
 export type LiveCapacityPlanTone = "priority" | "ordinary" | "none"
 export type LiveCapacityAccountStateTone = "green" | "amber" | "red" | "muted"
@@ -132,9 +132,7 @@ export function buildLiveCapacityRows(input: {
       let status: LiveCapacityStatus = observation ? "observed" : "no_observation"
       let error: string | undefined
       let errorLabel: string | undefined
-      if (identity.disabled) {
-        status = "disabled"
-      } else if (!supported) {
+      if (!supported) {
         status = "unsupported"
       } else if (taskState?.status === "starting" || taskState?.status === "queued" || taskState?.status === "running") {
         status = "refreshing"
@@ -585,8 +583,6 @@ function rejectionLabel(code: string): string {
       return "Not auth-file"
     case "not_found":
       return "Not found"
-    case "disabled":
-      return "Disabled"
     case "duplicate":
       return "Already refreshing"
     case "invalid":

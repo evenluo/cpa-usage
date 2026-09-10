@@ -603,20 +603,18 @@ function LiveCapacityAccountTile({
             )}
           </Button>
         )}
-        {!row.disabled ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 opacity-70 transition-opacity group-hover:opacity-100"
-            onClick={onRefresh}
-            disabled={isRowRefreshing || setIdentityDisabled.isPending}
-            aria-label={`Refresh ${accountTitle}`}
-            title="Refresh this account"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
-          </Button>
-        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 opacity-70 transition-opacity group-hover:opacity-100"
+          onClick={onRefresh}
+          disabled={isRowRefreshing || setIdentityDisabled.isPending}
+          aria-label={`Refresh ${accountTitle}`}
+          title="Refresh this account"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
+        </Button>
         </div>
       </div>
 

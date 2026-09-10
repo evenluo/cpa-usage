@@ -3,8 +3,13 @@ import { authFileIdentitiesPayload, installMockAPI } from "./mock-api"
 
 // Synthetic observations exercise the real page/hooks across failed and successful
 // refreshes. Backend persistence and restart behavior are covered by Go tests.
-for (const theme of ["light", "dark"]) {
-  test(`${theme} quota observations survive age, refresh failure and page reload`, async ({ page }, testInfo) => {
+for (const { theme, disabled } of [
+  { theme: "light", disabled: false },
+  { theme: "dark", disabled: false },
+  { theme: "light", disabled: true },
+  { theme: "dark", disabled: true },
+]) {
+  test(`${theme} ${disabled ? "disabled" : "enabled"} quota observations survive age, refresh failure and page reload`, async ({ page }, testInfo) => {
     await page.clock.setFixedTime(new Date("2026-09-08T04:45:00Z"))
     await page.addInitScript((value) => localStorage.setItem("cpa-theme", value), theme)
     await installMockAPI(page)
@@ -22,7 +27,10 @@ for (const theme of ["light", "dark"]) {
       active_until: null,
     }
     const identities = [
-      { ...baseIdentity, id: 601, identity: "manual-observation", name: "Manual account", displayName: "Manual account" },
+      {
+        ...baseIdentity, id: 601, identity: "manual-observation", name: "Manual account", displayName: "Manual account",
+        disabled, status: disabled ? "disabled" : "active",
+      },
       {
         ...baseIdentity, id: 602, identity: "reported-observation", name: "Reported account", displayName: "Reported account",
         passive_quota: {
@@ -46,6 +54,10 @@ for (const theme of ["light", "dark"]) {
     }
     let observationReads = 0
     let refreshCalls = 0
+    let accountStatusWrites = 0
+    page.on("request", (request) => {
+      if (/\/usage\/identities\/\d+\/disabled$/.test(request.url())) accountStatusWrites++
+    })
     await page.route(/\/api\/v1\/quota\/observations$/, (route) => {
       observationReads++
       return route.fulfill({ json: { items: [observation] } })
@@ -79,6 +91,7 @@ for (const theme of ["light", "dark"]) {
     const manual = cardFor("Manual account")
     const reported = cardFor("Reported account")
     const never = cardFor("No observation account")
+    if (disabled) await expect(manual.getByText("Disabled", { exact: true })).toBeVisible()
     await expect(manual.getByText("25% used", { exact: true })).toBeVisible()
     await expect(manual.getByText("Last updated 4h ago", { exact: true })).toBeVisible()
     await expect(reported.getByText("Last updated 41m ago", { exact: true })).toBeVisible()
@@ -109,6 +122,11 @@ for (const theme of ["light", "dark"]) {
     await expect(manual.getByText("30% used", { exact: true })).toBeVisible()
     await expect(manual.getByText("Last updated just now", { exact: true })).toBeVisible()
     expect(refreshCalls).toBe(2)
+    expect(accountStatusWrites).toBe(0)
+    if (disabled) {
+      await expect(manual.getByText("Disabled", { exact: true })).toBeVisible()
+      await expect(manual.getByRole("button", { name: "Enable Manual account", exact: true })).toBeVisible()
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   })
 }
