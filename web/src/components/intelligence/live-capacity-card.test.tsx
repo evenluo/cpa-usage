@@ -908,7 +908,7 @@ describe("LiveCapacityCard", () => {
 
   it("refreshes a disabled account without enabling it and retains its disabled presentation", async () => {
     const user = userEvent.setup()
-    const identities = [identity({ identity: "codex-auth", displayName: "Codex Auth", disabled: true })]
+    const identities = [identity({ identity: "codex-auth", displayName: "Codex Auth", disabled: true, status: "disabled" })]
     const observations: QuotaObservationsResponse = {
       items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "quota", label: "5h", usedPercent: 10, planType: "team" }] }],
     }

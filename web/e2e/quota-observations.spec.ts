@@ -91,7 +91,11 @@ for (const { theme, disabled } of [
     const manual = cardFor("Manual account")
     const reported = cardFor("Reported account")
     const never = cardFor("No observation account")
-    if (disabled) await expect(manual.getByText("Disabled", { exact: true })).toBeVisible()
+    if (disabled) {
+      await expect(manual.getByText("Disabled", { exact: true })).toBeVisible()
+      await expect(manual.getByRole("group", { name: "Account availability" })).toHaveCount(0)
+      await manual.screenshot({ path: testInfo.outputPath(`disabled-account-${theme}.png`), animations: "disabled" })
+    }
     await expect(manual.getByText("25% used", { exact: true })).toBeVisible()
     await expect(manual.getByText("Last updated 4h ago", { exact: true })).toBeVisible()
     await expect(reported.getByText("Last updated 41m ago", { exact: true })).toBeVisible()

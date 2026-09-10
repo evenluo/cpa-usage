@@ -867,9 +867,10 @@ function definitionStatusLabel(status: RegisteredModelSupport["definition_status
 }
 
 function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
-  // row.disabled already has a header badge; this row only surfaces the
-  // remaining abnormal states.
-  const showAccountState = row.accountState.kind !== "active" && row.accountState.kind !== "not_reported"
+  // Omit a matching disabled lifecycle state already covered by the header badge.
+  const showAccountState = row.accountState.kind !== "active"
+    && row.accountState.kind !== "not_reported"
+    && !(row.disabled && row.accountState.kind === "disabled")
   if (row.unavailable !== true && !showAccountState) return null
   return (
     <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Account availability">
