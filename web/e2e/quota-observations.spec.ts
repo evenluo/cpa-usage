@@ -99,7 +99,9 @@ for (const { theme, disabled } of [
     await expect(manual.getByText("25% used", { exact: true })).toBeVisible()
     await expect(manual.getByText("Last updated 4h ago", { exact: true })).toBeVisible()
     await expect(reported.getByText("Last updated 41m ago", { exact: true })).toBeVisible()
-    await expect(never.getByText("No reading", { exact: true })).toHaveCount(2)
+    // The two regular windows and the separate Reserve allowance have no readings.
+    await expect(never.getByText("No reading", { exact: true })).toHaveCount(3)
+    await expect(never.getByRole("region", { name: "Luna Reserve", exact: true }).getByText("No reading", { exact: true })).toBeVisible()
     await expect(never.getByText(/^Last updated /)).toHaveCount(0)
     await expect(capacity.getByText(/^(Stale|Cache expires|Expired)$/)).toHaveCount(0)
     expect(refreshCalls).toBe(0)

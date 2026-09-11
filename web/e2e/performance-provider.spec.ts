@@ -26,6 +26,13 @@ for (const theme of ["light", "dark"]) {
     await page.goto("/")
     const card = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: "Attempt performance", exact: true }) })
     const selector = card.getByRole("combobox", { name: "Performance provider" })
+    // Complete the independent, viewport-triggered capacity reads before
+    // asserting that changing the performance provider makes no global requests.
+    const capacity = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: /^Live Capacity/ }) })
+    await capacity.scrollIntoViewIfNeeded()
+    await expect.poll(() => requests.filter((request) => request.path === "/usage/identities/page").length).toBe(1)
+    await expect.poll(() => requests.filter((request) => request.path === "/quota/observations").length).toBe(1)
+    await selector.scrollIntoViewIfNeeded()
     await expect(selector).toHaveText("provider-8")
     await selector.click()
     await expect(page.getByRole("option")).toHaveCount(9)

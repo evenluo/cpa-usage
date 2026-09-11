@@ -53,11 +53,11 @@ The latest successful quota observation time for an account, whether obtained by
 _Avoid_: Metadata sync time, token refresh time, cache expiry, proof of present capacity
 
 **Model request observations**:
-Quota snapshots captured during requests to each model, with their original observation times. Codex snapshots can repeat the same account limits at different times; a model name identifies the request that produced the reading.
+Quota snapshots captured during requests to each model, with their original observation times. Codex snapshots can repeat the same account limits at different times; a model name identifies the request that produced the reading. They remain stored and exposed by the API, but Codex account cards do not render these model copies or use them to advance the card's freshness time.
 _Avoid_: Independent model allowances, current account totals
 
 **Luna Reserve**:
-Additional Luna usage offered to selected accounts after regular usage is exhausted. It has its own allowance; a quota observation does not prove that a particular client can use it.
+Additional Luna usage offered to selected accounts after regular usage is exhausted. It has its own allowance, identified as `gpt-reserve` in the supported quota response. Codex cards show collected account readings directly, or **No reading** when none has been collected. A missing reading does not establish eligibility, and a quota observation does not prove that a particular client can use the allowance.
 _Avoid_: Rate-limit reset credit, Terra allowance, unlimited usage
 
 **Registered Model Support**:

@@ -199,7 +199,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
   })
 
-  it("uses a model-only passive quota as the latest successful observation", () => {
+  it("does not use a Codex model snapshot as a card observation", () => {
     vi.useFakeTimers({ now: new Date("2026-09-07T12:00:00Z") })
     try {
       setupMock({
@@ -216,11 +216,38 @@ describe("LiveCapacityCard", () => {
       })
       render(<LiveCapacityCard provider="" />)
 
+      expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
+      expect(screen.queryByRole("region", { name: "Model request observations" })).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps Claude model snapshots visible and current", () => {
+    vi.useFakeTimers({ now: new Date("2026-09-07T12:00:00Z") })
+    try {
+      setupMock({
+        identities: [identity({
+          provider: "Claude",
+          type: "claude",
+          metadata_observed_at: "2026-09-07T11:00:00Z",
+          passive_model_quotas: [{
+            source: "cpa_passive",
+            scope: "model",
+            model: "claude-sonnet-4",
+            observed_at: "2026-09-07T09:00:00Z",
+            quota: [{ key: "weekly", label: "Weekly", usedPercent: 20 }],
+          }],
+        })],
+      })
+      render(<LiveCapacityCard provider="" />)
+
       const updated = screen.getByText("Last updated 3h ago")
       expect(updated.parentElement).toHaveAttribute(
         "title",
-        `Reported by CPA (gpt-5.3-codex) · ${formatDate("2026-09-07T09:00:00Z")}`,
+        `Reported by CPA (claude-sonnet-4) · ${formatDate("2026-09-07T09:00:00Z")}`,
       )
+      expect(screen.getByRole("region", { name: "Model request observations" })).toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
@@ -259,56 +286,100 @@ describe("LiveCapacityCard", () => {
       // Disabled accounts retain historical readings and can refresh their quota.
       expect(screen.getByText("10% used")).toBeInTheDocument()
       expect(screen.getByLabelText("5h: 10% used")).toBeInTheDocument()
-      expect(screen.getByText("No reading")).toBeInTheDocument()
+      expect(screen.getAllByText("No reading")).toHaveLength(2)
       expect(screen.queryByText("25% used · Blocked")).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
-      // Window-less reported rows, the active limit, and model observations live
-      // behind the per-tile fold.
+      // Window-less reported rows and the active limit live behind the per-tile
+      // fold. Codex model snapshots do not participate in this card.
       const fold = screen.getByText(/··· \d+ more/).closest("details")
       expect(fold).not.toHaveAttribute("open")
       expect(within(fold as HTMLElement).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("4.5 credits left")).toBeInTheDocument()
-      expect(within(fold as HTMLElement).getByText("Model request observations (1)")).toBeInTheDocument()
-      expect(within(fold as HTMLElement).getByText("gpt-5.3-codex")).toBeInTheDocument()
-      // Reported meters: folded Credits + folded model Weekly; the newer manual 5h wins its window.
-      expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(2)
+      expect(within(fold as HTMLElement).queryByText("Model request observations (1)")).not.toBeInTheDocument()
+      expect(screen.queryByText("gpt-5.3-codex")).not.toBeInTheDocument()
+      // Only the account-level reported Credits meter remains; the newer manual 5h wins its window.
+      expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(1)
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it("distinguishes current account limits, Luna Reserve and older model request snapshots", () => {
+  it("shows account limits and Reserve without exposing Codex model snapshots", () => {
     const resetAt = "2026-09-15T01:28:58Z"
     const accountObservedAt = "2026-09-11T07:27:00Z"
-    const modelObservedAt = "2026-09-10T10:22:00Z"
+    const modelObservedAt = "2026-09-11T08:22:00Z"
+    vi.useFakeTimers({ now: new Date("2026-09-11T10:27:00Z") })
+    try {
+      setupMock({
+        identities: [identity({
+          passive_quota: {
+            source: "cpa_passive", scope: "account", active_limit: "premium", observed_at: accountObservedAt,
+            quota: [{ key: "codex.rate_limit.primary", label: "Weekly", usedPercent: 86, resetAt, window: { seconds: 604_800 } }],
+          },
+          passive_model_quotas: [{
+            source: "cpa_passive", scope: "model", model: "gpt-5.6-terra", active_limit: "premium", observed_at: modelObservedAt,
+            quota: [{ key: "codex.rate_limit.primary", label: "Weekly", usedPercent: 34, resetAt, window: { seconds: 604_800 } }],
+          }],
+        })],
+        observations: { items: [{
+          id: "codex-auth", observedAt: accountObservedAt,
+          quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 12, resetAt, window: { seconds: 604_800 } }],
+        }] },
+      })
+      render(<LiveCapacityCard provider="" />)
+
+      expect(screen.getByLabelText("Weekly: 86% used")).toBeInTheDocument()
+      expect(screen.queryByText("34% used")).not.toBeInTheDocument()
+      expect(screen.queryByText("gpt-5.6-terra")).not.toBeInTheDocument()
+      expect(screen.queryByRole("region", { name: "Model request observations" })).not.toBeInTheDocument()
+      expect(screen.getByText("··· 2 more")).toBeInTheDocument()
+      const reserve = screen.getByRole("region", { name: "Luna Reserve" })
+      expect(within(reserve).getByLabelText("Luna Reserve Weekly: 12% used")).toBeInTheDocument()
+      expect(within(reserve).getByText("gpt-reserve · Extra Luna usage after regular usage is exhausted.")).toBeInTheDocument()
+      const updated = screen.getByText("Last updated 3h ago")
+      expect(updated.parentElement).toHaveAttribute(
+        "title",
+        `Manual probe · ${formatDate(accountObservedAt)}\nReported by CPA · ${formatDate(accountObservedAt)}`,
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("shows an unknown Reserve reading without inventing quota state", () => {
     setupMock({
-      identities: [identity({
-        passive_quota: {
-          source: "cpa_passive", scope: "account", active_limit: "premium", observed_at: accountObservedAt,
-          quota: [{ key: "codex.rate_limit.primary", label: "Weekly", usedPercent: 86, resetAt, window: { seconds: 604_800 } }],
-        },
-        passive_model_quotas: [{
-          source: "cpa_passive", scope: "model", model: "gpt-5.6-terra", active_limit: "premium", observed_at: modelObservedAt,
-          quota: [{ key: "codex.rate_limit.primary", label: "Weekly", usedPercent: 34, resetAt, window: { seconds: 604_800 } }],
-        }],
-      })],
+      identities: [identity({})],
       observations: { items: [{
-        id: "codex-auth", observedAt: accountObservedAt,
-        quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 12, resetAt, window: { seconds: 604_800 } }],
+        id: "codex-auth",
+        observedAt: "2026-09-11T07:27:00Z",
+        quota: [{ key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 86, window: { seconds: 604_800 } }],
       }] },
     })
     render(<LiveCapacityCard provider="" />)
 
-    expect(screen.getByLabelText("Weekly: 86% used")).toBeInTheDocument()
-    expect(screen.getByLabelText("Luna Reserve Weekly: 12% used")).toBeInTheDocument()
-    expect(screen.getByText("Extra Luna usage after regular usage is exhausted.")).toBeInTheDocument()
-    expect(screen.queryByText(/Per-model quotas/)).not.toBeInTheDocument()
-    const history = screen.getByRole("region", { name: "Model request observations", hidden: true })
-    expect(within(history).getByText("Account quota snapshots observed during model requests. Readings can be older than the account limits above.")).toBeInTheDocument()
-    expect(within(history).getByText("gpt-5.6-terra")).toBeInTheDocument()
-    expect(within(history).getByLabelText("Weekly: 34% used")).toBeInTheDocument()
-    expect(within(history).getByText(`Observed ${formatDate(modelObservedAt)}`)).toHaveAttribute("dateTime", modelObservedAt)
-    expect(within(history).queryByText(/Luna Reserve/)).not.toBeInTheDocument()
+    const reserve = screen.getByRole("region", { name: "Luna Reserve" })
+    expect(within(reserve).getByText("Luna Reserve (gpt-reserve)")).toBeInTheDocument()
+    expect(within(reserve).getByText("No reading")).toBeInTheDocument()
+    expect(within(reserve).getByText("No Reserve reading has been collected. Availability is unknown.")).toBeInTheDocument()
+    expect(within(reserve).queryByLabelText(/Luna Reserve:/)).not.toBeInTheDocument()
+  })
+
+  it("does not promote a Codex model-only Reserve snapshot", () => {
+    setupMock({
+      identities: [identity({
+        passive_model_quotas: [{
+          source: "cpa_passive", scope: "model", model: "gpt-5.6-luna", observed_at: "2026-09-11T08:22:00Z",
+          quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", usedPercent: 12, window: { seconds: 604_800 } }],
+        }],
+      })],
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    const reserve = screen.getByRole("region", { name: "Luna Reserve" })
+    expect(within(reserve).getByText("No reading")).toBeInTheDocument()
+    expect(within(reserve).queryByText("12% used")).not.toBeInTheDocument()
+    expect(screen.queryByText("gpt-5.6-luna")).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
   })
 
   it("merges probe and reported windows into one list and folds named limits and timing away", () => {
@@ -343,7 +414,7 @@ describe("LiveCapacityCard", () => {
       expect(screen.queryByText("99% used")).not.toBeInTheDocument()
       expect(screen.queryByText("-")).not.toBeInTheDocument()
       // The Weekly skeleton slot has no reading from either source.
-      expect(screen.getByText("No reading")).toBeInTheDocument()
+      expect(screen.getAllByText("No reading")).toHaveLength(2)
       // Freshness line: the newer of the two observation times, with both
       // sources and their absolute times on the tooltip.
       const updated = screen.getByText("Last updated 3h ago")

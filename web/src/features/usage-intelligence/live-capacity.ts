@@ -75,6 +75,8 @@ export interface LiveCapacityMetric {
   tone: "green" | "amber" | "red" | "muted"
   /** Window length in seconds; derived from window.seconds (Codex) or duration+unit (Kimi). */
   windowSeconds?: number
+  /** An explicitly named Codex Reserve limit, never inferred from a model or metered feature. */
+  isLunaReserve?: boolean
 }
 
 export type CapacityWindowRole = "short" | "long" | "unknown"
@@ -278,6 +280,8 @@ export interface CapacityLayout {
   hasWindowSkeleton: boolean
   baseShort?: CapacityEntry
   baseLong?: CapacityEntry
+  /** Explicit Codex Reserve readings rendered beside the fixed window skeleton. */
+  reserve: CapacityEntry[]
   /** Surface rows for providers without a window skeleton. */
   main: CapacityEntry[]
   /** Folded rows: named limits, unknown-window base rows, and window-less pass-throughs. */
@@ -286,9 +290,10 @@ export interface CapacityLayout {
 
 export function capacityLayout(entries: CapacityEntry[], providerKind: ProviderKind): CapacityLayout {
   if (providerKind === "claude" || providerKind === "codex") {
-    const layout: CapacityLayout = { hasWindowSkeleton: true, main: [], extras: [] }
+    const layout: CapacityLayout = { hasWindowSkeleton: true, main: [], extras: [], reserve: [] }
     for (const entry of entries) {
-      if (entry.isBaseWindow && entry.windowRole === "short") layout.baseShort = entry
+      if (providerKind === "codex" && entry.metric.isLunaReserve) layout.reserve.push(entry)
+      else if (entry.isBaseWindow && entry.windowRole === "short") layout.baseShort = entry
       else if (entry.isBaseWindow && entry.windowRole === "long") layout.baseLong = entry
       else layout.extras.push(entry)
     }
@@ -298,6 +303,7 @@ export function capacityLayout(entries: CapacityEntry[], providerKind: ProviderK
     hasWindowSkeleton: false,
     main: entries.filter((entry) => entry.isBaseWindow || entry.windowRole === null),
     extras: entries.filter((entry) => !entry.isBaseWindow && entry.windowRole !== null),
+    reserve: [],
   }
 }
 
@@ -454,7 +460,8 @@ function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapa
     label,
     ...(isLunaReserve ? {
       displayLabel: label.replace("gpt-reserve", "Luna Reserve"),
-      description: "Extra Luna usage after regular usage is exhausted.",
+      description: "gpt-reserve · Extra Luna usage after regular usage is exhausted.",
+      isLunaReserve: true,
     } : {}),
     valueLabel: valueLabel(row),
     resetAt: row.resetAt,

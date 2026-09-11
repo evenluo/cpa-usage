@@ -880,9 +880,13 @@ describe("mergeCapacityEntries", () => {
     probeQuota: QuotaObservationsResponse["items"][number]["quota"]
     probeObservedAt: string
     passiveQuota?: KeyIdentity["passive_quota"]
+    passiveModelQuotas?: KeyIdentity["passive_model_quotas"]
   }) {
     return buildLiveCapacityRows({
-      identities: [identity({ passive_quota: input.passiveQuota ?? null })],
+      identities: [identity({
+        passive_quota: input.passiveQuota ?? null,
+        passive_model_quotas: input.passiveModelQuotas ?? null,
+      })],
       observations: { items: [{ id: "codex-auth", observedAt: input.probeObservedAt, quota: input.probeQuota }] },
     })[0]
   }
@@ -999,7 +1003,7 @@ describe("mergeCapacityEntries", () => {
     expect(entries[1].metric.valueLabel).toBe("25% used")
   })
 
-  it("keeps reserve separate from regular and unknown limits while merging its newer account reading", () => {
+  it("surfaces only exact account-level gpt-reserve readings as Luna Reserve", () => {
     const row = rowWithProbeAndPassive({
       probeObservedAt: "2026-09-11T06:00:00Z",
       probeQuota: [
@@ -1018,13 +1022,31 @@ describe("mergeCapacityEntries", () => {
     const layout = capacityLayout(entries, "codex")
     expect(layout.baseLong?.metric.valueLabel).toBe("100% used")
     expect(layout.baseShort).toBeUndefined()
-    expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["gpt-reserve Weekly", "other Weekly"])
-    expect(layout.extras[0]).toMatchObject({
+    expect(layout.reserve).toHaveLength(1)
+    expect(layout.reserve?.[0]).toMatchObject({
       source: "reported", observedAt: "2026-09-11T07:00:00Z",
       metric: { displayLabel: "Luna Reserve Weekly", valueLabel: "12% used" },
     })
-    expect(layout.extras[1].metric.displayLabel).toBeUndefined()
-    expect(layout.extras[1].metric.description).toBeUndefined()
+    expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["other Weekly"])
+    expect(layout.extras[0].metric.displayLabel).toBeUndefined()
+    expect(layout.extras[0].metric.description).toBeUndefined()
+  })
+
+  it("does not promote a Codex model snapshot into an account Reserve reading", () => {
+    const row = rowWithProbeAndPassive({
+      probeObservedAt: "2026-09-11T06:00:00Z",
+      probeQuota: [{ key: "rate_limit.secondary_window", label: "Weekly", usedPercent: 86, window: { seconds: 604_800 } }],
+      passiveModelQuotas: [{
+        source: "cpa_passive",
+        scope: "model",
+        model: "gpt-5.6-terra",
+        observed_at: "2026-09-11T08:00:00Z",
+        quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", usedPercent: 12, window: { seconds: 604_800 } }],
+      }],
+    })
+
+    expect(row.passiveModelQuotas[0].metrics[0]).toMatchObject({ label: "gpt-reserve Weekly", displayLabel: "Luna Reserve Weekly" })
+    expect(capacityLayout(mergeCapacityEntries(row), "codex").reserve).toEqual([])
   })
 
   it("omits the state suffix for healthy allowed and not-limit-reached rows", () => {

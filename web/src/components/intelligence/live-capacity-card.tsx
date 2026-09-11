@@ -481,6 +481,7 @@ function LiveCapacityAccountTile({
           : undefined
 
   const layout = capacityLayout(mergeCapacityEntries(row), row.providerKind)
+  const visibleModelSnapshots = row.providerKind === "codex" ? [] : row.passiveModelQuotas
   const sharedObservation = Boolean(row.metadataObservedAt && row.observedAt && row.metadataObservedAt === row.observedAt)
   const timingLineCount =
     (sharedObservation ? 1 : (row.metadataObservedAt ? 1 : 0) + (row.observedAt ? 1 : 0)) +
@@ -490,13 +491,13 @@ function LiveCapacityAccountTile({
     (row.activeUntil ? 1 : 0)
   const foldedCount =
     layout.extras.length +
-    row.passiveModelQuotas.length +
+    visibleModelSnapshots.length +
     timingLineCount +
     (row.passiveQuota?.activeLimit ? 1 : 0)
   const observationSources: Array<[string, string]> = [
     ...(row.observedAt ? [["Manual probe", row.observedAt] as [string, string]] : []),
     ...(row.passiveQuota?.observedAt ? [["Reported by CPA", row.passiveQuota.observedAt] as [string, string]] : []),
-    ...row.passiveModelQuotas.map((observation) => [
+    ...visibleModelSnapshots.map((observation) => [
       `Reported by CPA (${observation.model})`,
       observation.observedAt,
     ] as [string, string]),
@@ -649,6 +650,25 @@ function LiveCapacityAccountTile({
         </div>
       ) : null}
 
+      {row.providerKind === "codex" ? (
+        <section className="mt-2" aria-label="Luna Reserve">
+          {layout.reserve.length > 0 ? layout.reserve.map((entry, index) => (
+            <MetricMeter
+              key={`${index}:${entry.metric.label}`}
+              title="Luna Reserve"
+              metric={entry.metric}
+              source={entry.source}
+              observedAt={entry.observedAt}
+            />
+          )) : (
+            <MetricMeter
+              title="Luna Reserve (gpt-reserve)"
+              emptyDescription="No Reserve reading has been collected. Availability is unknown."
+            />
+          )}
+        </section>
+      ) : null}
+
       {foldedCount > 0 ? (
         <details className="mt-2 rounded-md border border-border/70 bg-muted/[0.12] px-2.5 py-1.5">
           <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">··· {foldedCount} more</summary>
@@ -677,16 +697,14 @@ function LiveCapacityAccountTile({
                 </div>
               </section>
             ) : null}
-            {row.passiveModelQuotas.length > 0 ? (
+            {visibleModelSnapshots.length > 0 ? (
               <section aria-label="Model request observations">
-                <p className="text-[10px] font-medium text-foreground/70">Model request observations ({row.passiveModelQuotas.length})</p>
+                <p className="text-[10px] font-medium text-foreground/70">Model request observations ({visibleModelSnapshots.length})</p>
                 <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                  {row.providerKind === "codex"
-                    ? "Account quota snapshots observed during model requests. Readings can be older than the account limits above."
-                    : "Quota snapshots captured during model requests. Model names identify the requests, not separate allowances."}
+                  Quota snapshots captured during model requests. Model names identify the requests, not separate allowances.
                 </p>
                 <div className="mt-1.5 space-y-3">
-                  {row.passiveModelQuotas.map((observation) => (
+                  {visibleModelSnapshots.map((observation) => (
                     <PassiveQuotaObservationSection key={`${observation.model}:${observation.observedAt}`} label={observation.model} observation={observation} />
                   ))}
                 </div>
@@ -993,6 +1011,7 @@ function MetricMeter({
   source = "probe",
   observedAt,
   windowSeconds,
+  emptyDescription,
 }: {
   title: string
   metric?: LiveCapacityMetric
@@ -1002,6 +1021,8 @@ function MetricMeter({
   observedAt?: string
   /** Window length supplying the slot icon when no reading exists. */
   windowSeconds?: number
+  /** Explanation for an explicitly absent reading; no value or progress is inferred. */
+  emptyDescription?: string
 }) {
   const WindowIcon = (metric?.windowSeconds ?? windowSeconds) === FIVE_HOUR_WINDOW_SECONDS
     ? Timer
@@ -1011,10 +1032,13 @@ function MetricMeter({
 
   if (!metric) {
     return (
-      <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">
-        {WindowIcon ? <WindowIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
-        <span className="truncate">{title}</span>
-        <span className="ml-auto shrink-0">No reading</span>
+      <div className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {WindowIcon ? <WindowIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
+          <span className={cn(emptyDescription ? "break-words" : "truncate")}>{title}</span>
+          <span className="ml-auto shrink-0">No reading</span>
+        </div>
+        {emptyDescription ? <p className="mt-1 text-[10px] leading-4">{emptyDescription}</p> : null}
       </div>
     )
   }
