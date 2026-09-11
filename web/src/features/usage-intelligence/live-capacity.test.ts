@@ -999,6 +999,34 @@ describe("mergeCapacityEntries", () => {
     expect(entries[1].metric.valueLabel).toBe("25% used")
   })
 
+  it("keeps reserve separate from regular and unknown limits while merging its newer account reading", () => {
+    const row = rowWithProbeAndPassive({
+      probeObservedAt: "2026-09-11T06:00:00Z",
+      probeQuota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 100, window: { seconds: 604_800 } },
+        { key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 10, window: { seconds: 604_800 } },
+        { key: "additional_rate_limits.other.secondary_window", label: "other Weekly", metric: "base_model_inference", usedPercent: 30, window: { seconds: 604_800 } },
+      ],
+      passiveQuota: {
+        source: "cpa_passive", scope: "account", observed_at: "2026-09-11T07:00:00Z",
+        quota: [{ key: "codex.additional-gpt-reserve.secondary", label: "gpt-reserve Weekly", metric: "gpt-reserve", usedPercent: 12, window: { seconds: 604_800 } }],
+      },
+    })
+
+    const entries = mergeCapacityEntries(row)
+    expect(entries).toHaveLength(3)
+    const layout = capacityLayout(entries, "codex")
+    expect(layout.baseLong?.metric.valueLabel).toBe("100% used")
+    expect(layout.baseShort).toBeUndefined()
+    expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["gpt-reserve Weekly", "other Weekly"])
+    expect(layout.extras[0]).toMatchObject({
+      source: "reported", observedAt: "2026-09-11T07:00:00Z",
+      metric: { displayLabel: "Luna Reserve Weekly", valueLabel: "12% used" },
+    })
+    expect(layout.extras[1].metric.displayLabel).toBeUndefined()
+    expect(layout.extras[1].metric.description).toBeUndefined()
+  })
+
   it("omits the state suffix for healthy allowed and not-limit-reached rows", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({

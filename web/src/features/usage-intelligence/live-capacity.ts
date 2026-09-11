@@ -62,7 +62,10 @@ export interface LiveCapacityPassiveModelObservation extends LiveCapacityPassive
 }
 
 export interface LiveCapacityMetric {
+  /** Provider label retained for matching observations of the same quota window. */
   label: string
+  displayLabel?: string
+  description?: string
   valueLabel: string
   /** Absolute reset instant reported by the provider, when present. */
   resetAt?: string
@@ -121,7 +124,7 @@ export function buildLiveCapacityRows(input: {
       const weekly = findQuotaWindow(quotaRows, "weekly")
       const additionalMetrics = quotaRows
         .filter((row) => row !== fiveHour && row !== weekly)
-        .map(metricFromQuotaRow)
+        .map((row) => metricFromQuotaRow(row, providerKind))
       const isConstrained = quotaRows.some(isConstrainedQuotaRow)
       const resolvedPlanType = planType(quotaRows, identity.plan_type)
       const planDisplay = planDisplayFor(providerKind, resolvedPlanType)
@@ -158,8 +161,8 @@ export function buildLiveCapacityRows(input: {
         status,
         errorLabel,
         error,
-        fiveHour: fiveHour ? metricFromQuotaRow(fiveHour) : undefined,
-        weekly: weekly ? metricFromQuotaRow(weekly) : undefined,
+        fiveHour: fiveHour ? metricFromQuotaRow(fiveHour, providerKind) : undefined,
+        weekly: weekly ? metricFromQuotaRow(weekly, providerKind) : undefined,
         additionalMetrics,
         planType: resolvedPlanType,
         planLabel: planDisplay.label,
@@ -188,7 +191,7 @@ function passiveAccountObservation(providerKind: ProviderKind, observation: Pass
   if (!supportsPassiveQuota(providerKind) || observation?.source !== "cpa_passive" || observation.scope !== "account" || !validObservationTime(observation.observed_at)) {
     return undefined
   }
-  const metrics = observation.quota.map(metricFromQuotaRow)
+  const metrics = observation.quota.map((row) => metricFromQuotaRow(row, providerKind))
   if (metrics.length === 0 && !observation.active_limit) return undefined
   return { source: observation.source, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }
 }
@@ -198,7 +201,7 @@ function passiveModelObservations(providerKind: ProviderKind, observations: Pass
   return (observations ?? []).flatMap((observation) => {
     const model = observation.model.trim()
     if (observation.source !== "cpa_passive" || observation.scope !== "model" || !model || !validObservationTime(observation.observed_at)) return []
-    const metrics = observation.quota.map(metricFromQuotaRow)
+    const metrics = observation.quota.map((row) => metricFromQuotaRow(row, providerKind))
     if (metrics.length === 0 && !observation.active_limit) return []
     return [{ source: observation.source, model, observedAt: observation.observed_at, activeLimit: observation.active_limit, metrics }]
   })
@@ -441,10 +444,18 @@ function quotaWindowSeconds(window: QuotaWindow | undefined): number | undefined
   return undefined
 }
 
-function metricFromQuotaRow(row: QuotaRow): LiveCapacityMetric {
+function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapacityMetric {
   const progress = progressFromQuotaRow(row)
+  const label = metricLabel(row)
+  // Only the explicitly named reserve limit earns the product label. A request
+  // model or the metered feature alone does not establish an allowance's identity.
+  const isLunaReserve = providerKind === "codex" && /^gpt-reserve(?: (?:5h|Weekly|Window))?$/.test(label)
   return {
-    label: metricLabel(row),
+    label,
+    ...(isLunaReserve ? {
+      displayLabel: label.replace("gpt-reserve", "Luna Reserve"),
+      description: "Extra Luna usage after regular usage is exhausted.",
+    } : {}),
     valueLabel: valueLabel(row),
     resetAt: row.resetAt,
     resetAfterSeconds: typeof row.resetAfterSeconds === "number" ? row.resetAfterSeconds : undefined,

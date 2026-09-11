@@ -171,11 +171,11 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   // Data freshness sits on the card surface.
   await expect(page.getByText(/^Last updated /)).toBeVisible()
 
-  // The active limit, subscription end, per-model quotas, and timing lines live
+  // The active limit, subscription end, model request observations, and timing lines live
   // behind the per-tile fold.
   await page.getByText(/··· \d+ more/).first().click()
   await expect(page.getByText("Active limit codex_primary")).toBeVisible()
-  await expect(page.getByText("Per-model quotas (1)")).toBeVisible()
+  await expect(page.getByText("Model request observations (1)")).toBeVisible()
   await expect(page.locator("time[datetime='2026-09-07T07:30:00Z']")).toBeVisible()
   const timing = page.getByRole("group", { name: "Account and observation timing" }).first()
   await expect(timing.locator("time[datetime='2026-08-31T09:05:00Z']")).toBeVisible()

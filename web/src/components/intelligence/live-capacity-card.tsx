@@ -678,8 +678,13 @@ function LiveCapacityAccountTile({
               </section>
             ) : null}
             {row.passiveModelQuotas.length > 0 ? (
-              <section aria-label="Per-model quotas">
-                <p className="text-[10px] font-medium text-foreground/70">Per-model quotas ({row.passiveModelQuotas.length})</p>
+              <section aria-label="Model request observations">
+                <p className="text-[10px] font-medium text-foreground/70">Model request observations ({row.passiveModelQuotas.length})</p>
+                <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  {row.providerKind === "codex"
+                    ? "Account quota snapshots observed during model requests. Readings can be older than the account limits above."
+                    : "Quota snapshots captured during model requests. Model names identify the requests, not separate allowances."}
+                </p>
                 <div className="mt-1.5 space-y-3">
                   {row.passiveModelQuotas.map((observation) => (
                     <PassiveQuotaObservationSection key={`${observation.model}:${observation.observedAt}`} label={observation.model} observation={observation} />
@@ -770,7 +775,7 @@ function PassiveQuotaObservationSection({
   observation: LiveCapacityPassiveObservation
 }) {
   return (
-    <section aria-label={`${label} passive quota`}>
+    <section aria-label={`${label} request observation`}>
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
         <span className="truncate font-medium text-foreground/90" title={label}>{label}</span>
         {observation.activeLimit ? (
@@ -779,7 +784,7 @@ function PassiveQuotaObservationSection({
           </span>
         ) : null}
         <time className="ml-auto text-muted-foreground" dateTime={observation.observedAt} title={observation.observedAt}>
-          {formatDate(observation.observedAt)}
+          Observed {formatDate(observation.observedAt)}
         </time>
       </div>
       <div className="mt-1.5 grid gap-1.5">
@@ -1028,6 +1033,7 @@ function MetricMeter({
       ].filter((part): part is string => Boolean(part)).join(" · ")
     : undefined
   const sourceLabel = source === "reported" ? "Reported by CPA" : "Manual probe"
+  const displayTitle = metric.displayLabel ?? title
 
   return (
     <div
@@ -1038,13 +1044,13 @@ function MetricMeter({
         <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
           {WindowIcon ? <WindowIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
           {source === "reported" ? <Eye className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
-          <span className="truncate">{title}</span>
+          <span className="truncate" title={metric.displayLabel ? metric.label : undefined}>{displayTitle}</span>
         </span>
         <span className="truncate font-medium">{metric.valueLabel}</span>
       </div>
       <div
         className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
-        aria-label={`${title}: ${metric.valueLabel}`}
+        aria-label={`${displayTitle}: ${metric.valueLabel}`}
       >
         {metric.progress !== null ? (
           <div
@@ -1067,6 +1073,7 @@ function MetricMeter({
           ) : null}
         </div>
       ) : null}
+      {metric.description ? <p className="mt-1.5 text-[10px] leading-4 text-muted-foreground">{metric.description}</p> : null}
     </div>
   )
 }

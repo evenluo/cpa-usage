@@ -52,6 +52,14 @@ _Avoid_: Usage quota analytics, billing quota, quota history, inferred expiry or
 The latest successful quota observation time for an account, whether obtained by a manual refresh or reported by CPA. Elapsed time alone does not invalidate a reading; a failed refresh or missing report does not erase the previous successful observation.
 _Avoid_: Metadata sync time, token refresh time, cache expiry, proof of present capacity
 
+**Model request observations**:
+Quota snapshots captured during requests to each model, with their original observation times. Codex snapshots can repeat the same account limits at different times; a model name identifies the request that produced the reading.
+_Avoid_: Independent model allowances, current account totals
+
+**Luna Reserve**:
+Additional Luna usage offered to selected accounts after regular usage is exhausted. It has its own allowance; a quota observation does not prove that a particular client can use it.
+_Avoid_: Rate-limit reset credit, Terra allowance, unlimited usage
+
 **Registered Model Support**:
 An explicitly loaded, selected-scope reading of models currently registered to auth-file accounts in CPA, optionally enriched by exact-ID static capability metadata.
 _Avoid_: Live model availability, routable model catalog, provider health

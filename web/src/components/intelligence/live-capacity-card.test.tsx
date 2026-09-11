@@ -268,13 +268,47 @@ describe("LiveCapacityCard", () => {
       expect(fold).not.toHaveAttribute("open")
       expect(within(fold as HTMLElement).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("4.5 credits left")).toBeInTheDocument()
-      expect(within(fold as HTMLElement).getByText("Per-model quotas (1)")).toBeInTheDocument()
+      expect(within(fold as HTMLElement).getByText("Model request observations (1)")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("gpt-5.3-codex")).toBeInTheDocument()
       // Reported meters: folded Credits + folded model Weekly; the newer manual 5h wins its window.
       expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(2)
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("distinguishes current account limits, Luna Reserve and older model request snapshots", () => {
+    const resetAt = "2026-09-15T01:28:58Z"
+    const accountObservedAt = "2026-09-11T07:27:00Z"
+    const modelObservedAt = "2026-09-10T10:22:00Z"
+    setupMock({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive", scope: "account", active_limit: "premium", observed_at: accountObservedAt,
+          quota: [{ key: "codex.rate_limit.primary", label: "Weekly", usedPercent: 86, resetAt, window: { seconds: 604_800 } }],
+        },
+        passive_model_quotas: [{
+          source: "cpa_passive", scope: "model", model: "gpt-5.6-terra", active_limit: "premium", observed_at: modelObservedAt,
+          quota: [{ key: "codex.rate_limit.primary", label: "Weekly", usedPercent: 34, resetAt, window: { seconds: 604_800 } }],
+        }],
+      })],
+      observations: { items: [{
+        id: "codex-auth", observedAt: accountObservedAt,
+        quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 12, resetAt, window: { seconds: 604_800 } }],
+      }] },
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(screen.getByLabelText("Weekly: 86% used")).toBeInTheDocument()
+    expect(screen.getByLabelText("Luna Reserve Weekly: 12% used")).toBeInTheDocument()
+    expect(screen.getByText("Extra Luna usage after regular usage is exhausted.")).toBeInTheDocument()
+    expect(screen.queryByText(/Per-model quotas/)).not.toBeInTheDocument()
+    const history = screen.getByRole("region", { name: "Model request observations", hidden: true })
+    expect(within(history).getByText("Account quota snapshots observed during model requests. Readings can be older than the account limits above.")).toBeInTheDocument()
+    expect(within(history).getByText("gpt-5.6-terra")).toBeInTheDocument()
+    expect(within(history).getByLabelText("Weekly: 34% used")).toBeInTheDocument()
+    expect(within(history).getByText(`Observed ${formatDate(modelObservedAt)}`)).toHaveAttribute("dateTime", modelObservedAt)
+    expect(within(history).queryByText(/Luna Reserve/)).not.toBeInTheDocument()
   })
 
   it("merges probe and reported windows into one list and folds named limits and timing away", () => {
