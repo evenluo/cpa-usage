@@ -4,7 +4,7 @@ import { authFileIdentitiesPayload, installMockAPI } from "./mock-api"
 // Synthetic fixtures keep account allowances separate from request-model
 // snapshots. Missing Reserve readings do not establish account eligibility.
 for (const theme of ["light", "dark"]) {
-  test(`${theme} Codex cards show Reserve directly without model quota copies`, async ({ page }, testInfo) => {
+  test(`${theme} Codex cards show only observed windows and Reserve`, async ({ page }, testInfo) => {
     await page.clock.setFixedTime(new Date("2026-09-11T07:30:00Z"))
     await page.addInitScript((value) => localStorage.setItem("cpa-theme", value), theme)
     await installMockAPI(page)
@@ -43,10 +43,26 @@ for (const theme of ["light", "dark"]) {
     await page.route(/\/api\/v1\/usage\/identities\/page(?:\?|$)/, (route) => route.fulfill({
       json: { identities: [withReserve, withoutReserve], total_count: 2, page: 1, page_size: 100, total_pages: 1 },
     }))
+    let refreshed = false
+    const refreshedObservation = {
+      id: withoutReserve.identity, observedAt: "2026-09-11T07:30:00Z",
+      quota: [{ key: "rate_limit.primary_window", label: "Weekly", usedPercent: 49, resetAt, window: { seconds: 604_800 } }],
+    }
     await page.route(/\/api\/v1\/quota\/observations$/, (route) => route.fulfill({ json: { items: [{
       id: withReserve.identity, observedAt,
       quota: [{ key: "additional_rate_limits.gpt-reserve.primary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 0, resetAt, window: { seconds: 604_800 } }],
-    }] } }))
+    }, ...(refreshed ? [refreshedObservation] : [])] } }))
+    await page.route(/\/api\/v1\/quota\/refresh$/, (route) => route.fulfill({ json: {
+      tasks: [{ authIndex: withoutReserve.identity, taskId: "refresh-without-reserve" }],
+      rejected: [], accepted: 1, skipped: 0, limit: 20,
+    } }))
+    await page.route(/\/api\/v1\/quota\/refresh\/refresh-without-reserve$/, (route) => {
+      refreshed = true
+      return route.fulfill({ json: {
+        taskId: "refresh-without-reserve", authIndex: withoutReserve.identity,
+        status: "completed", quota: refreshedObservation,
+      } })
+    })
     let refreshCalls = 0
     page.on("request", (request) => {
       if (/\/api\/v1\/quota\/(refresh|check)$/.test(request.url())) refreshCalls++
@@ -58,6 +74,8 @@ for (const theme of ["light", "dark"]) {
     const card = capacity.locator(".group").filter({ has: page.getByRole("button", { name: "Refresh Codex with reserve", exact: true }) })
     await expect(card.getByLabel("Weekly: 86% used", { exact: true })).toBeVisible()
     await expect(card.getByText("Last updated 3m ago", { exact: true })).toBeVisible()
+    await expect(card.getByText("5h", { exact: true })).toHaveCount(0)
+    await expect(card.getByText("No reading", { exact: true })).toHaveCount(0)
     const reserve = card.getByRole("region", { name: "Luna Reserve", exact: true })
     await expect(reserve).toBeVisible()
     await expect(reserve.getByLabel("Luna Reserve Weekly: 0% used", { exact: true })).toBeVisible()
@@ -73,16 +91,30 @@ for (const theme of ["light", "dark"]) {
 
     const missingCard = capacity.locator(".group").filter({ has: page.getByRole("button", { name: "Refresh Codex without reserve", exact: true }) })
     await missingCard.evaluate((element) => element.scrollIntoView({ block: "center" }))
-    const missingReserve = missingCard.getByRole("region", { name: "Luna Reserve", exact: true })
-    await expect(missingReserve.getByText("No reading", { exact: true })).toBeVisible()
-    await expect(missingReserve.getByText(/gpt-reserve/)).toBeVisible()
-    await expect(missingReserve.getByText("No Reserve reading has been collected. Availability is unknown.", { exact: true })).toBeVisible()
-    await expect(missingReserve.locator("[aria-label*='% used']")).toHaveCount(0)
+    await expect(missingCard.getByRole("region", { name: "Luna Reserve", exact: true })).toHaveCount(0)
+    await expect(missingCard.getByText(/gpt-reserve|Luna Reserve/)).toHaveCount(0)
+    await expect(missingCard.getByText("5h", { exact: true })).toHaveCount(0)
+    await expect(missingCard.getByText("No reading", { exact: true })).toHaveCount(0)
     await expect(missingCard.getByText("Last updated 10m ago", { exact: true })).toBeVisible()
     await expect(missingCard.getByLabel("Weekly: 48% used", { exact: true })).toBeVisible()
     await expect(missingCard.getByText("gpt-5.6-terra", { exact: true })).toHaveCount(0)
-    await page.screenshot({ path: testInfo.outputPath(`codex-reserve-missing-${theme}.png`), animations: "disabled" })
     expect(refreshCalls).toBe(0)
+    await missingCard.getByRole("button", { name: "Refresh Codex without reserve", exact: true }).click()
+    await expect(missingCard.getByLabel("Weekly: 49% used", { exact: true })).toBeVisible()
+    await expect(missingCard.getByText("Last updated just now", { exact: true })).toBeVisible()
+    await expect(missingCard.getByRole("region", { name: "Luna Reserve", exact: true })).toHaveCount(0)
+    await expect(missingCard.getByText("5h", { exact: true })).toHaveCount(0)
+    await expect(missingCard.getByText("No reading", { exact: true })).toHaveCount(0)
+    await page.reload()
+    await capacity.scrollIntoViewIfNeeded()
+    await expect(missingCard.getByLabel("Weekly: 49% used", { exact: true })).toBeVisible()
+    await expect(missingCard.getByText("Last updated just now", { exact: true })).toBeVisible()
+    await expect(missingCard.getByRole("region", { name: "Luna Reserve", exact: true })).toHaveCount(0)
+    await expect(missingCard.getByText("5h", { exact: true })).toHaveCount(0)
+    await expect(missingCard.getByText("No reading", { exact: true })).toHaveCount(0)
+    await missingCard.evaluate((element) => element.scrollIntoView({ block: "center" }))
+    await page.screenshot({ path: testInfo.outputPath(`codex-reserve-missing-${theme}.png`), animations: "disabled" })
+    expect(refreshCalls).toBe(1)
     expect(await card.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     expect(await missingCard.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)

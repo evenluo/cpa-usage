@@ -276,11 +276,11 @@ export function mergeCapacityEntries(row: LiveCapacityRow): CapacityEntry[] {
 }
 
 export interface CapacityLayout {
-  /** True for providers whose cards render a fixed 5h/Weekly skeleton (claude, codex). */
+  /** True only for providers whose cards render fixed 5h/Weekly slots. */
   hasWindowSkeleton: boolean
   baseShort?: CapacityEntry
   baseLong?: CapacityEntry
-  /** Explicit Codex Reserve readings rendered beside the fixed window skeleton. */
+  /** Explicit Codex Reserve readings rendered in the main card area. */
   reserve: CapacityEntry[]
   /** Surface rows for providers without a window skeleton. */
   main: CapacityEntry[]
@@ -289,14 +289,23 @@ export interface CapacityLayout {
 }
 
 export function capacityLayout(entries: CapacityEntry[], providerKind: ProviderKind): CapacityLayout {
-  if (providerKind === "claude" || providerKind === "codex") {
+  if (providerKind === "claude") {
     const layout: CapacityLayout = { hasWindowSkeleton: true, main: [], extras: [], reserve: [] }
     for (const entry of entries) {
-      if (providerKind === "codex" && entry.metric.isLunaReserve) layout.reserve.push(entry)
-      else if (entry.isBaseWindow && entry.windowRole === "short") layout.baseShort = entry
+      if (entry.isBaseWindow && entry.windowRole === "short") layout.baseShort = entry
       else if (entry.isBaseWindow && entry.windowRole === "long") layout.baseLong = entry
       else layout.extras.push(entry)
     }
+    return layout
+  }
+  if (providerKind === "codex") {
+    const layout: CapacityLayout = { hasWindowSkeleton: false, main: [], extras: [], reserve: [] }
+    for (const entry of entries) {
+      if (entry.metric.isLunaReserve) layout.reserve.push(entry)
+      else if (entry.isBaseWindow && (entry.windowRole === "short" || entry.windowRole === "long")) layout.main.push(entry)
+      else layout.extras.push(entry)
+    }
+    layout.main.sort((a, b) => Number(a.windowRole === "long") - Number(b.windowRole === "long"))
     return layout
   }
   return {

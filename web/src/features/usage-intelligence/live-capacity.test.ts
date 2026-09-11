@@ -1020,8 +1020,8 @@ describe("mergeCapacityEntries", () => {
     const entries = mergeCapacityEntries(row)
     expect(entries).toHaveLength(3)
     const layout = capacityLayout(entries, "codex")
-    expect(layout.baseLong?.metric.valueLabel).toBe("100% used")
-    expect(layout.baseShort).toBeUndefined()
+    expect(layout.hasWindowSkeleton).toBe(false)
+    expect(layout.main.map((entry) => entry.metric.valueLabel)).toEqual(["100% used"])
     expect(layout.reserve).toHaveLength(1)
     expect(layout.reserve?.[0]).toMatchObject({
       source: "reported", observedAt: "2026-09-11T07:00:00Z",
@@ -1069,7 +1069,7 @@ describe("mergeCapacityEntries", () => {
 })
 
 describe("capacityLayout", () => {
-  it("slots base windows into a fixed skeleton and demotes unknown-window and pass-through rows", () => {
+  it("surfaces only observed Codex base windows and folds its other quota entries", () => {
     const row = buildLiveCapacityRows({
       identities: [identity({
         passive_quota: {
@@ -1096,10 +1096,10 @@ describe("capacityLayout", () => {
     })[0]
 
     const layout = capacityLayout(mergeCapacityEntries(row), "codex")
-    expect(layout.hasWindowSkeleton).toBe(true)
-    expect(layout.baseShort?.metric.label).toBe("5h")
-    expect(layout.baseLong?.metric.label).toBe("Weekly")
-    expect(layout.main).toEqual([])
+    expect(layout.hasWindowSkeleton).toBe(false)
+    expect(layout.baseShort).toBeUndefined()
+    expect(layout.baseLong).toBeUndefined()
+    expect(layout.main.map((entry) => entry.metric.label)).toEqual(["5h", "Weekly"])
     expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["GPT-5.3-Codex-Spark 5h", "Window", "Credits"])
   })
 

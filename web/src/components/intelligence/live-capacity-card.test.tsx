@@ -286,7 +286,7 @@ describe("LiveCapacityCard", () => {
       // Disabled accounts retain historical readings and can refresh their quota.
       expect(screen.getByText("10% used")).toBeInTheDocument()
       expect(screen.getByLabelText("5h: 10% used")).toBeInTheDocument()
-      expect(screen.getAllByText("No reading")).toHaveLength(2)
+      expect(screen.queryByText("No reading")).not.toBeInTheDocument()
       expect(screen.queryByText("25% used · Blocked")).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
       // Window-less reported rows and the active limit live behind the per-tile
@@ -323,7 +323,7 @@ describe("LiveCapacityCard", () => {
         })],
         observations: { items: [{
           id: "codex-auth", observedAt: accountObservedAt,
-          quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 12, resetAt, window: { seconds: 604_800 } }],
+          quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 0, resetAt, window: { seconds: 604_800 } }],
         }] },
       })
       render(<LiveCapacityCard provider="" />)
@@ -334,7 +334,12 @@ describe("LiveCapacityCard", () => {
       expect(screen.queryByRole("region", { name: "Model request observations" })).not.toBeInTheDocument()
       expect(screen.getByText("··· 2 more")).toBeInTheDocument()
       const reserve = screen.getByRole("region", { name: "Luna Reserve" })
-      expect(within(reserve).getByLabelText("Luna Reserve Weekly: 12% used")).toBeInTheDocument()
+      expect(within(reserve).getByLabelText("Luna Reserve Weekly: 0% used")).toBeInTheDocument()
+      expect((within(reserve).getByText("0% used").closest("div[title]"))).toHaveAttribute(
+        "title",
+        `Manual probe · observed ${formatDate(accountObservedAt)}`,
+      )
+      expect(reserve.querySelector(`time[datetime='${new Date(resetAt).toISOString()}']`)).toBeInTheDocument()
       expect(within(reserve).getByText("gpt-reserve · Extra Luna usage after regular usage is exhausted.")).toBeInTheDocument()
       const updated = screen.getByText("Last updated 3h ago")
       expect(updated.parentElement).toHaveAttribute(
@@ -346,7 +351,7 @@ describe("LiveCapacityCard", () => {
     }
   })
 
-  it("shows an unknown Reserve reading without inventing quota state", () => {
+  it("does not draw a Reserve section when a weekly account reading has no Reserve", () => {
     setupMock({
       identities: [identity({})],
       observations: { items: [{
@@ -357,11 +362,10 @@ describe("LiveCapacityCard", () => {
     })
     render(<LiveCapacityCard provider="" />)
 
-    const reserve = screen.getByRole("region", { name: "Luna Reserve" })
-    expect(within(reserve).getByText("Luna Reserve (gpt-reserve)")).toBeInTheDocument()
-    expect(within(reserve).getByText("No reading")).toBeInTheDocument()
-    expect(within(reserve).getByText("No Reserve reading has been collected. Availability is unknown.")).toBeInTheDocument()
-    expect(within(reserve).queryByLabelText(/Luna Reserve:/)).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Weekly: 86% used")).toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Luna Reserve" })).not.toBeInTheDocument()
+    expect(screen.queryByText("No account quota readings")).not.toBeInTheDocument()
+    expect(screen.queryByText("No reading")).not.toBeInTheDocument()
   })
 
   it("does not promote a Codex model-only Reserve snapshot", () => {
@@ -375,9 +379,9 @@ describe("LiveCapacityCard", () => {
     })
     render(<LiveCapacityCard provider="" />)
 
-    const reserve = screen.getByRole("region", { name: "Luna Reserve" })
-    expect(within(reserve).getByText("No reading")).toBeInTheDocument()
-    expect(within(reserve).queryByText("12% used")).not.toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Luna Reserve" })).not.toBeInTheDocument()
+    expect(screen.getByText("No account quota readings")).toBeInTheDocument()
+    expect(screen.queryByText("12% used")).not.toBeInTheDocument()
     expect(screen.queryByText("gpt-5.6-luna")).not.toBeInTheDocument()
     expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
   })
@@ -413,8 +417,7 @@ describe("LiveCapacityCard", () => {
       expect(screen.getByText("10% used")).toBeInTheDocument()
       expect(screen.queryByText("99% used")).not.toBeInTheDocument()
       expect(screen.queryByText("-")).not.toBeInTheDocument()
-      // The Weekly skeleton slot has no reading from either source.
-      expect(screen.getAllByText("No reading")).toHaveLength(2)
+      expect(screen.queryByText("No reading")).not.toBeInTheDocument()
       // Freshness line: the newer of the two observation times, with both
       // sources and their absolute times on the tooltip.
       const updated = screen.getByText("Last updated 3h ago")

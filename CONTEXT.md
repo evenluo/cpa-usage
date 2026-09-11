@@ -57,7 +57,7 @@ Quota snapshots captured during requests to each model, with their original obse
 _Avoid_: Independent model allowances, current account totals
 
 **Luna Reserve**:
-Additional Luna usage offered to selected accounts after regular usage is exhausted. It has its own allowance, identified as `gpt-reserve` in the supported quota response. Codex cards show collected account readings directly, or **No reading** when none has been collected. A missing reading does not establish eligibility, and a quota observation does not prove that a particular client can use the allowance.
+Additional Luna usage offered to selected accounts after regular usage is exhausted. It has its own allowance, identified as `gpt-reserve` in the supported quota response. Codex cards show collected account readings directly and omit the Reserve section when no account reading exists. A missing reading does not establish eligibility, and a quota observation does not prove that a particular client can use the allowance.
 _Avoid_: Rate-limit reset credit, Terra allowance, unlimited usage
 
 **Registered Model Support**:
@@ -123,8 +123,8 @@ _Avoid_: Total token TPS, Effective TPS, Visible TPS
 - Manual probes and CPA reports retain their source identity. When both describe the same quota window, the newer observation supplies the displayed reading. Passive retry hints never replace the account's reported retry eligibility.
 - Availability metadata compatibility: **Compatible**. Availability columns are nullable and their API fields are additive and optional; existing rows without these observations remain unknown.
 - Loading **Usage Intelligence** reads retained quota observations; manual refresh is the user action that may trigger provider calls.
-- **Live Capacity** retains successful readings and **Last updated** across page reloads, service restarts, failed refreshes and account disabling. A newer successful observation replaces an earlier one; elapsed time alone does not clear readings or mark them expired. Accounts that have never supplied quota observations show **No reading**.
-- **Last updated** includes account and model quota observations, but excludes metadata sync and token refresh times. Per-reading source times remain available so the account timestamp does not imply that every window was observed together.
+- **Live Capacity** retains successful readings and **Last updated** across page reloads, service restarts, failed refreshes and account disabling. A newer successful observation replaces an earlier one; elapsed time alone does not clear readings or mark them expired. Codex cards render only observed account quota items; an account with no account quota readings shows **No account quota readings**, without inventing window or Reserve slots. Claude retains its fixed window placeholders.
+- **Last updated** includes manual and account passive quota observations; Claude also includes its visible model observations, while Codex excludes model snapshots. Metadata sync and token refresh times are excluded. Per-reading source times remain available so the account timestamp does not imply that every window was observed together.
 - **Live Capacity** shows the auth-file active window and provider quota reset times as reported. These timestamps are operational evidence, not inferred cache expiry, billing renewal or account-history claims.
 - A manual **Live Capacity** refresh is rejected as unavailable once its worker lifecycle starts shutting down; it must not return a task that cannot run.
 - **Live Capacity** follows provider filtering, but the **Selected Analysis Window** and **Time Granularity** do not change its query key or probe window.
