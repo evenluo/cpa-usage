@@ -134,14 +134,18 @@ func appendCodexWindowQuotaRow(rows []QuotaRow, key string, label string, scope 
 	}
 	label = codexWindowLabel(label, window.LimitWindowSeconds)
 	row := QuotaRow{
-		Key:               key,
-		Label:             label,
-		Scope:             scope,
-		Metric:            metric,
-		UsedPercent:       floatPtr(window.UsedPercent),
-		Allowed:           info.Allowed,
-		LimitReached:      info.LimitReached,
-		ResetAfterSeconds: intPtr(window.ResetAfterSeconds),
+		Key:          key,
+		Label:        label,
+		Scope:        scope,
+		Metric:       metric,
+		Allowed:      info.Allowed,
+		LimitReached: info.LimitReached,
+	}
+	if window.UsedPercent != nil {
+		row.UsedPercent = window.UsedPercent
+	}
+	if window.ResetAfterSeconds != nil {
+		row.ResetAfterSeconds = window.ResetAfterSeconds
 	}
 	if window.LimitWindowSeconds != 0 {
 		row.Window = &QuotaWindow{Seconds: intPtr(window.LimitWindowSeconds)}

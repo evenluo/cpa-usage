@@ -58,23 +58,23 @@ func TestNormalizeCodexQuotaRows(t *testing.T) {
 			Allowed:      &allowed,
 			LimitReached: &limitReached,
 			PrimaryWindow: &quota.CodexUsageWindow{
-				UsedPercent:        25,
+				UsedPercent:        floatPtr(25),
 				LimitWindowSeconds: 18000,
-				ResetAfterSeconds:  1200,
+				ResetAfterSeconds:  intPtr(1200),
 				ResetAt:            resetAt,
 			},
-			SecondaryWindow: &quota.CodexUsageWindow{UsedPercent: 65, LimitWindowSeconds: 604800, ResetAfterSeconds: 7200},
+			SecondaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(65), LimitWindowSeconds: 604800, ResetAfterSeconds: intPtr(7200)},
 		},
 		CodeReviewRateLimit: &quota.CodexRateLimitInfo{
 			Allowed:       &allowed,
-			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 40, LimitWindowSeconds: 18000, ResetAfterSeconds: 600},
+			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(40), LimitWindowSeconds: 18000, ResetAfterSeconds: intPtr(600)},
 		},
 		AdditionalRateLimits: []quota.CodexAdditionalRateLimit{{
 			LimitName:      "codex-spark",
 			MeteredFeature: "spark",
 			RateLimit: &quota.CodexRateLimitInfo{
 				Allowed:       &allowed,
-				PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 12, LimitWindowSeconds: 18000, ResetAfterSeconds: 900},
+				PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(12), LimitWindowSeconds: 18000, ResetAfterSeconds: intPtr(900)},
 			},
 		}},
 	}}})
@@ -112,7 +112,7 @@ func TestNormalizeCodexQuotaRows(t *testing.T) {
 func TestNormalizeCodexPrimaryWindowUsesWindowSecondsForWeeklyLabel(t *testing.T) {
 	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "codex", Result: quota.CodexResult{Usage: &quota.CodexUsagePayload{
 		RateLimit: &quota.CodexRateLimitInfo{
-			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 10, LimitWindowSeconds: 604800},
+			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(10), LimitWindowSeconds: 604800},
 		},
 	}}})
 
@@ -127,7 +127,7 @@ func TestNormalizeCodexPreservesAdditionalRateLimits(t *testing.T) {
 	notAllowed := false
 	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "codex", Result: quota.CodexResult{Usage: &quota.CodexUsagePayload{
 		RateLimit: &quota.CodexRateLimitInfo{
-			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 10, LimitWindowSeconds: 18000},
+			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(10), LimitWindowSeconds: 18000},
 		},
 		AdditionalRateLimits: []quota.CodexAdditionalRateLimit{
 			{
@@ -135,11 +135,11 @@ func TestNormalizeCodexPreservesAdditionalRateLimits(t *testing.T) {
 				MeteredFeature: "base_model_inference",
 				RateLimit: &quota.CodexRateLimitInfo{
 					Allowed:       &allowed,
-					PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 31.5, LimitWindowSeconds: 18000, ResetAfterSeconds: 1200},
+					PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(31.5), LimitWindowSeconds: 18000, ResetAfterSeconds: intPtr(1200)},
 					SecondaryWindow: &quota.CodexUsageWindow{
-						UsedPercent:        62.5,
+						UsedPercent:        floatPtr(62.5),
 						LimitWindowSeconds: 604800,
-						ResetAfterSeconds:  7200,
+						ResetAfterSeconds:  intPtr(7200),
 						ResetAt:            reserveResetAt,
 					},
 				},
@@ -149,14 +149,14 @@ func TestNormalizeCodexPreservesAdditionalRateLimits(t *testing.T) {
 				MeteredFeature: "base_model_inference",
 				RateLimit: &quota.CodexRateLimitInfo{
 					Allowed:       &notAllowed,
-					PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 12, LimitWindowSeconds: 18000},
+					PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(12), LimitWindowSeconds: 18000},
 				},
 			},
 			{
 				LimitName:      "unclassified-additional-limit",
 				MeteredFeature: "unclassified_metered_feature",
 				RateLimit: &quota.CodexRateLimitInfo{
-					PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 7, LimitWindowSeconds: 3600},
+					PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(7), LimitWindowSeconds: 3600},
 				},
 			},
 		},
@@ -194,7 +194,7 @@ func TestNormalizeCodexPreservesAdditionalRateLimits(t *testing.T) {
 func TestNormalizeCodexUnknownWindowDoesNotGuessFiveHourOrWeekly(t *testing.T) {
 	rows := quota.NormalizeQuotaRows(quota.ProviderOutput{Provider: "codex", Result: quota.CodexResult{Usage: &quota.CodexUsagePayload{
 		RateLimit: &quota.CodexRateLimitInfo{
-			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 10, LimitWindowSeconds: 3600},
+			PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(10), LimitWindowSeconds: 3600},
 		},
 	}}})
 
@@ -324,6 +324,10 @@ func TestNormalizeKimiQuotaRowsKeepsMissingNumbersAbsent(t *testing.T) {
 }
 
 func floatPtr(value float64) *float64 {
+	return &value
+}
+
+func intPtr(value int64) *int64 {
 	return &value
 }
 

@@ -85,7 +85,7 @@ func TestServiceIgnoresProviderOnlyIdentity(t *testing.T) {
 
 func TestServiceDispatchesAuthFileIdentityByProviderBeforeType(t *testing.T) {
 	lookup := newFakeAuthFileIdentityLookup(entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "codex-auth", Provider: "codex", Type: "unknown", Name: "auth file"})
-	handler := &recordingProviderHandler{output: quota.ProviderOutput{Provider: "codex", Result: quota.CodexResult{Usage: &quota.CodexUsagePayload{RateLimit: &quota.CodexRateLimitInfo{PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: 25}}}}}}
+	handler := &recordingProviderHandler{output: quota.ProviderOutput{Provider: "codex", Result: quota.CodexResult{Usage: &quota.CodexUsagePayload{RateLimit: &quota.CodexRateLimitInfo{PrimaryWindow: &quota.CodexUsageWindow{UsedPercent: floatPtr(25)}}}}}}
 	service := quota.NewServiceWithRegistry(lookup, quota.NewProviderRegistry(map[string]quota.ProviderHandler{"codex": handler}))
 
 	response, err := service.Check(context.Background(), quota.CheckRequest{AuthIndex: "codex-auth"})
