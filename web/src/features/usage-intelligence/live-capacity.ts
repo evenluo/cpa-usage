@@ -426,17 +426,27 @@ export const WEEKLY_WINDOW_SECONDS = 604_800
 
 function findQuotaWindow(rows: QuotaRow[], kind: "5h" | "weekly"): QuotaRow | undefined {
   const seconds = kind === "5h" ? FIVE_HOUR_WINDOW_SECONDS : WEEKLY_WINDOW_SECONDS
-  // window.seconds is authoritative (the backend derives labels from it), so
-  // rows that carry it win over label-only rows regardless of array position;
-  // label matching is the fallback for providers that omit window entirely.
+  const meters = rows.filter(isPrimaryWindowMeter)
+  // Among primary meters, window.seconds is authoritative (the backend derives
+  // labels from it); label matching covers providers that omit window entirely.
   return (
-    rows.find((row) => row.window?.seconds === seconds) ??
-    rows.find((row) => {
-      const label = (row.label ?? "").toLowerCase()
-      if (kind === "5h") return label === "5h" || label.includes("5h")
-      return label === "weekly" || label.includes("weekly") || label.includes("7d")
-    })
+    meters.find((row) => row.window?.seconds === seconds) ??
+    meters.find((row) => matchesWindowKindLabel(row, kind))
   )
+}
+
+function isPrimaryWindowMeter(row: QuotaRow): boolean {
+  const key = row.key ?? ""
+  if (key.startsWith("rate_limit.") || key.startsWith("codex.rate_limit.")) return true
+  if (row.scope === "additional" || key.startsWith("additional_rate_limits.")) return false
+  if (key.startsWith("codex.") && !key.startsWith("codex.rate_limit.")) return false
+  return true
+}
+
+function matchesWindowKindLabel(row: QuotaRow, kind: "5h" | "weekly"): boolean {
+  const label = (row.label ?? "").toLowerCase()
+  if (kind === "5h") return label === "5h" || label.includes("5h")
+  return label === "weekly" || label.includes("weekly") || label.includes("7d")
 }
 
 const WINDOW_UNIT_SECONDS: Record<string, number> = {

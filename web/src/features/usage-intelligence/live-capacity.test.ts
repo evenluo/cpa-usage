@@ -146,6 +146,38 @@ describe("Live Capacity view model", () => {
     expect(rows[0].weekly).toMatchObject({ label: "Spark Weekly", valueLabel: "80% used", windowSeconds: 604_800 })
   })
 
+  it("does not put Spark in the primary 5h meter when rate_limit is Weekly-only", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      observations: {
+        items: [{
+          id: "codex-auth",
+          observedAt: OBSERVED_AT,
+          quota: [
+            { key: "rate_limit.primary_window", label: "Weekly", scope: "window", usedPercent: 57, window: { seconds: 604_800 } },
+            { key: "additional_rate_limits.GPT-5.3-Codex-Spark.primary_window", label: "GPT-5.3-Codex-Spark 5h", scope: "additional", metric: "codex_bengalfox", usedPercent: 0, window: { seconds: 18_000 } },
+            { key: "additional_rate_limits.GPT-5.3-Codex-Spark.secondary_window", label: "GPT-5.3-Codex-Spark Weekly", scope: "additional", metric: "codex_bengalfox", usedPercent: 0, window: { seconds: 604_800 } },
+            { key: "additional_rate_limits.gpt-reserve.primary_window", label: "gpt-reserve Weekly", scope: "additional", metric: "base_model_inference", usedPercent: 0, window: { seconds: 604_800 } },
+          ],
+        }],
+      },
+    })
+
+    expect(rows[0].fiveHour).toBeUndefined()
+    expect(rows[0].weekly).toMatchObject({ label: "Weekly", valueLabel: "57% used", windowSeconds: 604_800 })
+    expect(rows[0].additionalMetrics.map((metric) => metric.label)).toEqual([
+      "GPT-5.3-Codex-Spark 5h",
+      "GPT-5.3-Codex-Spark Weekly",
+      "gpt-reserve Weekly",
+    ])
+
+    const layout = capacityLayout(mergeCapacityEntries(rows[0]), "codex")
+    expect(layout.main.map((entry) => entry.metric.label)).toEqual(["Weekly"])
+    expect(layout.extras.map((entry) => entry.metric.label)).toContain("GPT-5.3-Codex-Spark 5h")
+    expect(layout.extras.map((entry) => entry.metric.label)).toContain("GPT-5.3-Codex-Spark Weekly")
+    expect(layout.main.some((entry) => entry.metric.label.includes("Spark"))).toBe(false)
+  })
+
   it("derives metric window seconds from Kimi duration+unit windows", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({ identity: "kimi-auth", provider: "Kimi", type: "kimi" })],
