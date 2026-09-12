@@ -1064,6 +1064,47 @@ describe("mergeCapacityEntries", () => {
     expect(layout.extras[0].metric.description).toBeUndefined()
   })
 
+  it("identifies Luna Reserve from gpt-reserve key or metric rather than the label", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({ identity: "codex-auth" })],
+      observations: {
+        items: [{
+          id: "codex-auth",
+          observedAt: OBSERVED_AT,
+          quota: [
+            { key: "additional_rate_limits.gpt-reserve.primary_window", label: "Gpt Reserve Weekly", scope: "additional", metric: "base_model_inference", usedPercent: 0, window: { seconds: 604_800 } },
+          ],
+        }],
+      },
+    })
+    const probeLayout = capacityLayout(mergeCapacityEntries(rows[0]), "codex")
+    expect(probeLayout.reserve).toHaveLength(1)
+    expect(probeLayout.reserve[0].metric).toMatchObject({
+      isLunaReserve: true,
+      displayLabel: "Luna Reserve Weekly",
+      valueLabel: "0% used",
+    })
+
+    const passiveRows = buildLiveCapacityRows({
+      identities: [identity({
+        identity: "codex-auth",
+        passive_quota: {
+          source: "cpa_passive",
+          scope: "account",
+          observed_at: OBSERVED_AT,
+          quota: [{ key: "codex.additional-gpt-reserve.primary", label: "Gpt Reserve Weekly", usedPercent: 12, window: { seconds: 604_800 } }],
+        },
+      })],
+    })
+    const passiveLayout = capacityLayout(mergeCapacityEntries(passiveRows[0]), "codex")
+    expect(passiveLayout.reserve).toHaveLength(1)
+    expect(passiveLayout.reserve[0].metric).toMatchObject({
+      isLunaReserve: true,
+      displayLabel: "Luna Reserve Weekly",
+      valueLabel: "12% used",
+    })
+  })
+
   it("does not promote a Codex model snapshot into an account Reserve reading", () => {
     const row = rowWithProbeAndPassive({
       probeObservedAt: "2026-09-11T06:00:00Z",

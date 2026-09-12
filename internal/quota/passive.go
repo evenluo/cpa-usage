@@ -383,7 +383,8 @@ func codexPassiveGroupLabel(group *codexPassiveGroup) string {
 	if group.name == "" {
 		return "Rate limit"
 	}
-	parts := strings.FieldsFunc(group.name, func(char rune) bool { return char == '-' || char == '_' })
+	name := strings.TrimPrefix(group.name, "additional-")
+	parts := strings.FieldsFunc(name, func(char rune) bool { return char == '-' || char == '_' })
 	for i := range parts {
 		if parts[i] != "" {
 			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]

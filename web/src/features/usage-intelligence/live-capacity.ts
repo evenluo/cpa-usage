@@ -474,11 +474,11 @@ function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapa
   const label = metricLabel(row)
   // Only the explicitly named reserve limit earns the product label. A request
   // model or the metered feature alone does not establish an allowance's identity.
-  const isLunaReserve = providerKind === "codex" && /^gpt-reserve(?: (?:5h|Weekly|Window))?$/.test(label)
+  const isLunaReserve = providerKind === "codex" && isGptReserveIdentity(row)
   return {
     label,
     ...(isLunaReserve ? {
-      displayLabel: label.replace("gpt-reserve", "Luna Reserve"),
+      displayLabel: lunaReserveDisplayLabel(label),
       description: "gpt-reserve · Extra Luna usage after regular usage is exhausted.",
       isLunaReserve: true,
     } : {}),
@@ -489,6 +489,25 @@ function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapa
     tone: toneFromProgress(row, progress),
     windowSeconds: quotaWindowSeconds(row.window),
   }
+}
+
+function isGptReserveIdentity(row: QuotaRow): boolean {
+  if (row.metric?.trim() === "gpt-reserve") return true
+  return codexLimitNameFromKey(row.key) === "gpt-reserve"
+}
+
+function codexLimitNameFromKey(key: string | undefined): string | undefined {
+  if (!key) return undefined
+  const additional = /^additional_rate_limits\.([^.]*)/.exec(key)
+  if (additional) return additional[1]
+  const passive = /^codex\.([^.]+)/.exec(key)
+  if (!passive) return undefined
+  return passive[1].replace(/^additional-/, "")
+}
+
+function lunaReserveDisplayLabel(label: string): string {
+  const match = label.match(/\s+(5h|Weekly|Window)$/i)
+  return match ? `Luna Reserve ${match[1]}` : "Luna Reserve"
 }
 
 function metricLabel(row: QuotaRow): string {

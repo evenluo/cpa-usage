@@ -107,6 +107,23 @@ func TestNormalizePassiveQuotaSnapshotCodexPreservesAllRelevantWindowsAndModels(
 	}
 }
 
+func TestNormalizePassiveQuotaSnapshotStripsAdditionalPrefixWhenLimitNameMissing(t *testing.T) {
+	got := NormalizePassiveQuotaSnapshot("codex", &authfiles.QuotaObservation{
+		ObservedAt: "2026-09-07T08:00:00Z",
+		Signals: map[string]any{
+			"X-Codex-Additional-GPT-Reserve-Primary-Used-Percent":   "12",
+			"X-Codex-Additional-GPT-Reserve-Primary-Window-Minutes": "10080",
+		},
+	}, nil)
+	if got.Account == nil || len(got.Account.Quota) != 1 {
+		t.Fatalf("expected one gpt-reserve row, got %+v", got.Account)
+	}
+	row := got.Account.Quota[0]
+	if row.Key != "codex.additional-gpt-reserve.primary" || row.Label != "Gpt Reserve Weekly" {
+		t.Fatalf("missing Limit-Name must strip additional- prefix, got %+v", row)
+	}
+}
+
 func TestNormalizePassiveQuotaSnapshotTreatsConflictingLimitStateAsUnknown(t *testing.T) {
 	got := NormalizePassiveQuotaSnapshot("codex", &authfiles.QuotaObservation{
 		ObservedAt: "2026-09-07T08:00:00Z",
