@@ -523,7 +523,7 @@ func mergePersistedPassiveQuota(tx *gorm.DB, incoming []entities.UsageIdentity) 
 			}
 			for _, existing := range persisted {
 				index := keys[identityKey{AuthType: existing.AuthType, Identity: existing.Identity}]
-				incoming[index].PassiveQuota = newerPassiveAccountObservation(existing.PassiveQuota, incoming[index].PassiveQuota)
+				incoming[index].PassiveQuota = mergePassiveAccountObservation(existing.PassiveQuota, incoming[index].PassiveQuota)
 				incoming[index].PassiveModelQuotas = mergePassiveModelObservations(existing.PassiveModelQuotas, incoming[index].PassiveModelQuotas)
 			}
 		}
@@ -531,7 +531,7 @@ func mergePersistedPassiveQuota(tx *gorm.DB, incoming []entities.UsageIdentity) 
 	return nil
 }
 
-func newerPassiveAccountObservation(existing, incoming *entities.PassiveQuotaObservation) *entities.PassiveQuotaObservation {
+func mergePassiveAccountObservation(existing, incoming *entities.PassiveQuotaObservation) *entities.PassiveQuotaObservation {
 	if incoming == nil || incoming.ObservedAt.IsZero() {
 		return existing
 	}

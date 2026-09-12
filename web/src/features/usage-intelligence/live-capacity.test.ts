@@ -155,6 +155,7 @@ describe("Live Capacity view model", () => {
           observedAt: OBSERVED_AT,
           quota: [
             { key: "rate_limit.primary_window", label: "Weekly", scope: "window", usedPercent: 57, window: { seconds: 604_800 } },
+            { key: "code_review_rate_limit.primary_window", label: "Code Review 5h", scope: "code_review", usedPercent: 40, window: { seconds: 18_000 } },
             { key: "additional_rate_limits.GPT-5.3-Codex-Spark.primary_window", label: "GPT-5.3-Codex-Spark 5h", scope: "additional", metric: "codex_bengalfox", usedPercent: 0, window: { seconds: 18_000 } },
             { key: "additional_rate_limits.GPT-5.3-Codex-Spark.secondary_window", label: "GPT-5.3-Codex-Spark Weekly", scope: "additional", metric: "codex_bengalfox", usedPercent: 0, window: { seconds: 604_800 } },
             { key: "additional_rate_limits.gpt-reserve.primary_window", label: "gpt-reserve Weekly", scope: "additional", metric: "base_model_inference", usedPercent: 0, window: { seconds: 604_800 } },
@@ -166,6 +167,7 @@ describe("Live Capacity view model", () => {
     expect(rows[0].fiveHour).toBeUndefined()
     expect(rows[0].weekly).toMatchObject({ label: "Weekly", valueLabel: "57% used", windowSeconds: 604_800 })
     expect(rows[0].additionalMetrics.map((metric) => metric.label)).toEqual([
+      "Code Review 5h",
       "GPT-5.3-Codex-Spark 5h",
       "GPT-5.3-Codex-Spark Weekly",
       "gpt-reserve Weekly",

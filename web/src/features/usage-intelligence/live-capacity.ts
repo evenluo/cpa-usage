@@ -426,19 +426,26 @@ export const WEEKLY_WINDOW_SECONDS = 604_800
 
 function findQuotaWindow(rows: QuotaRow[], kind: "5h" | "weekly"): QuotaRow | undefined {
   const seconds = kind === "5h" ? FIVE_HOUR_WINDOW_SECONDS : WEEKLY_WINDOW_SECONDS
-  const meters = rows.filter(isPrimaryWindowMeter)
-  // Among primary meters, window.seconds is authoritative (the backend derives
-  // labels from it); label matching covers providers that omit window entirely.
+  const rateLimitWindows = rows.filter(isRateLimitWindow)
+  const meters = rateLimitWindows.length > 0 ? rateLimitWindows : rows.filter(canOccupySharedWindowMeter)
+  // Among rate_limit windows, window.seconds distinguishes 5h vs Weekly.
+  // Label matching covers providers that omit window.seconds entirely.
   return (
     meters.find((row) => row.window?.seconds === seconds) ??
     meters.find((row) => matchesWindowKindLabel(row, kind))
   )
 }
 
-function isPrimaryWindowMeter(row: QuotaRow): boolean {
+function isRateLimitWindow(row: QuotaRow): boolean {
   const key = row.key ?? ""
-  if (key.startsWith("rate_limit.") || key.startsWith("codex.rate_limit.")) return true
+  return key.startsWith("rate_limit.") || key.startsWith("codex.rate_limit.")
+}
+
+function canOccupySharedWindowMeter(row: QuotaRow): boolean {
+  const key = row.key ?? ""
+  if (isRateLimitWindow(row)) return true
   if (row.scope === "additional" || key.startsWith("additional_rate_limits.")) return false
+  if (key.startsWith("code_review_rate_limit.")) return false
   if (key.startsWith("codex.") && !key.startsWith("codex.rate_limit.")) return false
   return true
 }
