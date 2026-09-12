@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cpa-usage/internal/cpa/dto/authfiles"
+	"cpa-usage/internal/entities"
 )
 
 func TestPinnedProducerFixtureNormalizesAccountModelTimeAndUnits(t *testing.T) {
@@ -59,5 +60,35 @@ func TestPinnedV7262FixtureKeepsPassiveQuotaUnavailable(t *testing.T) {
 	got := NormalizePassiveQuotaSnapshot(response.Files[0].Type, response.Files[0].Quota, response.Files[0].ModelQuotas)
 	if got.Account != nil || len(got.Models) != 0 {
 		t.Fatalf("a response without quota observations must remain unavailable, got %+v", got)
+	}
+}
+
+func TestPinnedBengalfoxFixtureNormalizesSparkAdditionalLimit(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("..", "cpa", "testdata", "authfiles", "v7.2.156-bengalfox-passive-quota.json"))
+	if err != nil {
+		t.Fatalf("read bengalfox fixture: %v", err)
+	}
+	var response authfiles.AuthFilesResponse
+	if err := json.Unmarshal(payload, &response); err != nil {
+		t.Fatalf("decode bengalfox fixture: %v", err)
+	}
+	got := NormalizePassiveQuotaSnapshot(response.Files[0].Type, response.Files[0].Quota, response.Files[0].ModelQuotas)
+	if got.Account == nil {
+		t.Fatal("expected Codex account observation")
+	}
+	byKey := make(map[string]entities.PassiveQuotaMetric, len(got.Account.Quota))
+	for _, row := range got.Account.Quota {
+		byKey[row.Key] = row
+	}
+	primary := byKey["codex.rate_limit.primary"]
+	if primary.Label != "Weekly" || primary.UsedPercent == nil || *primary.UsedPercent != 47 || primary.Window == nil || primary.Window.Seconds != 604_800 {
+		t.Fatalf("unexpected rate_limit primary: %+v", primary)
+	}
+	spark := byKey["codex.bengalfox.primary"]
+	if spark.Label != "GPT-5.3-Codex-Spark 5h" || spark.Metric != "GPT-5.3-Codex-Spark" || spark.Window == nil || spark.Window.Seconds != 18_000 {
+		t.Fatalf("unexpected bengalfox primary: %+v", spark)
+	}
+	if _, ok := byKey["codex.additional-gpt-5.3-codex-spark.primary"]; ok {
+		t.Fatalf("bengalfox headers must not be parsed as Additional-GPT-5.3-Codex-Spark, got %+v", got.Account.Quota)
 	}
 }

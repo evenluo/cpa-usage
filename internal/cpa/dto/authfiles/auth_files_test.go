@@ -37,6 +37,7 @@ func TestPinnedAuthFileFixturesPreservePassiveQuotaAvailabilityBoundary(t *testi
 		wantQuota  bool
 	}{
 		{name: "v7.2.152", file: "v7.2.152-passive-quota.json", wantQuota: true},
+		{name: "v7.2.156 bengalfox", file: "v7.2.156-bengalfox-passive-quota.json", wantQuota: true},
 		{name: "without passive quota", file: "without-passive-quota.json", wantQuota: false},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {

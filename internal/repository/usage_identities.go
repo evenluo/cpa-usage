@@ -523,7 +523,7 @@ func mergePersistedPassiveQuota(tx *gorm.DB, incoming []entities.UsageIdentity) 
 			}
 			for _, existing := range persisted {
 				index := keys[identityKey{AuthType: existing.AuthType, Identity: existing.Identity}]
-				incoming[index].PassiveQuota = newerPassiveAccountObservation(existing.PassiveQuota, incoming[index].PassiveQuota)
+				incoming[index].PassiveQuota = mergePassiveAccountObservation(existing.PassiveQuota, incoming[index].PassiveQuota)
 				incoming[index].PassiveModelQuotas = mergePassiveModelObservations(existing.PassiveModelQuotas, incoming[index].PassiveModelQuotas)
 			}
 		}
@@ -531,11 +531,57 @@ func mergePersistedPassiveQuota(tx *gorm.DB, incoming []entities.UsageIdentity) 
 	return nil
 }
 
-func newerPassiveAccountObservation(existing, incoming *entities.PassiveQuotaObservation) *entities.PassiveQuotaObservation {
-	if incoming == nil || incoming.ObservedAt.IsZero() || existing != nil && !incoming.ObservedAt.After(existing.ObservedAt) {
+func mergePassiveAccountObservation(existing, incoming *entities.PassiveQuotaObservation) *entities.PassiveQuotaObservation {
+	if incoming == nil || incoming.ObservedAt.IsZero() {
 		return existing
 	}
-	return incoming
+	if existing == nil || existing.ObservedAt.IsZero() {
+		return incoming
+	}
+	return mergePassiveAccountMetrics(existing, incoming)
+}
+
+func mergePassiveAccountMetrics(existing, incoming *entities.PassiveQuotaObservation) *entities.PassiveQuotaObservation {
+	type keyedMetric struct {
+		metric     entities.PassiveQuotaMetric
+		observedAt time.Time
+	}
+	byKey := make(map[string]keyedMetric, len(existing.Quota)+len(incoming.Quota))
+	add := func(observation *entities.PassiveQuotaObservation) {
+		for _, metric := range observation.Quota {
+			key := strings.TrimSpace(metric.Key)
+			if key == "" {
+				continue
+			}
+			metric.Key = key
+			if current, ok := byKey[key]; !ok || observation.ObservedAt.After(current.observedAt) {
+				byKey[key] = keyedMetric{metric: metric, observedAt: observation.ObservedAt}
+			}
+		}
+	}
+	add(existing)
+	add(incoming)
+
+	keys := make([]string, 0, len(byKey))
+	for key := range byKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	merged := make([]entities.PassiveQuotaMetric, 0, len(keys))
+	for _, key := range keys {
+		merged = append(merged, byKey[key].metric)
+	}
+
+	result := *incoming
+	if existing.ObservedAt.After(incoming.ObservedAt) {
+		result = *existing
+	}
+	if len(merged) == 0 {
+		result.Quota = nil
+	} else {
+		result.Quota = merged
+	}
+	return &result
 }
 
 func mergePassiveModelObservations(existing, incoming []entities.PassiveModelQuotaObservation) []entities.PassiveModelQuotaObservation {

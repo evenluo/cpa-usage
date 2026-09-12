@@ -3,6 +3,8 @@ package test
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"cpa-usage/internal/cpa/dto/apicall"
@@ -36,10 +38,10 @@ func TestCodexProviderUsesAccountIDForUsageRequest(t *testing.T) {
 	if result.Usage == nil || result.Usage.PlanType != "plus" {
 		t.Fatalf("expected parsed usage payload, got %#v", result.Usage)
 	}
-	if result.Usage.RateLimit == nil || result.Usage.RateLimit.PrimaryWindow == nil || result.Usage.RateLimit.PrimaryWindow.UsedPercent != 64 {
+	if result.Usage.RateLimit == nil || result.Usage.RateLimit.PrimaryWindow == nil || result.Usage.RateLimit.PrimaryWindow.UsedPercent == nil || *result.Usage.RateLimit.PrimaryWindow.UsedPercent != 64 {
 		t.Fatalf("expected parsed rate limit payload, got %#v", result.Usage.RateLimit)
 	}
-	if result.Usage.RateLimit.SecondaryWindow == nil || result.Usage.RateLimit.SecondaryWindow.UsedPercent != 10 {
+	if result.Usage.RateLimit.SecondaryWindow == nil || result.Usage.RateLimit.SecondaryWindow.UsedPercent == nil || *result.Usage.RateLimit.SecondaryWindow.UsedPercent != 10 {
 		t.Fatalf("expected parsed secondary rate limit payload, got %#v", result.Usage.RateLimit)
 	}
 	if result.Usage.CodeReviewRateLimit != nil {
@@ -73,6 +75,81 @@ func TestCodexProviderUsesAccountIDForUsageRequest(t *testing.T) {
 	if request.Data != nil {
 		t.Fatalf("expected no data body, got %#v", request.Data)
 	}
+}
+
+func TestCodexMissingUsedPercentStaysAbsentOnQuotaRow(t *testing.T) {
+	usageJSON := `{"plan_type":"pro","rate_limit":{"allowed":true,"limit_reached":false,"primary_window":{"limit_window_seconds":604800,"reset_after_seconds":100}}}`
+	caller := &recordingManagementCaller{responses: []*apicall.Response{{
+		StatusCode: 200,
+		BodyText:   usageJSON,
+		Body:       json.RawMessage(usageJSON),
+	}}}
+	provider := quota.NewCodexProvider(caller, quota.DefaultProviderConfigs().Codex)
+
+	output, err := provider.Check(context.Background(), quota.ProviderInput{Identity: entities.UsageIdentity{Identity: "codex-auth"}})
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+	rows := quota.NormalizeQuotaRows(output)
+	if len(rows) != 1 {
+		t.Fatalf("expected one quota row, got %#v", rows)
+	}
+	if rows[0].UsedPercent != nil {
+		t.Fatalf("missing used_percent must stay nil, got %#v", rows[0].UsedPercent)
+	}
+	if rows[0].ResetAfterSeconds == nil || *rows[0].ResetAfterSeconds != 100 {
+		t.Fatalf("present reset_after_seconds must be kept, got %#v", rows[0].ResetAfterSeconds)
+	}
+}
+
+func TestCodexWeeklyPrimaryFixtureKeepsSparkAndReserveOffRateLimit(t *testing.T) {
+	usageJSON, err := os.ReadFile(filepath.Join("..", "testdata", "codex-wham-usage-weekly-primary.json"))
+	if err != nil {
+		t.Fatalf("read weekly-primary fixture: %v", err)
+	}
+	caller := &recordingManagementCaller{responses: []*apicall.Response{{
+		StatusCode: 200,
+		BodyText:   string(usageJSON),
+		Body:       json.RawMessage(usageJSON),
+	}}}
+	provider := quota.NewCodexProvider(caller, quota.DefaultProviderConfigs().Codex)
+
+	output, err := provider.Check(context.Background(), quota.ProviderInput{Identity: entities.UsageIdentity{Identity: "codex-auth"}})
+	if err != nil {
+		t.Fatalf("Check returned error: %v", err)
+	}
+	rows := quota.NormalizeQuotaRows(output)
+	if len(rows) != 4 {
+		t.Fatalf("expected rate_limit weekly plus Spark 5h/Weekly and gpt-reserve Weekly, got %#v", rows)
+	}
+	primary := findQuotaRow(t, rows, "rate_limit.primary_window")
+	assertQuotaText(t, primary, "Weekly", "window", "")
+	assertFloatField(t, primary.UsedPercent, 57, "rate_limit usedPercent")
+	assertIntField(t, primary.Window.Seconds, 604800, "rate_limit window seconds")
+	if findQuotaRowOrZero(rows, "rate_limit.secondary_window").Key != "" {
+		t.Fatalf("rate_limit must not invent a secondary window, got %#v", rows)
+	}
+
+	sparkPrimary := findQuotaRow(t, rows, "additional_rate_limits.GPT-5.3-Codex-Spark.primary_window")
+	assertQuotaText(t, sparkPrimary, "GPT-5.3-Codex-Spark 5h", "additional", "codex_bengalfox")
+	assertIntField(t, sparkPrimary.Window.Seconds, 18000, "spark primary window seconds")
+
+	reserve := findQuotaRow(t, rows, "additional_rate_limits.gpt-reserve.primary_window")
+	assertQuotaText(t, reserve, "gpt-reserve Weekly", "additional", "base_model_inference")
+	assertFloatField(t, reserve.UsedPercent, 0, "gpt-reserve usedPercent")
+	assertIntField(t, reserve.Window.Seconds, 604800, "gpt-reserve window seconds")
+	if findQuotaRowOrZero(rows, "additional_rate_limits.gpt-reserve.secondary_window").Key != "" {
+		t.Fatalf("gpt-reserve must stay primary-only, got %#v", rows)
+	}
+}
+
+func findQuotaRowOrZero(rows []quota.QuotaRow, key string) quota.QuotaRow {
+	for _, row := range rows {
+		if row.Key == key {
+			return row
+		}
+	}
+	return quota.QuotaRow{}
 }
 
 func TestCodexProviderOmitsAccountIDHeaderWhenMissing(t *testing.T) {

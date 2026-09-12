@@ -59,11 +59,13 @@ type AntigravityQuotaPayload struct {
 	Models map[string]AntigravityQuotaModel `json:"models,omitempty"`
 }
 
+// CodexUsageWindow 的 used_percent / reset_after_seconds 用指针保留字段存在性：
+// 窗口对象存在但缺字段时，缺失与 0 必须可区分。
 type CodexUsageWindow struct {
-	UsedPercent        float64 `json:"usedPercent,omitempty"`
-	LimitWindowSeconds int64   `json:"limitWindowSeconds,omitempty"`
-	ResetAfterSeconds  int64   `json:"resetAfterSeconds,omitempty"`
-	ResetAt            int64   `json:"resetAt,omitempty"`
+	UsedPercent        *float64 `json:"usedPercent,omitempty"`
+	LimitWindowSeconds int64    `json:"limitWindowSeconds,omitempty"`
+	ResetAfterSeconds  *int64   `json:"resetAfterSeconds,omitempty"`
+	ResetAt            int64    `json:"resetAt,omitempty"`
 }
 
 type CodexRateLimitInfo struct {

@@ -426,17 +426,34 @@ export const WEEKLY_WINDOW_SECONDS = 604_800
 
 function findQuotaWindow(rows: QuotaRow[], kind: "5h" | "weekly"): QuotaRow | undefined {
   const seconds = kind === "5h" ? FIVE_HOUR_WINDOW_SECONDS : WEEKLY_WINDOW_SECONDS
-  // window.seconds is authoritative (the backend derives labels from it), so
-  // rows that carry it win over label-only rows regardless of array position;
-  // label matching is the fallback for providers that omit window entirely.
+  const rateLimitWindows = rows.filter(isRateLimitWindow)
+  const meters = rateLimitWindows.length > 0 ? rateLimitWindows : rows.filter(canOccupySharedWindowMeter)
+  // Among rate_limit windows, window.seconds distinguishes 5h vs Weekly.
+  // Label matching covers providers that omit window.seconds entirely.
   return (
-    rows.find((row) => row.window?.seconds === seconds) ??
-    rows.find((row) => {
-      const label = (row.label ?? "").toLowerCase()
-      if (kind === "5h") return label === "5h" || label.includes("5h")
-      return label === "weekly" || label.includes("weekly") || label.includes("7d")
-    })
+    meters.find((row) => row.window?.seconds === seconds) ??
+    meters.find((row) => matchesWindowKindLabel(row, kind))
   )
+}
+
+function isRateLimitWindow(row: QuotaRow): boolean {
+  const key = row.key ?? ""
+  return key.startsWith("rate_limit.") || key.startsWith("codex.rate_limit.")
+}
+
+function canOccupySharedWindowMeter(row: QuotaRow): boolean {
+  const key = row.key ?? ""
+  if (isRateLimitWindow(row)) return true
+  if (row.scope === "additional" || key.startsWith("additional_rate_limits.")) return false
+  if (key.startsWith("code_review_rate_limit.")) return false
+  if (key.startsWith("codex.") && !key.startsWith("codex.rate_limit.")) return false
+  return true
+}
+
+function matchesWindowKindLabel(row: QuotaRow, kind: "5h" | "weekly"): boolean {
+  const label = (row.label ?? "").toLowerCase()
+  if (kind === "5h") return label === "5h" || label.includes("5h")
+  return label === "weekly" || label.includes("weekly") || label.includes("7d")
 }
 
 const WINDOW_UNIT_SECONDS: Record<string, number> = {
@@ -464,11 +481,11 @@ function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapa
   const label = metricLabel(row)
   // Only the explicitly named reserve limit earns the product label. A request
   // model or the metered feature alone does not establish an allowance's identity.
-  const isLunaReserve = providerKind === "codex" && /^gpt-reserve(?: (?:5h|Weekly|Window))?$/.test(label)
+  const isLunaReserve = providerKind === "codex" && isGptReserveIdentity(row)
   return {
     label,
     ...(isLunaReserve ? {
-      displayLabel: label.replace("gpt-reserve", "Luna Reserve"),
+      displayLabel: lunaReserveDisplayLabel(label),
       description: "gpt-reserve · Extra Luna usage after regular usage is exhausted.",
       isLunaReserve: true,
     } : {}),
@@ -479,6 +496,25 @@ function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapa
     tone: toneFromProgress(row, progress),
     windowSeconds: quotaWindowSeconds(row.window),
   }
+}
+
+function isGptReserveIdentity(row: QuotaRow): boolean {
+  if (row.metric?.trim() === "gpt-reserve") return true
+  return codexLimitNameFromKey(row.key) === "gpt-reserve"
+}
+
+function codexLimitNameFromKey(key: string | undefined): string | undefined {
+  if (!key) return undefined
+  const additional = /^additional_rate_limits\.([^.]*)/.exec(key)
+  if (additional) return additional[1]
+  const passive = /^codex\.([^.]+)/.exec(key)
+  if (!passive) return undefined
+  return passive[1].replace(/^additional-/, "")
+}
+
+function lunaReserveDisplayLabel(label: string): string {
+  const match = label.match(/\s+(5h|Weekly|Window)$/i)
+  return match ? `Luna Reserve ${match[1]}` : "Luna Reserve"
 }
 
 function metricLabel(row: QuotaRow): string {

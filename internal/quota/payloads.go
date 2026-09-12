@@ -83,9 +83,9 @@ func parseCodexUsageWindow(object map[string]json.RawMessage) *CodexUsageWindow 
 		return nil
 	}
 	return &CodexUsageWindow{
-		UsedPercent:        floatField(object, "used_percent", "usedPercent"),
+		UsedPercent:        floatPtrField(object, "used_percent", "usedPercent"),
 		LimitWindowSeconds: intField(object, "limit_window_seconds", "limitWindowSeconds"),
-		ResetAfterSeconds:  intField(object, "reset_after_seconds", "resetAfterSeconds"),
+		ResetAfterSeconds:  intPtrField(object, "reset_after_seconds", "resetAfterSeconds"),
 		ResetAt:            intField(object, "reset_at", "resetAt"),
 	}
 }
@@ -417,11 +417,20 @@ func floatValue(object map[string]json.RawMessage, keys ...string) (float64, boo
 }
 
 func intField(object map[string]json.RawMessage, keys ...string) int64 {
-	value, ok := floatValue(object, keys...)
-	if !ok {
+	value := intPtrField(object, keys...)
+	if value == nil {
 		return 0
 	}
-	return int64(value)
+	return *value
+}
+
+func intPtrField(object map[string]json.RawMessage, keys ...string) *int64 {
+	value, ok := floatValue(object, keys...)
+	if !ok {
+		return nil
+	}
+	parsed := int64(value)
+	return &parsed
 }
 
 func boolField(object map[string]json.RawMessage, keys ...string) bool {
