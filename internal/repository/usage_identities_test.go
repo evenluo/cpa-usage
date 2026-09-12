@@ -410,6 +410,65 @@ func TestUsageIdentityReplaceForAuthTypePersistsSourceMetadataFields(t *testing.
 	}
 }
 
+func TestUsageIdentityReplaceForAuthTypeMergesPassiveAccountQuotaByKey(t *testing.T) {
+	db := openTestDatabase(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 11, 16, 0, 0, 0, time.UTC)
+	firstObserved := time.Date(2026, 9, 11, 10, 0, 0, 0, time.UTC)
+	laterObserved := time.Date(2026, 9, 11, 15, 0, 0, 0, time.UTC)
+	earlierPercent := 36.0
+	laterPercent := 57.0
+	reservePercent := 0.0
+
+	seed := entities.UsageIdentity{
+		Name: "Codex", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth",
+		Identity: "codex-passive", Type: "codex", Provider: "Codex",
+		PassiveQuota: &entities.PassiveQuotaObservation{
+			ObservedAt: firstObserved,
+			Quota: []entities.PassiveQuotaMetric{
+				{Key: "codex.rate_limit.primary", Label: "Weekly", Scope: "account", UsedPercent: &earlierPercent},
+				{Key: "codex.additional-gpt-reserve.primary", Label: "gpt-reserve Weekly", Scope: "account", Metric: "gpt-reserve", UsedPercent: &reservePercent},
+			},
+		},
+	}
+	if err := db.Create(&seed).Error; err != nil {
+		t.Fatalf("seed passive quota identity: %v", err)
+	}
+
+	err := ReplaceUsageIdentitiesForAuthType(ctx, db, []entities.UsageIdentity{{
+		Name: "Codex", AuthTypeName: "oauth", Identity: seed.Identity, Type: "codex", Provider: "Codex",
+		PassiveQuota: &entities.PassiveQuotaObservation{
+			ObservedAt: laterObserved,
+			Quota: []entities.PassiveQuotaMetric{
+				{Key: "codex.rate_limit.primary", Label: "Weekly", Scope: "account", UsedPercent: &laterPercent},
+			},
+		},
+	}}, entities.UsageIdentityAuthTypeAuthFile, now)
+	if err != nil {
+		t.Fatalf("ReplaceUsageIdentitiesForAuthType returned error: %v", err)
+	}
+
+	row, err := GetUsageIdentityByID(ctx, db, seed.ID)
+	if err != nil {
+		t.Fatalf("load merged identity: %v", err)
+	}
+	if row.PassiveQuota == nil || !row.PassiveQuota.ObservedAt.Equal(laterObserved) {
+		t.Fatalf("merged observation time should be the newer snapshot, got %+v", row.PassiveQuota)
+	}
+	byKey := make(map[string]entities.PassiveQuotaMetric, len(row.PassiveQuota.Quota))
+	for _, metric := range row.PassiveQuota.Quota {
+		byKey[metric.Key] = metric
+	}
+	rateLimit, ok := byKey["codex.rate_limit.primary"]
+	if !ok || rateLimit.UsedPercent == nil || *rateLimit.UsedPercent != laterPercent {
+		t.Fatalf("newer rate_limit row should win, got %+v", row.PassiveQuota.Quota)
+	}
+	reserve, ok := byKey["codex.additional-gpt-reserve.primary"]
+	if !ok || reserve.UsedPercent == nil || *reserve.UsedPercent != reservePercent {
+		t.Fatalf("gpt-reserve row from the earlier snapshot must be kept, got %+v", row.PassiveQuota.Quota)
+	}
+}
+
 func TestUsageIdentityReplaceForAuthTypeBatchesLargeUpsertAndMarksStaleRowsDeleted(t *testing.T) {
 	db := openTestDatabase(t)
 	ctx := context.Background()
