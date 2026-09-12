@@ -9,7 +9,7 @@ describe("DashboardCoreEmptyState", () => {
   it("renders a successful empty result without a retry", () => {
     render(<DashboardCoreEmptyState onRetry={vi.fn()} />)
 
-    expect(screen.getByText("No usage in the selected window")).toBeInTheDocument()
+    expect(screen.getByText("No usage")).toBeInTheDocument()
     expect(screen.queryByRole("button")).not.toBeInTheDocument()
   })
 
@@ -18,9 +18,9 @@ describe("DashboardCoreEmptyState", () => {
     const retryCore = vi.fn()
     render(<DashboardCoreEmptyState refreshError={new Error("refresh failed")} onRetry={retryCore} />)
 
-    expect(screen.getByText("Usage refresh failed; the last complete result contained no usage.")).toBeInTheDocument()
-    expect(screen.queryByText("No usage in the selected window")).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Retry usage summary" }))
+    expect(screen.getByText("Refresh failed. Last result was empty.")).toBeInTheDocument()
+    expect(screen.queryByText("No usage")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(retryCore).toHaveBeenCalledTimes(1)
   })
 })

@@ -123,7 +123,7 @@ for (const theme of ["light", "dark"]) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await failedDetails.locator(":scope > summary").click()
     await breakdown.getByRole("link", { name: "Inspect sonnet failed attempts at or above p95 latency" }).click()
-    await expect(page.getByRole("heading", { name: "Request Evidence", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Request evidence", exact: true })).toBeVisible()
     await expect.poll(() => {
       const url = requests.filter((request) => request.path === "/usage/events").at(-1)?.url
       return url ? {

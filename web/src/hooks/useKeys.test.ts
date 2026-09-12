@@ -253,14 +253,14 @@ describe("useSetIdentityDisabled", () => {
     mockedApiFetch.mockRejectedValueOnce(new ApiError(
       502,
       JSON.stringify({
-        error: "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status.",
+        error: "Saved, but CPA status is unconfirmed. Trigger Sync.",
       }),
     ))
     const { result, invalidateQueries } = setupMutation()
 
     await act(async () => {
       await expect(result.current.mutateAsync({ id: 9, disabled: false })).rejects.toThrow(
-        "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status.",
+        "Saved, but CPA status is unconfirmed. Trigger Sync.",
       )
     })
 

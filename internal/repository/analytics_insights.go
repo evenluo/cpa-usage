@@ -94,14 +94,17 @@ func metricCompletenessInsight(summary dto.AnalyticsSummary, models []dto.Analyt
 	}
 	insight.Severity = "amber"
 	insight.Subject = metricCompletenessSubject(summary, incompleteModels)
-	insight.Detail = "Some derived metrics are incomplete, but the underlying usage events remain valid."
+	insight.Detail = "Some cost or cache figures are incomplete."
 	insight.MetricValue = float64(incompleteModels)
 	return insight
 }
 
 func metricCompletenessSubject(summary dto.AnalyticsSummary, incompleteModels int64) string {
 	if summary.CostStatus != dto.CostStatusAvailable {
-		return "Cost " + summary.CostStatus
+		if summary.CostStatus == dto.CostStatusPartial {
+			return "Cost incomplete"
+		}
+		return "Cost unavailable"
 	}
 	if subject, unavailable := cacheReadShareUnavailableSubject(summary.CacheReadShareState); unavailable {
 		return subject

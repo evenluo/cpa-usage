@@ -39,7 +39,7 @@ export function RequestEvidenceEvent({ event, label, syncState, detail = false }
       <div className="mt-3 grid min-w-0 grid-cols-3 gap-3">
         <RequestMetric label="Output TPS" value={formatOutputTPS(facts.output_tps)} />
         <RequestMetric label="Latency" value={formatLatency(event.latency_ms)} />
-        <RequestMetric label="Canonical tokens" value={formatTokenCount(facts.accounting.total_tokens)} />
+        <RequestMetric label="Tokens" value={formatTokenCount(facts.accounting.total_tokens)} />
       </div>
       {detail ? <RequestEvidenceDetail event={event} /> : null}
     </section>
@@ -62,7 +62,7 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
     ["Generate", formatOptionalBoolean(facts.generate)],
     ["Stream", formatOptionalBoolean(facts.stream)],
     ["TTFT", event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms)],
-    ["Canonical accounting", ACCOUNTING_STATE_LABELS[accounting.state]],
+    ["Token data status", ACCOUNTING_STATE_LABELS[accounting.state]],
     ["Reported quality", accounting.quality ?? "-"],
     ...getCanonicalTokenFields(accounting).map(([label, value]) => [label, formatTokenCount(value)]),
   ]

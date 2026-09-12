@@ -362,7 +362,7 @@ type usageIdentityDisabledResponse struct {
 func writeAccountStatusError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrAccountStatusRefresh):
-		c.JSON(http.StatusBadGateway, gin.H{"error": "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status."})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Saved, but CPA status is unconfirmed. Trigger Sync."})
 	case errors.Is(err, service.ErrUsageIdentityMissing):
 		c.JSON(http.StatusNotFound, gin.H{"error": "usage identity not found"})
 	case errors.Is(err, service.ErrIdentityNotAuthFile):

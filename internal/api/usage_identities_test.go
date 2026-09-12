@@ -814,7 +814,7 @@ func TestSetUsageIdentityDisabledRouteMapsServiceErrors(t *testing.T) {
 			if resp.Code != testCase.statusCode {
 				t.Fatalf("expected status %d, got %d: %s", testCase.statusCode, resp.Code, resp.Body.String())
 			}
-			if errors.Is(testCase.err, service.ErrAccountStatusRefresh) && !strings.Contains(resp.Body.String(), "CPA accepted the change") {
+			if errors.Is(testCase.err, service.ErrAccountStatusRefresh) && !strings.Contains(resp.Body.String(), "Saved, but CPA status is unconfirmed. Trigger Sync.") {
 				t.Fatalf("missing partial-success explanation: %s", resp.Body.String())
 			}
 		})

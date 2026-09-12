@@ -13,13 +13,13 @@ function countLabel(value: number | undefined): string {
 
 function processedVolumeDetail(metrics: MetricsPayload): string {
   if (metrics.redis_events_processed_total === undefined) {
-    return "Processed volume is not observed for this process."
+    return "No volume yet."
   }
   const events = metrics.redis_events_processed_total.toLocaleString()
   if (metrics.redis_events_processed_batches_total === undefined) {
-    return `${events} events processed in this process. Batch count is not observed.`
+    return `${events} events.`
   }
-  return `${events} events in ${metrics.redis_events_processed_batches_total.toLocaleString()} nonempty batches processed in this process.`
+  return `${events} events in ${metrics.redis_events_processed_batches_total.toLocaleString()} batches.`
 }
 
 export function deriveIngestionObservations(metrics: MetricsPayload): IngestionObservations {
@@ -38,17 +38,17 @@ export function deriveIngestionObservations(metrics: MetricsPayload): IngestionO
         ? { label: "Unavailable", detail: "The local inbox reading is unavailable because the database could not be read." }
         : { label: "Not observed", detail: "No local inbox reading was observed." },
     lastProcessed: metrics.redis_events_last_processed_at
-      ? { label: metrics.redis_events_last_processed_at, observedAt: metrics.redis_events_last_processed_at, detail: "Last observed nonempty local processing batch." }
+      ? { label: metrics.redis_events_last_processed_at, observedAt: metrics.redis_events_last_processed_at, detail: "Last nonempty batch this process handled." }
       : { label: "Not observed", detail: "No nonempty local processing batch has been observed in this process." },
     processingRate: rate === undefined
-      ? { label: "Rate unavailable", detail: `A processing rate is available after a comparable metrics scrape. ${processedVolumeDetail(metrics)}` }
-      : { label: `${rate.toLocaleString(undefined, { maximumFractionDigits: 1 })} events/min`, detail: `Observed local processing between metric scrapes. ${processedVolumeDetail(metrics)}` },
+      ? { label: "Rate unavailable", detail: `Need two scrapes to compute a rate. ${processedVolumeDetail(metrics)}` }
+      : { label: `${rate.toLocaleString(undefined, { maximumFractionDigits: 1 })} events/min`, detail: `${processedVolumeDetail(metrics)}` },
     runtime: metrics.poller_running !== true
       ? metrics.poller_running === false
-        ? { label: "Runner stopped", detail: "The local poller runner is not active." }
+        ? { label: "Runner stopped", detail: "Poller is stopped." }
         : { label: "Runtime unavailable", detail: "No local poller runtime state was observed." }
       : metrics.poller_sync_running === true
-        ? { label: "Processing active", detail: "The active local runner is pulling, processing, or serving a manual sync." }
-        : { label: "Runner idle", detail: "The local poller runner is active with no pull, processing, or manual sync in progress." },
+        ? { label: "Processing active", detail: "Pulling or syncing." }
+        : { label: "Runner idle", detail: "Idle." },
   }
 }

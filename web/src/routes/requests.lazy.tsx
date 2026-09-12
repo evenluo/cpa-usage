@@ -191,10 +191,9 @@ function ProviderScopedRequestsPage({
             Back to dashboard
           </Link>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Usage Intelligence
+            Intelligence
           </p>
-          <h1 className="mt-1 font-serif text-3xl font-semibold tracking-tight">Request Evidence</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Recent upstream-attempt evidence behind service health.</p>
+          <h1 className="mt-1 font-serif text-3xl font-semibold tracking-tight">Request evidence</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">Last 24h</Badge>
@@ -207,7 +206,7 @@ function ProviderScopedRequestsPage({
         </div>
       </header>
 
-      <p className="text-xs text-muted-foreground">CSV export includes the full frozen selection, up to 5,000 matching requests.</p>
+      <p className="text-xs text-muted-foreground">CSV includes this filter, up to 5,000 rows.</p>
       {exportError ? <p role="alert" className="text-sm text-red-500">{exportError}</p> : null}
 
       <form
@@ -263,9 +262,7 @@ function ProviderScopedRequestsPage({
             </Button>
           </div>
           <p>
-            Correlated attempts are distinct observed rows in this fixed 24-hour window and the visible provider scope.
-            {provider ? " Attempts for the same request ID under other providers are not included." : " All observed providers in the window are included."}{" "}
-            Historical data may omit attempts that were collapsed before attempt-grain persistence.
+            Same request ID, this 24h and provider. Older data may omit some retries.
           </p>
         </div>
       ) : null}
@@ -285,7 +282,7 @@ function ProviderScopedRequestsPage({
       ) : !hasCompleteData && error ? (
         <Card>
           <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-sm text-red-500">
-            <span>{error instanceof ApiError && error.status === 400 ? "Invalid request evidence filters" : "Failed to load request evidence"}</span>
+            <span>{error instanceof ApiError && error.status === 400 ? "Invalid request evidence filters" : "Couldn't load request evidence"}</span>
             <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>Retry request evidence</Button>
           </CardContent>
         </Card>
@@ -301,7 +298,7 @@ function ProviderScopedRequestsPage({
             <CardHeader className="flex flex-row items-start justify-between gap-4 p-4">
               <div className="min-w-0">
                 <CardTitle>Recent attempts</CardTitle>
-                <CardDescription>Select an upstream attempt to inspect its evidence.</CardDescription>
+                <CardDescription>Select an attempt.</CardDescription>
               </div>
               <Badge variant="outline" className="shrink-0">
                 {formatCompact(data?.total_count ?? events.length)} attempts
@@ -349,10 +346,9 @@ function ProviderScopedRequestsPage({
           <Card className="min-w-0">
             <CardHeader className="p-4">
               <CardTitle>Attempt detail</CardTitle>
-              <CardDescription>Performance, volume, identity, and status for the selected upstream attempt.</CardDescription>
             </CardHeader>
             <CardContent className="p-4 pt-0">
-              <RequestEvidenceEvent event={selectedEvent} label="Selected upstream attempt" detail />
+              <RequestEvidenceEvent event={selectedEvent} label="Selected attempt" detail />
               {selectedEvent.request_id && data?.window_end ? (
                 <Button
                   type="button"
@@ -406,7 +402,7 @@ function RequestListItem({
       <div className="min-w-0 text-right">
         <p className="whitespace-nowrap text-sm font-medium">{formatOutputTPS(event.attempt_facts.output_tps)}</p>
         <p className="mt-0.5 whitespace-nowrap text-xs text-muted-foreground">
-          {event.attempt_facts.accounting.total_tokens === null ? "Tokens unavailable" : `${formatCompact(event.attempt_facts.accounting.total_tokens, 2)} canonical`} · {event.failed ? "Failed" : "Success"}
+          {event.attempt_facts.accounting.total_tokens === null ? "Tokens unavailable" : `${formatCompact(event.attempt_facts.accounting.total_tokens, 2)} tokens`} · {event.failed ? "Failed" : "Success"}
         </p>
       </div>
     </button>

@@ -164,7 +164,7 @@ export function ReferencePage() {
                     <div>
                       <p className="text-[10px] font-medium uppercase text-muted-foreground">Usage</p>
                       <p className="mt-0.5 text-sm font-medium">
-                        {key.canonical_valid_attempts > 0 ? `${formatCompact(key.total_tokens, 2)} canonical tokens` : "Tokens unavailable"}
+                        {key.canonical_valid_attempts > 0 ? `${formatCompact(key.total_tokens, 2)} tokens` : "Tokens unavailable"}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {key.cost_available ? formatCost(key.total_cost) : "Cost unavailable"}

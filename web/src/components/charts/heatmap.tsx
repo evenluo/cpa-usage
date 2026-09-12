@@ -27,7 +27,7 @@ const metricOptions: Array<{ value: HeatmapMetric; label: string }> = [
 const exactNumber = new Intl.NumberFormat("en-US")
 
 function cellCostLabel(cell: Pick<HeatmapCell, "cost_available" | "cost_status" | "total_cost">): string {
-  if (!cell.cost_available) return cell.cost_status === "partial" ? "Cost partial" : "Cost unavailable"
+  if (!cell.cost_available) return cell.cost_status === "partial" ? "Cost incomplete" : "Cost unavailable"
   return `Cost ${formatCost(cell.total_cost)}`
 }
 

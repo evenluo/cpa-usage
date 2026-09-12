@@ -72,7 +72,7 @@ describe("ModelDistributionChart", () => {
       />,
     )
 
-    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost unavailable", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("$0.00", { exact: true })).not.toBeInTheDocument()
   })
 
@@ -89,7 +89,7 @@ describe("ModelDistributionChart", () => {
     )
 
     expect(screen.getByText("Other shown models", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost unavailable", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("$0.00", { exact: true })).not.toBeInTheDocument()
   })
 
@@ -105,7 +105,7 @@ describe("ModelDistributionChart", () => {
     )
 
     expect(screen.getByText("100.0%", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost unavailable", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
   })
 
@@ -122,7 +122,7 @@ describe("ModelDistributionChart", () => {
     )
 
     expect(screen.getByText("Other shown models", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost unavailable", { exact: true })).toBeInTheDocument()
     // The unavailable Other row is excluded from the mix total: 7 / (7+6+5+4+3).
     expect(screen.getByText("28.0%", { exact: true })).toBeInTheDocument()
     expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
@@ -191,6 +191,6 @@ describe("ModelDistributionChart", () => {
     // The leading block's model name is the only serif paragraph.
     expect(container.querySelector("p.font-serif")?.textContent).toBe("model-2")
     expect(screen.getByText("100.0%", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("Cost n/a", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost unavailable", { exact: true })).toBeInTheDocument()
   })
 })

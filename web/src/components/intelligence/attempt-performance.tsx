@@ -165,7 +165,7 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
 
             <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Sample rules</summary>
-              <p className="mt-2">TTFT and Output TPS charts use successful streaming generation. TPS also requires complete output data and valid timing. Excluded successful attempts: {formatCompact(data.successful_execution.non_generating)} non-generating, {formatCompact(data.successful_execution.non_streaming)} non-streaming. Execution unknown: {formatCompact(data.successful_execution.unknown)}; TTFT shown separately.</p>
+              <p className="mt-2">TTFT and Output TPS use successful streaming attempts. Excluded: {formatCompact(data.successful_execution.non_generating)} not generating, {formatCompact(data.successful_execution.non_streaming)} not streaming, {formatCompact(data.successful_execution.unknown)} unknown.</p>
             </details>
           </div>
         )}

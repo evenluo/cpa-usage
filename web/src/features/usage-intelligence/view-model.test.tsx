@@ -163,11 +163,11 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.hasModelDistribution).toBe(false)
     expect(viewModel.hasInsights).toBe(false)
     expect(viewModel.modelMixMeasure).toBe("tokens")
-    expect(viewModel.modelMixCostStateLabel).toBe("Local estimate incomplete, by tokens")
+    expect(viewModel.modelMixCostStateLabel).toBe("Incomplete · by tokens")
     expect(viewModel.fixedHeatmap).toBe(fixedHeatmap)
     expect(viewModel.serviceHealth).toBe(requestHealth.service_health)
     expect(viewModel.hasLeaderboardBreakdown).toBe(true)
-    expect(viewModel.leaderboardSortLabel).toBe("Sort: Local estimate incomplete")
+    expect(viewModel.leaderboardSortLabel).toBe("By tokens")
   })
 
   it("treats core leaderboard arrays as loaded before fixed full-dashboard data arrives", () => {
@@ -230,9 +230,9 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.modelDistribution[0].model).toBe("priced-model")
     expect(viewModel.insights[0].title).toBe("Pricing Missing")
     expect(viewModel.modelMixMeasure).toBe("tokens")
-    expect(viewModel.modelMixCostStateLabel).toBe("Local estimate incomplete, by tokens")
+    expect(viewModel.modelMixCostStateLabel).toBe("Incomplete · by tokens")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
-    expect(viewModel.accountingCaption).toBe("Canonical: 100.0% of attempts · complete quality")
+    expect(viewModel.accountingCaption).toBe("100.0% of attempts have complete token data")
   })
 
   it("derives the Cache KPI caption from the cache read share state", () => {
@@ -298,11 +298,11 @@ describe("Usage Intelligence view model", () => {
     })
     expect(getModelMixPresentation("partial")).toEqual({
       measure: "tokens",
-      costStateLabel: "Local estimate incomplete, by tokens",
+      costStateLabel: "Incomplete · by tokens",
     })
     expect(getModelMixPresentation("unavailable")).toEqual({
       measure: "tokens",
-      costStateLabel: "Cost unavailable, by tokens",
+      costStateLabel: "Unavailable · by tokens",
     })
   })
 
@@ -319,10 +319,10 @@ describe("Usage Intelligence view model", () => {
       hasInsights: false,
       modelMixMeasure: "tokens",
       hasLeaderboardBreakdown: false,
-      leaderboardSortLabel: "Sort: Cost",
+      leaderboardSortLabel: "By cost",
       kpiData: null,
     })
-    expect(getLeaderboardSortLabel("unavailable")).toBe("Sort: Tokens")
+    expect(getLeaderboardSortLabel("unavailable")).toBe("By tokens")
   })
 
   it("runs with Testing Library and user-event", async () => {

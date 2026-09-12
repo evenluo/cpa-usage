@@ -42,7 +42,7 @@ describe("RequestEvidence", () => {
     const onRetry = vi.fn()
     render(<RequestEvidence provider="" data={undefined} isLoading={false} isRefreshing={false} error={new Error("offline")} onRetry={onRetry} />)
 
-    expect(screen.getByText("Failed to load request evidence")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load request evidence")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Retry request evidence" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
@@ -52,8 +52,8 @@ describe("RequestEvidence", () => {
     const onRetry = vi.fn()
     render(<RequestEvidence provider="claude" data={populatedPage} isLoading={false} isRefreshing={false} error={new Error("refresh failed")} onRetry={onRetry} />)
 
-    expect(screen.getByRole("region", { name: "Latest upstream attempt" })).toBeInTheDocument()
-    expect(screen.queryByText("Failed to load request evidence")).not.toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Latest attempt" })).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load request evidence")).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "View all attempts" })).toHaveAttribute("href", "/requests?provider=claude")
     await user.click(screen.getByRole("button", { name: "Retry refresh" }))
     expect(onRetry).toHaveBeenCalledTimes(1)

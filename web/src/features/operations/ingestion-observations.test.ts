@@ -13,9 +13,9 @@ describe("deriveIngestionObservations", () => {
       poller_sync_running: true,
     })).toEqual({
       backlog: { label: "3", detail: "Retryable rows pending in the local inbox." },
-      lastProcessed: { label: "2026-09-07T01:02:03Z", observedAt: "2026-09-07T01:02:03Z", detail: "Last observed nonempty local processing batch." },
-      processingRate: { label: "12.5 events/min", detail: "Observed local processing between metric scrapes. 13 events in 2 nonempty batches processed in this process." },
-      runtime: { label: "Processing active", detail: "The active local runner is pulling, processing, or serving a manual sync." },
+      lastProcessed: { label: "2026-09-07T01:02:03Z", observedAt: "2026-09-07T01:02:03Z", detail: "Last nonempty batch this process handled." },
+      processingRate: { label: "12.5 events/min", detail: "13 events in 2 batches." },
+      runtime: { label: "Processing active", detail: "Pulling or syncing." },
     })
   })
 
@@ -26,18 +26,18 @@ describe("deriveIngestionObservations", () => {
       redis_events_processed_batches_total: 0,
     }).processingRate).toEqual({
       label: "0 events/min",
-      detail: "Observed local processing between metric scrapes. 0 events in 0 nonempty batches processed in this process.",
+      detail: "0 events in 0 batches.",
     })
     expect(deriveIngestionObservations({}).processingRate).toEqual({
       label: "Rate unavailable",
-      detail: "A processing rate is available after a comparable metrics scrape. Processed volume is not observed for this process.",
+      detail: "Need two scrapes to compute a rate. No volume yet.",
     })
   })
 
   it("keeps runner lifecycle and active processing state distinct", () => {
-    expect(deriveIngestionObservations({ poller_running: true, poller_sync_running: false }).runtime.label).toBe("Runner idle")
-    expect(deriveIngestionObservations({ poller_running: true, poller_sync_running: true }).runtime.label).toBe("Processing active")
-    expect(deriveIngestionObservations({ poller_running: false }).runtime.label).toBe("Runner stopped")
+    expect(deriveIngestionObservations({ poller_running: true, poller_sync_running: false }).runtime).toMatchObject({ label: "Runner idle", detail: "Idle." })
+    expect(deriveIngestionObservations({ poller_running: true, poller_sync_running: true }).runtime).toMatchObject({ label: "Processing active", detail: "Pulling or syncing." })
+    expect(deriveIngestionObservations({ poller_running: false }).runtime).toMatchObject({ label: "Runner stopped", detail: "Poller is stopped." })
     expect(deriveIngestionObservations({}).runtime.label).toBe("Runtime unavailable")
   })
 

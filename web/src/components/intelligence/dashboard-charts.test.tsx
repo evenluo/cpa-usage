@@ -38,9 +38,9 @@ function makeProps(overrides: Record<string, unknown> = {}) {
     onSelectTrendView: vi.fn(),
     leaderboardScope: "api-key" as const,
     onSelectLeaderboardScope: vi.fn(),
-    leaderboardSortLabel: "Sort: Cost",
+    leaderboardSortLabel: "By cost",
     modelMixMeasure: "tokens" as const,
-    modelMixCostStateLabel: "Local estimate incomplete, by tokens",
+    modelMixCostStateLabel: "Incomplete · by tokens",
     onRetryCore: vi.fn(),
     ...overrides,
   }
@@ -57,7 +57,7 @@ describe("DashboardCharts Usage Intelligence fields", () => {
       />,
     )
 
-    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Local estimate incomplete, by tokens")
+    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Incomplete · by tokens")
     expect(screen.getByTestId("model-distribution-owner")).toHaveTextContent("tokens:provider-scoped-model")
   })
 

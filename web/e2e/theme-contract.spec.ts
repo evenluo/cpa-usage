@@ -8,7 +8,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme === "light" ? "dark" : "light" })
     await page.addInitScript((value) => localStorage.setItem("cpa-theme", value), theme)
     await page.goto("/")
-    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Intelligence", exact: true })).toBeVisible()
     const card = page.locator(".rounded-xl.bg-card").first()
     await expect(card).toHaveCSS("background-color", theme === "light" ? "rgb(253, 252, 252)" : "rgb(30, 28, 26)")
     await expect(card).toHaveCSS("border-color", theme === "light" ? "rgb(229, 224, 220)" : "rgb(50, 46, 42)")

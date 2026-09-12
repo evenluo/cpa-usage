@@ -186,7 +186,7 @@ describe("RequestsPage provider scope", () => {
 
     vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(500, "unavailable"), refetch: vi.fn() } as never)
     rerender(<RequestsPage provider="" status="500" />)
-    expect(screen.getByText("Failed to load request evidence")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load request evidence")).toBeInTheDocument()
 
     vi.mocked(useEvents).mockReturnValue({ data: { ...eventsPage(1, ""), events: [], total_count: 0, total_pages: 1 }, isLoading: false, error: null, refetch: vi.fn() } as never)
     rerender(<RequestsPage provider="" />)
@@ -206,7 +206,7 @@ describe("RequestsPage provider scope", () => {
       minLatencyMS: "500", windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
     })
     expect(downloadUsageEventsCSV).toHaveBeenCalledOnce()
-    expect(screen.getByText("CSV export includes the full frozen selection, up to 5,000 matching requests.")).toBeInTheDocument()
+    expect(screen.getByText("CSV includes this filter, up to 5,000 rows.")).toBeInTheDocument()
     expect(screen.getByRole("alert")).toHaveTextContent("limited to 5,000 matching requests")
     expect(screen.getByRole("alert")).toHaveTextContent("No file was saved")
   })

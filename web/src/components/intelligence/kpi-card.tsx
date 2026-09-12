@@ -9,7 +9,7 @@ export interface KpiCardProps {
   formatter?: (n: number) => string
   caption?: string
   comparison?: string
-  /** Canonical accounting coverage readout, e.g. "Canonical coverage 97.5%"; omitted when coverage is unavailable. */
+  /** Token-data coverage readout, e.g. "Token data coverage 97.5%"; omitted when coverage is unavailable. */
   coverageLabel?: string
   sparkline?: (number | null)[]
   valueDecimals?: number

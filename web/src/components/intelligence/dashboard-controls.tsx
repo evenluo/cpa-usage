@@ -28,7 +28,7 @@ export function DashboardControls({
       {/* Header */}
       <header>
         <h1 className="font-serif text-3xl font-semibold tracking-tight text-foreground">
-          Dashboard
+          Intelligence
         </h1>
       </header>
 

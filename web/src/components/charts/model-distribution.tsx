@@ -48,14 +48,14 @@ const MEASURE_CONFIG: Record<Measure, MeasureConfig> = {
     emptyMessage: "No cost recorded for shown models",
     unavailableMessage: "Cost unavailable for shown models",
     centerLabel: "Shown cost mix",
-    supportingMetric: (row) => row.tokensAvailable ? `${formatCompact(row.totalTokens, 1)} tokens` : "Tokens n/a",
+    supportingMetric: (row) => row.tokensAvailable ? `${formatCompact(row.totalTokens, 1)} tokens` : "Tokens unavailable",
   },
   tokens: {
     value: (row) => row.total_tokens,
     format: (value) => `${formatCompact(value, 1)} tokens`,
     emptyMessage: "No token usage recorded for shown models",
     centerLabel: "Shown token mix",
-    supportingMetric: (row) => (row.costAvailable ? formatCost(row.totalCost) : "Cost n/a"),
+    supportingMetric: (row) => (row.costAvailable ? formatCost(row.totalCost) : "Cost unavailable"),
   },
 }
 
@@ -210,7 +210,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
               </span>
               <span className="mt-0.5 max-w-[140px] truncate text-xs text-muted-foreground">{hovered.model}</span>
               <span className="mt-2 text-[11px] font-medium text-muted-foreground">
-                {hovered.valueAvailable ? config.format(hovered.value) : "Cost n/a"}
+                {hovered.valueAvailable ? config.format(hovered.value) : "Cost unavailable"}
               </span>
             </>
           ) : (
@@ -244,7 +244,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
                   <p className="text-xs font-medium text-muted-foreground">{config.format(leading.value)}</p>
                 </>
               ) : (
-                <p className="font-serif text-3xl font-semibold tracking-tight text-muted-foreground">Cost n/a</p>
+                <p className="font-serif text-3xl font-semibold tracking-tight text-muted-foreground">Cost unavailable</p>
               )}
             </div>
           </div>
@@ -270,7 +270,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
                     <p className="mt-0.5 text-xs text-muted-foreground">{config.format(row.value)}</p>
                   </>
                 ) : (
-                  <p className="text-sm font-semibold text-muted-foreground">Cost n/a</p>
+                  <p className="text-sm font-semibold text-muted-foreground">Cost unavailable</p>
                 )}
               </div>
               <div className="min-w-0 pl-3.5">

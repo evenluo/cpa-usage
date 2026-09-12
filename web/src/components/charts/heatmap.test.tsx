@@ -112,7 +112,7 @@ describe("Heatmap", () => {
     expect(tooltip).toHaveTextContent("Failures 0")
     expect(tooltip).toHaveTextContent("Tokens 100")
     expect(tooltip).toHaveTextContent("Token coverage 1/2")
-    expect(tooltip).toHaveTextContent("Cost partial")
+    expect(tooltip).toHaveTextContent("Cost incomplete")
     expect(Number.parseFloat(tooltip.style.left)).toBeLessThanOrEqual(window.innerWidth - 328)
     expect(Number.parseFloat(tooltip.style.top)).toBeLessThanOrEqual(window.innerHeight - 68)
 

@@ -78,7 +78,7 @@ export function IngestionObservations({ metrics, isLoading, isError }: {
   const observations = deriveIngestionObservations(metrics)
   const rows = [
     ["Local inbox pending", observations.backlog],
-    ["Last observed nonempty processing", {
+    ["Last batch", {
       ...observations.lastProcessed,
       label: observations.lastProcessed.observedAt ? formatDate(observations.lastProcessed.observedAt) : observations.lastProcessed.label,
     }],
@@ -90,7 +90,7 @@ export function IngestionObservations({ metrics, isLoading, isError }: {
     <section aria-labelledby="ingestion-observations-heading">
       <div>
         <h2 id="ingestion-observations-heading" className="text-sm font-semibold">Ingestion observations</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Local observations only; they do not establish upstream freshness or end-to-end ingestion health.</p>
+        <p className="mt-1 text-xs text-muted-foreground">Local process only — not CPA queue health.</p>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {rows.map(([title, observation]) => (
@@ -251,7 +251,7 @@ function OperationsPage() {
                       toast.success("Logged out")
                       navigate({ to: "/login" })
                     },
-                    onError: (err: Error) => toast.error(err.message || "Logout failed"),
+                    onError: () => toast.error("Logout failed"),
                   })
                 }
               >

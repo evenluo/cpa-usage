@@ -198,13 +198,12 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
         <div>
           <CardTitle className="flex items-center gap-2">
             Live Capacity
-            <Gauge className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Fixed live capacity probe" />
+            <Gauge className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Live quotas" />
           </CardTitle>
-          <CardDescription>Latest quota readings</CardDescription>
+          <CardDescription>Current quotas</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="blue">live probe</Badge>
-          <Badge variant="outline">fixed</Badge>
+          <Badge variant="blue">Live</Badge>
           {displayedCount > refreshLimit ? <Badge variant="amber">max {refreshLimit}</Badge> : null}
           <Button type="button" variant="outline" size="sm" onClick={refreshDisplayed} disabled={displayedCount === 0}>
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isRefreshing && "animate-spin")} />
@@ -225,7 +224,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
           </div>
         ) : identities.length === 0 ? (
           <div className="flex h-[140px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-            No auth-file accounts
+            No accounts
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -298,7 +297,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                   <Skeleton className="h-20 w-full" />
                 ) : modelSupport.isError && requestedSupportScopeKey === selectedSupportScopeKey ? (
                   <div className="rounded-md border border-red-500/25 bg-red-500/[0.025] p-3 text-sm text-red-600" role="alert">
-                    Failed to load registered model support. {modelSupport.error instanceof Error ? modelSupport.error.message : "Try again."}
+                    Couldn't load model support
                   </div>
                 ) : loadedModelSupport ? (
                   <ModelSupportCoveragePanel result={loadedModelSupport} />
@@ -766,12 +765,12 @@ function ModelSupportCoveragePanel({ result }: { result: ModelSupportResponse })
         </div>
       ) : (
         <p className="mt-3 text-xs text-muted-foreground">
-          {result.scope_complete ? "CPA returned no registered models for this selected scope." : "No registered models were observed in the successfully loaded accounts."}
+          {result.scope_complete ? "No models registered." : "No models in the loaded accounts."}
         </p>
       )}
       {failures.length > 0 ? (
         <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/[0.04] p-2.5 text-xs text-amber-700 dark:text-amber-300">
-          <p className="font-medium">Failed accounts are unknown, not unsupported</p>
+          <p className="font-medium">Load failed — support unknown</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4">
             {failures.map((account) => (
               <li key={account.identity_id}>{account.display_name || account.auth_index}: {modelSupportErrorLabel(account.error_code)}</li>
@@ -816,7 +815,7 @@ function AccountModelSupportDetails({ account }: { account: AccountModelSupport 
   if (account.status === "failed") {
     return (
       <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/[0.04] p-2.5 text-[11px] text-amber-700 dark:text-amber-300">
-        Registered support unknown: {modelSupportErrorLabel(account.error_code)}. This is not an unsupported result.
+        Couldn't load models: {modelSupportErrorLabel(account.error_code)}
       </div>
     )
   }
@@ -824,7 +823,7 @@ function AccountModelSupportDetails({ account }: { account: AccountModelSupport 
     <details className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5">
       <summary
         className="cursor-pointer text-[11px] font-medium"
-        title="Registered capability only; not current routing availability."
+        title="Registered with CPA, not live routing."
       >
         Registered models ({account.registered_models.length})
       </summary>
@@ -881,10 +880,10 @@ function modelSupportErrorLabel(code: AccountModelSupport["error_code"]): string
 }
 
 function definitionStatusLabel(status: RegisteredModelSupport["definition_status"]): string {
-  if (status === "available") return "Static definition returned without supported capability fields."
-  if (status === "absent") return "No exact static definition was returned for this model ID."
-  if (status === "unknown_channel") return "No supported static catalog channel is known for this account type."
-  return "Static capability metadata could not be loaded."
+  if (status === "available") return "No extra capability data."
+  if (status === "absent") return "No catalog entry for this model."
+  if (status === "unknown_channel") return "No catalog for this account type."
+  return "Couldn't load capability data."
 }
 
 function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
