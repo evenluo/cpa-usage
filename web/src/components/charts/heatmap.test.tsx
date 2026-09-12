@@ -60,9 +60,9 @@ describe("Heatmap", () => {
 
     expect(screen.getByRole("button", { name: "Tokens" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByLabelText("Tokens legend")).toHaveTextContent("Tokens: 0–200")
-    expect(screen.getByLabelText("Tokens legend")).toHaveTextContent("Observed zero")
+    expect(screen.getByLabelText("Tokens legend")).toHaveTextContent("Zero")
     expect(screen.getByLabelText("Tokens legend")).toHaveTextContent("Outside range")
-    expect(screen.getByRole("note")).toHaveTextContent("Swipe horizontally to view all hours")
+    expect(screen.getByRole("note")).toHaveTextContent("Swipe for all hours")
     expect(screen.getByRole("button", { name: /05\/11 Mon 00:00/ }).parentElement?.style.gridTemplateColumns).toContain("68px 24px")
     expect(screen.getByText("05/11").parentElement).toHaveClass("sticky", "left-0")
     const activityCell = screen.getByRole("button", { name: /05\/11 Mon 00:00/ })
@@ -89,9 +89,9 @@ describe("Heatmap", () => {
       />,
     )
 
-    expect(screen.getByRole("button", { name: /00:00 · No activity/ })).toHaveAttribute("data-state", "no-activity")
+    expect(screen.getByRole("button", { name: /00:00 · 0 attempts/ })).toHaveAttribute("data-state", "no-activity")
     expect(screen.getByRole("button", { name: /01:00.*Tokens unavailable/ })).toHaveAttribute("data-state", "token-unavailable")
-    expect(screen.getByRole("button", { name: /02:00.*Token coverage 1\/2/ })).toHaveAttribute("data-state", "token-partial")
+    expect(screen.getByRole("button", { name: /02:00.*Tokens/ })).toHaveAttribute("data-state", "token-partial")
     expect(screen.getByRole("button", { name: /03:00.*Tokens 0/ })).toHaveAttribute("data-state", "observed")
     expect(container.querySelector('[data-state="out-of-range"]')).toHaveAttribute("aria-label", expect.stringContaining("Outside selected range"))
   })
@@ -108,11 +108,9 @@ describe("Heatmap", () => {
 
     fireEvent.focus(activityCell)
     const tooltip = screen.getByRole("tooltip")
-    expect(tooltip).toHaveTextContent("Attempts 2")
-    expect(tooltip).toHaveTextContent("Failures 0")
-    expect(tooltip).toHaveTextContent("Tokens 100")
-    expect(tooltip).toHaveTextContent("Token coverage 1/2")
-    expect(tooltip).toHaveTextContent("Cost incomplete")
+    expect(tooltip).toHaveTextContent("2 attempts")
+        expect(tooltip).toHaveTextContent("Tokens 100")
+        expect(tooltip).toHaveTextContent("Cost incomplete")
     expect(Number.parseFloat(tooltip.style.left)).toBeLessThanOrEqual(window.innerWidth - 328)
     expect(Number.parseFloat(tooltip.style.top)).toBeLessThanOrEqual(window.innerHeight - 68)
 
@@ -129,7 +127,7 @@ describe("Heatmap", () => {
     await user.click(activityCell)
     expect(activityCell).toHaveFocus()
     fireEvent.mouseLeave(activityCell)
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Attempts 2")
+    expect(screen.getByRole("tooltip")).toHaveTextContent("2 attempts")
     await user.tab()
     expect(activityCell).not.toHaveFocus()
     expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()

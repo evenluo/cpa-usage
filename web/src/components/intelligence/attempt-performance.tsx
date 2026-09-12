@@ -27,13 +27,13 @@ type PrimaryMetric = Exclude<PerformanceMetric, "failed-latency">
 type ComparisonDimension = "model" | "provider" | "account"
 
 const performanceMetrics: Array<{ value: PrimaryMetric; label: string }> = [
-  { value: "successful-latency", label: "Successful latency" },
+  { value: "successful-latency", label: "Latency" },
   { value: "ttft", label: "TTFT" },
   { value: "output-tps", label: "Output TPS" },
 ]
 
 const comparisonDimensions: Array<{ value: ComparisonDimension; label: string }> = [
-  { value: "model", label: "Actual models" },
+  { value: "model", label: "Models" },
   { value: "provider", label: "Providers" },
   { value: "account", label: "Accounts" },
 ]
@@ -74,20 +74,20 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
               </Select.Portal>
             </Select.Root>
           </div>
-          {providersError && providers.length > 0 ? <div className="mt-1 text-xs text-red-500">Provider list refresh failed. <button type="button" onClick={onRetryProviders} className="underline">Retry provider list</button></div> : null}
+          {providersError && providers.length > 0 ? <div className="mt-1 text-xs text-red-500">Couldn't refresh providers. <button type="button" onClick={onRetryProviders} className="underline">Retry</button></div> : null}
         </div>
-        {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button> : null}
+        {hasCompleteData && error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button> : null}
       </CardHeader>
       <CardContent>
         {!hasCompleteData && isLoading ? (
           <Skeleton className="h-52 w-full" />
         ) : !hasCompleteData && error ? (
           <div className="flex h-52 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-            <span>Failed to load attempt performance</span>
-            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry attempt performance</Button>
+            <span>Couldn't load attempt performance</span>
+            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
           </div>
         ) : !data || data.total_attempts === 0 ? (
-          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">{provider ? "No attempts for this provider in the last 24 hours" : "No providers with attempts in the last 24 hours"}</div>
+          <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">{provider ? "No attempts in 24h" : "No providers in 24h"}</div>
         ) : (
           <div className="space-y-3">
             <div className="flex flex-col items-start justify-between gap-x-6 gap-y-2 border-b lg:flex-row lg:items-baseline border-border pb-3">
@@ -147,7 +147,7 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
             />
 
             <details className="rounded-lg border border-border px-3 py-2.5">
-              <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Failed attempt latency · {formatCompact(data.failed_attempts)} {data.failed_attempts === 1 ? "attempt" : "attempts"}</summary>
+              <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Failed latency · {formatCompact(data.failed_attempts)}</summary>
               <div className="mt-4">
                 <div className="mb-3">
                   <AggregateReading metric={data.latency_ms.failed} kind="latency" slowLink={{ provider, windowEnd: data.window_end, result: "failed" }} />
@@ -216,12 +216,12 @@ function UnknownExecutionInfo({ metric }: { metric: UsagePercentileDistribution 
       <Popover.Portal>
         <Popover.Content sideOffset={8} collisionPadding={12} aria-label="Unknown execution TTFT" className="z-50 w-72 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
           <p className="font-medium">Execution unknown</p>
-          <p className="mt-1 text-muted-foreground">Attempts with unknown execution type are shown separately from the successful streaming generation used for Overall TTFT.</p>
+          <p className="mt-1 text-muted-foreground">These attempts are not in Overall TTFT.</p>
           <div className="mt-3 flex gap-4 tabular-nums">
             <span>p50 {formatMetricValue(metric.p50, "latency")}</span>
             <span>p95 {formatMetricValue(metric.p95, "latency")}</span>
           </div>
-          <p className="mt-2 text-muted-foreground" title={coverage.title}>{metric.sample_count.toLocaleString("en")} / {metric.population_count.toLocaleString("en")} samples · {metric.coverage === null ? "Coverage unavailable" : `${coverage.text} coverage`}</p>
+          <p className="mt-2 text-muted-foreground" title={coverage.title}>{metric.sample_count.toLocaleString("en")} of {metric.population_count.toLocaleString("en")}</p>
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -249,12 +249,12 @@ function PerformanceBreakdown({ title, breakdown, provider, windowEnd, selection
         {!needsProvider && breakdown.items.length > 0 && showChart ? <PerformanceAxis maximum={axisMaximum} kind={metricKind} /> : null}
       </div>
       {needsProvider ? (
-        <div className="flex min-h-28 items-center justify-center rounded-md border border-dashed border-border px-3 text-center text-xs text-muted-foreground">Select a provider to compare output speed.</div>
+        <div className="flex min-h-28 items-center justify-center rounded-md border border-dashed border-border px-3 text-center text-xs text-muted-foreground">Select a provider.</div>
       ) : breakdown.items.length === 0 ? (
         <div className="flex min-h-28 items-center justify-center rounded-md border border-dashed border-border px-3 text-center text-xs text-muted-foreground">No groups available</div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border">
-          {!showChart ? <p className="border-b border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">Select a provider to compare output speed.</p> : null}
+          {!showChart ? <p className="border-b border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">Select a provider.</p> : null}
           <div className="divide-y divide-border">
             {breakdown.items.map((item) => (
               <PerformanceRow
@@ -293,11 +293,11 @@ function PerformanceAxis({ maximum, kind }: { maximum: number; kind: "latency" |
 
 function DensityLegend() {
   return (
-    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title="Each interval shows its share of this row's valid samples. The same color scale applies to every row.">
+    <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title="Color = share of this row's samples.">
       <span className="flex overflow-hidden rounded-sm" aria-hidden="true">
         {[0.05, 0.2, 0.5, 1].map((share) => <span key={share} className="h-1.5 w-2.5 bg-sky-700 dark:bg-sky-400" style={{ opacity: densityOpacity(share) }} />)}
       </span>
-      <span>Stronger color = higher sample share</span>
+      <span>Darker = more samples</span>
     </div>
   )
 }
@@ -374,14 +374,14 @@ function DistributionTrack({ label, distribution, kind, axisMaximum, p50Position
           <Popover.Content sideOffset={8} collisionPadding={12} aria-label={`${label} sample distribution`} className="z-50 w-80 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
             <p className="break-words font-medium">{label}</p>
             <p className="mt-1 text-muted-foreground">{sampleCount.toLocaleString("en")} valid {sampleCount === 1 ? "sample" : "samples"} · {histogram.counts.length} equal intervals</p>
-            {sampleCount < 10 ? <p className="mt-1 text-muted-foreground">Few samples; the distribution may change substantially with more requests.</p> : null}
+            {sampleCount < 10 ? <p className="mt-1 text-muted-foreground">Few samples — may shift.</p> : null}
             <div className="mt-3 max-h-64 overflow-y-auto overscroll-contain">
               <table className="w-full text-left tabular-nums">
                 <thead className="sticky top-0 bg-popover text-[10px] text-muted-foreground"><tr><th className="pb-2 font-normal">Interval</th><th className="pb-2 text-right font-normal">Samples</th><th className="pb-2 text-right font-normal">Share</th></tr></thead>
                 <tbody>{histogram.counts.map((count, index) => <tr key={index} className="border-t border-border/50"><td className="py-1.5">{histogramInterval(histogram, index, kind)}</td><td className="py-1.5 text-right">{count.toLocaleString("en")}</td><td className="py-1.5 text-right">{formatSampleShare(sampleCount > 0 ? count / sampleCount : 0)}</td></tr>)}</tbody>
               </table>
             </div>
-            <p className="mt-2 text-[10px] text-muted-foreground">Color shows share within this row. The final interval includes its upper value.</p>
+            <p className="mt-2 text-[10px] text-muted-foreground">Last bucket is inclusive.</p>
           </Popover.Content>
         </Popover.Portal>
       ) : null}
@@ -418,7 +418,7 @@ function getDimensionBreakdown(data: UsageAttemptPerformance, dimension: Compari
 function getDimensionLabel(dimension: ComparisonDimension): string {
   if (dimension === "provider") return "Providers"
   if (dimension === "account") return "Accounts"
-  return "Actual models"
+  return "Models"
 }
 
 function getPerformanceMetric(item: UsageAttemptPerformanceSummary, metric: PerformanceMetric): UsagePercentileDistribution {
@@ -452,12 +452,11 @@ function SampleCoverage({ metric, label, attempts }: { metric: UsagePercentileDi
       <details>
         <summary
           aria-label={`Sample details for ${label}`}
-          title="View sample details"
           className="cursor-pointer list-none rounded-sm underline decoration-dotted underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
         >
           {attempts === undefined ? "Samples" : `${formatCompact(attempts)} ${attempts === 1 ? "attempt" : "attempts"}`}
         </summary>
-        <p className="mt-1" title={coverage.title}>{metric.sample_count.toLocaleString("en")} / {metric.population_count.toLocaleString("en")} samples · {coverage.text} coverage</p>
+        <p className="mt-1" title={coverage.title}>{metric.sample_count.toLocaleString("en")} of {metric.population_count.toLocaleString("en")}</p>
       </details>
       {metric.coverage !== 1 ? <span title={coverage.title}>{metric.coverage === null ? "Coverage unavailable" : `${coverage.text} coverage`}</span> : null}
     </div>

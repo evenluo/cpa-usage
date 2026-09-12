@@ -89,7 +89,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
   await expect(page.getByText("Request evidence")).toBeVisible()
   await expect(page.getByText("Agent API Key").first()).toBeVisible()
   const evidenceCard = page.getByText("Request evidence").locator("xpath=ancestor::*[contains(@class,'rounded-xl')][1]")
-  await expect(evidenceCard.getByRole("status")).toHaveText("Synced with trend")
+  await expect(evidenceCard.getByRole("status")).toHaveText("Live")
   await expect(evidenceCard.getByText("Latest request", { exact: true })).toHaveCount(0)
   await expect(evidenceCard.getByText("Output TPS", { exact: true })).toBeVisible()
   await expect(evidenceCard.getByText("48.3 tok/s", { exact: true })).toBeVisible()
@@ -119,7 +119,7 @@ test("dashboard controls and evidence stay inside each responsive viewport", asy
 test("reference data controls are usable without viewport overflow", async ({ page }) => {
   await page.goto("/reference")
 
-  await page.getByPlaceholder("Search alias or key...").fill("Agent")
+  await page.getByPlaceholder("Search").fill("Agent")
   await page.getByRole("button", { name: "Key alias scope: Accounts" }).click()
   await page.getByRole("button", { name: "Key alias scope: API Keys" }).click()
   await page.getByRole("button", { name: /Edit alias for Agent API Key/ }).click()
@@ -141,7 +141,7 @@ test("login and operations remain usable on small screens", async ({ page }) => 
   await expect(page.getByText(/Local process only/)).toBeVisible()
   await expect(page.getByText("12.5 events/min")).toBeVisible()
   await expect(page.getByText("Runner idle")).toBeVisible()
-  await page.getByRole("button", { name: "Trigger Sync" }).click()
+  await page.getByRole("button", { name: "Sync now" }).click()
   await expect(page.getByText("Sync triggered")).toBeVisible()
   await expectNoDocumentOverflow(page)
 })

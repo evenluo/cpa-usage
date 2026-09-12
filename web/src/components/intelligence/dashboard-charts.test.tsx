@@ -71,7 +71,7 @@ describe("DashboardCharts Usage Intelligence fields", () => {
       />,
     )
 
-    await user.click(screen.getByRole("button", { name: "Retry model mix" }))
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetryCore).toHaveBeenCalledTimes(1)
   })
 
@@ -92,7 +92,7 @@ describe("DashboardCharts Usage Intelligence fields", () => {
         surfaces={surfaces({ heatmap: { status: "error", data: undefined, error: new Error("unavailable") } })}
       />,
     )
-    await user.click(screen.getByRole("button", { name: "Retry heatmap" }))
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetryHeatmap).toHaveBeenCalledTimes(1)
   })
 })

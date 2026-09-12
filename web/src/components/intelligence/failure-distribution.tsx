@@ -34,8 +34,8 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
         <Skeleton className="h-8 w-full" />
       ) : !hasCompleteData && error ? (
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-red-500">
-          <span>Failed to load failure distribution</span>
-          <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry failure distribution</Button>
+          <span>Couldn't load failure distribution</span>
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
         </div>
       ) : !data ? (
         <p className="text-xs text-muted-foreground">Failure analysis unavailable</p>
@@ -43,12 +43,12 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
         <>
           {error ? (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-              <span>Failure refresh failed; showing the last complete result.</span>
-              <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry failure refresh</Button>
+              <span>Refresh failed. Showing last result.</span>
+              <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
             </div>
           ) : null}
           {data.total_failures === 0 ? (
-            <p className="text-xs text-muted-foreground">No failed attempts in the last 24 hours</p>
+            <p className="text-xs text-muted-foreground">No failures in 24h</p>
           ) : (
             <>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -63,8 +63,7 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
               </div>
               <details>
                 <summary className="cursor-pointer rounded-sm text-xs font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Failure breakdown</summary>
-                <p className="mb-4 mt-2 text-xs text-muted-foreground">Share of failures within each dimension.</p>
-                <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                                <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
                   {sections.map((section) => (
                     <FailureBreakdownSection
                       key={section.field}

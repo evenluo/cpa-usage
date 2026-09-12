@@ -21,7 +21,7 @@ function workbenchResult(overrides: Partial<UseReferenceDataWorkbenchResult> = {
     setQuery: vi.fn(),
     keyAliasScope: "api-key",
     selectKeyAliasScope: vi.fn(),
-    scopeDescription: "Human-readable labels for raw API keys",
+    scopeDescription: "Labels for API keys",
     apiKeyCount: undefined,
     accountCount: 1,
     aliasedAPIKeys: undefined,
@@ -77,11 +77,11 @@ describe("ReferencePage read states", () => {
     const user = userEvent.setup()
     render(<ReferencePage />)
 
-    expect(screen.getByText("Failed to load API keys")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load API keys")).toBeInTheDocument()
     expect(screen.getByText("gpt-5")).toBeInTheDocument()
     expect(screen.getByText("1 aliased")).toBeInTheDocument()
     expect(screen.getByText("Unavailable")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Retry key aliases" }))
+    await user.click(screen.getAllByRole("button", { name: "Retry" })[0])
     expect(retryAPIKeys).toHaveBeenCalledTimes(1)
     expect(retryAccounts).not.toHaveBeenCalled()
     expect(retryPricing).not.toHaveBeenCalled()
@@ -91,7 +91,7 @@ describe("ReferencePage read states", () => {
     const user = userEvent.setup()
     vi.mocked(useReferenceDataWorkbench).mockReturnValue(workbenchResult({
       keyAliasScope: "account",
-      scopeDescription: "Human-readable labels for account keys",
+      scopeDescription: "Labels for accounts",
       apiKeyCount: 1,
       aliasedAPIKeys: 1,
       apiKeysRead: { status: "ready", retry: retryAPIKeys },
@@ -103,11 +103,11 @@ describe("ReferencePage read states", () => {
 
     render(<ReferencePage />)
 
-    expect(screen.getByText("Failed to load accounts")).toBeInTheDocument()
-    expect(screen.queryByText("No keys found")).not.toBeInTheDocument()
+    expect(screen.getByText("Couldn't load accounts")).toBeInTheDocument()
+    expect(screen.queryByText("No keys")).not.toBeInTheDocument()
     expect(screen.getByText("gpt-5")).toBeInTheDocument()
     expect(screen.getByText("1 aliased")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Retry key aliases" }))
+    await user.click(screen.getAllByRole("button", { name: "Retry" })[0])
     expect(retryAccounts).toHaveBeenCalledTimes(1)
     expect(retryAPIKeys).not.toHaveBeenCalled()
     expect(retryPricing).not.toHaveBeenCalled()
@@ -116,7 +116,7 @@ describe("ReferencePage read states", () => {
   it("renders real empty Accounts while preserving API Keys and Cost Rates", () => {
     vi.mocked(useReferenceDataWorkbench).mockReturnValue(workbenchResult({
       keyAliasScope: "account",
-      scopeDescription: "Human-readable labels for account keys",
+      scopeDescription: "Labels for accounts",
       apiKeyCount: 1,
       aliasedAPIKeys: 1,
       apiKeysRead: { status: "ready", retry: retryAPIKeys },
@@ -128,10 +128,10 @@ describe("ReferencePage read states", () => {
 
     render(<ReferencePage />)
 
-    expect(screen.getByText("No keys found")).toBeInTheDocument()
-    expect(screen.queryByText("Failed to load accounts")).not.toBeInTheDocument()
+    expect(screen.getByText("No keys")).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load accounts")).not.toBeInTheDocument()
     expect(screen.getByText("gpt-5")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Retry key aliases" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
   })
 
   it("renders a Cost Rates failure without masking key data and retries only Cost Rates", async () => {
@@ -152,10 +152,10 @@ describe("ReferencePage read states", () => {
 
     render(<ReferencePage />)
 
-    expect(screen.getByText("Failed to load cost rates")).toBeInTheDocument()
-    expect(screen.queryByText("No models available for cost rates")).not.toBeInTheDocument()
+    expect(screen.getByText("Couldn't load cost rates")).toBeInTheDocument()
+    expect(screen.queryByText("No models")).not.toBeInTheDocument()
     expect(screen.getByText("Agent API Key")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Retry cost rates" }))
+    await user.click(screen.getAllByRole("button", { name: "Retry" })[0])
     expect(retryPricing).toHaveBeenCalledTimes(1)
     expect(retryAPIKeys).not.toHaveBeenCalled()
     expect(retryAccounts).not.toHaveBeenCalled()
@@ -178,9 +178,9 @@ describe("ReferencePage read states", () => {
 
     render(<ReferencePage />)
 
-    expect(screen.getByText("No models available for cost rates")).toBeInTheDocument()
-    expect(screen.queryByText("Failed to load cost rates")).not.toBeInTheDocument()
+    expect(screen.getByText("No models")).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load cost rates")).not.toBeInTheDocument()
     expect(screen.getByText("Agent API Key")).toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Retry cost rates" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
   })
 })

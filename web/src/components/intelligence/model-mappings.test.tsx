@@ -43,14 +43,14 @@ describe("ModelMappings", () => {
   it("starts as a compact 24-hour summary and expands into attempt-share mapping bars", async () => {
     const { props } = renderMappings()
 
-    const summary = screen.getByText("Observed model mappings").closest("summary")
+    const summary = screen.getByText("Model mappings").closest("summary")
     const details = summary?.closest("details")
     expect(details).not.toHaveAttribute("open")
     expect(summary?.querySelector("div")).toBeNull()
-    expect(summary?.querySelector(":scope > h3")).toHaveTextContent("Observed model mappings")
-    expect(summary).toHaveTextContent("4 mappings displayed")
-    expect(summary).toHaveTextContent("83.3% alias coverage")
-    expect(summary).toHaveTextContent("1 missing alias")
+    expect(summary?.querySelector(":scope > h3")).toHaveTextContent("Model mappings")
+    expect(summary).toHaveTextContent("4 mappings")
+    expect(summary).toHaveTextContent("83.3% have an alias")
+    expect(summary).toHaveTextContent("1 without alias")
     expect(screen.getByText("Last 24h")).toHaveAttribute("title", expect.stringContaining("–"))
 
     fireEvent.click(summary!)
@@ -58,17 +58,17 @@ describe("ModelMappings", () => {
     expect(details).toHaveAttribute("open")
     await waitFor(() => expect(props.onExpandedChange).toHaveBeenCalledWith(true))
     expect(screen.queryByText("Observed alias to actual model")).not.toBeInTheDocument()
-    expect(screen.getByText("Share of alias-bearing attempts")).toBeVisible()
-    const mappingNote = screen.getByText(/Names are observed values/)
+    expect(screen.getByText("Share of attempts with an alias")).toBeVisible()
+    const mappingNote = screen.getByText(/Same name does not mean it was routed that way/)
     expect(mappingNote).not.toBeVisible()
     fireEvent.click(screen.getByText("About these mappings"))
     expect(mappingNote).toBeVisible()
     expect(screen.getByRole("img", { name: "40.0% of attempts with an observed alias" })).toBeInTheDocument()
     expect(screen.getAllByText("route-a")).toHaveLength(2)
     expect(screen.getByText("provider-a")).toBeInTheDocument()
-    expect(screen.getByText("Same observed name")).toBeInTheDocument()
+    expect(screen.getByText("Same name")).toBeInTheDocument()
     expect(screen.queryByText("Direct")).not.toBeInTheDocument()
-    expect(screen.getByText("Observed cost · $1.00 · Partial")).toBeInTheDocument()
+    expect(screen.getByText("Cost · $1.00 · Partial")).toBeInTheDocument()
     expect(screen.getByText("Mean latency · 100 ms")).toHaveAttribute("title", "1 sample")
     expect(screen.getByRole("link", { name: "Inspect route-a to actual-a attempts" })).toHaveAttribute("href", expect.stringContaining("modelAlias=route-a"))
   })
@@ -90,15 +90,15 @@ describe("ModelMappings", () => {
 
   it("does not present a zero cost when alias coverage is absent", () => {
     renderMappings({ data: { ...fixture, observed_alias_attempts: 0, missing_alias_attempts: 6, alias_coverage: 0, observed_total_cost: 0, mappings: [] } as UsageModelMappingDistribution })
-    expect(screen.getByText("Observed cost · No observed alias population")).toBeInTheDocument()
+    expect(screen.getByText("Cost · No aliases")).toBeInTheDocument()
   })
 
   it("keeps a refresh failure visible when stale mapping data is available", () => {
     const onRetry = vi.fn()
     renderMappings({ summaryError: new Error("refresh failed"), onRetrySummary: onRetry })
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Latest refresh failed. Showing previously loaded data.")
-    fireEvent.click(screen.getByRole("button", { name: "Retry refresh" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("Refresh failed. Showing last result.")
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetry).toHaveBeenCalledOnce()
   })
 
@@ -107,9 +107,9 @@ describe("ModelMappings", () => {
     const emptySummary = { ...summaryFixture, total_attempts: 0, observed_alias_attempts: 0, missing_alias_attempts: 0, alias_coverage: 0, displayed_mappings: 0 }
     renderMappings({ summary: emptySummary, data: undefined, summaryError: new Error("refresh failed"), onRetrySummary: onRetry })
 
-    expect(screen.getByText("No attempts in the last 24 hours")).toBeInTheDocument()
+    expect(screen.getByText("No attempts in 24h")).toBeInTheDocument()
     expect(screen.getByRole("alert")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Retry refresh" }))
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetry).toHaveBeenCalledOnce()
   })
 
@@ -117,8 +117,8 @@ describe("ModelMappings", () => {
     const onExpandedChange = vi.fn()
     renderMappings({ data: undefined, onExpandedChange, isDetailsLoading: true })
 
-    expect(screen.queryByText("Share of alias-bearing attempts")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByText("Observed model mappings").closest("summary")!)
+    expect(screen.queryByText("Share of attempts with an alias")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText("Model mappings").closest("summary")!)
 
     await waitFor(() => expect(onExpandedChange).toHaveBeenCalledWith(true))
     expect(screen.getByLabelText("Loading model mapping details")).toBeVisible()

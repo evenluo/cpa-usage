@@ -86,8 +86,8 @@ export function DashboardAttention({
         <Skeleton className="h-24 w-full" />
       ) : surfaces.insights.status === "error" ? (
         <div className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-red-500">
-          <span>Failed to load attention signals</span>
-          <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry attention signals</Button>
+          <span>Couldn't load warnings</span>
+          <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry</Button>
         </div>
       ) : surfaces.insights.status === "ready" ? (
         <InsightRail insights={surfaces.insights.data} />
@@ -117,7 +117,7 @@ export function DashboardAttention({
               <CardDescription>Last 24h · Success rate every 3 min</CardDescription>
             </div>
             {surfaces.requestHealth.status !== "error" && surfaces.requestHealth.refreshError ? (
-              <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry refresh</Button>
+              <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry</Button>
             ) : null}
           </CardHeader>
           <CardContent className="min-h-0 min-w-0 flex-1">
@@ -125,8 +125,8 @@ export function DashboardAttention({
               <Skeleton className="h-[180px] w-full" />
             ) : surfaces.requestHealth.status === "error" ? (
               <div className="flex h-[180px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-                <span>Failed to load attempt health</span>
-                <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry attempt health</Button>
+                <span>Couldn't load attempt health</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryRequestHealth}>Retry</Button>
               </div>
             ) : surfaces.requestHealth.status === "ready" ? (
               <HealthGrid data={surfaces.requestHealth.data} />

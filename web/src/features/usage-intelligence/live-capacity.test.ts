@@ -404,7 +404,7 @@ describe("Live Capacity view model", () => {
     const rows = buildLiveCapacityRows({ identities: [identity({ status: undefined, unavailable: undefined })] })
 
     expect(rows[0].unavailable).toBeNull()
-    expect(rows[0].accountState).toMatchObject({ kind: "not_reported", label: "State not reported", tone: "muted" })
+    expect(rows[0].accountState).toMatchObject({ kind: "not_reported", label: "No state", tone: "muted" })
     expect(rows[0].accountState.kind).not.toBe("active")
   })
 
@@ -413,7 +413,7 @@ describe("Live Capacity view model", () => {
     ["pending", "Pending", "amber"],
     ["refreshing", "Refreshing", "amber"],
     ["error", "Error", "red"],
-    ["disabled", "Disabled state", "amber"],
+    ["disabled", "Disabled", "amber"],
     ["unknown", "Unknown", "muted"],
     ["other", "Other state", "muted"],
   ] as const)("maps the bounded %s account status without provider text", (status, label, tone) => {

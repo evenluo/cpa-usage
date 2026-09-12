@@ -26,7 +26,7 @@ export function RequestEvidence({ provider, data, isLoading, isRefreshing, error
           <CardTitle className="text-base">Request evidence</CardTitle>
         </div>
         {hasCompleteData && error ? (
-          <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button>
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
         ) : null}
       </CardHeader>
       <CardContent className="min-h-0 min-w-0 flex-1 p-4 pt-0">
@@ -35,7 +35,7 @@ export function RequestEvidence({ provider, data, isLoading, isRefreshing, error
         ) : !hasCompleteData && error ? (
           <div className="flex h-[180px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
             <span>Couldn't load request evidence</span>
-            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry request evidence</Button>
+            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
           </div>
         ) : !latestEvent ? (
           <div className="flex h-[180px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">

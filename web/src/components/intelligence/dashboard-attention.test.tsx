@@ -92,7 +92,7 @@ describe("DashboardAttention", () => {
     const onRetryCore = vi.fn()
     render(attention(makeSurfaces({ status: "error", data: [] }), onRetryCore).element)
 
-    await userEvent.click(screen.getByRole("button", { name: "Retry attention signals" }))
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
 
     expect(onRetryCore).toHaveBeenCalledTimes(1)
   })

@@ -110,11 +110,11 @@ export function getLeaderboardSortLabel(costStatus?: CostStatus): string {
 
 export function getCacheReadShareCaption(state?: CacheReadShareState, coverage?: number): string | undefined {
   if (state === undefined) return undefined
-  if (state === "no_prompt_input") return "No canonical input"
+  if (state === "no_prompt_input") return "No input token data"
   if (state === "no_cache_data") return "No exact cache data"
   const label = state === "available" ? "Exact" : "Partial"
   if (coverage === undefined) return label
-  return `${label} · covers ${coverage.toFixed(1)}% of canonical input`
+  return `${label} · covers ${coverage.toFixed(1)}% of available input tokens`
 }
 
 export function getCacheReadShareValue(value?: number, state?: CacheReadShareState): number | undefined {

@@ -12,7 +12,7 @@ describe("deriveIngestionObservations", () => {
       poller_running: true,
       poller_sync_running: true,
     })).toEqual({
-      backlog: { label: "3", detail: "Retryable rows pending in the local inbox." },
+      backlog: { label: "3", detail: "Retryable rows in the inbox." },
       lastProcessed: { label: "2026-09-07T01:02:03Z", observedAt: "2026-09-07T01:02:03Z", detail: "Last nonempty batch this process handled." },
       processingRate: { label: "12.5 events/min", detail: "13 events in 2 batches." },
       runtime: { label: "Processing active", detail: "Pulling or syncing." },
@@ -51,7 +51,7 @@ describe("deriveIngestionObservations", () => {
 
     expect(observations.backlog).toEqual({
       label: "4",
-      detail: "Retryable rows pending in the local inbox. Other database-backed observations are unavailable.",
+      detail: "Retryable rows in the inbox. Other database-backed observations are unavailable.",
     })
     expect(observations.lastProcessed.label).toBe("Not observed")
     expect(observations.runtime.label).toBe("Runner idle")

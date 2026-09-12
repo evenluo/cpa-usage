@@ -31,15 +31,15 @@ export function deriveIngestionObservations(metrics: MetricsPayload): IngestionO
       ? {
           label: countLabel(metrics.redis_inbox_pending),
           detail: dbUnavailable
-            ? "Retryable rows pending in the local inbox. Other database-backed observations are unavailable."
-            : "Retryable rows pending in the local inbox.",
+            ? "Retryable rows in the inbox. Other database-backed observations are unavailable."
+            : "Retryable rows in the inbox.",
         }
       : dbUnavailable
-        ? { label: "Unavailable", detail: "The local inbox reading is unavailable because the database could not be read." }
-        : { label: "Not observed", detail: "No local inbox reading was observed." },
+        ? { label: "Unavailable", detail: "Couldn't read the inbox." }
+        : { label: "Not observed", detail: "No inbox reading." },
     lastProcessed: metrics.redis_events_last_processed_at
       ? { label: metrics.redis_events_last_processed_at, observedAt: metrics.redis_events_last_processed_at, detail: "Last nonempty batch this process handled." }
-      : { label: "Not observed", detail: "No nonempty local processing batch has been observed in this process." },
+      : { label: "Not observed", detail: "No batch yet." },
     processingRate: rate === undefined
       ? { label: "Rate unavailable", detail: `Need two scrapes to compute a rate. ${processedVolumeDetail(metrics)}` }
       : { label: `${rate.toLocaleString(undefined, { maximumFractionDigits: 1 })} events/min`, detail: `${processedVolumeDetail(metrics)}` },

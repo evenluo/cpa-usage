@@ -166,7 +166,7 @@ describe("LiveCapacityCard", () => {
   it("keeps a read error distinct from an empty account list", () => {
     setupMock({ error: new Error("state read failed") })
     render(<LiveCapacityCard provider="" />)
-    expect(screen.getByText("Failed to load live capacity")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load live capacity")).toBeInTheDocument()
     expect(screen.queryByText("No accounts")).not.toBeInTheDocument()
   })
 
@@ -555,8 +555,8 @@ describe("LiveCapacityCard", () => {
     await user.click(screen.getByRole("button", { name: "Select displayed" }))
     await user.click(screen.getByRole("button", { name: "Load model support" }))
 
-    expect(await screen.findByText("Partial selected scope")).toBeInTheDocument()
-    expect(screen.getByText("observed in 1/1 loaded accounts")).toBeInTheDocument()
+    expect(await screen.findByText("Partial", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("1/1 loaded")).toBeInTheDocument()
     expect(screen.queryByText(/1 registered account in this scope/)).not.toBeInTheDocument()
     expect(screen.getByText("Load failed — support unknown")).toBeInTheDocument()
     expect(screen.getByText(/Context 200,000/)).toBeInTheDocument()
@@ -643,7 +643,7 @@ describe("LiveCapacityCard", () => {
 
     fireEvent.click(copyButton)
     expect(writeText).toHaveBeenCalledWith(longId)
-    await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Auth index copied"))
+    await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Copied"))
   })
 
   it("folds the subscription end into the timing lines when the active start is missing", () => {

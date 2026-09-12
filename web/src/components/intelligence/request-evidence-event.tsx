@@ -50,8 +50,8 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
   const facts = event.attempt_facts
   const accounting = facts.accounting
   const fields = [
-    ["Observed alias label", event.model_alias || "-"],
-    ["Actual model", event.model || "-"],
+    ["Alias", event.model_alias || "-"],
+    ["Model", event.model || "-"],
     ["Endpoint", event.endpoint || "-"],
     ["Request ID", event.request_id || "-"],
     ["Status code", formatOptionalNumber(event.status_code)],
@@ -69,7 +69,7 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
 
   return (
     <div className="mt-4 border-t border-terracotta-200 pt-3 dark:border-terracotta-900/60">
-      <p className="mb-3 text-xs text-muted-foreground">Canonical values are upstream evidence; only valid structure enters composition, with quality qualified separately. Missing facts are shown as -. Output TPS uses complete canonical output for generating streaming attempts.</p>
+      <p className="mb-3 text-xs text-muted-foreground">Token counts come from the upstream provider. Missing values are shown as "-". Output TPS requires complete token data for streaming requests.</p>
       <dl className="grid min-w-0 gap-x-4 gap-y-3 sm:grid-cols-2">
         {fields.map(([label, value]) => (
           <div key={label} className="min-w-0">
@@ -95,7 +95,7 @@ function formatTokenCount(value: number | null | undefined): string {
 }
 
 function EvidenceSyncSignal({ state }: { state: "synced" | "refreshing" }) {
-  const label = state === "refreshing" ? "Syncing with trend" : "Synced with trend"
+  const label = state === "refreshing" ? "Updating" : "Live"
 
   return (
     <div

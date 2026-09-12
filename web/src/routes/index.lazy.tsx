@@ -103,7 +103,7 @@ function DashboardPage() {
           tone="amber"
         />
           </div>
-          {summary ? <CanonicalTokenComposition accounting={summary.accounting} costStatus={summary.cost_status} /> : null}
+          {summary ? <CanonicalTokenComposition accounting={summary.accounting} /> : null}
         </>
       )}
 

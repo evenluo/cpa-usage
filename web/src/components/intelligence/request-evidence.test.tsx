@@ -43,7 +43,7 @@ describe("RequestEvidence", () => {
     render(<RequestEvidence provider="" data={undefined} isLoading={false} isRefreshing={false} error={new Error("offline")} onRetry={onRetry} />)
 
     expect(screen.getByText("Couldn't load request evidence")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Retry request evidence" }))
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 
@@ -55,7 +55,7 @@ describe("RequestEvidence", () => {
     expect(screen.getByRole("region", { name: "Latest attempt" })).toBeInTheDocument()
     expect(screen.queryByText("Couldn't load request evidence")).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "View all attempts" })).toHaveAttribute("href", "/requests?provider=claude")
-    await user.click(screen.getByRole("button", { name: "Retry refresh" }))
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 

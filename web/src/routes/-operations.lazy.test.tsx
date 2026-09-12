@@ -58,6 +58,6 @@ describe("Operations ingestion observations", () => {
     render(<IngestionObservations isLoading={false} isError metrics={undefined} />)
 
     expect(screen.getByText("Ingestion observations unavailable")).toBeInTheDocument()
-    expect(screen.getByText(/runtime metrics request failed/i)).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load metrics.")).toBeInTheDocument()
   })
 })

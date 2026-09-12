@@ -105,7 +105,7 @@ export function HealthGrid({ data }: HealthGridProps) {
                     title={
                       block.rate < 0 || (block.success + block.failure) === 0
                         ? `${formatTimeLabel(block.start_time)} - no data`
-                        : `${formatTimeLabel(block.start_time)} - ${(block.rate * 100).toFixed(1)}% success (${block.failure} failures, ${block.success + block.failure} attempts)`
+                        : `${formatTimeLabel(block.start_time)} · ${(block.rate * 100).toFixed(1)}% · ${block.success + block.failure} attempts · ${block.failure} failed`
                     }
                   >
                     {hasData && block.failure > 0 && (

@@ -50,10 +50,7 @@ export function ReferencePage() {
   return (
     <div className="animate-slide-up mx-auto max-w-7xl space-y-6">
       <header>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Reference Data
-        </p>
-        <h1 className="mt-1 font-serif text-3xl font-semibold tracking-tight">
+        <h1 className="font-serif text-3xl font-semibold tracking-tight">
           Reference
         </h1>
       </header>
@@ -61,7 +58,7 @@ export function ReferencePage() {
       <div className="grid gap-3 md:grid-cols-3">
         <SummaryCard label="API Keys" value={apiKeyCount} caption={aliasedAPIKeys === undefined ? undefined : `${aliasedAPIKeys} aliased`} loading={apiKeysRead.status === "loading"} error={apiKeysRead.status === "error"} refreshError={Boolean(apiKeysRead.refreshError)} onRetry={apiKeysRead.retry} />
         <SummaryCard label="Accounts" value={accountCount} caption={aliasedAccounts === undefined ? undefined : `${aliasedAccounts} aliased`} loading={accountsRead.status === "loading"} error={accountsRead.status === "error"} refreshError={Boolean(accountsRead.refreshError)} onRetry={accountsRead.retry} />
-        <SummaryCard label="Missing Cost Rates" value={missingRates} caption={missingRates === undefined ? undefined : "Models without configured rates"} loading={pricingRead.status === "loading"} error={pricingRead.status === "error"} refreshError={Boolean(pricingRead.refreshError)} onRetry={pricingRead.retry} tone={(missingRates ?? 0) > 0 ? "amber" : "green"} />
+        <SummaryCard label="Missing Cost Rates" value={missingRates} loading={pricingRead.status === "loading"} error={pricingRead.status === "error"} refreshError={Boolean(pricingRead.refreshError)} onRetry={pricingRead.retry} tone={(missingRates ?? 0) > 0 ? "amber" : "green"} />
       </div>
 
       <Card>
@@ -97,7 +94,7 @@ export function ReferencePage() {
                 name="key-alias-search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search alias or key..."
+                placeholder="Search"
                 className="min-w-0 flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground md:min-w-[200px]"
               />
             </div>
@@ -106,7 +103,7 @@ export function ReferencePage() {
         <CardContent>
           {aliasRead.refreshError ? (
             <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              <span>Key alias refresh failed; showing the last complete result.</span>
+              <span>Refresh failed. Showing last result.</span>
               <Button type="button" size="sm" variant="outline" onClick={aliasRead.retry}>Retry</Button>
             </div>
           ) : null}
@@ -119,12 +116,12 @@ export function ReferencePage() {
               </>
             ) : aliasRead.status === "error" ? (
               <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm text-red-600">
-                <span>Failed to load {keyAliasScope === "api-key" ? "API keys" : "accounts"}</span>
-                <Button type="button" size="sm" variant="outline" onClick={aliasRead.retry}>Retry key aliases</Button>
+                <span>Couldn't load {keyAliasScope === "api-key" ? "API keys" : "accounts"}</span>
+                <Button type="button" size="sm" variant="outline" onClick={aliasRead.retry}>Retry</Button>
               </div>
             ) : filteredKeys.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                No keys found
+                No keys
               </div>
             ) : (
               filteredKeys.map((key) => {
@@ -213,12 +210,12 @@ export function ReferencePage() {
       <Card>
         <CardHeader>
           <CardTitle>Cost Rates</CardTitle>
-          <CardDescription>Model unit rates used by Cost calculations</CardDescription>
+          <CardDescription>Per 1M tokens, used for Cost</CardDescription>
         </CardHeader>
         <CardContent>
           {pricingRead.refreshError ? (
             <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              <span>Cost rate refresh failed; showing the last complete result.</span>
+              <span>Refresh failed. Showing last result.</span>
               <Button type="button" size="sm" variant="outline" onClick={pricingRead.retry}>Retry</Button>
             </div>
           ) : null}
@@ -230,12 +227,12 @@ export function ReferencePage() {
               </>
             ) : pricingRead.status === "error" ? (
               <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border p-6 text-center text-sm text-red-600">
-                <span>Failed to load cost rates</span>
-                <Button type="button" size="sm" variant="outline" onClick={pricingRead.retry}>Retry cost rates</Button>
+                <span>Couldn't load cost rates</span>
+                <Button type="button" size="sm" variant="outline" onClick={pricingRead.retry}>Retry</Button>
               </div>
             ) : models.length === 0 ? (
               <div className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                No models available for cost rates
+                No models
               </div>
             ) : (
               models.map((model) => {

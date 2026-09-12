@@ -46,8 +46,8 @@ describe("ModelDistributionChart", () => {
 
     expect(screen.getByText("7", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("models shown", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("Shown cost mix", { exact: true })).toBeInTheDocument()
-    expect(screen.getByText("Leading shown model", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Cost mix", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Leading model", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("model-7", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("25.0%", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("Other shown models", { exact: true })).toBeInTheDocument()
@@ -58,7 +58,7 @@ describe("ModelDistributionChart", () => {
   it("labels token share as scoped to the returned models while showing cost context", () => {
     render(<ModelDistributionChart data={[model(1), model(2)]} measure="tokens" />)
 
-    expect(screen.getByText("Shown token mix", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("Token mix", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("model-2", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("66.7%", { exact: true })).toBeInTheDocument()
     expect(screen.getByText("$2.00", { exact: true })).toBeInTheDocument()
@@ -155,8 +155,8 @@ describe("ModelDistributionChart", () => {
       />,
     )
 
-    expect(screen.getByText("No cost recorded for shown models", { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText("Leading shown model", { exact: true })).not.toBeInTheDocument()
+    expect(screen.getByText("No cost for these models", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("Leading model", { exact: true })).not.toBeInTheDocument()
     expect(screen.queryByText("0.0%", { exact: true })).not.toBeInTheDocument()
   })
 
@@ -173,8 +173,8 @@ describe("ModelDistributionChart", () => {
       />,
     )
 
-    expect(screen.getByText("Cost unavailable for shown models", { exact: true })).toBeInTheDocument()
-    expect(screen.queryByText("No cost recorded for shown models", { exact: true })).not.toBeInTheDocument()
+    expect(screen.getByText("Cost unavailable", { exact: true })).toBeInTheDocument()
+    expect(screen.queryByText("No cost for these models", { exact: true })).not.toBeInTheDocument()
   })
 
   it("sorts by available value so an unavailable row with residual cost never leads", () => {

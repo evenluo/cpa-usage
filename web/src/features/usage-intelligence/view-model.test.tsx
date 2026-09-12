@@ -237,11 +237,11 @@ describe("Usage Intelligence view model", () => {
 
   it("derives the Cache KPI caption from the cache read share state", () => {
     expect(getCacheReadShareCaption(undefined, undefined)).toBeUndefined()
-    expect(getCacheReadShareCaption("available", 100)).toBe("Exact · covers 100.0% of canonical input")
+    expect(getCacheReadShareCaption("available", 100)).toBe("Exact · covers 100.0% of available input tokens")
     expect(getCacheReadShareCaption("available", undefined)).toBe("Exact")
-    expect(getCacheReadShareCaption("partial", 82.4)).toBe("Partial · covers 82.4% of canonical input")
+    expect(getCacheReadShareCaption("partial", 82.4)).toBe("Partial · covers 82.4% of available input tokens")
     expect(getCacheReadShareCaption("no_cache_data", 0)).toBe("No exact cache data")
-    expect(getCacheReadShareCaption("no_prompt_input", 0)).toBe("No canonical input")
+    expect(getCacheReadShareCaption("no_prompt_input", 0)).toBe("No input token data")
     expect(getCacheReadShareValue(24.6, "partial")).toBe(24.6)
     expect(getCacheReadShareValue(24.6, "available")).toBe(24.6)
     expect(getCacheReadShareValue(0, "no_cache_data")).toBeUndefined()

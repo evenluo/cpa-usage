@@ -30,7 +30,7 @@ export function ProtectedSessionShell({
   if (isLoading) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center text-muted-foreground">
-        Checking session...
+        Checking session
       </div>
     )
   }
@@ -46,11 +46,11 @@ export function ProtectedSessionShell({
     return (
       <div className="flex min-h-[80vh] flex-col items-center justify-center gap-3 text-center">
         <div>
-          <p className="text-sm font-medium text-red-600">Unable to verify your session</p>
-          <p className="mt-1 text-xs text-muted-foreground">Protected content remains unavailable until the session check succeeds.</p>
+          <p className="text-sm font-medium text-red-600">Couldn't verify session</p>
+          <p className="mt-1 text-xs text-muted-foreground">Retry to continue.</p>
         </div>
         <Button type="button" size="sm" variant="outline" disabled={isRetrying} onClick={onRetry}>
-          {isRetrying ? "Retrying..." : "Retry session check"}
+          {isRetrying ? "Retrying..." : "Retry"}
         </Button>
       </div>
     )

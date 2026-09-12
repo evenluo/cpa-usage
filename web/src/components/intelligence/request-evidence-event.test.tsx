@@ -36,21 +36,21 @@ describe("RequestEvidenceEvent", () => {
     render(<RequestEvidenceEvent event={event} label="Latest request" syncState="synced" />)
 
     expect(screen.getByRole("region", { name: "Latest request" })).toBeInTheDocument()
-    expect(screen.getByRole("status")).toHaveTextContent("Synced with trend")
+    expect(screen.getByRole("status")).toHaveTextContent("Live")
     expect(screen.queryByText("Latest request")).not.toBeInTheDocument()
   })
 
   it("announces the active synchronized refresh", () => {
     render(<RequestEvidenceEvent event={event} label="Latest request" syncState="refreshing" />)
 
-    expect(screen.getByRole("status")).toHaveTextContent("Syncing with trend")
+    expect(screen.getByRole("status")).toHaveTextContent("Updating")
   })
 
   it("keeps the static label for request drill-down", () => {
     render(<RequestEvidenceEvent event={event} label="Selected attempt" detail />)
 
     expect(screen.getByText("Selected attempt")).toBeInTheDocument()
-    expect(screen.getByText("Observed alias label")).toBeInTheDocument()
+    expect(screen.getByText("Alias")).toBeInTheDocument()
     expect(screen.queryByText("Requested model")).not.toBeInTheDocument()
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
     expect(screen.getByText("gpt-5-requested")).toBeInTheDocument()

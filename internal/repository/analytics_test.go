@@ -1335,7 +1335,7 @@ func TestBuildAnalyticsSummaryWithFilterReturnsDeterministicInsights(t *testing.
 	if insights["top_cost_key"].Subject != "Alpha Ops" || insights["top_cost_key"].MetricValue <= 0 {
 		t.Fatalf("expected top cost key to use alias and configured cost, got %+v", insights["top_cost_key"])
 	}
-	if insights["metric_completeness"].Title != "Metric Completeness" || insights["metric_completeness"].CostStatus != dto.CostStatusPartial {
+	if insights["metric_completeness"].Title != "Incomplete metrics" || insights["metric_completeness"].CostStatus != dto.CostStatusPartial {
 		t.Fatalf("expected completeness insight to expose partial interpretation, got %+v", snapshot.Insights)
 	}
 	if insights["cache_efficiency"].Title != "Cache Read Share" || insights["cache_efficiency"].Count != 200_000 {

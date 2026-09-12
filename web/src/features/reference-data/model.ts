@@ -17,8 +17,8 @@ export type CostRateSaveCommand =
   | { valid: false; reason: "missing" | "invalid" }
 
 export const KEY_ALIAS_SCOPES: Array<{ value: KeyAliasScope; label: string; description: string }> = [
-  { value: "api-key", label: "API Keys", description: "Human-readable labels for raw API keys" },
-  { value: "account", label: "Accounts", description: "Human-readable labels for account keys" },
+  { value: "api-key", label: "API Keys", description: "Labels for API keys" },
+  { value: "account", label: "Accounts", description: "Labels for accounts" },
 ]
 
 export interface ReferenceKeyRow {

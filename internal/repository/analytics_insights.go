@@ -49,8 +49,8 @@ func buildAnalyticsInsights(
 		insights = append(insights, dto.AnalyticsInsight{
 			Type:        "failure_concentration",
 			Severity:    "amber",
-			Title:       "Failure Cluster",
-			Detail:      "Largest failure concentration by Key Alias.",
+			Title:       "Failures",
+			Detail:      analyticsInsightKeyLabel(failure) + " has the most failures.",
 			Subject:     analyticsInsightKeyLabel(failure),
 			MetricLabel: "Failures",
 			MetricValue: float64(failure.FailureCount),
@@ -93,6 +93,7 @@ func metricCompletenessInsight(summary dto.AnalyticsSummary, models []dto.Analyt
 		return insight
 	}
 	insight.Severity = "amber"
+	insight.Title = "Incomplete metrics"
 	insight.Subject = metricCompletenessSubject(summary, incompleteModels)
 	insight.Detail = "Some cost or cache figures are incomplete."
 	insight.MetricValue = float64(incompleteModels)

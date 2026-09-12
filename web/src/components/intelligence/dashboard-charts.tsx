@@ -47,10 +47,10 @@ export function DashboardCharts({
           <div>
             <CardTitle className="flex items-center gap-2">
               Trends
-              <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
+              <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Follows the time range" />
             </CardTitle>
             {trendView === "tokens" ? (
-              <CardDescription>Provider-reported tokens · subsets may overlap</CardDescription>
+              <CardDescription>Subsets may overlap</CardDescription>
             ) : null}
           </div>
           <div className="flex max-w-full items-center overflow-x-auto rounded-lg border border-border bg-card p-1">
@@ -81,8 +81,8 @@ export function DashboardCharts({
             <Skeleton className="h-[260px] w-full" />
           ) : surfaces.trend.status === "error" ? (
             <div className="flex h-[260px] flex-col items-center justify-center gap-3 text-sm text-red-500">
-              <span>Failed to load trend data</span>
-              <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry trend data</Button>
+              <span>Couldn't load trend data</span>
+              <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry</Button>
             </div>
           ) : surfaces.trend.status === "empty" ? (
             <div className="flex h-[260px] items-center justify-center text-sm text-muted-foreground">No trend data</div>
@@ -113,11 +113,11 @@ export function DashboardCharts({
               <Skeleton className="h-[300px] w-full" />
             ) : surfaces.modelMix.status === "error" ? (
               <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-sm text-red-500">
-                <span>Failed to load model mix</span>
-                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry model mix</Button>
+                <span>Couldn't load model mix</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry</Button>
               </div>
             ) : surfaces.modelMix.status === "empty" ? (
-              <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">No model usage in this window</div>
+              <div className="flex min-h-[300px] items-center justify-center text-sm text-muted-foreground">No model usage</div>
             ) : (
               <ModelDistributionChart data={surfaces.modelMix.data} measure={modelMixMeasure} />
             )}
@@ -129,7 +129,7 @@ export function DashboardCharts({
             <div>
               <CardTitle className="flex items-center gap-2">
                 Key Leaderboard
-                <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Affected by time range and granularity" />
+                <Clock className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Follows the time range" />
               </CardTitle>
             </div>
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
@@ -166,11 +166,11 @@ export function DashboardCharts({
               </div>
             ) : surfaces.leaderboard.status === "error" ? (
               <div className="flex min-h-32 flex-col items-center justify-center gap-3 text-sm text-red-500">
-                <span>Failed to load key leaderboard</span>
-                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry leaderboard</Button>
+                <span>Couldn't load key leaderboard</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryCore}>Retry</Button>
               </div>
             ) : surfaces.leaderboard.status === "empty" ? (
-              <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">No keys in this window</div>
+              <div className="flex min-h-32 items-center justify-center text-sm text-muted-foreground">No keys</div>
             ) : (
               <KeyLeaderboard data={surfaces.leaderboard.data} />
             )}
@@ -193,9 +193,9 @@ export function DashboardActivity({ surfaces, onRetryHeatmap }: { surfaces: Usag
         </div>
         <div className="flex items-center gap-2">
           {surfaces.heatmap.status !== "error" && surfaces.heatmap.refreshError ? (
-            <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry refresh</Button>
+            <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry</Button>
           ) : null}
-          <Badge variant="terracotta">30d fixed</Badge>
+          <Badge variant="terracotta">30 days</Badge>
         </div>
       </CardHeader>
       <CardContent>
@@ -203,8 +203,8 @@ export function DashboardActivity({ surfaces, onRetryHeatmap }: { surfaces: Usag
           <Skeleton className="h-[260px] w-full" />
         ) : surfaces.heatmap.status === "error" ? (
           <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-            <span>Failed to load activity heatmap</span>
-            <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry heatmap</Button>
+            <span>Couldn't load heatmap</span>
+            <Button type="button" size="sm" variant="outline" onClick={onRetryHeatmap}>Retry</Button>
           </div>
         ) : surfaces.heatmap.status === "ready" ? (
           <Heatmap data={surfaces.heatmap.data} />

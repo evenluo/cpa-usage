@@ -24,14 +24,14 @@ afterEach(cleanup)
 describe("Canonical token composition", () => {
   it("expands natively and qualifies mixed coverage and quality separately from Cost", async () => {
     const user = userEvent.setup()
-    render(<CanonicalTokenComposition accounting={accounting} costStatus="available" />)
+    render(<CanonicalTokenComposition accounting={accounting} />)
     const summary = screen.getByText("Token breakdown").closest("summary")!
     expect(summary.parentElement).not.toHaveAttribute("open")
     await user.click(summary)
     expect(summary.parentElement).toHaveAttribute("open")
     expect(screen.getByText(/3 of 10 attempts · 1 complete · 2 with gaps/)).toBeInTheDocument()
-    expect(screen.getByText(/excluded: Missing 7/)).toBeInTheDocument()
-    expect(screen.getByText(/Local estimate \(available\)/)).toBeInTheDocument()
+    expect(screen.getByText(/excluded: missing token data 7/)).toBeInTheDocument()
+    expect(screen.getByText("Not a provider invoice.")).toBeInTheDocument()
     expect(screen.getByText("Total tokens").nextElementSibling).toHaveTextContent("155")
     const input = within(screen.getByRole("region", { name: "Input composition" }))
     const output = within(screen.getByRole("region", { name: "Output composition" }))
@@ -45,7 +45,7 @@ describe("Canonical token composition", () => {
 
   it("keeps canonical-absent or empty windows unavailable instead of displaying zero canonical totals", () => {
     const unavailable = { ...accounting, valid_attempts: 0, coverage_pct: 0, valid_quality: { complete: 0, inconsistent: 0, unclassified: 0 } }
-    render(<CanonicalTokenComposition accounting={unavailable} costStatus="partial" />)
+    render(<CanonicalTokenComposition accounting={unavailable} />)
     expect(screen.getByText(/Token totals unavailable/)).toBeInTheDocument()
     expect(screen.queryByText("Total tokens")).not.toBeInTheDocument()
     expect(getAccountingCaption(unavailable)).toBe("Tokens unavailable")
@@ -60,7 +60,7 @@ describe("Canonical token composition", () => {
         total_tokens: 55,
         input: { total_tokens: 0, uncached_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
       },
-    }} costStatus="partial" />)
+    }} />)
     await userEvent.click(screen.getByText("Token breakdown"))
     const input = screen.getByRole("region", { name: "Input composition" })
     expect(input).toHaveTextContent("0 tokens")

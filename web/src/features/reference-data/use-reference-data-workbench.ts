@@ -159,7 +159,7 @@ export function useReferenceDataWorkbench(): UseReferenceDataWorkbenchResult {
   async function saveEdit(key: ReferenceKeyRow) {
     const command = buildKeyAliasSaveCommand(keyAliasScope, key, draftAlias)
     if (!command.valid) {
-      toast.error("Use clear to remove an alias")
+      toast.error("Use Clear to delete")
       return
     }
     try {

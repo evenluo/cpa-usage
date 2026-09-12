@@ -220,7 +220,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
           </div>
         ) : error ? (
           <div className="flex h-[140px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
-            Failed to load live capacity
+            Couldn't load live capacity
           </div>
         ) : identities.length === 0 ? (
           <div className="flex h-[140px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
@@ -262,10 +262,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                 </span>
               </summary>
               <div className="space-y-2 border-t border-border/60 p-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground">
-                    Load registered model support for the selected accounts.
-                  </span>
+                <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
                   <div className="flex items-center gap-2">
                     <Button
                       type="button"
@@ -290,7 +287,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                 </div>
                 {selectionTooLarge ? (
                   <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.05] p-2.5 text-xs text-amber-700 dark:text-amber-300" role="alert">
-                    Narrow selection to {MODEL_SUPPORT_MAX_ACCOUNTS} accounts or fewer. Nothing will be silently omitted.
+                    Select {MODEL_SUPPORT_MAX_ACCOUNTS} accounts or fewer.
                   </div>
                 ) : null}
                 {modelSupport.isPending ? (
@@ -460,7 +457,7 @@ function LiveCapacityAccountTile({
   const copyAuthIndex = async () => {
     try {
       await navigator.clipboard.writeText(row.authIndex)
-      toast.success("Auth index copied")
+      toast.success("Copied")
     } catch {
       toast.error("Failed to copy auth index")
     }
@@ -472,9 +469,9 @@ function LiveCapacityAccountTile({
   const attentionLabel = row.status === "failed"
     ? `Refresh failed: ${row.errorLabel ?? "Failed"}`
     : row.unavailable === true
-      ? "Temporarily unavailable in CPA"
+      ? "Unavailable in CPA"
       : row.accountState.kind === "error"
-        ? "CPA observed an account error state"
+        ? "CPA error"
         : row.isConstrained
           ? "Capacity constrained"
           : undefined
@@ -541,7 +538,7 @@ function LiveCapacityAccountTile({
           <button
             type="button"
             className="mt-0.5 block max-w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
-            title={`${row.authIndex} — click to copy`}
+            title={`Copy ${row.authIndex}`}
             aria-label={`Copy auth index ${row.authIndex}`}
             data-auth-index={row.authIndex}
             onClick={copyAuthIndex}
@@ -558,7 +555,7 @@ function LiveCapacityAccountTile({
                 disabled={supportSelectionDisabled}
                 aria-label={`Include ${accountTitle} in model support coverage`}
               />
-              Support scope
+              Include
             </label>
           ) : null}
         </div>
@@ -581,7 +578,7 @@ function LiveCapacityAccountTile({
             disabled={setIdentityDisabled.isPending}
             aria-label={`Confirm disabling ${accountTitle}`}
           >
-            Confirm?
+            Disable?
           </Button>
         ) : (
           <Button
@@ -595,7 +592,6 @@ function LiveCapacityAccountTile({
             onClick={handlePowerClick}
             disabled={setIdentityDisabled.isPending}
             aria-label={row.disabled ? `Enable ${accountTitle}` : `Disable ${accountTitle}`}
-            title={row.disabled ? "Enable this account" : "Disable this account"}
           >
             {setIdentityDisabled.isPending ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -612,7 +608,6 @@ function LiveCapacityAccountTile({
           onClick={onRefresh}
           disabled={isRowRefreshing || setIdentityDisabled.isPending}
           aria-label={`Refresh ${accountTitle}`}
-          title="Refresh this account"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", isRowRefreshing && "animate-spin")} />
         </Button>
@@ -698,7 +693,7 @@ function LiveCapacityAccountTile({
               <section aria-label="Model request observations">
                 <p className="text-[10px] font-medium text-foreground/70">Model request observations ({visibleModelSnapshots.length})</p>
                 <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                  Quota snapshots captured during model requests. Model names identify the requests, not separate allowances.
+                  From requests to this model, not a separate quota.
                 </p>
                 <div className="mt-1.5 space-y-3">
                   {visibleModelSnapshots.map((observation) => (
@@ -744,7 +739,7 @@ function ModelSupportCoveragePanel({ result }: { result: ModelSupportResponse })
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Registered model support</span>
         <Badge variant={result.scope_complete ? "green" : "amber"}>
-          {result.scope_complete ? "Complete selected scope" : "Partial selected scope"}
+          {result.scope_complete ? "Complete" : "Partial"}
         </Badge>
         <span className="text-xs text-muted-foreground">{result.loaded_count}/{result.selected_count} accounts loaded</span>
       </div>
@@ -756,9 +751,9 @@ function ModelSupportCoveragePanel({ result }: { result: ModelSupportResponse })
               <span className="ml-1.5 text-muted-foreground">
                 {result.scope_complete
                   ? model.single_registered_account_in_scope
-                    ? "1 registered account in this scope"
+                    ? "1 account"
                     : `${model.observed_supporting_accounts}/${model.selected_accounts} accounts`
-                  : `observed in ${model.observed_supporting_accounts}/${result.loaded_count} loaded accounts`}
+                  : `${model.observed_supporting_accounts}/${result.loaded_count} loaded`}
               </span>
             </span>
           ))}
@@ -868,15 +863,15 @@ function ModelCapabilityDetails({ capability }: { capability: ModelCapability })
     if (thinking.levels?.length) details.push(`levels ${thinking.levels.join(", ")}`)
     if (thinking.zero_allowed !== undefined) details.push(`zero ${thinking.zero_allowed ? "allowed" : "not allowed"}`)
     if (thinking.dynamic_allowed !== undefined) details.push(`dynamic ${thinking.dynamic_allowed ? "allowed" : "not allowed"}`)
-    facts.push(details.length > 0 ? `Thinking: ${details.join("; ")}` : "Thinking metadata returned")
+    facts.push(details.length > 0 ? `Thinking: ${details.join("; ")}` : "Thinking")
   }
   return facts.length > 0 ? <p className="mt-1 text-[10px] leading-4 text-muted-foreground">{facts.join(" · ")}</p> : null
 }
 
 function modelSupportErrorLabel(code: AccountModelSupport["error_code"]): string {
-  if (code === "auth_file_missing") return "auth file is no longer present in the current CPA lookup"
-  if (code === "invalid_upstream_response") return "CPA returned an invalid model-support response"
-  return "CPA model-support request failed or timed out"
+  if (code === "auth_file_missing") return "Auth file missing in CPA"
+  if (code === "invalid_upstream_response") return "Invalid CPA response"
+  return "CPA timed out"
 }
 
 function definitionStatusLabel(status: RegisteredModelSupport["definition_status"]): string {
@@ -934,7 +929,7 @@ function AccountTiming({
   return (
     <div className="grid gap-1.5" role="group" aria-label="Account and observation timing">
       {sharedObservation ? (
-        <TimingLine label="Observed" value={sharedObservation} title="Auth-file metadata and capacity probe share this observation time." />
+        <TimingLine label="Observed" value={sharedObservation} title="Same time as the quota reading." />
       ) : (
         <>
           {metadataObservedAt ? <TimingLine label="Metadata observed" value={metadataObservedAt} /> : null}

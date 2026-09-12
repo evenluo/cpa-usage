@@ -47,22 +47,21 @@ function LoginPage() {
         <CardHeader className="text-center">
           <CardTitle className="font-serif text-2xl">Sign in</CardTitle>
           <CardDescription>
-            Enter your dashboard password to continue
+            Dashboard password
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Password</label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Password
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
-                placeholder="Enter password"
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
                 required
               />
-            </div>
+            </label>
             <Button
               type="submit"
               className="w-full"

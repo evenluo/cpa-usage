@@ -17,12 +17,11 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.locator("section[aria-labelledby='attention-heading']")).toHaveCSS("background-image", /linear-gradient/)
 
     await page.goto("/login")
-    const password = page.getByPlaceholder("Enter password", { exact: true })
+    const password = page.getByLabel("Password")
     await password.fill("fixture-password")
     await password.focus()
     await expect(password).toHaveCSS("border-radius", "10px")
     await expect(password).toHaveCSS("box-shadow", /2px/)
-    expect(await password.evaluate((node) => getComputedStyle(node, "::placeholder").color)).toBe("rgb(156, 163, 175)")
     if (browserName !== "webkit") {
       await page.emulateMedia({ forcedColors: "active" })
       await expect(password).toHaveCSS("outline-style", "solid")

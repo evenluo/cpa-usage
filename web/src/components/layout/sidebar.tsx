@@ -72,7 +72,7 @@ export function Sidebar() {
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          title={`Current: ${resolvedTheme}`}
+          title={resolvedTheme === "dark" ? "Switch to light" : "Switch to dark"}
         >
           {resolvedTheme === "dark" ? (
             <Moon className="h-[18px] w-[18px]" />

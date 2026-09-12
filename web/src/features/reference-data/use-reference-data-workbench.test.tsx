@@ -115,7 +115,7 @@ describe("useReferenceDataWorkbench", () => {
     const { result } = renderHook(() => useReferenceDataWorkbench())
 
     expect(result.current.keyAliasScope).toBe("api-key")
-    expect(result.current.scopeDescription).toBe("Human-readable labels for raw API keys")
+    expect(result.current.scopeDescription).toBe("Labels for API keys")
     expect(result.current.filteredKeys).toEqual(normalizeAPIKeyRows([apiKey]))
     expect(result.current.apiKeyCount).toBe(1)
     expect(result.current.accountCount).toBe(1)
@@ -240,7 +240,7 @@ describe("useReferenceDataWorkbench", () => {
     expect(result.current.keyAliasScope).toBe("account")
     expect(result.current.editingId).toBeNull()
     expect(result.current.filteredKeys).toEqual(normalizeAccountKeyRows([accountKey]))
-    expect(result.current.scopeDescription).toBe("Human-readable labels for account keys")
+    expect(result.current.scopeDescription).toBe("Labels for accounts")
   })
 
   it("cancelEdit leaves the current draft without saving", () => {
@@ -269,7 +269,7 @@ describe("useReferenceDataWorkbench", () => {
       await result.current.saveEdit(result.current.filteredKeys[0])
     })
 
-    expect(toast.error).toHaveBeenCalledWith("Use clear to remove an alias")
+    expect(toast.error).toHaveBeenCalledWith("Use Clear to delete")
     expect(updateAPIKeyAlias.mutateAsync).not.toHaveBeenCalled()
     expect(result.current.editingId).toBe("sk-alpha")
   })

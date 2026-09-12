@@ -45,16 +45,16 @@ const MEASURE_CONFIG: Record<Measure, MeasureConfig> = {
   cost: {
     value: (row) => row.total_cost,
     format: formatCost,
-    emptyMessage: "No cost recorded for shown models",
-    unavailableMessage: "Cost unavailable for shown models",
-    centerLabel: "Shown cost mix",
+    emptyMessage: "No cost for these models",
+    unavailableMessage: "Cost unavailable",
+    centerLabel: "Cost mix",
     supportingMetric: (row) => row.tokensAvailable ? `${formatCompact(row.totalTokens, 1)} tokens` : "Tokens unavailable",
   },
   tokens: {
     value: (row) => row.total_tokens,
     format: (value) => `${formatCompact(value, 1)} tokens`,
-    emptyMessage: "No token usage recorded for shown models",
-    centerLabel: "Shown token mix",
+    emptyMessage: "No token usage",
+    centerLabel: "Token mix",
     supportingMetric: (row) => (row.costAvailable ? formatCost(row.totalCost) : "Cost unavailable"),
   },
 }
@@ -137,7 +137,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
   if (!leading) {
     return (
       <div className="flex min-h-[260px] items-center justify-center text-sm text-muted-foreground">
-        No model usage in this range
+        No model usage
       </div>
     )
   }
@@ -206,7 +206,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
           {hovered ? (
             <>
               <span className="font-serif text-3xl font-semibold tracking-tight">
-                {hovered.valueAvailable ? `${shareOf(hovered).toFixed(1)}%` : "n/a"}
+                {hovered.valueAvailable ? `${shareOf(hovered).toFixed(1)}%` : "Unavailable"}
               </span>
               <span className="mt-0.5 max-w-[140px] truncate text-xs text-muted-foreground">{hovered.model}</span>
               <span className="mt-2 text-[11px] font-medium text-muted-foreground">
@@ -231,7 +231,7 @@ export function ModelDistributionChart({ data, measure }: ModelDistributionProps
         >
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
             <span className="h-5 w-1 rounded-full" style={{ backgroundColor: leading.color }} aria-hidden="true" />
-            Leading shown model
+            Leading model
           </div>
           <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
             <p className="min-w-0 truncate font-serif text-2xl font-semibold tracking-tight sm:text-3xl">{leading.model}</p>

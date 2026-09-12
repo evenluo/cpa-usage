@@ -64,7 +64,7 @@ export function KpiCard({ label, rawValue, formatter, caption, comparison, cover
             {coverageLabel && (
               <p
                 className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80"
-                title="Share of attempts with valid canonical accounting in the selected window"
+                title="Share of attempts with usable token data in the selected window"
               >
                 {coverageLabel}
               </p>

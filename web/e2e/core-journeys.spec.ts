@@ -131,7 +131,7 @@ test("signed-out users are redirected to login and can sign in to reach the dash
   await page.waitForURL(/\/login$/)
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible()
 
-  await page.getByPlaceholder("Enter password").fill("test-password")
+  await page.getByLabel("Password").fill("test-password")
   await page.getByRole("button", { name: "Sign in" }).click()
 
   await page.waitForURL(/\/$/)
@@ -238,7 +238,7 @@ test("provider filter scopes the analytics request and manual sync reports compl
 
   await page.goto("/operations")
   await expect(page.getByText("Operational Status")).toBeVisible()
-  await page.getByRole("button", { name: "Trigger Sync" }).click()
+  await page.getByRole("button", { name: "Sync now" }).click()
   await expect(page.getByText("Sync triggered")).toBeVisible()
   await expect.poll(() => syncRequests).toBe(1)
 })
