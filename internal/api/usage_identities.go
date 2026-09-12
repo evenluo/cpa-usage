@@ -362,13 +362,13 @@ type usageIdentityDisabledResponse struct {
 func writeAccountStatusError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrAccountStatusRefresh):
-		c.JSON(http.StatusBadGateway, gin.H{"error": "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status."})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Saved, but CPA status is unconfirmed. Trigger Sync."})
 	case errors.Is(err, service.ErrUsageIdentityMissing):
-		c.JSON(http.StatusNotFound, gin.H{"error": "usage identity not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
 	case errors.Is(err, service.ErrIdentityNotAuthFile):
-		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "only auth-file accounts can be toggled"})
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Only auth-file accounts can be disabled"})
 	case errors.Is(err, service.ErrAuthFileNotFoundInCPA):
-		c.JSON(http.StatusNotFound, gin.H{"error": "auth file not found in CPA"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Auth file not found in CPA"})
 	default:
 		writeInternalError(c, "set account disabled failed", err)
 	}
@@ -427,7 +427,7 @@ func writeKeyAliasError(c *gin.Context, message string, err error) {
 	case errors.Is(err, service.ErrInvalidKeyAlias):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "alias must be 80 characters or fewer"})
 	case errors.Is(err, service.ErrUsageIdentityMissing):
-		c.JSON(http.StatusNotFound, gin.H{"error": "usage identity not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
 	default:
 		writeInternalError(c, message, err)
 	}

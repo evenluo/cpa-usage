@@ -27,7 +27,7 @@ const metricOptions: Array<{ value: HeatmapMetric; label: string }> = [
 const exactNumber = new Intl.NumberFormat("en-US")
 
 function cellCostLabel(cell: Pick<HeatmapCell, "cost_available" | "cost_status" | "total_cost">): string {
-  if (!cell.cost_available) return cell.cost_status === "partial" ? "Cost partial" : "Cost unavailable"
+  if (!cell.cost_available) return cell.cost_status === "partial" ? "Cost incomplete" : "Cost unavailable"
   return `Cost ${formatCost(cell.total_cost)}`
 }
 
@@ -41,11 +41,8 @@ function cellTooltipLabel(fc: FlatCell): string {
   const hour = `${fc.hour.toString().padStart(2, "0")}:00`
   return [
     `${fc.dateLabel} ${hour}`,
-    fc.cell.request_count === 0 ? "No activity" : "Activity observed",
-    `Attempts ${exactNumber.format(fc.cell.request_count)}`,
-    `Failures ${exactNumber.format(fc.cell.failure_count)}`,
+    `${exactNumber.format(fc.cell.request_count)} attempts`,
     tokenLabel(fc),
-    `Token coverage ${exactNumber.format(fc.cell.canonical_valid_attempts)}/${exactNumber.format(fc.cell.request_count)}`,
     cellCostLabel(fc.cell),
   ].join(" · ")
 }
@@ -89,7 +86,7 @@ export function Heatmap({ data }: HeatmapProps) {
   )
 
   if (data.rows.length === 0) {
-    return <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">No heatmap data in this range</div>
+    return <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">No heatmap data</div>
   }
 
   const colsPerRow = 24 * daysPerRow
@@ -161,7 +158,7 @@ export function Heatmap({ data }: HeatmapProps) {
             {metricLabel}: 0–{formatCompact(maximum, 1)}
           </span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-muted/40" />No activity</span>
-          <span className="inline-flex items-center gap-1"><span className="relative h-2.5 w-2.5 rounded-[2px] bg-terracotta-500/10"><span className="absolute inset-0 m-auto h-[2px] w-[2px] rounded-full bg-foreground/45" /></span>Observed zero</span>
+          <span className="inline-flex items-center gap-1"><span className="relative h-2.5 w-2.5 rounded-[2px] bg-terracotta-500/10"><span className="absolute inset-0 m-auto h-[2px] w-[2px] rounded-full bg-foreground/45" /></span>Zero</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-[2px] bg-muted/10 ring-1 ring-border/30" />Outside range</span>
           {metric === "tokens" ? (
             <>
@@ -176,7 +173,7 @@ export function Heatmap({ data }: HeatmapProps) {
 
       {needsHorizontalScroll ? (
         <p className="mb-1 flex items-center justify-end gap-1 text-[11px] text-muted-foreground" role="note">
-          Swipe horizontally to view all hours <span aria-hidden="true">→</span>
+          Swipe for all hours <span aria-hidden="true">→</span>
         </p>
       ) : null}
 

@@ -47,10 +47,10 @@ describe("Operations ingestion observations", () => {
 
     expect(screen.getByText("Ingestion observations")).toBeInTheDocument()
     expect(screen.getByText("0 events/min")).toBeInTheDocument()
-    expect(screen.getByText(/0 events in 0 nonempty batches processed in this process/i)).toBeInTheDocument()
+    expect(screen.getByText(/0 events in 0 batches/i)).toBeInTheDocument()
     expect(screen.getByText("Runner idle")).toBeInTheDocument()
     expect(screen.getByText(formatDate("2026-09-07T01:02:03Z"))).toBeInTheDocument()
-    expect(screen.getByText(/do not establish upstream freshness/i)).toBeInTheDocument()
+    expect(screen.getByText(/not CPA queue health/i)).toBeInTheDocument()
     expect(screen.queryByText(/last manual sync/i)).not.toBeInTheDocument()
   })
 
@@ -58,6 +58,6 @@ describe("Operations ingestion observations", () => {
     render(<IngestionObservations isLoading={false} isError metrics={undefined} />)
 
     expect(screen.getByText("Ingestion observations unavailable")).toBeInTheDocument()
-    expect(screen.getByText(/runtime metrics request failed/i)).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load metrics.")).toBeInTheDocument()
   })
 })

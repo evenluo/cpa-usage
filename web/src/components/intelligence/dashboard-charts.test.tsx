@@ -38,9 +38,9 @@ function makeProps(overrides: Record<string, unknown> = {}) {
     onSelectTrendView: vi.fn(),
     leaderboardScope: "api-key" as const,
     onSelectLeaderboardScope: vi.fn(),
-    leaderboardSortLabel: "Sort: Cost",
+    leaderboardSortLabel: "By cost",
     modelMixMeasure: "tokens" as const,
-    modelMixCostStateLabel: "Local estimate incomplete, by tokens",
+    modelMixCostStateLabel: "Incomplete · by tokens",
     onRetryCore: vi.fn(),
     ...overrides,
   }
@@ -57,7 +57,7 @@ describe("DashboardCharts Usage Intelligence fields", () => {
       />,
     )
 
-    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Local estimate incomplete, by tokens")
+    expect(screen.getByTestId("model-mix-cost-state")).toHaveTextContent("Incomplete · by tokens")
     expect(screen.getByTestId("model-distribution-owner")).toHaveTextContent("tokens:provider-scoped-model")
   })
 
@@ -71,7 +71,7 @@ describe("DashboardCharts Usage Intelligence fields", () => {
       />,
     )
 
-    await user.click(screen.getByRole("button", { name: "Retry model mix" }))
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetryCore).toHaveBeenCalledTimes(1)
   })
 
@@ -92,7 +92,7 @@ describe("DashboardCharts Usage Intelligence fields", () => {
         surfaces={surfaces({ heatmap: { status: "error", data: undefined, error: new Error("unavailable") } })}
       />,
     )
-    await user.click(screen.getByRole("button", { name: "Retry heatmap" }))
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetryHeatmap).toHaveBeenCalledTimes(1)
   })
 })

@@ -195,13 +195,22 @@ describe("apiFetch", () => {
     expect(headers.get("Content-Type")).toBe("text/plain")
   })
 
-  it("throws ApiError with the response body for a non-2xx status", async () => {
+  it("throws ApiError with the JSON error field for a non-2xx status", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: "invalid password" }), { status: 401 }))
+
+    const jsonError = await apiFetch("/auth/login").catch((err: unknown) => err)
+    expect(jsonError).toBeInstanceOf(ApiError)
+    expect(jsonError).toMatchObject({ status: 401, body: JSON.stringify({ error: "invalid password" }), name: "ApiError" })
+    expect((jsonError as Error).message).toBe("invalid password")
+  })
+
+  it("throws ApiError with the response body for a non-2xx plain-text status", async () => {
     fetchMock.mockResolvedValueOnce(new Response("quota exceeded", { status: 403 }))
 
     const error = await apiFetch("/status").catch((err: unknown) => err)
     expect(error).toBeInstanceOf(ApiError)
     expect(error).toMatchObject({ status: 403, body: "quota exceeded", name: "ApiError" })
-    expect((error as Error).message).toBe("API error 403: quota exceeded")
+    expect((error as Error).message).toBe("quota exceeded")
   })
 
   it("uses a fallback body when reading a failed response throws", async () => {

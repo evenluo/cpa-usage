@@ -1,7 +1,7 @@
 import { ACCOUNTING_STATE_LABELS } from "@/features/usage-intelligence/view-model"
-import type { AccountingState, AccountingSummary, CostStatus } from "@/types/api"
+import type { AccountingState, AccountingSummary } from "@/types/api"
 
-export function CanonicalTokenComposition({ accounting, costStatus }: { accounting: AccountingSummary; costStatus: CostStatus }) {
+export function CanonicalTokenComposition({ accounting }: { accounting: AccountingSummary }) {
   const hasComposition = accounting.valid_attempts > 0
   const { composition } = accounting
   const excluded = (Object.keys(accounting.states) as AccountingState[])
@@ -14,12 +14,9 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
       </summary>
       <div className="mt-3 space-y-4 border-t border-border pt-3">
         <p className="text-muted-foreground">
-          {accounting.valid_attempts.toLocaleString("en")} / {accounting.total_attempts.toLocaleString("en")} valid
-          {" · "}complete {accounting.valid_quality.complete.toLocaleString("en")}
-          {" · "}inconsistent {accounting.valid_quality.inconsistent.toLocaleString("en")}
-          {" · "}unclassified {accounting.valid_quality.unclassified.toLocaleString("en")}
+          {`${accounting.valid_attempts.toLocaleString("en")} of ${accounting.total_attempts.toLocaleString("en")} attempts · ${accounting.valid_quality.complete.toLocaleString("en")} complete · ${(accounting.valid_quality.inconsistent + accounting.valid_quality.unclassified).toLocaleString("en")} with gaps`}
           {excluded.length > 0
-            ? ` · excluded: ${excluded.map((state) => `${ACCOUNTING_STATE_LABELS[state]} ${accounting.states[state].toLocaleString("en")}`).join("; ")}`
+            ? ` · excluded: ${excluded.map((state) => `${state === "absent" ? "missing token data" : ACCOUNTING_STATE_LABELS[state]} ${accounting.states[state].toLocaleString("en")}`).join("; ")}`
             : ""}
         </p>
         {hasComposition ? (
@@ -45,14 +42,11 @@ export function CanonicalTokenComposition({ accounting, costStatus }: { accounti
                 { label: "Reasoning", value: composition.output.reasoning_tokens, color: "bg-violet-500" },
               ]} />
             </div>
-            <p className="text-muted-foreground">
-              Input = uncached + cache read + cache write; output = non-reasoning + reasoning. Total = input + output + unclassified. Each bar shows its own composition.
-            </p>
           </>
         ) : (
           <p className="text-muted-foreground">Token totals unavailable. Historical token details are missing.</p>
         )}
-        <p className="text-muted-foreground">Local estimate ({costStatus}); not an upstream billing amount.</p>
+        <p className="text-muted-foreground">Not a provider invoice.</p>
       </div>
     </details>
   )

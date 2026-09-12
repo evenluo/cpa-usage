@@ -96,11 +96,11 @@ describe("RequestsPage provider scope", () => {
     const call = calls[calls.length - 1]
     expect(call?.[5]).toEqual({ model: "gpt-5", modelAlias: "", account: "", endpoint: "", status: "", requestId: "", minLatencyMS: "", windowEnd: "", result: "failed" })
     expect(screen.getByDisplayValue("gpt-5")).toBeInTheDocument()
-    expect(screen.getByDisplayValue("Failed attempts")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Failed")).toBeInTheDocument()
 
-    await user.clear(screen.getByLabelText("Actual model"))
-    await user.type(screen.getByLabelText("Actual model"), "claude-sonnet")
-    await user.click(screen.getByRole("button", { name: "Apply model" }))
+    await user.clear(screen.getByLabelText("Model"))
+    await user.type(screen.getByLabelText("Model"), "claude-sonnet")
+    await user.click(screen.getByRole("button", { name: "Apply" }))
     expect(onFiltersChange).toHaveBeenCalledWith({ model: "claude-sonnet", result: "failed" })
   })
 
@@ -129,7 +129,7 @@ describe("RequestsPage provider scope", () => {
       windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
     })
     expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Account: auth-1")
-    expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Observed alias: sonnet-route")
+    expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Alias: sonnet-route")
     expect(screen.getByLabelText("Diagnostic filters")).toHaveTextContent("Latency ≥ 500 ms")
 
     rerender(<RequestsPage provider="openai" status="500" result="failed" onFiltersChange={onFiltersChange} />)
@@ -137,7 +137,7 @@ describe("RequestsPage provider scope", () => {
     expect(resetCalls[resetCalls.length - 1]?.slice(0, 4)).toEqual(["24h", 10, "openai", 1])
     expect(screen.getByRole("button", { name: "Select attempt 10" })).toHaveAttribute("aria-pressed", "true")
 
-    await userEvent.click(screen.getByRole("button", { name: "Clear diagnostic filters" }))
+    await userEvent.click(screen.getByRole("button", { name: "Clear filters" }))
     expect(onFiltersChange).toHaveBeenCalledWith({ model: "", modelAlias: "", result: "failed", account: "", endpoint: "", status: "", minLatencyMS: "", windowEnd: "" })
   })
 
@@ -159,7 +159,7 @@ describe("RequestsPage provider scope", () => {
       />,
     )
 
-    await user.click(screen.getByRole("button", { name: "View correlated attempts" }))
+    await user.click(screen.getByRole("button", { name: "Same request ID" }))
     expect(onCorrelatedAttempts).toHaveBeenCalledWith({
       provider: "claude", model: "", modelAlias: "", account: "", endpoint: "", status: "", requestId: "request-1", minLatencyMS: "",
       windowEnd: "2026-09-07T12:00:00.123456789Z", result: "",
@@ -169,24 +169,23 @@ describe("RequestsPage provider scope", () => {
   it("shows correlation limits and omits the action when request ID is missing", () => {
     vi.mocked(useEvents).mockReturnValue({ data: eventsPage(1, "claude"), isLoading: false, error: null, refetch: vi.fn() } as never)
     const { rerender } = render(<RequestsPage provider="claude" requestId="request-42" windowEnd="2026-09-07T12:00:00.123456789Z" />)
-    expect(screen.getByLabelText("Correlation scope")).toHaveTextContent("other providers are not included")
-    expect(screen.getByLabelText("Correlation scope")).toHaveTextContent("Historical data may omit attempts")
+    expect(screen.getByLabelText("Correlation scope")).toHaveTextContent("Same request ID, this 24h and provider. Older data may omit some retries.")
 
     const missing = eventsPage(1, "claude")
     missing.events = [{ ...missing.events[0], request_id: undefined }]
     vi.mocked(useEvents).mockReturnValue({ data: missing, isLoading: false, error: null, refetch: vi.fn() } as never)
     rerender(<RequestsPage provider="claude" />)
-    expect(screen.queryByRole("button", { name: "View correlated attempts" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Same request ID" })).not.toBeInTheDocument()
   })
 
   it("distinguishes invalid filters, API failure, and an empty successful page", () => {
     vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(400, "invalid status"), refetch: vi.fn() } as never)
     const { rerender } = render(<RequestsPage provider="" status="broken" />)
-    expect(screen.getByText("Invalid request evidence filters")).toBeInTheDocument()
+    expect(screen.getByText("Invalid filters")).toBeInTheDocument()
 
     vi.mocked(useEvents).mockReturnValue({ data: undefined, isLoading: false, error: new ApiError(500, "unavailable"), refetch: vi.fn() } as never)
     rerender(<RequestsPage provider="" status="500" />)
-    expect(screen.getByText("Failed to load request evidence")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't load request evidence")).toBeInTheDocument()
 
     vi.mocked(useEvents).mockReturnValue({ data: { ...eventsPage(1, ""), events: [], total_count: 0, total_pages: 1 }, isLoading: false, error: null, refetch: vi.fn() } as never)
     rerender(<RequestsPage provider="" />)
@@ -206,8 +205,7 @@ describe("RequestsPage provider scope", () => {
       minLatencyMS: "500", windowEnd: "2026-09-07T12:00:00.123456789Z", result: "failed",
     })
     expect(downloadUsageEventsCSV).toHaveBeenCalledOnce()
-    expect(screen.getByText("CSV export includes the full frozen selection, up to 5,000 matching requests.")).toBeInTheDocument()
-    expect(screen.getByRole("alert")).toHaveTextContent("limited to 5,000 matching requests")
-    expect(screen.getByRole("alert")).toHaveTextContent("No file was saved")
+    expect(screen.getByText("CSV includes this filter, up to 5,000 rows.")).toBeInTheDocument()
+    expect(screen.getByRole("alert")).toHaveTextContent("Too many rows (max 5,000). Narrow filters.")
   })
 })

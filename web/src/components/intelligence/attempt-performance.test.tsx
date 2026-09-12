@@ -58,7 +58,7 @@ describe("AttemptPerformance", () => {
       { ...data.models.items[0], value: "partial", label: "Partial model", attempt_count: 1000, latency_ms: { ...data.latency_ms, successful: { ...metric(1000, 10, 500, 1000), histogram: { upper_bound: 2000, counts: sparse } } } },
     ]
     render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
-    const models = screen.getByRole("region", { name: "Actual models" })
+    const models = screen.getByRole("region", { name: "Models" })
     const busy = within(models).getByRole("img", { name: /Busy model/ })
     const partial = within(models).getByRole("img", { name: /Partial model/ })
     expect(busy.querySelectorAll("[data-heatmap-bin]")).toHaveLength(24)
@@ -77,7 +77,7 @@ describe("AttemptPerformance", () => {
     counts[23] = 1
     data.models.items[0].latency_ms.successful = { ...metric(5, 3, 25, 240), histogram: { upper_bound: 240, counts } }
     render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
-    const models = screen.getByRole("region", { name: "Actual models" })
+    const models = screen.getByRole("region", { name: "Models" })
     fireEvent.click(within(models).getByRole("button", { name: "View sample distribution for sonnet" }))
     const details = screen.getByRole("dialog", { name: "sonnet sample distribution" })
     expect(within(details).getByText("3 valid samples · 24 equal intervals")).toBeVisible()
@@ -97,7 +97,7 @@ describe("AttemptPerformance", () => {
     expect(onSelect).toHaveBeenCalledWith("openai")
     rerender(<AttemptPerformance onRetryProviders={vi.fn()} provider="openai" providers={["claude", "openai"]} onSelectProvider={onSelect} data={undefined} isLoading={false} error={new Error("failed")} onRetry={vi.fn()} />)
     expect(screen.getByRole("combobox", { name: "Performance provider" })).toHaveTextContent("openai")
-    expect(screen.getByText("Failed to load attempt performance")).toBeVisible()
+    expect(screen.getByText("Couldn't load attempt performance")).toBeVisible()
   })
 
   it("shows an actual-model percentile chart by default and preserves the exact slow-evidence window", () => {
@@ -105,17 +105,17 @@ describe("AttemptPerformance", () => {
 
     expect(screen.getByRole("heading", { name: "Attempt performance" })).toBeInTheDocument()
     expect(screen.getByText("Last 24h")).toBeInTheDocument()
-    expect(within(screen.getByLabelText("Performance metric")).getByRole("button", { name: "Successful latency" })).toHaveAttribute("aria-pressed", "true")
-    expect(within(screen.getByLabelText("Compare by")).getByRole("button", { name: "Actual models" })).toHaveAttribute("aria-pressed", "true")
+    expect(within(screen.getByLabelText("Performance metric")).getByRole("button", { name: "Latency" })).toHaveAttribute("aria-pressed", "true")
+    expect(within(screen.getByLabelText("Compare by")).getByRole("button", { name: "Models" })).toHaveAttribute("aria-pressed", "true")
 
-    const models = screen.getByRole("region", { name: "Actual models" })
+    const models = screen.getByRole("region", { name: "Models" })
     expect(within(models).getByLabelText("Shared linear axis from zero to 9s")).toBeInTheDocument()
     expect(within(models).getByRole("img", { name: "sonnet: p50 0.5s, p95 9s" })).toBeInTheDocument()
     const sampleDetails = within(models).getByLabelText("Sample details for sonnet")
     expect(sampleDetails.closest("details")).not.toHaveAttribute("open")
-    expect(within(models).getByText("18 / 18 samples · 100% coverage")).not.toBeVisible()
+    expect(within(models).getByText("18 of 18")).not.toBeVisible()
     fireEvent.click(sampleDetails)
-    expect(within(models).getByText("18 / 18 samples · 100% coverage")).toBeVisible()
+    expect(within(models).getByText("18 of 18")).toBeVisible()
     expect(within(models).getByText("Other or unavailable").parentElement).toHaveTextContent("3 attempts")
 
     const slowLink = screen.getByRole("link", { name: "Inspect successful attempts at or above p95 latency" })
@@ -135,13 +135,13 @@ describe("AttemptPerformance", () => {
     const dimensions = screen.getByLabelText("Compare by")
     fireEvent.click(within(metrics).getByRole("button", { name: "TTFT" }))
 
-    const models = screen.getByRole("region", { name: "Actual models" })
+    const models = screen.getByRole("region", { name: "Models" })
     expect(within(models).getByLabelText("Shared linear axis from zero to 0s")).toBeInTheDocument()
     expect(within(models).getByText("No valid samples")).toBeInTheDocument()
     expect(screen.queryByRole("dialog", { name: "Unknown execution TTFT" })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "About TTFT execution unknown" }))
     const unknown = screen.getByRole("dialog", { name: "Unknown execution TTFT" })
-    expect(within(unknown).getByText("0 / 5 samples · 0% coverage")).toHaveAttribute("title", "0 of 5 attempts sampled")
+    expect(within(unknown).getByText("0 of 5")).toHaveAttribute("title", "0 of 5 attempts sampled")
     fireEvent.keyDown(unknown, { key: "Escape" })
     expect(screen.queryByRole("dialog", { name: "Unknown execution TTFT" })).not.toBeInTheDocument()
 
@@ -165,7 +165,7 @@ describe("AttemptPerformance", () => {
       { ...data.models.items[0], value: "missing", label: "Missing model", latency_ms: { ...data.latency_ms, successful: metric(0, 0, null, null) } },
     ]
     render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
-    const models = screen.getByRole("region", { name: "Actual models" })
+    const models = screen.getByRole("region", { name: "Models" })
     expect(within(models).getByText("<100% coverage", { exact: true })).toBeVisible()
     expect(within(models).getByText("Coverage unavailable", { exact: true })).toBeVisible()
   })
@@ -173,7 +173,7 @@ describe("AttemptPerformance", () => {
   it("keeps failed latency separate with aggregate and dimension drill-down links", () => {
     render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={performance()} isLoading={false} error={null} onRetry={vi.fn()} />)
 
-    const failedSummary = screen.getByText(/Failed attempt latency/)
+    const failedSummary = screen.getByText(/Failed latency/)
     fireEvent.click(failedSummary)
     const failedOverall = screen.getByRole("link", { name: "Inspect failed attempts at or above p95 latency" })
     expect(failedOverall).toHaveAttribute("data-search", expect.stringContaining('"result":"failed"'))
@@ -189,16 +189,16 @@ describe("AttemptPerformance", () => {
 
     fireEvent.click(within(screen.getByLabelText("Performance metric")).getByRole("button", { name: "Output TPS" }))
     expect(screen.getByLabelText("Overall selected metric")).not.toBeVisible()
-    expect(within(screen.getByRole("region", { name: "Actual models" })).getByText("Select a provider to compare output speed.")).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "Models" })).getByText("Select a provider.")).toBeInTheDocument()
 
     fireEvent.click(within(screen.getByLabelText("Compare by")).getByRole("button", { name: "Providers" }))
     const providers = screen.getByRole("region", { name: "Providers" })
     expect(within(providers).queryByRole("img")).not.toBeInTheDocument()
     expect(within(providers).getAllByText("42.0 tok/s")).toHaveLength(2)
-    expect(within(providers).getByText("Select a provider to compare output speed.")).toBeInTheDocument()
+    expect(within(providers).getByText("Select a provider.")).toBeInTheDocument()
 
     fireEvent.click(within(screen.getByLabelText("Compare by")).getByRole("button", { name: "Accounts" }))
-    expect(within(screen.getByRole("region", { name: "Accounts" })).getByText("Select a provider to compare output speed.")).toBeInTheDocument()
+    expect(within(screen.getByRole("region", { name: "Accounts" })).getByText("Select a provider.")).toBeInTheDocument()
   })
 
   it("plots observed zero percentiles instead of treating them as missing", () => {
@@ -206,7 +206,7 @@ describe("AttemptPerformance", () => {
     data.models.items[0] = { ...data.models.items[0], latency_ms: { ...data.models.items[0].latency_ms, successful: metric(18, 18, 0, 0) } }
     render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
 
-    const chart = within(screen.getByRole("region", { name: "Actual models" })).getByRole("img", { name: "sonnet: p50 0s, p95 0s" })
+    const chart = within(screen.getByRole("region", { name: "Models" })).getByRole("img", { name: "sonnet: p50 0s, p95 0s" })
     expect(chart.querySelector('[data-percentile="p50"]')).toHaveStyle({ left: "0%" })
     expect(chart.querySelector('[data-percentile="p95"]')).toHaveStyle({ left: "0%" })
   })
@@ -214,15 +214,15 @@ describe("AttemptPerformance", () => {
   it("keeps unavailable, empty, initial error, and stale retry states explicit", () => {
     const retry = vi.fn()
     const { rerender } = render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={undefined} isLoading={false} error={new Error("offline")} onRetry={retry} />)
-    fireEvent.click(screen.getByRole("button", { name: "Retry attempt performance" }))
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(retry).toHaveBeenCalledTimes(1)
 
     const empty = performance()
     empty.total_attempts = 0
     rerender(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={empty} isLoading={false} error={null} onRetry={retry} />)
-    expect(screen.getByText("No providers with attempts in the last 24 hours")).toBeInTheDocument()
+    expect(screen.getByText("No providers in 24h")).toBeInTheDocument()
 
     rerender(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={performance()} isLoading={false} error={new Error("refresh")} onRetry={retry} />)
-    expect(screen.getByRole("button", { name: "Retry refresh" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
   })
 })

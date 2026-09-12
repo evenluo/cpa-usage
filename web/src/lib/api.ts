@@ -133,12 +133,29 @@ export async function metricsFetch<T>(): Promise<T> {
 	return response.json() as Promise<T>
 }
 
+function apiErrorMessage(body: string): string {
+  try {
+    const parsed: unknown = JSON.parse(body)
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "error" in parsed &&
+      typeof (parsed as { error: unknown }).error === "string"
+    ) {
+      return (parsed as { error: string }).error
+    }
+  } catch {
+    // Response body is not JSON.
+  }
+  return body
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     public body: string
   ) {
-    super(`API error ${status}: ${body}`)
+    super(apiErrorMessage(body))
     this.name = "ApiError"
   }
 }

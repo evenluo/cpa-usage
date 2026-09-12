@@ -73,7 +73,7 @@ for (const theme of ["light", "dark"]) {
     }
     await partial.click()
     const tooltip = page.getByRole("tooltip")
-    await expect(tooltip).toContainText("Token coverage 2/4")
+    await expect(tooltip).toContainText("4 attempts")
     const bounds = await tooltip.boundingBox()
     const viewport = page.viewportSize()!
     expect(bounds).not.toBeNull()
@@ -98,7 +98,7 @@ for (const theme of ["light", "dark"]) {
     await page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: "Attempt Health", exact: true }) }).screenshot({ path: testInfo.outputPath(`failures-${theme}.png`) })
 
     const breakdown = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: "Attempt performance", exact: true }) })
-    const failedDetails = breakdown.locator("details").filter({ has: page.locator("summary", { hasText: /^Failed attempt latency/ }) })
+    const failedDetails = breakdown.locator("details").filter({ has: page.locator("summary", { hasText: /^Failed latency/ }) })
     const performanceControls = breakdown.getByLabel("Performance metric", { exact: true })
     const controlBounds = await performanceControls.boundingBox()
     for (const button of await performanceControls.getByRole("button").all()) {
@@ -118,12 +118,12 @@ for (const theme of ["light", "dark"]) {
     await expect(breakdown.getByRole("combobox", { name: "Performance provider" })).not.toHaveText("")
     await expect(breakdown.getByText("No valid samples").first()).toBeVisible()
     expect(requests.filter((request) => request.path === "/usage/performance")).toHaveLength(performanceRequests)
-    await breakdown.getByRole("button", { name: "Successful latency", exact: true }).click()
+    await breakdown.getByRole("button", { name: "Latency", exact: true }).click()
     await breakdown.screenshot({ path: testInfo.outputPath(`performance-${theme}.png`) })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     await failedDetails.locator(":scope > summary").click()
     await breakdown.getByRole("link", { name: "Inspect sonnet failed attempts at or above p95 latency" }).click()
-    await expect(page.getByRole("heading", { name: "Request Evidence", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Request evidence", exact: true })).toBeVisible()
     await expect.poll(() => {
       const url = requests.filter((request) => request.path === "/usage/events").at(-1)?.url
       return url ? {

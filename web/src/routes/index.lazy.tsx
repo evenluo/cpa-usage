@@ -39,8 +39,8 @@ function DashboardPage() {
       {surfaces.core.status === "error" ? (
         <Card>
           <CardContent className="flex min-h-32 flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm text-red-600">Failed to load selected-window usage</p>
-            <Button type="button" size="sm" variant="outline" onClick={dashboard.retryCore}>Retry usage summary</Button>
+            <p className="text-sm text-red-600">Couldn't load usage</p>
+            <Button type="button" size="sm" variant="outline" onClick={dashboard.retryCore}>Retry</Button>
           </CardContent>
         </Card>
       ) : surfaces.core.status === "empty" ? (
@@ -49,7 +49,7 @@ function DashboardPage() {
         <>
           {surfaces.core.status === "ready" && surfaces.core.refreshError ? (
             <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-              <span>Usage refresh failed; showing the last complete result.</span>
+              <span>Refresh failed. Showing last result.</span>
               <Button type="button" size="sm" variant="outline" onClick={dashboard.retryCore}>Retry</Button>
             </div>
           ) : null}
@@ -60,7 +60,7 @@ function DashboardPage() {
           rawValue={summary?.cost_available ? summary.total_cost : undefined}
           formatter={formatCost}
           valueDecimals={4}
-          caption={summary?.cost_status === "available" ? "Local estimate complete" : summary?.cost_status === "partial" ? "Local estimate incomplete" : "Local estimate unavailable"}
+          caption={summary?.cost_status === "available" ? "Complete" : summary?.cost_status === "partial" ? "Incomplete" : "Unavailable"}
           coverageLabel={canonicalCoverageLabel}
           sparkline={kpiData?.cost}
           isLoading={surfaces.kpis.status === "loading"}
@@ -103,7 +103,7 @@ function DashboardPage() {
           tone="amber"
         />
           </div>
-          {summary ? <CanonicalTokenComposition accounting={summary.accounting} costStatus={summary.cost_status} /> : null}
+          {summary ? <CanonicalTokenComposition accounting={summary.accounting} /> : null}
         </>
       )}
 

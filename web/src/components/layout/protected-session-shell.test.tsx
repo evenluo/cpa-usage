@@ -23,10 +23,10 @@ describe("ProtectedSessionShell", () => {
       </ProtectedSessionShell>,
     )
 
-    expect(screen.getByText("Unable to verify your session")).toBeInTheDocument()
+    expect(screen.getByText("Couldn't verify session")).toBeInTheDocument()
     expect(screen.queryByText("Protected dashboard")).not.toBeInTheDocument()
     expect(onUnauthenticated).not.toHaveBeenCalled()
-    await user.click(screen.getByRole("button", { name: "Retry session check" }))
+    await user.click(screen.getByRole("button", { name: "Retry" }))
     expect(onRetry).toHaveBeenCalledTimes(1)
   })
 

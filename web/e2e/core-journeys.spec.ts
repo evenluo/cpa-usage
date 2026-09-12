@@ -131,11 +131,11 @@ test("signed-out users are redirected to login and can sign in to reach the dash
   await page.waitForURL(/\/login$/)
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible()
 
-  await page.getByPlaceholder("Enter password").fill("test-password")
+  await page.getByLabel("Password").fill("test-password")
   await page.getByRole("button", { name: "Sign in" }).click()
 
   await page.waitForURL(/\/$/)
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Intelligence" })).toBeVisible()
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0)
 })
 
@@ -143,7 +143,7 @@ test("dashboard renders account capacity, diagnostics, and analysis layers", asy
   await installMockAPI(page, { analyticsCore: analyticsCoreFor })
 
   await page.goto("/")
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Intelligence" })).toBeVisible()
 
   for (const kpi of ["Cost", "Tokens", "Attempts", "Success", "Cache"]) {
     // 首次冷启动时 3 个视口 project 并行加载，KPI 渲染可能慢于默认 5s 超时。
@@ -154,7 +154,7 @@ test("dashboard renders account capacity, diagnostics, and analysis layers", asy
   await expect(page.getByText("sk-live Agent")).toBeVisible()
   await expect(page.getByText("Activity Heatmap")).toBeVisible()
   await expect(page.getByText("Attempt Health")).toBeVisible()
-  await expect(page.getByText("Request Evidence")).toBeVisible()
+  await expect(page.getByText("Request evidence")).toBeVisible()
   await expect(page.getByText("Live Capacity")).toBeVisible()
   await expect(page.getByText("Model Mix")).toBeVisible()
   await expect(page.getByText("all-model")).toBeVisible()
@@ -238,7 +238,7 @@ test("provider filter scopes the analytics request and manual sync reports compl
 
   await page.goto("/operations")
   await expect(page.getByText("Operational Status")).toBeVisible()
-  await page.getByRole("button", { name: "Trigger Sync" }).click()
+  await page.getByRole("button", { name: "Sync now" }).click()
   await expect(page.getByText("Sync triggered")).toBeVisible()
   await expect.poll(() => syncRequests).toBe(1)
 })

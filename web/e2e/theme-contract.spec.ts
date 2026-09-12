@@ -8,7 +8,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: theme === "light" ? "dark" : "light" })
     await page.addInitScript((value) => localStorage.setItem("cpa-theme", value), theme)
     await page.goto("/")
-    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Intelligence", exact: true })).toBeVisible()
     const card = page.locator(".rounded-xl.bg-card").first()
     await expect(card).toHaveCSS("background-color", theme === "light" ? "rgb(253, 252, 252)" : "rgb(30, 28, 26)")
     await expect(card).toHaveCSS("border-color", theme === "light" ? "rgb(229, 224, 220)" : "rgb(50, 46, 42)")
@@ -17,12 +17,11 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.locator("section[aria-labelledby='attention-heading']")).toHaveCSS("background-image", /linear-gradient/)
 
     await page.goto("/login")
-    const password = page.getByPlaceholder("Enter password", { exact: true })
+    const password = page.getByLabel("Password")
     await password.fill("fixture-password")
     await password.focus()
     await expect(password).toHaveCSS("border-radius", "10px")
     await expect(password).toHaveCSS("box-shadow", /2px/)
-    expect(await password.evaluate((node) => getComputedStyle(node, "::placeholder").color)).toBe("rgb(156, 163, 175)")
     if (browserName !== "webkit") {
       await page.emulateMedia({ forcedColors: "active" })
       await expect(password).toHaveCSS("outline-style", "solid")

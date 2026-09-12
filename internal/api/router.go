@@ -334,13 +334,13 @@ func manualSyncErrorMessage(err error) string {
 	if errors.As(err, &userMessage) && userMessage.UserMessage() != "" {
 		return userMessage.UserMessage()
 	}
-	return "manual sync failed"
+	return "Sync failed"
 }
 
 func registerSyncRoutes(router gin.IRoutes, statusProvider StatusProvider, limiter *syncLimiter) {
 	router.POST("/sync", func(c *gin.Context) {
 		if limiter != nil && !limiter.allow(time.Now()) {
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "sync rate limit exceeded"})
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Sync rate limit exceeded"})
 			return
 		}
 
@@ -352,11 +352,11 @@ func registerSyncRoutes(router gin.IRoutes, statusProvider StatusProvider, limit
 
 		if err := syncRunner.SyncNow(c.Request.Context()); err != nil {
 			if errors.Is(err, poller.ErrSyncAlreadyRunning) {
-				c.JSON(http.StatusConflict, gin.H{"error": "sync already running"})
+				c.JSON(http.StatusConflict, gin.H{"error": "Sync already running"})
 				return
 			}
 			if errors.Is(err, poller.ErrSyncUnavailable) {
-				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "sync unavailable"})
+				c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Sync unavailable"})
 				return
 			}
 			slog.Error("manual sync failed", "error", err)

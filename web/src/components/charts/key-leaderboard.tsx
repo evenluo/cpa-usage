@@ -23,7 +23,7 @@ export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-        No key alias usage in this range
+        No keys
       </div>
     )
   }
@@ -52,14 +52,14 @@ export function KeyLeaderboard({ data }: KeyLeaderboardProps) {
             <div className="w-full text-left sm:w-auto sm:min-w-[156px] sm:text-right">
               <div className="flex flex-wrap items-baseline gap-2 sm:justify-end">
                 <span className="text-sm font-semibold">
-                  {hasAvailableCost(row) ? formatCost(row.total_cost) : "Cost n/a"}
+                  {hasAvailableCost(row) ? formatCost(row.total_cost) : "Cost unavailable"}
                 </span>
                 <span className="text-[11px] font-medium text-blue-700">
-                  {row.canonical_valid_attempts > 0 ? `${formatCompact(row.total_tokens, 1)} canonical tokens` : "Tokens n/a"}
+                  {row.canonical_valid_attempts > 0 ? `${formatCompact(row.total_tokens, 1)} tokens` : "Tokens unavailable"}
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground">
-                {costPct === null ? "cost n/a" : `${costPct.toFixed(1)}% cost`} · {formatCompact(row.request_count, 0)} attempts · {tokenPct === null ? "tokens n/a" : `${tokenPct.toFixed(1)}% tokens`}
+                {costPct === null ? "Cost unavailable" : `${costPct.toFixed(1)}% cost`} · {formatCompact(row.request_count, 0)} attempts · {tokenPct === null ? "Tokens unavailable" : `${tokenPct.toFixed(1)}% tokens`}
               </p>
             </div>
           </div>

@@ -143,7 +143,7 @@ describe("LiveCapacityCard", () => {
 
     expect(mockUseLiveCapacity).toHaveBeenLastCalledWith("", false)
     expect(screen.getByText("Live Capacity")).toBeInTheDocument()
-    expect(screen.queryByText("No auth-file accounts")).not.toBeInTheDocument()
+    expect(screen.queryByText("No accounts")).not.toBeInTheDocument()
 
     act(() => {
       notifyIntersection?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
@@ -160,14 +160,14 @@ describe("LiveCapacityCard", () => {
   it("shows empty state when no identities exist", () => {
     setupMock()
     render(<LiveCapacityCard provider="" />)
-    expect(screen.getByText("No auth-file accounts")).toBeInTheDocument()
+    expect(screen.getByText("No accounts")).toBeInTheDocument()
   })
 
   it("keeps a read error distinct from an empty account list", () => {
     setupMock({ error: new Error("state read failed") })
     render(<LiveCapacityCard provider="" />)
-    expect(screen.getByText("Failed to load live capacity")).toBeInTheDocument()
-    expect(screen.queryByText("No auth-file accounts")).not.toBeInTheDocument()
+    expect(screen.getByText("Couldn't load live capacity")).toBeInTheDocument()
+    expect(screen.queryByText("No accounts")).not.toBeInTheDocument()
   })
 
   it("shows independent account states and source timing", () => {
@@ -555,10 +555,10 @@ describe("LiveCapacityCard", () => {
     await user.click(screen.getByRole("button", { name: "Select displayed" }))
     await user.click(screen.getByRole("button", { name: "Load model support" }))
 
-    expect(await screen.findByText("Partial selected scope")).toBeInTheDocument()
-    expect(screen.getByText("observed in 1/1 loaded accounts")).toBeInTheDocument()
+    expect(await screen.findByText("Partial", { exact: true })).toBeInTheDocument()
+    expect(screen.getByText("1/1 loaded")).toBeInTheDocument()
     expect(screen.queryByText(/1 registered account in this scope/)).not.toBeInTheDocument()
-    expect(screen.getByText("Failed accounts are unknown, not unsupported")).toBeInTheDocument()
+    expect(screen.getByText("Load failed — support unknown")).toBeInTheDocument()
     expect(screen.getByText(/Context 200,000/)).toBeInTheDocument()
     expect(screen.getByText(/zero not allowed/)).toBeInTheDocument()
   })
@@ -643,7 +643,7 @@ describe("LiveCapacityCard", () => {
 
     fireEvent.click(copyButton)
     expect(writeText).toHaveBeenCalledWith(longId)
-    await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Auth index copied"))
+    await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Copied"))
   })
 
   it("folds the subscription end into the timing lines when the active start is missing", () => {
@@ -1008,9 +1008,9 @@ describe("LiveCapacityCard", () => {
     const [, options] = mockSetIdentityDisabled.mutate.mock.calls[0]
     options.onSuccess()
     expect(mockToast.success).toHaveBeenCalledWith("Account enabled")
-    options.onError(new Error("CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status."))
+    options.onError(new Error("Saved, but CPA status is unconfirmed. Trigger Sync."))
     expect(mockToast.error).toHaveBeenCalledWith(
-      "CPA accepted the change, but the resulting account state could not be confirmed. Run Trigger Sync to reload account status.",
+        "Saved, but CPA status is unconfirmed. Trigger Sync.",
     )
   })
 

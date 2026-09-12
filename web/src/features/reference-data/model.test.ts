@@ -145,7 +145,7 @@ describe("Reference Data feature model", () => {
 
     expect(selectKeyAliasRows("api-key", apiRows, accountRows)).toBe(apiRows)
     expect(selectKeyAliasRows("account", apiRows, accountRows)).toBe(accountRows)
-    expect(keyAliasScopeDescription("api-key")).toBe("Human-readable labels for raw API keys")
+    expect(keyAliasScopeDescription("api-key")).toBe("Labels for API keys")
     expect(beginKeyAliasDraft(apiRows[0])).toEqual({ editingId: "sk-alpha", draftAlias: "Alpha Alias" })
     expect(buildKeyAliasSaveCommand("api-key", apiRows[0], "New Alias")).toEqual({
       valid: true,

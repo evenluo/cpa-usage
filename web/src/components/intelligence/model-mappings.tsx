@@ -35,33 +35,33 @@ export function ModelMappings({
       <Card className="min-w-0 overflow-hidden">
         <details className="group" onToggle={(event) => onExpandedChange(event.currentTarget.open)}>
           <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 rounded-xl px-4 py-4 transition-colors hover:bg-muted/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-6 [&::-webkit-details-marker]:hidden">
-            <CardTitle>Observed model mappings</CardTitle>
+            <CardTitle>Model mappings</CardTitle>
             <ChevronDown className="row-span-2 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" />
             <span className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span title={`${formatDate(summary.window_start)} – ${formatDate(summary.window_end)}`}>Last 24h</span>
-              <span><strong className="font-medium text-foreground">{formatCompact(summary.displayed_mappings)}</strong> mappings displayed</span>
-              <span><strong className="font-medium text-foreground">{formatPercent(summary.alias_coverage)}</strong> alias coverage</span>
-              <span><strong className="font-medium text-foreground">{formatCompact(summary.missing_alias_attempts)}</strong> missing alias</span>
+              <span><strong className="font-medium text-foreground">{formatCompact(summary.displayed_mappings)}</strong> mappings</span>
+              <span><strong className="font-medium text-foreground">{formatPercent(summary.alias_coverage)}</strong> have an alias</span>
+              <span><strong className="font-medium text-foreground">{formatCompact(summary.missing_alias_attempts)}</strong> without alias</span>
             </span>
           </summary>
 
           <CardContent className="border-t border-border px-4 pb-5 pt-5 sm:px-6">
             {data ? <div className="space-y-5">
               <div className="flex flex-wrap items-start justify-between gap-2 text-xs text-muted-foreground">
-                <p>Share of alias-bearing attempts</p>
+                <p>Share of attempts with an alias</p>
                 <details className="max-w-lg">
                   <summary className="cursor-pointer rounded-sm underline decoration-dotted underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">About these mappings</summary>
-                  <p className="mt-2 leading-relaxed">Names are observed values. Matching names do not prove how a request was routed.</p>
+                  <p className="mt-2 leading-relaxed">Same name does not mean it was routed that way.</p>
                 </details>
               </div>
 
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                 <span>{formatCompact(data.observed_alias_attempts)} of {formatCompact(data.total_attempts)} attempts with an alias</span>
-                <span>Observed cost · {data.observed_alias_attempts > 0 ? formatObservedCost(data.observed_total_cost, data.observed_cost_status) : "No observed alias population"}</span>
+                <span>Cost · {data.observed_alias_attempts > 0 ? formatObservedCost(data.observed_total_cost, data.observed_cost_status) : "No aliases"}</span>
               </div>
 
               {data.mappings.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">No observed alias mappings in scope</div>
+                <div className="rounded-lg border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">No alias mappings</div>
               ) : (
                 <div className="space-y-2">
                   {data.mappings.map((row) => (
@@ -85,8 +85,8 @@ export function ModelMappings({
               </div>
             ) : detailsError ? (
               <div className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-                <span>Failed to load model mapping details</span>
-                <Button type="button" size="sm" variant="outline" onClick={onRetryDetails}>Retry model mapping details</Button>
+                <span>Couldn't load model mapping details</span>
+                <Button type="button" size="sm" variant="outline" onClick={onRetryDetails}>Retry</Button>
               </div>
             ) : (
               <Skeleton className="h-16 w-full" />
@@ -103,7 +103,7 @@ export function ModelMappings({
     <Card className="min-w-0 overflow-hidden">
       <CardHeader className="pb-4">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <CardTitle>Observed model mappings</CardTitle>
+          <CardTitle>Model mappings</CardTitle>
           <span className="text-xs text-muted-foreground">Last 24h</span>
         </div>
       </CardHeader>
@@ -112,11 +112,11 @@ export function ModelMappings({
           <Skeleton className="h-12 w-full" />
         ) : !summary && summaryError ? (
           <div className="flex min-h-24 flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border text-sm text-red-500">
-            <span>Failed to load observed model mappings</span>
-            <Button type="button" size="sm" variant="outline" onClick={onRetrySummary}>Retry model mappings</Button>
+            <span>Couldn't load model mappings</span>
+            <Button type="button" size="sm" variant="outline" onClick={onRetrySummary}>Retry</Button>
           </div>
         ) : (
-          <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">No attempts in the last 24 hours</div>
+          <div className="flex min-h-16 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">No attempts in 24h</div>
         )}
       </CardContent>
       {summary && summaryError ? <RefreshFailure onRetry={onRetrySummary} /> : null}
@@ -137,7 +137,7 @@ function MappingRow({ row, observedAttempts, windowEnd }: { row: UsageModelMappi
           <span className="[overflow-wrap:anywhere]">{row.provider || "Provider unavailable"}</span>
         </span>
         {row.model && row.model_alias === row.model ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Same observed name</span>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Same name</span>
         ) : null}
       </div>
 
@@ -181,8 +181,8 @@ function MappingRow({ row, observedAttempts, windowEnd }: { row: UsageModelMappi
 function RefreshFailure({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2.5 text-xs text-red-500 sm:px-6" role="alert">
-      <span>Latest refresh failed. Showing previously loaded data.</span>
-      <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry refresh</Button>
+      <span>Refresh failed. Showing last result.</span>
+      <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
     </div>
   )
 }

@@ -13,12 +13,12 @@ export function DashboardCoreEmptyState({ refreshError, onRetry }: DashboardCore
         {refreshError ? (
           <>
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              Usage refresh failed; the last complete result contained no usage.
+              Refresh failed. Last result was empty.
             </p>
-            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry usage summary</Button>
+            <Button type="button" size="sm" variant="outline" onClick={onRetry}>Retry</Button>
           </>
         ) : (
-          <p className="text-sm text-muted-foreground">No usage in the selected window</p>
+          <p className="text-sm text-muted-foreground">No usage</p>
         )}
       </CardContent>
     </Card>

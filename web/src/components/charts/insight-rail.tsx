@@ -56,9 +56,6 @@ export function InsightRail({ insights }: InsightRailProps) {
                 {ordered.length}
               </span>
             </div>
-            <p className="mt-1 text-xs leading-relaxed text-amber-800/80 dark:text-amber-300/80">
-              Warnings that affect how this window should be interpreted.
-            </p>
           </div>
         </div>
         <div className="grid divide-y divide-amber-200/80 sm:grid-cols-2 sm:divide-x sm:divide-y-0 dark:divide-amber-900/70">
@@ -79,7 +76,6 @@ export function InsightRail({ insights }: InsightRailProps) {
                     {formatMetric(insight)}
                   </span>
                 </div>
-                <p className="mt-1.5 pl-[22px] text-sm font-medium text-foreground/80">{insight.subject}</p>
                 <p className="mt-1 pl-[22px] text-xs leading-relaxed text-muted-foreground">{insight.detail}</p>
               </article>
             )

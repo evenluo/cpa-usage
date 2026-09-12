@@ -9,7 +9,7 @@ export interface KpiCardProps {
   formatter?: (n: number) => string
   caption?: string
   comparison?: string
-  /** Canonical accounting coverage readout, e.g. "Canonical coverage 97.5%"; omitted when coverage is unavailable. */
+  /** Token-data coverage readout, e.g. "Token data coverage 97.5%"; omitted when coverage is unavailable. */
   coverageLabel?: string
   sparkline?: (number | null)[]
   valueDecimals?: number
@@ -64,7 +64,7 @@ export function KpiCard({ label, rawValue, formatter, caption, comparison, cover
             {coverageLabel && (
               <p
                 className="mt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80"
-                title="Share of attempts with valid canonical accounting in the selected window"
+                title="Share of attempts with usable token data in the selected window"
               >
                 {coverageLabel}
               </p>

@@ -1,7 +1,7 @@
 import { createLazyFileRoute, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { useState, type FormEvent } from "react"
-import { apiFetch } from "@/lib/api"
+import { ApiError, apiFetch } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/components/providers/toast-provider"
@@ -26,11 +26,16 @@ function LoginPage() {
         body: JSON.stringify({ password }),
       })
       queryClient.setQueryData(["auth", "session"], { authenticated: true })
-      toast.success("Signed in successfully")
+      toast.success("Signed in")
       navigate({ to: "/" })
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Login failed"
-      toast.error(message)
+      if (err instanceof ApiError && err.status === 401) {
+        toast.error("Invalid password")
+      } else if (err instanceof ApiError && err.status === 429) {
+        toast.error("Too many failed attempts")
+      } else {
+        toast.error("Login failed")
+      }
     } finally {
       setSubmitting(false)
     }
@@ -42,22 +47,21 @@ function LoginPage() {
         <CardHeader className="text-center">
           <CardTitle className="font-serif text-2xl">Sign in</CardTitle>
           <CardDescription>
-            Enter your dashboard password to continue
+            Dashboard password
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Password</label>
+            <label className="grid gap-1.5 text-sm font-medium">
+              Password
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="mt-1.5 h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
-                placeholder="Enter password"
+                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500"
                 required
               />
-            </div>
+            </label>
             <Button
               type="submit"
               className="w-full"

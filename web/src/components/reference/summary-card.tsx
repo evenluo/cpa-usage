@@ -41,7 +41,7 @@ export function SummaryCard({
             <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
             <p className="mt-2 text-sm font-medium text-red-600">Unavailable</p>
             <div className="mt-1 flex items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground">Read failed</p>
+              <p className="text-xs text-muted-foreground">Couldn't load</p>
               {onRetry ? (
                 <button type="button" className="text-xs font-medium text-terracotta-700 hover:underline dark:text-terracotta-300" onClick={onRetry}>Retry</button>
               ) : null}

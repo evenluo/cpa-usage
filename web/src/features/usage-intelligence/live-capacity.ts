@@ -220,21 +220,21 @@ function validObservationTime(value: string): boolean {
 export function accountStateFromIdentity(status: KeyIdentity["status"]): LiveCapacityAccountState {
   switch (status) {
     case "active":
-      return { kind: status, label: "Active", explanation: "CPA observed this auth file as active.", tone: "green" }
+      return { kind: status, label: "Active", explanation: "Active in CPA.", tone: "green" }
     case "pending":
-      return { kind: status, label: "Pending", explanation: "CPA observed this auth file waiting for an external action.", tone: "amber" }
+      return { kind: status, label: "Pending", explanation: "Waiting on an external action.", tone: "amber" }
     case "refreshing":
-      return { kind: status, label: "Refreshing", explanation: "CPA observed this auth file refreshing its authentication state.", tone: "amber" }
+      return { kind: status, label: "Refreshing", explanation: "Refreshing credentials.", tone: "amber" }
     case "error":
-      return { kind: status, label: "Error", explanation: "CPA observed an error state for this auth file.", tone: "red" }
+      return { kind: status, label: "Error", explanation: "CPA error.", tone: "red" }
     case "disabled":
-      return { kind: status, label: "Disabled state", explanation: "CPA reported a disabled lifecycle state for this auth file.", tone: "amber" }
+      return { kind: status, label: "Disabled", explanation: "Disabled in CPA.", tone: "amber" }
     case "unknown":
-      return { kind: status, label: "Unknown", explanation: "CPA reported that this auth-file state is unknown.", tone: "muted" }
+      return { kind: status, label: "Unknown", explanation: "Unknown in CPA.", tone: "muted" }
     case "other":
-      return { kind: status, label: "Other state", explanation: "CPA reported another bounded auth-file state.", tone: "muted" }
+      return { kind: status, label: "Other state", explanation: "Other CPA state.", tone: "muted" }
     default:
-      return { kind: "not_reported", label: "State not reported", explanation: "CPA did not report an auth-file state in this observation.", tone: "muted" }
+      return { kind: "not_reported", label: "No state", explanation: "CPA did not report a state.", tone: "muted" }
   }
 }
 

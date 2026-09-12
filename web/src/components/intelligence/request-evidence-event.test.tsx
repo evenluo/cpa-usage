@@ -36,21 +36,21 @@ describe("RequestEvidenceEvent", () => {
     render(<RequestEvidenceEvent event={event} label="Latest request" syncState="synced" />)
 
     expect(screen.getByRole("region", { name: "Latest request" })).toBeInTheDocument()
-    expect(screen.getByRole("status")).toHaveTextContent("Synced with trend")
+    expect(screen.getByRole("status")).toHaveTextContent("Live")
     expect(screen.queryByText("Latest request")).not.toBeInTheDocument()
   })
 
   it("announces the active synchronized refresh", () => {
     render(<RequestEvidenceEvent event={event} label="Latest request" syncState="refreshing" />)
 
-    expect(screen.getByRole("status")).toHaveTextContent("Syncing with trend")
+    expect(screen.getByRole("status")).toHaveTextContent("Updating")
   })
 
   it("keeps the static label for request drill-down", () => {
-    render(<RequestEvidenceEvent event={event} label="Selected upstream attempt" detail />)
+    render(<RequestEvidenceEvent event={event} label="Selected attempt" detail />)
 
-    expect(screen.getByText("Selected upstream attempt")).toBeInTheDocument()
-    expect(screen.getByText("Observed alias label")).toBeInTheDocument()
+    expect(screen.getByText("Selected attempt")).toBeInTheDocument()
+    expect(screen.getByText("Alias")).toBeInTheDocument()
     expect(screen.queryByText("Requested model")).not.toBeInTheDocument()
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
     expect(screen.getByText("gpt-5-requested")).toBeInTheDocument()
@@ -90,9 +90,9 @@ describe("RequestEvidenceEvent", () => {
       },
     }} />)
     const value = (label: string) => screen.getByText(label).nextElementSibling
-    expect(value("Canonical accounting")).toHaveTextContent("Valid structure")
+    expect(value("Token data status")).toHaveTextContent("Available")
     expect(value("Reported quality")).toHaveTextContent("inconsistent")
-    expect(value("Canonical total")).toHaveTextContent("999")
+    expect(value("Total tokens")).toHaveTextContent("999")
     expect(value("Requested service tier")).toHaveTextContent("priority")
     expect(value("Response service tier")).toHaveTextContent("default")
     expect(value("Generate")).toHaveTextContent("No")
@@ -110,7 +110,7 @@ describe("RequestEvidenceEvent", () => {
         unclassified_tokens: null,
       },
     } }} label="Historical attempt" detail />)
-    for (const label of ["Requested service tier", "Response service tier", "Canonical total", "Reported quality"]) {
+    for (const label of ["Requested service tier", "Response service tier", "Total tokens", "Reported quality"]) {
       expect(screen.getByText(label).nextElementSibling).toHaveTextContent("-")
     }
     for (const label of ["Generate", "Stream"]) {

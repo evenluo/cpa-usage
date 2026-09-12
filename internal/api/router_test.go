@@ -286,7 +286,7 @@ func TestManualSyncReturnsUnavailableDuringShutdown(t *testing.T) {
 	if resp.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected status 503, got %d", resp.Code)
 	}
-	if body := resp.Body.String(); !contains(body, `"error":"sync unavailable"`) {
+	if body := resp.Body.String(); !contains(body, `"error":"Sync unavailable"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }
@@ -305,7 +305,7 @@ func TestManualSyncReturnsWarningsAsError(t *testing.T) {
 	if resp.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", resp.Code)
 	}
-	if body := resp.Body.String(); !contains(body, `"error":"manual sync failed"`) {
+	if body := resp.Body.String(); !contains(body, `"error":"Sync failed"`) {
 		t.Fatalf("unexpected response body: %s", body)
 	}
 }

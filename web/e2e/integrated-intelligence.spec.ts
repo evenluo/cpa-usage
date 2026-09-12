@@ -34,13 +34,12 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await page.goto("/")
   await expect(page.getByText("Failure breakdown", { exact: true })).toBeVisible()
   await expect(page.getByText("Attempt performance")).toBeVisible()
-  await expect(page.getByText("Observed model mappings")).toBeVisible()
+  await expect(page.getByText("Model mappings")).toBeVisible()
   await page.getByText("Token breakdown").click()
-  await expect(page.getByText(/3 \/ 10 valid/)).toBeVisible()
-  await expect(page.getByText(/complete 1 · inconsistent 1 · unclassified 1/)).toBeVisible()
-  await expect(page.getByText(/Canonical facts absent 7/)).toBeVisible()
-  await expect(page.getByText(/Local estimate \(partial\)/)).toBeVisible()
-  await page.locator("summary").filter({ hasText: "Observed model mappings" }).click()
+  await expect(page.getByText(/3 of 10 attempts · 1 complete · 2 with gaps/)).toBeVisible()
+    await expect(page.getByText(/excluded: missing token data 7/)).toBeVisible()
+  await expect(page.getByText("Not a provider invoice.")).toBeVisible()
+  await page.locator("summary").filter({ hasText: "Model mappings" }).click()
   const mapping = page.getByRole("link", { name: "Inspect route-a to actual-a attempts" })
   for (const text of ["route-a", "actual-a", "provider-a"]) {
     const label = mapping.getByText(text, { exact: true })
@@ -67,7 +66,7 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   })
 
   await page.goto("/")
-  await page.locator("summary").filter({ hasText: "Observed model mappings" }).click()
+  await page.locator("summary").filter({ hasText: "Model mappings" }).click()
   await page.getByRole("link", { name: "Inspect route-a to actual-a attempts" }).click()
   await expectEvidenceSelection(page, requests, {
     windowEnd: "2026-09-07T12:00:00Z",
@@ -83,12 +82,11 @@ test("correlated attempts keep the fixed scope and clear filters that hide sibli
   await installMockAPI(page, { onRequest: (request) => requests.push(request) })
 
   await page.goto("/requests?provider=claude&model=sonnet&modelAlias=route-a&account=auth-1&endpoint=%2Fv1%2Fmessages&status=429&minLatencyMS=9000&windowEnd=2026-09-07T11%3A00%3A00.123456789Z&result=failed")
-  await expect(page.getByRole("heading", { name: "Request Evidence" })).toBeVisible()
-  await page.getByRole("button", { name: "View correlated attempts" }).click()
+  await expect(page.getByRole("heading", { name: "Request evidence" })).toBeVisible()
+  await page.getByRole("button", { name: "Same request ID" }).click()
 
   const correlationScope = page.locator('[aria-label="Correlation scope"]')
-  await expect(correlationScope).toContainText("Correlated attempts are distinct observed rows")
-  await expect(correlationScope).toContainText("other providers are not included")
+  await expect(correlationScope).toContainText("Same request ID, this 24h and provider. Older data may omit some retries.")
   await expect(correlationScope.getByText(/retry count|final outcome/i)).toHaveCount(0)
 
   await expect.poll(() => {
@@ -107,7 +105,7 @@ test("correlated attempts keep the fixed scope and clear filters that hide sibli
     hiddenFilters: [],
   })
 
-  await expect(page.getByText("CSV export includes the full frozen selection, up to 5,000 matching requests.")).toBeVisible()
+  await expect(page.getByText("CSV includes this filter, up to 5,000 rows.")).toBeVisible()
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     page.getByRole("button", { name: "Download CSV" }).click(),
@@ -190,9 +188,9 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   await page.getByText("Model support", { exact: true }).click()
   await page.getByRole("button", { name: "Select displayed" }).click()
   await page.getByRole("button", { name: "Load model support" }).click()
-  await expect(page.getByText("Partial selected scope")).toBeVisible()
-  await expect(page.getByText("Failed accounts are unknown, not unsupported")).toBeVisible()
-  await expect(page.getByText("observed in 1/1 loaded accounts")).toBeVisible()
+  await expect(page.getByText("Partial", { exact: true })).toBeVisible()
+  await expect(page.getByText("Load failed — support unknown")).toBeVisible()
+  await expect(page.getByText("1/1 loaded")).toBeVisible()
 
   await expect.poll(() => requests.filter((request) => request.path === "/usage/identities/model-support").length).toBe(1)
   const supportRequest = requests.find((request) => request.path === "/usage/identities/model-support")
@@ -216,7 +214,7 @@ async function expectEvidenceSelection(
     result?: string
   },
 ) {
-  await expect(page.getByRole("heading", { name: "Request Evidence" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Request evidence" })).toBeVisible()
   await expect.poll(() => {
     const pageURL = new URL(page.url())
     const requestURL = latestRequestURL(requests, "/usage/events")

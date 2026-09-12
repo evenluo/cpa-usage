@@ -49,13 +49,13 @@ describe("FailureDistribution", () => {
   it("keeps initial API error and successful empty state distinct", async () => {
     const retry = vi.fn()
     const { rerender } = render(<FailureDistribution provider="" data={undefined} isLoading={false} error={new Error("offline")} onRetry={retry} />)
-    expect(screen.getByText("Failed to load failure distribution")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button", { name: "Retry failure distribution" }))
+    expect(screen.getByText("Couldn't load failure distribution")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }))
     expect(retry).toHaveBeenCalledTimes(1)
 
     rerender(<FailureDistribution provider="" data={{ ...distribution, total_failures: 0, categories: emptyBreakdown }} isLoading={false} error={null} onRetry={retry} />)
-    expect(screen.getByText("No failed attempts in the last 24 hours")).toBeInTheDocument()
-    expect(screen.queryByText("Failed to load failure distribution")).not.toBeInTheDocument()
+    expect(screen.getByText("No failures in 24h")).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't load failure distribution")).not.toBeInTheDocument()
     expect(screen.queryByText("Failure breakdown")).not.toBeInTheDocument()
   })
 
