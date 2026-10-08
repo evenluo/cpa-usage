@@ -17,7 +17,7 @@ type usageAttemptPerformanceResponse struct {
 	SuccessfulExecution usageExecutionPopulationPayload  `json:"successful_execution"`
 	LatencyMS           usageResultPercentilesPayload    `json:"latency_ms"`
 	TTFTMS              usageTTFTPercentilesPayload      `json:"ttft_ms"`
-	OutputTPS           usageExecutionPercentilesPayload `json:"output_tps"`
+	OutputTPS           usageOutputTPSPercentilesPayload `json:"output_tps"`
 	Providers           usagePerformanceBreakdownPayload `json:"providers"`
 	Models              usagePerformanceBreakdownPayload `json:"models"`
 	Accounts            usagePerformanceBreakdownPayload `json:"accounts"`
@@ -35,8 +35,24 @@ type usageResultPercentilesPayload struct {
 	Failed     usagePercentilePayload `json:"failed"`
 }
 
-type usageExecutionPercentilesPayload struct {
-	GeneratingStreaming usagePercentilePayload `json:"generating_streaming"`
+type usageOutputTPSPercentilesPayload struct {
+	GeneratingStreaming usageOutputTPSDistributionPayload `json:"generating_streaming"`
+}
+
+// usageOutputTPSDistributionPayload reports the low-tail p10 and fixed band
+// counts; bands carry their edges so the client owns no copy of them.
+type usageOutputTPSDistributionPayload struct {
+	PopulationCount int64                       `json:"population_count"`
+	SampleCount     int64                       `json:"sample_count"`
+	Coverage        *float64                    `json:"coverage"`
+	P50             *float64                    `json:"p50"`
+	P10             *float64                    `json:"p10"`
+	Bands           *usageOutputTPSBandsPayload `json:"bands"`
+}
+
+type usageOutputTPSBandsPayload struct {
+	Edges  []float64 `json:"edges"`
+	Counts []int64   `json:"counts"`
 }
 
 type usageTTFTPercentilesPayload struct {
@@ -72,7 +88,7 @@ type usagePerformanceBreakdownItemPayload struct {
 	SuccessfulExecution usageExecutionPopulationPayload  `json:"successful_execution"`
 	LatencyMS           usageResultPercentilesPayload    `json:"latency_ms"`
 	TTFTMS              usageTTFTPercentilesPayload      `json:"ttft_ms"`
-	OutputTPS           usageExecutionPercentilesPayload `json:"output_tps"`
+	OutputTPS           usageOutputTPSPercentilesPayload `json:"output_tps"`
 }
 
 func registerUsagePerformanceRoute(router gin.IRoutes, usageProvider UsageProvider, usageIdentityProvider UsageIdentityProvider) {
@@ -128,8 +144,8 @@ func buildUsageAttemptPerformancePayload(filter usageDiagnosticFilter, record *r
 			GeneratingStreaming: buildUsagePercentilePayload(record.StreamingTTFTMS),
 			UnknownExecution:    buildUsagePercentilePayload(record.UnknownExecutionTTFTMS),
 		},
-		OutputTPS: usageExecutionPercentilesPayload{
-			GeneratingStreaming: buildUsagePercentilePayload(record.StreamingOutputTPS),
+		OutputTPS: usageOutputTPSPercentilesPayload{
+			GeneratingStreaming: buildUsageOutputTPSPayload(record.StreamingOutputTPS),
 		},
 		Providers: buildUsagePerformanceBreakdownPayload(record.Providers, identityLabel),
 		Models:    buildUsagePerformanceBreakdownPayload(record.Models, identityLabel),
@@ -165,8 +181,8 @@ func buildUsagePerformanceBreakdownPayload(record repodto.UsagePerformanceBreakd
 				GeneratingStreaming: buildUsagePercentilePayload(item.StreamingTTFTMS),
 				UnknownExecution:    buildUsagePercentilePayload(item.UnknownExecutionTTFTMS),
 			},
-			OutputTPS: usageExecutionPercentilesPayload{
-				GeneratingStreaming: buildUsagePercentilePayload(item.StreamingOutputTPS),
+			OutputTPS: usageOutputTPSPercentilesPayload{
+				GeneratingStreaming: buildUsageOutputTPSPayload(item.StreamingOutputTPS),
 			},
 		})
 	}
@@ -185,5 +201,20 @@ func buildUsagePercentilePayload(record repodto.UsagePercentileRecord) usagePerc
 		P50:             record.P50,
 		P95:             record.P95,
 		Histogram:       histogram,
+	}
+}
+
+func buildUsageOutputTPSPayload(record repodto.UsageOutputTPSDistributionRecord) usageOutputTPSDistributionPayload {
+	var bands *usageOutputTPSBandsPayload
+	if record.Bands != nil {
+		bands = &usageOutputTPSBandsPayload{Edges: repodto.UsageOutputTPSBandEdges, Counts: record.Bands}
+	}
+	return usageOutputTPSDistributionPayload{
+		PopulationCount: record.PopulationCount,
+		SampleCount:     record.SampleCount,
+		Coverage:        record.Coverage,
+		P50:             record.P50,
+		P10:             record.P10,
+		Bands:           bands,
 	}
 }

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { UsageAttemptPerformance, UsageAttemptPerformanceSummary, UsagePercentileDistribution } from "@/types/api"
+import type { UsageAttemptPerformance, UsageAttemptPerformanceSummary, UsageOutputTPSDistribution, UsagePercentileDistribution } from "@/types/api"
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children, search, ...props }: { children: React.ReactNode; search: object; [key: string]: unknown }) => (
@@ -19,6 +19,18 @@ function metric(population: number, samples: number, p50: number | null, p95: nu
   return { population_count: population, sample_count: samples, coverage: population === 0 ? null : samples / population, p50, p95, histogram: samples > 0 ? { upper_bound: p95 ?? 0, counts } : null }
 }
 
+const outputTPSBandEdges = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300]
+
+function outputTPS(population: number, samples: number, p50: number | null, p10: number | null, counts?: number[]): UsageOutputTPSDistribution {
+  const bands = counts ?? Array<number>(outputTPSBandEdges.length).fill(0)
+  const bandOf = (value: number) => outputTPSBandEdges.filter((edge) => edge <= value).length - 1
+  if (counts === undefined && samples > 0 && p50 !== null && p10 !== null) {
+    bands[bandOf(p10)] += Math.floor(samples / 2)
+    bands[bandOf(p50)] += samples - Math.floor(samples / 2)
+  }
+  return { population_count: population, sample_count: samples, coverage: population === 0 ? null : samples / population, p50, p10, bands: samples > 0 ? { edges: outputTPSBandEdges, counts: bands } : null }
+}
+
 function summary(): UsageAttemptPerformanceSummary {
   return {
     successful_attempts: 18,
@@ -26,7 +38,7 @@ function summary(): UsageAttemptPerformanceSummary {
     successful_execution: { generating_streaming: 10, non_generating: 2, non_streaming: 1, unknown: 5 },
     latency_ms: { successful: metric(18, 18, 500, 9_000), failed: metric(2, 1, 12_000, 12_000) },
     ttft_ms: { generating_streaming: metric(10, 8, 120, 1_500), unknown_execution: metric(5, 0, null, null) },
-    output_tps: { generating_streaming: metric(10, 7, 42, 88) },
+    output_tps: { generating_streaming: outputTPS(10, 7, 42, 18) },
   }
 }
 
@@ -128,7 +140,7 @@ describe("AttemptPerformance", () => {
   it("switches the visible comparison between metrics and dimensions", () => {
     const data = performance()
     data.models.items[0] = { ...data.models.items[0], ttft_ms: { ...data.models.items[0].ttft_ms, generating_streaming: metric(10, 0, null, null) } }
-    data.accounts.items[0] = { ...data.accounts.items[0], output_tps: { generating_streaming: metric(10, 7, 42, 42) } }
+    data.accounts.items[0] = { ...data.accounts.items[0], output_tps: { generating_streaming: outputTPS(10, 7, 42, 42) } }
     render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     const metrics = screen.getByLabelText("Performance metric")
@@ -152,10 +164,49 @@ describe("AttemptPerformance", () => {
     fireEvent.click(within(metrics).getByRole("button", { name: "Output TPS" }))
     fireEvent.click(within(dimensions).getByRole("button", { name: "Accounts" }))
     const accounts = screen.getByRole("region", { name: "Accounts" })
-    expect(within(accounts).getByLabelText("Shared linear axis from zero to 42.0 tok/s")).toBeInTheDocument()
-    const equalPercentiles = within(accounts).getByRole("img", { name: "Claude Primary: p50 42.0 tok/s, p95 42.0 tok/s" })
-    expect(equalPercentiles.querySelector('[data-percentile="p50"]')).toHaveStyle({ left: "100%" })
-    expect(equalPercentiles.querySelector('[data-percentile="p95"]')).toHaveStyle({ left: "100%" })
+    expect(within(accounts).getByLabelText("Fixed throughput bands from zero to 300+ tok/s")).toHaveTextContent("10 tok/s bands to 100, then 150, 200, 300+")
+    const equalPercentiles = within(accounts).getByRole("img", { name: "Claude Primary: p50 42.0 tok/s, p10 42.0 tok/s" })
+    // 42 tok/s sits 20% into band 4 of 14: (4 + 0.2) / 14.
+    expect(equalPercentiles.querySelector('[data-percentile="p50"]')).toHaveStyle({ left: "30%" })
+    expect(equalPercentiles.querySelector('[data-percentile="p10"]')).toHaveStyle({ left: "30%" })
+    expect(screen.getAllByLabelText("Overall selected metric")[0]).toHaveTextContent("p10 18.0 tok/s")
+  })
+
+  it("keeps slow throughput legible in fixed 10 tok/s bands beside a fast model and leaves the open band unstretched", () => {
+    const data = performance()
+    const slow = Array<number>(14).fill(0)
+    slow[2] = 60
+    slow[5] = 40
+    const fast = Array<number>(14).fill(0)
+    // Rank 10 (p10 = 240) falls in 200–300 and rank 50 (p50 = 300) is the first sample of the open band.
+    fast[12] = 49
+    fast[13] = 51
+    data.models.items = [
+      { ...data.models.items[0], value: "sonnet", label: "sonnet", attempt_count: 100, output_tps: { generating_streaming: outputTPS(100, 100, 28, 22, slow) } },
+      { ...data.models.items[0], value: "haiku", label: "haiku", attempt_count: 100, output_tps: { generating_streaming: outputTPS(100, 100, 300, 240, fast) } },
+    ]
+    render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude"]} onSelectProvider={vi.fn()} provider="claude" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
+    fireEvent.click(within(screen.getByLabelText("Performance metric")).getByRole("button", { name: "Output TPS" }))
+    const models = screen.getByRole("region", { name: "Models" })
+    const sonnet = within(models).getByRole("img", { name: "sonnet: p50 28.0 tok/s, p10 22.0 tok/s" })
+    const haiku = within(models).getByRole("img", { name: "haiku: p50 300.0 tok/s, p10 240.0 tok/s" })
+    expect(sonnet.querySelectorAll("[data-heatmap-bin]")).toHaveLength(14)
+    expect(sonnet.querySelector('[data-heatmap-bin="2"]')).toHaveAttribute("data-share", "0.6")
+    expect(sonnet.querySelector('[data-heatmap-bin="2"]')).toHaveAttribute("title", "20–30 tok/s · 60 samples · 60.0%")
+    expect(haiku.querySelector('[data-heatmap-bin="13"]')).toHaveAttribute("title", "300+ tok/s · 51 samples · 51.0%")
+    // Every band is drawn at the same width regardless of its numeric span.
+    expect(sonnet.querySelector<HTMLElement>('[data-heatmap-bin="2"]')?.style.width).toBe(haiku.querySelector<HTMLElement>('[data-heatmap-bin="13"]')?.style.width)
+    expect(sonnet.querySelector("[data-band-scale-change]")).toHaveStyle({ left: `${10 / 14 * 100}%` })
+    // 300 is the first value of the open band; 240 is 40% through 200–300.
+    expect(haiku.querySelector('[data-percentile="p50"]')).toHaveStyle({ left: `${13 / 14 * 100}%` })
+    expect(haiku.querySelector('[data-percentile="p10"]')).toHaveStyle({ left: `${12.4 / 14 * 100}%` })
+    expect(within(models).queryByRole("link")).not.toBeInTheDocument()
+    fireEvent.click(within(models).getByRole("button", { name: "View sample distribution for sonnet" }))
+    const details = screen.getByRole("dialog", { name: "sonnet sample distribution" })
+    expect(within(details).getByText("100 valid samples · 14 fixed bands")).toBeVisible()
+    expect(within(details).getByText("Last band is open-ended.")).toBeVisible()
+    const band = within(details).getByText("50–60 tok/s").closest("tr")!
+    expect(within(band).getByText("40.0%", { exact: true })).toBeVisible()
   })
 
   it("keeps partial and missing coverage visible while complete coverage stays in sample details", () => {
@@ -184,7 +235,7 @@ describe("AttemptPerformance", () => {
 
   it("keeps unscoped provider throughput numeric while requiring a provider for model and account axes", () => {
     const data = performance()
-    data.providers.items[0].output_tps.generating_streaming = metric(10, 5, 42, 42)
+    data.providers.items[0].output_tps.generating_streaming = outputTPS(10, 5, 42, 42)
     render(<AttemptPerformance onRetryProviders={vi.fn()} providers={["claude", "openai"]} onSelectProvider={vi.fn()} provider="" data={data} isLoading={false} error={null} onRetry={vi.fn()} />)
 
     fireEvent.click(within(screen.getByLabelText("Performance metric")).getByRole("button", { name: "Output TPS" }))

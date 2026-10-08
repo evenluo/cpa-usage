@@ -11,7 +11,7 @@ type UsageAttemptPerformanceRecord struct {
 	FailedLatencyMS        UsagePercentileRecord
 	StreamingTTFTMS        UsagePercentileRecord
 	UnknownExecutionTTFTMS UsagePercentileRecord
-	StreamingOutputTPS     UsagePercentileRecord
+	StreamingOutputTPS     UsageOutputTPSDistributionRecord
 	Providers              UsagePerformanceBreakdownRecord
 	Models                 UsagePerformanceBreakdownRecord
 	Accounts               UsagePerformanceBreakdownRecord
@@ -34,7 +34,7 @@ type UsagePerformanceBreakdownItemRecord struct {
 	FailedLatencyMS        UsagePercentileRecord
 	StreamingTTFTMS        UsagePercentileRecord
 	UnknownExecutionTTFTMS UsagePercentileRecord
-	StreamingOutputTPS     UsagePercentileRecord
+	StreamingOutputTPS     UsageOutputTPSDistributionRecord
 }
 
 // UsageExecutionPopulationRecord is an exhaustive, non-overlapping partition
@@ -66,3 +66,25 @@ type UsageHistogramRecord struct {
 }
 
 const UsagePerformanceHistogramBins = 24
+
+// UsageOutputTPSDistributionRecord describes generating/streaming throughput
+// where the slow tail is the low end: P10 is the nearest-rank 10th percentile,
+// so 90% of valid samples are at least that fast. Bands are fixed perceptual
+// intervals rather than a data-dependent equal-width histogram, so a slow model
+// keeps its resolution next to a fast one and bands compare across snapshots.
+type UsageOutputTPSDistributionRecord struct {
+	PopulationCount int64
+	SampleCount     int64
+	Coverage        *float64
+	P50             *float64
+	P10             *float64
+	// Bands counts the same valid samples per UsageOutputTPSBandEdges interval.
+	// It is nil only when SampleCount is zero.
+	Bands []int64
+}
+
+// UsageOutputTPSBandEdges are the lower edges, in tokens per second, of the
+// fixed Output TPS bands. Band i covers [edge[i], edge[i+1]); the last band is
+// open-ended. Resolution is 10 tok/s up to 100 where perceived speed differs
+// most, then coarser bands that only record that faster output exists.
+var UsageOutputTPSBandEdges = []float64{0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300}

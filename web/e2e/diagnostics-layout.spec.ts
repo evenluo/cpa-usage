@@ -10,6 +10,7 @@ const modelRows = [
   { name: "gpt-5.6-terra", attempts: 8, p50: 3700, p95: 8900 },
   { name: "gpt-5.6-luna", attempts: 5, p50: 1900, p95: 6200 },
 ]
+const outputTPSBandEdges = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300]
 const performance = withHistograms({
   ...usageAttemptPerformance,
   total_attempts: 1200,
@@ -24,7 +25,7 @@ const performance = withHistograms({
     generating_streaming: { population_count: 1199, sample_count: 1199, coverage: 1, p50: 4930, p95: 8990 },
     unknown_execution: { population_count: 0, sample_count: 0, coverage: null, p50: null, p95: null },
   },
-  output_tps: { generating_streaming: { population_count: 1199, sample_count: 1199, coverage: 1, p50: 43.6, p95: 145.2 } },
+  output_tps: { generating_streaming: { population_count: 1199, sample_count: 1199, coverage: 1, p50: 43.6, p10: 18.4 } },
   providers: { items: [], other_count: 1200 },
   accounts: { items: [], other_count: 1200 },
   models: {
@@ -41,7 +42,7 @@ const performance = withHistograms({
         generating_streaming: { population_count: row.attempts - (index === 0 ? 1 : 0), sample_count: row.attempts - (index === 0 ? 1 : 0), coverage: 1, p50: row.p50 / 2, p95: row.p95 / 2 },
         unknown_execution: { population_count: 0, sample_count: 0, coverage: null, p50: null, p95: null },
       },
-      output_tps: { generating_streaming: { population_count: row.attempts - (index === 0 ? 1 : 0), sample_count: 0, coverage: 0, p50: null, p95: null } },
+      output_tps: { generating_streaming: { population_count: row.attempts - (index === 0 ? 1 : 0), sample_count: 0, coverage: 0, p50: null, p10: null } },
       latency_ms: {
         successful: { population_count: row.attempts - (index === 0 ? 1 : 0), sample_count: row.attempts - (index === 0 ? 1 : 0), coverage: 1, p50: row.p50, p95: row.p95 },
         failed: { population_count: index === 0 ? 1 : 0, sample_count: index === 0 ? 1 : 0, coverage: index === 0 ? 1 : null, p50: index === 0 ? 7800 : null, p95: index === 0 ? 7800 : null },
@@ -52,11 +53,27 @@ const performance = withHistograms({
 
 
 // Deterministic samples preserve the fixture's exact nearest-rank percentiles
-// while exercising shared bins, the full tail and low-sample states.
+// while exercising shared bins, the full tail and low-sample states. Output TPS
+// records carry p10 and fixed bands instead of p95 and a shared histogram.
 function withHistograms<T>(value: T, upper = 60000): T {
   if (!value || typeof value !== "object") return value
   if (Array.isArray(value)) return value.map((item) => withHistograms(item, upper)) as T
   const record = value as Record<string, unknown>
+  if (typeof record.sample_count === "number" && "p10" in record) {
+    const count = record.sample_count
+    const counts = Array<number>(outputTPSBandEdges.length).fill(0)
+    const p50 = Number(record.p50)
+    const p10 = Number(record.p10)
+    const rank10 = Math.ceil(count * 0.1)
+    const rank50 = Math.ceil(count * 0.5)
+    for (let rank = 1; rank <= count; rank++) {
+      const sample = rank <= rank10 ? p10 * rank / rank10
+        : rank <= rank50 ? p10 + (p50 - p10) * (rank - rank10) / (rank50 - rank10)
+          : p50 + (upper - p50) * (rank - rank50) / (count - rank50)
+      counts[outputTPSBandEdges.filter((edge) => edge <= sample).length - 1]++
+    }
+    return { ...record, bands: count > 0 ? { edges: outputTPSBandEdges, counts } : null } as T
+  }
   if (typeof record.sample_count === "number") {
     const count = record.sample_count
     const counts = Array<number>(24).fill(0)

@@ -30,6 +30,23 @@ func TestUsageHistogramPreservesSamplesAndBoundaryValues(t *testing.T) {
 	}
 }
 
+func TestUsageOutputTPSDistributionUsesFixedBandsAndLowTail(t *testing.T) {
+	// 100 tok/s is the first sample of its band, 299.9 is the last of [200, 300),
+	// and 1200 lands in the open-ended band without stretching anything.
+	metric := usageOutputTPSDistribution([]float64{9.9, 10, 42, 58, 100, 299.9, 1200}, 10)
+	want := make([]int64, len(dto.UsageOutputTPSBandEdges))
+	want[0], want[1], want[4], want[5], want[10], want[12], want[13] = 1, 1, 1, 1, 1, 1, 1
+	if !reflect.DeepEqual(metric.Bands, want) {
+		t.Fatalf("bands must be left-closed on the fixed edges with an open last band: %+v", metric.Bands)
+	}
+	if metric.P50 == nil || *metric.P50 != 58 || metric.P10 == nil || *metric.P10 != 9.9 || metric.Coverage == nil || *metric.Coverage != 0.7 {
+		t.Fatalf("TPS must report the slow low tail as p10, not p95: %+v", metric)
+	}
+	if empty := usageOutputTPSDistribution(nil, 10); empty.Bands != nil || empty.P10 != nil || empty.SampleCount != 0 {
+		t.Fatalf("missing samples must not become zero-valued bands: %+v", empty)
+	}
+}
+
 type performanceReadCounter struct {
 	logger.Interface
 	reads int
@@ -72,7 +89,6 @@ func TestUsageHistogramSharesBoundsWithoutExtraReads(t *testing.T) {
 				{item.FailedLatencyMS, result.FailedLatencyMS},
 				{item.StreamingTTFTMS, result.StreamingTTFTMS},
 				{item.UnknownExecutionTTFTMS, result.UnknownExecutionTTFTMS},
-				{item.StreamingOutputTPS, result.StreamingOutputTPS},
 			}
 			for _, pair := range pairs {
 				metric, overall := pair[0], pair[1]
@@ -97,6 +113,22 @@ func TestUsageHistogramSharesBoundsWithoutExtraReads(t *testing.T) {
 	}
 	if result.StreamingOutputTPS.SampleCount != 3 {
 		t.Fatalf("failed/incomplete attempts entered TPS density: %+v", result.StreamingOutputTPS)
+	}
+	for _, item := range result.Models.Items {
+		tps := item.StreamingOutputTPS
+		if tps.SampleCount == 0 {
+			if tps.Bands != nil {
+				t.Fatalf("empty TPS population received bands: %+v", tps)
+			}
+			continue
+		}
+		var samples int64
+		for _, count := range tps.Bands {
+			samples += count
+		}
+		if samples != tps.SampleCount || len(tps.Bands) != len(dto.UsageOutputTPSBandEdges) {
+			t.Fatalf("TPS band sample conservation failed for %s: %+v", item.Value, tps)
+		}
 	}
 	if result.SuccessfulLatencyMS.Histogram.UpperBound != 10_000 || *result.Models.Items[1].SuccessfulLatencyMS.P95 != 200 {
 		t.Fatalf("full range and exact row percentiles must remain distinct: %+v", result.Models)
