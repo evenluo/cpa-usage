@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatLatency, formatOutputTPS } from "@/components/intelligence/request-evidence-event"
 import { formatCompact } from "@/lib/format"
-import type { UsageAttemptPerformance, UsageAttemptPerformanceSummary, UsagePercentileDistribution, UsagePerformanceBreakdown } from "@/types/api"
+import type { UsageAttemptPerformance, UsageAttemptPerformanceSummary, UsageOutputTPSDistribution, UsagePercentileDistribution, UsagePerformanceBreakdown } from "@/types/api"
 
 interface AttemptPerformanceProps {
   provider: string
@@ -25,6 +25,8 @@ interface AttemptPerformanceProps {
 type PerformanceMetric = "successful-latency" | "failed-latency" | "ttft" | "output-tps"
 type PrimaryMetric = Exclude<PerformanceMetric, "failed-latency">
 type ComparisonDimension = "model" | "provider" | "account"
+type LatencyMetric = Exclude<PerformanceMetric, "output-tps">
+type SampleCoverageFacts = Pick<UsagePercentileDistribution, "population_count" | "sample_count" | "coverage">
 
 const performanceMetrics: Array<{ value: PrimaryMetric; label: string }> = [
   { value: "successful-latency", label: "Latency" },
@@ -95,15 +97,16 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
                 <span className="font-serif text-2xl font-semibold">{formatCompact(data.total_attempts)}</span>
                 <span className="text-xs text-muted-foreground">attempts · {formatCompact(data.failed_attempts)} failed</span>
               </div>
-              {metric !== "output-tps" || provider ? (
+              {metric === "output-tps" ? (
+                provider ? <div><OutputTPSAggregateReading metric={data.output_tps.generating_streaming} /></div> : null
+              ) : (
                 <div>
                   <AggregateReading
                     metric={getPerformanceMetric(data, metric)}
-                    kind={metric === "output-tps" ? "tps" : "latency"}
                     slowLink={metric === "successful-latency" ? { provider, windowEnd: data.window_end, result: "success" } : undefined}
                   />
                 </div>
-              ) : null}
+              )}
             </div>
 
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -150,7 +153,7 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
               <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Failed latency · {formatCompact(data.failed_attempts)}</summary>
               <div className="mt-4">
                 <div className="mb-3">
-                  <AggregateReading metric={data.latency_ms.failed} kind="latency" slowLink={{ provider, windowEnd: data.window_end, result: "failed" }} />
+                  <AggregateReading metric={data.latency_ms.failed} slowLink={{ provider, windowEnd: data.window_end, result: "failed" }} />
                 </div>
                 <PerformanceBreakdown
                   title={`${getDimensionLabel(dimension)} · failed attempts`}
@@ -183,7 +186,8 @@ function ControlGroup({ label, children }: { label: string; children: React.Reac
   )
 }
 
-function AggregateReading({ metric, kind, slowLink }: { metric: UsagePercentileDistribution; kind: "latency" | "tps"; slowLink?: { provider: string; windowEnd: string; result: "success" | "failed" } }) {
+function AggregateReading({ metric, slowLink }: { metric: UsagePercentileDistribution; slowLink?: { provider: string; windowEnd: string; result: "success" | "failed" } }) {
+  const kind = "latency"
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] tabular-nums sm:gap-x-4 sm:text-xs" aria-label="Overall selected metric">
       <span><span className="text-muted-foreground">Overall p50 </span>{formatMetricValue(metric.p50, kind)}</span>
@@ -199,6 +203,16 @@ function AggregateReading({ metric, kind, slowLink }: { metric: UsagePercentileD
       ) : (
         <span><span className="text-muted-foreground">p95 </span>{formatMetricValue(metric.p95, kind)}</span>
       )}
+      <SampleCoverage metric={metric} label="Overall" />
+    </div>
+  )
+}
+
+function OutputTPSAggregateReading({ metric }: { metric: UsageOutputTPSDistribution }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] tabular-nums sm:gap-x-4 sm:text-xs" aria-label="Overall selected metric">
+      <span><span className="text-muted-foreground">Overall p50 </span>{formatMetricValue(metric.p50, "tps")}</span>
+      <span title="90% of valid samples are at least this fast."><span className="text-muted-foreground">p10 </span>{formatMetricValue(metric.p10, "tps")}</span>
       <SampleCoverage metric={metric} label="Overall" />
     </div>
   )
@@ -236,17 +250,69 @@ function PerformanceBreakdown({ title, breakdown, provider, windowEnd, selection
   selection: ComparisonDimension
   metric: PerformanceMetric
 }) {
-  const metricKind = metric === "output-tps" ? "tps" : "latency"
-  const metrics = breakdown.items.map((item) => getPerformanceMetric(item, metric))
-  const axisMaximum = metrics.reduce((maximum, distribution) => Math.max(maximum, distribution.histogram?.upper_bound ?? 0, distribution.p95 ?? 0), 0)
   const showChart = metric !== "output-tps" || Boolean(provider)
   const needsProvider = metric === "output-tps" && !provider && selection !== "provider"
+  if (metric === "output-tps") {
+    const distributions = breakdown.items.map((item) => item.output_tps.generating_streaming)
+    const edges = distributions.find((distribution) => distribution.bands !== null)?.bands?.edges
+    return (
+      <BreakdownSection
+        title={title}
+        breakdown={breakdown}
+        needsProvider={needsProvider}
+        showChart={showChart}
+        legend={edges !== undefined ? <DensityLegend /> : null}
+        axis={edges !== undefined ? <OutputTPSAxisSummary edges={edges} /> : null}
+        rows={breakdown.items.map((item, index) => <OutputTPSRow key={item.value} item={item} distribution={distributions[index]} showChart={showChart} />)}
+        leadingRow={showChart && edges !== undefined ? <OutputTPSAxisRow edges={edges} /> : null}
+      />
+    )
+  }
+  const metrics = breakdown.items.map((item) => getPerformanceMetric(item, metric))
+  const axisMaximum = metrics.reduce((maximum, distribution) => Math.max(maximum, distribution.histogram?.upper_bound ?? 0, distribution.p95 ?? 0), 0)
+  return (
+    <BreakdownSection
+      title={title}
+      breakdown={breakdown}
+      needsProvider={needsProvider}
+      showChart={showChart}
+      legend={metrics.some((distribution) => distribution.histogram !== null) ? <DensityLegend /> : null}
+      axis={breakdown.items.length > 0 ? <PerformanceAxis maximum={axisMaximum} /> : null}
+      rows={breakdown.items.map((item, index) => (
+        <PerformanceRow
+          key={item.value}
+          item={item}
+          distribution={metrics[index]}
+          axisMaximum={axisMaximum}
+          slowLink={{
+            provider: selection === "provider" ? item.value : provider,
+            model: selection === "model" ? item.value : "",
+            account: selection === "account" ? item.value : "",
+            result: metric === "successful-latency" ? "success" : "failed",
+            windowEnd,
+          }}
+          slowLinkEnabled={metric === "successful-latency" || metric === "failed-latency"}
+        />
+      ))}
+    />
+  )
+}
 
+function BreakdownSection({ title, breakdown, needsProvider, showChart, legend, axis, rows, leadingRow }: {
+  title: string
+  breakdown: UsagePerformanceBreakdown
+  needsProvider: boolean
+  showChart: boolean
+  legend: React.ReactNode
+  axis: React.ReactNode
+  rows: React.ReactNode[]
+  leadingRow?: React.ReactNode
+}) {
   return (
     <section className="min-w-0" aria-label={title}>
       <div className="mb-2 flex flex-wrap items-center justify-end gap-x-4 gap-y-1.5">
-        {!needsProvider && showChart && metrics.some((distribution) => distribution.histogram !== null) ? <DensityLegend /> : null}
-        {!needsProvider && breakdown.items.length > 0 && showChart ? <PerformanceAxis maximum={axisMaximum} kind={metricKind} /> : null}
+        {!needsProvider && showChart ? legend : null}
+        {!needsProvider && showChart ? axis : null}
       </div>
       {needsProvider ? (
         <div className="flex min-h-28 items-center justify-center rounded-md border border-dashed border-border px-3 text-center text-xs text-muted-foreground">Select a provider.</div>
@@ -255,25 +321,8 @@ function PerformanceBreakdown({ title, breakdown, provider, windowEnd, selection
       ) : (
         <div className="overflow-hidden rounded-lg border border-border">
           {!showChart ? <p className="border-b border-border bg-muted/30 px-3 py-2 text-[11px] leading-4 text-muted-foreground">Select a provider.</p> : null}
-          <div className="divide-y divide-border">
-            {breakdown.items.map((item) => (
-              <PerformanceRow
-                key={item.value}
-                item={item}
-                distribution={getPerformanceMetric(item, metric)}
-                kind={metricKind}
-                axisMaximum={axisMaximum}
-                showChart={showChart}
-                slowLink={metric === "successful-latency" || metric === "failed-latency" ? {
-                  provider: selection === "provider" ? item.value : provider,
-                  model: selection === "model" ? item.value : "",
-                  account: selection === "account" ? item.value : "",
-                  result: metric === "successful-latency" ? "success" : "failed",
-                  windowEnd,
-                } : undefined}
-              />
-            ))}
-          </div>
+          {leadingRow}
+          <div className="divide-y divide-border">{rows}</div>
         </div>
       )}
       {breakdown.other_count > 0 ? <div className="mt-2 flex justify-between gap-2 px-2 py-1 text-xs text-muted-foreground"><span>Other or unavailable</span><span>{formatCompact(breakdown.other_count)} attempts</span></div> : null}
@@ -281,12 +330,52 @@ function PerformanceBreakdown({ title, breakdown, provider, windowEnd, selection
   )
 }
 
-function PerformanceAxis({ maximum, kind }: { maximum: number; kind: "latency" | "tps" }) {
+function PerformanceAxis({ maximum }: { maximum: number }) {
   return (
-    <div className="flex items-center gap-3 text-[10px] tabular-nums text-muted-foreground" aria-label={`Shared linear axis from zero to ${formatAxisValue(maximum, kind)}`}>
+    <div className="flex items-center gap-3 text-[10px] tabular-nums text-muted-foreground" aria-label={`Shared linear axis from zero to ${formatAxisValue(maximum, "latency")}`}>
+      <PercentileMarkerLegend tail="p95" />
+      <span>0 to {formatAxisValue(maximum, "latency")}</span>
+    </div>
+  )
+}
+
+function OutputTPSAxisSummary({ edges }: { edges: number[] }) {
+  const coarseStart = outputTPSCoarseBandStart(edges)
+  const fineStep = edges.length > 1 ? edges[1] - edges[0] : 0
+  const coarse = edges.slice(coarseStart + 1).map((edge) => formatBandEdge(edge)).join(", ")
+  return (
+    <div className="flex items-center gap-3 text-[10px] tabular-nums text-muted-foreground" aria-label={`Fixed throughput bands from zero to ${formatBandEdge(edges[edges.length - 1])}+ tok/s`}>
+      <PercentileMarkerLegend tail="p10" />
+      <span>{formatBandEdge(fineStep)} tok/s bands to {formatBandEdge(edges[coarseStart])}, then {coarse}+</span>
+    </div>
+  )
+}
+
+function PercentileMarkerLegend({ tail }: { tail: "p95" | "p10" }) {
+  return (
+    <>
       <span className="flex items-center gap-1" aria-hidden="true"><span className="inline-block h-2 w-2 rounded-full border border-slate-600 dark:border-slate-300" /> p50</span>
-      <span className="flex items-center gap-1" aria-hidden="true"><span className="inline-block h-2 w-2 rotate-45 border border-terracotta-600 dark:border-terracotta-300" /> p95</span>
-      <span>0 to {formatAxisValue(maximum, kind)}</span>
+      <span className="flex items-center gap-1" aria-hidden="true"><span className="inline-block h-2 w-2 rotate-45 border border-terracotta-600 dark:border-terracotta-300" /> {tail}</span>
+    </>
+  )
+}
+
+// OutputTPSAxisRow labels the band edges in the same grid column as every
+// track, so a label sits exactly where that edge is drawn.
+function OutputTPSAxisRow({ edges }: { edges: number[] }) {
+  const bandCount = edges.length
+  const labelled = edges.map((edge, index) => ({ edge, index })).filter(({ index }) => index % 5 === 0 || index === bandCount - 1)
+  return (
+    <div className="hidden border-b border-border px-3 pt-2 pb-1 text-[10px] tabular-nums text-muted-foreground sm:grid sm:grid-cols-[minmax(9rem,0.32fr)_minmax(0,1fr)_11rem]" aria-hidden="true">
+      <div />
+      <div className="relative mx-1.5 h-3">
+        {labelled.map(({ edge, index }) => (
+          <span key={index} className={`absolute top-0 ${index === 0 ? "" : "-translate-x-1/2"}`} style={{ left: `${index / bandCount * 100}%` }}>
+            {formatBandEdge(edge)}{index === bandCount - 1 ? "+" : ""}
+          </span>
+        ))}
+      </div>
+      <div />
     </div>
   )
 }
@@ -302,43 +391,128 @@ function DensityLegend() {
   )
 }
 
-function PerformanceRow({ item, distribution, kind, axisMaximum, showChart, slowLink }: {
+function PerformanceRow({ item, distribution, axisMaximum, slowLink, slowLinkEnabled }: {
   item: UsagePerformanceBreakdown["items"][number]
   distribution: UsagePercentileDistribution
-  kind: "latency" | "tps"
   axisMaximum: number
-  showChart: boolean
-  slowLink?: { provider: string; model: string; account: string; result: "success" | "failed"; windowEnd: string }
+  slowLink: { provider: string; model: string; account: string; result: "success" | "failed"; windowEnd: string }
+  slowLinkEnabled: boolean
 }) {
+  const kind = "latency"
   const p50Position = percentilePosition(distribution.p50, axisMaximum)
   const p95Position = percentilePosition(distribution.p95, axisMaximum)
+  return (
+    <RowShell
+      item={item}
+      coverage={distribution}
+      track={distribution.p50 === null && distribution.p95 === null ? <NoValidSamples /> : <DistributionTrack label={item.label} distribution={distribution} kind={kind} axisMaximum={axisMaximum} p50Position={p50Position} p95Position={p95Position} />}
+      readings={(
+        <>
+          <span><span className="text-muted-foreground">p50 </span>{formatMetricValue(distribution.p50, kind)}</span>
+          {slowLinkEnabled && distribution.p95 !== null ? (
+            <Link
+              to="/requests"
+              search={requestSearch({ ...slowLink, p95: distribution.p95 })}
+              className="inline-flex items-center gap-1 font-medium text-terracotta-700 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
+              aria-label={`Inspect ${item.label} ${slowLink.result} attempts at or above p95 latency`}
+            >
+              <span><span className="text-muted-foreground">p95 </span>{formatMetricValue(distribution.p95, kind)}</span><ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+            </Link>
+          ) : <span><span className="text-muted-foreground">p95 </span>{formatMetricValue(distribution.p95, kind)}</span>}
+        </>
+      )}
+    />
+  )
+}
+
+function OutputTPSRow({ item, distribution, showChart }: {
+  item: UsagePerformanceBreakdown["items"][number]
+  distribution: UsageOutputTPSDistribution
+  showChart: boolean
+}) {
+  return (
+    <RowShell
+      item={item}
+      coverage={distribution}
+      track={showChart ? (distribution.bands === null ? <NoValidSamples /> : <OutputTPSBandTrack label={item.label} distribution={distribution} bands={distribution.bands} />) : null}
+      readings={(
+        <>
+          <span><span className="text-muted-foreground">p50 </span>{formatMetricValue(distribution.p50, "tps")}</span>
+          <span title="90% of valid samples are at least this fast."><span className="text-muted-foreground">p10 </span>{formatMetricValue(distribution.p10, "tps")}</span>
+        </>
+      )}
+    />
+  )
+}
+
+function RowShell({ item, coverage, track, readings }: {
+  item: UsagePerformanceBreakdown["items"][number]
+  coverage: SampleCoverageFacts
+  track: React.ReactNode
+  readings: React.ReactNode
+}) {
   return (
     <div className="grid min-w-0 gap-3 px-3 py-3 text-xs sm:grid-cols-[minmax(9rem,0.32fr)_minmax(0,1fr)_11rem] sm:items-center">
       <div className="min-w-0">
         <p className="break-words font-medium [overflow-wrap:anywhere]">{item.label}</p>
-        <div className="mt-0.5 text-[11px] text-muted-foreground"><SampleCoverage metric={distribution} label={item.label} attempts={item.attempt_count} /></div>
+        <div className="mt-0.5 text-[11px] text-muted-foreground"><SampleCoverage metric={coverage} label={item.label} attempts={item.attempt_count} /></div>
       </div>
-      {showChart ? (
-        distribution.p50 === null && distribution.p95 === null ? (
-          <div className="flex h-5 items-center justify-center rounded bg-muted/50 text-[10px] text-muted-foreground">No valid samples</div>
-        ) : (
-          <DistributionTrack label={item.label} distribution={distribution} kind={kind} axisMaximum={axisMaximum} p50Position={p50Position} p95Position={p95Position} />
-        )
-      ) : <div />}
-      <div className="flex min-w-36 items-center justify-between gap-3 tabular-nums sm:justify-end">
-        <span><span className="text-muted-foreground">p50 </span>{formatMetricValue(distribution.p50, kind)}</span>
-        {slowLink && distribution.p95 !== null ? (
-          <Link
-            to="/requests"
-            search={requestSearch({ ...slowLink, p95: distribution.p95 })}
-            className="inline-flex items-center gap-1 font-medium text-terracotta-700 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-terracotta-500 dark:text-terracotta-300"
-            aria-label={`Inspect ${item.label} ${slowLink.result} attempts at or above p95 latency`}
-          >
-            <span><span className="text-muted-foreground">p95 </span>{formatMetricValue(distribution.p95, kind)}</span><ArrowUpRight className="h-3 w-3" aria-hidden="true" />
-          </Link>
-        ) : <span><span className="text-muted-foreground">p95 </span>{formatMetricValue(distribution.p95, kind)}</span>}
-      </div>
+      {track ?? <div />}
+      <div className="flex min-w-36 items-center justify-between gap-3 tabular-nums sm:justify-end">{readings}</div>
     </div>
+  )
+}
+
+function NoValidSamples() {
+  return <div className="flex h-5 items-center justify-center rounded bg-muted/50 text-[10px] text-muted-foreground">No valid samples</div>
+}
+
+// OutputTPSBandTrack draws every fixed band at equal width, so the 10 tok/s
+// bands below 100 keep their resolution and the coarse bands above only
+// record that faster output exists. A tick marks where bands widen.
+function OutputTPSBandTrack({ label, distribution, bands }: {
+  label: string
+  distribution: UsageOutputTPSDistribution
+  bands: NonNullable<UsageOutputTPSDistribution["bands"]>
+}) {
+  const sampleCount = distribution.sample_count
+  const bandCount = bands.counts.length
+  const coarseStart = outputTPSCoarseBandStart(bands.edges)
+  const p50Position = bandPosition(distribution.p50, bands.edges)
+  const p10Position = bandPosition(distribution.p10, bands.edges)
+  const readingLabel = `${label}: p50 ${formatMetricValue(distribution.p50, "tps")}, p10 ${formatMetricValue(distribution.p10, "tps")}`
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button type="button" aria-label={`View sample distribution for ${label}`} className="mx-1.5 block min-w-0 rounded-sm text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">
+          <span className="relative block h-7" role="img" aria-label={readingLabel}>
+            <span className="absolute top-1/2 h-px w-full -translate-y-1/2 bg-border" />
+            {bands.counts.map((count, index) => {
+              const share = sampleCount > 0 ? count / sampleCount : 0
+              return <span key={index} data-heatmap-bin={index} data-count={count} data-share={share} title={`${bandInterval(bands.edges, index)} · ${count.toLocaleString("en")} samples · ${formatSampleShare(share)}`} className="absolute top-1/2 h-2 -translate-y-1/2 bg-sky-700 dark:bg-sky-400" style={{ left: `${index / bandCount * 100}%`, width: `${100 / bandCount}%`, opacity: densityOpacity(share) }} />
+            })}
+            {coarseStart > 0 && coarseStart < bandCount ? <span data-band-scale-change className="pointer-events-none absolute top-1/2 h-4 w-px -translate-y-1/2 bg-slate-500/60 dark:bg-slate-300/50" style={{ left: `${coarseStart / bandCount * 100}%` }} /> : null}
+            {p50Position !== null && p10Position !== null ? <span className="pointer-events-none absolute top-1/2 h-px -translate-y-1/2 bg-slate-400/70 dark:bg-slate-300/50" style={{ left: `${Math.min(p50Position, p10Position)}%`, width: `${Math.abs(p50Position - p10Position)}%` }} /> : null}
+            {p50Position !== null ? <span data-percentile="p50" className="pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-600 bg-background dark:border-slate-300" style={{ left: `${p50Position}%` }} aria-hidden="true" /> : null}
+            {p10Position !== null ? <span data-percentile="p10" className="pointer-events-none absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-terracotta-600 bg-background dark:border-terracotta-300" style={{ left: `${p10Position}%` }} aria-hidden="true" /> : null}
+          </span>
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content sideOffset={8} collisionPadding={12} aria-label={`${label} sample distribution`} className="z-50 w-80 max-w-[calc(100vw-24px)] rounded-lg border border-border bg-popover p-3 text-xs text-popover-foreground shadow-lg">
+          <p className="break-words font-medium">{label}</p>
+          <p className="mt-1 text-muted-foreground">{sampleCount.toLocaleString("en")} valid {sampleCount === 1 ? "sample" : "samples"} · {bandCount} fixed bands</p>
+          {sampleCount < 10 ? <p className="mt-1 text-muted-foreground">Few samples — may shift.</p> : null}
+          <div className="mt-3 max-h-64 overflow-y-auto overscroll-contain">
+            <table className="w-full text-left tabular-nums">
+              <thead className="sticky top-0 bg-popover text-[10px] text-muted-foreground"><tr><th className="pb-2 font-normal">Band</th><th className="pb-2 text-right font-normal">Samples</th><th className="pb-2 text-right font-normal">Share</th></tr></thead>
+              <tbody>{bands.counts.map((count, index) => <tr key={index} className="border-t border-border/50"><td className="py-1.5">{bandInterval(bands.edges, index)}</td><td className="py-1.5 text-right">{count.toLocaleString("en")}</td><td className="py-1.5 text-right">{formatSampleShare(sampleCount > 0 ? count / sampleCount : 0)}</td></tr>)}</tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">Last band is open-ended.</p>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   )
 }
 
@@ -405,6 +579,34 @@ function histogramInterval(histogram: NonNullable<UsagePercentileDistribution["h
   return `${format(lower)}–${format(upper)} ${unit}`
 }
 
+function outputTPSCoarseBandStart(edges: number[]): number {
+  for (let index = 1; index < edges.length - 1; index += 1) {
+    if (edges[index + 1] - edges[index] !== edges[index] - edges[index - 1]) return index
+  }
+  return edges.length - 1
+}
+
+// bandPosition interpolates linearly inside the band that holds the value;
+// the open-ended last band is drawn as wide as the band before it, clamped.
+function bandPosition(value: number | null, edges: number[]): number | null {
+  if (value === null || edges.length === 0) return null
+  const bandCount = edges.length
+  let index = 0
+  while (index + 1 < bandCount && edges[index + 1] <= value) index += 1
+  const width = index + 1 < bandCount ? edges[index + 1] - edges[index] : bandCount > 1 ? edges[index] - edges[index - 1] : 1
+  const fraction = width > 0 ? Math.max(0, Math.min(1, (value - edges[index]) / width)) : 0
+  return (index + fraction) / bandCount * 100
+}
+
+function bandInterval(edges: number[], index: number): string {
+  if (index === edges.length - 1) return `${formatBandEdge(edges[index])}+ tok/s`
+  return `${formatBandEdge(edges[index])}–${formatBandEdge(edges[index + 1])} tok/s`
+}
+
+function formatBandEdge(value: number): string {
+  return value.toLocaleString("en", { maximumFractionDigits: 1 })
+}
+
 function requestSearch({ provider, model, account, result, windowEnd, p95 }: { provider: string; model: string; account: string; result: "success" | "failed"; windowEnd: string; p95: number }) {
   return { provider, model, modelAlias: "", account, endpoint: "", status: "", requestId: "", minLatencyMS: String(Math.ceil(p95)), windowEnd, result }
 }
@@ -421,11 +623,10 @@ function getDimensionLabel(dimension: ComparisonDimension): string {
   return "Models"
 }
 
-function getPerformanceMetric(item: UsageAttemptPerformanceSummary, metric: PerformanceMetric): UsagePercentileDistribution {
+function getPerformanceMetric(item: UsageAttemptPerformanceSummary, metric: LatencyMetric): UsagePercentileDistribution {
   if (metric === "successful-latency") return item.latency_ms.successful
   if (metric === "failed-latency") return item.latency_ms.failed
-  if (metric === "ttft") return item.ttft_ms.generating_streaming
-  return item.output_tps.generating_streaming
+  return item.ttft_ms.generating_streaming
 }
 
 function percentilePosition(value: number | null, maximum: number): number | null {
@@ -445,7 +646,7 @@ function formatMetricValue(value: number | null, kind: "latency" | "tps") {
   return kind === "latency" ? formatLatency(value) : formatOutputTPS(value)
 }
 
-function SampleCoverage({ metric, label, attempts }: { metric: UsagePercentileDistribution; label: string; attempts?: number }) {
+function SampleCoverage({ metric, label, attempts }: { metric: SampleCoverageFacts; label: string; attempts?: number }) {
   const coverage = formatSampleCoverage(metric)
   return (
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-muted-foreground">
@@ -463,7 +664,7 @@ function SampleCoverage({ metric, label, attempts }: { metric: UsagePercentileDi
   )
 }
 
-function formatSampleCoverage(metric: UsagePercentileDistribution): { text: string; title: string } {
+function formatSampleCoverage(metric: SampleCoverageFacts): { text: string; title: string } {
   const counts = `${metric.sample_count.toLocaleString("en")} of ${metric.population_count.toLocaleString("en")} attempts sampled`
   if (metric.coverage === null) return { text: "—", title: `${counts}; coverage unavailable` }
   const rounded = Math.round(metric.coverage * 100)

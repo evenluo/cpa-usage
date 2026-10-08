@@ -506,6 +506,20 @@ export interface UsagePercentileDistribution {
   } | null
 }
 
+export interface UsageOutputTPSDistribution {
+  population_count: number
+  sample_count: number
+  coverage: number | null
+  p50: number | null
+  /** Low tail: 90% of valid samples are at least this fast. */
+  p10: number | null
+  /** Fixed bands; `edges[i]` is band i's inclusive lower bound and the last band is open-ended. */
+  bands: {
+    edges: number[]
+    counts: number[]
+  } | null
+}
+
 export interface UsageExecutionPopulation {
   generating_streaming: number
   non_generating: number
@@ -527,7 +541,7 @@ export interface UsageAttemptPerformanceSummary {
     unknown_execution: UsagePercentileDistribution
   }
   output_tps: {
-    generating_streaming: UsagePercentileDistribution
+    generating_streaming: UsageOutputTPSDistribution
   }
 }
 

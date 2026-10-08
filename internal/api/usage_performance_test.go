@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,10 +69,14 @@ func TestUsagePerformancePayloadPreservesCoverageTopNAndSafeAccountLabel(t *test
 	counts := make([]int64, dto.UsagePerformanceHistogramBins)
 	counts[0], counts[23] = 1, 1
 	metric := dto.UsagePercentileRecord{PopulationCount: 4, SampleCount: 2, Coverage: &coverage, P50: &p50, P95: &p95, Histogram: &dto.UsageHistogramRecord{UpperBound: 900, Counts: counts}}
+	tpsP50, tpsP10 := 42.0, 18.5
+	bands := make([]int64, len(dto.UsageOutputTPSBandEdges))
+	bands[1], bands[4] = 1, 1
+	tps := dto.UsageOutputTPSDistributionRecord{PopulationCount: 2, SampleCount: 2, Coverage: &p50, P50: &tpsP50, P10: &tpsP10, Bands: bands}
 	item := dto.UsagePerformanceBreakdownItemRecord{
 		Value: "auth-1", AttemptCount: 5, SuccessfulAttempts: 4, FailedAttempts: 1,
 		SuccessfulExecution: dto.UsageExecutionPopulationRecord{GeneratingStreaming: 2, NonGenerating: 1, Unknown: 1},
-		SuccessfulLatencyMS: metric, StreamingTTFTMS: metric, StreamingOutputTPS: metric,
+		SuccessfulLatencyMS: metric, StreamingTTFTMS: metric, StreamingOutputTPS: tps,
 	}
 	record := &dto.UsageAttemptPerformanceRecord{
 		TotalAttempts: 5, SuccessfulAttempts: 4, FailedAttempts: 1,
@@ -104,5 +109,12 @@ func TestUsagePerformancePayloadPreservesCoverageTopNAndSafeAccountLabel(t *test
 	}
 	if got := decoded.LatencyMS.Successful.Histogram; got == nil || got.UpperBound != 900 || len(got.Counts) != 24 || got.Counts[0] != 1 || got.Counts[23] != 1 {
 		t.Fatalf("lost histogram counts or shared range: %s", encoded)
+	}
+	gotTPS := decoded.Accounts.Items[0].OutputTPS.GeneratingStreaming
+	if gotTPS.P10 == nil || *gotTPS.P10 != 18.5 || gotTPS.Bands == nil || len(gotTPS.Bands.Edges) != 14 || gotTPS.Bands.Edges[13] != 300 || gotTPS.Bands.Counts[4] != 1 {
+		t.Fatalf("lost TPS low tail or fixed band edges: %s", encoded)
+	}
+	if !strings.Contains(string(encoded), `"p10":18.5`) {
+		t.Fatalf("TPS payload must expose the low tail as p10: %s", encoded)
 	}
 }

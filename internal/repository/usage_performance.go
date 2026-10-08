@@ -102,9 +102,9 @@ func buildUsageAttemptPerformanceSnapshot(ctx context.Context, db *gorm.DB, filt
 		return nil, fmt.Errorf("load unknown-execution TTFT distribution: %w", err)
 	}
 	providerSelected := strings.TrimSpace(filter.Provider) != ""
-	streamingTPS := usagePercentileRecord(nil, execution.GeneratingStreaming)
+	streamingTPS := usageOutputTPSDistribution(nil, execution.GeneratingStreaming)
 	if providerSelected {
-		streamingTPS, err = loadUsageOutputTPSPercentiles(base().Where("failed = 0 AND "+knownStreamingExecutionSQL), execution.GeneratingStreaming)
+		streamingTPS, err = loadUsageOutputTPSDistribution(base().Where("failed = 0 AND "+knownStreamingExecutionSQL), execution.GeneratingStreaming)
 		if err != nil {
 			return nil, fmt.Errorf("load generating streaming Output TPS distribution: %w", err)
 		}
@@ -115,7 +115,6 @@ func buildUsageAttemptPerformanceSnapshot(ctx context.Context, db *gorm.DB, filt
 		failedLatency:  histogramUpperBound(failedLatency),
 		streamingTTFT:  histogramUpperBound(streamingTTFT),
 		unknownTTFT:    histogramUpperBound(unknownTTFT),
-		streamingTPS:   histogramUpperBound(streamingTPS),
 	}
 	providers, err := loadUsagePerformanceBreakdown(base, "provider", resultCounts.Total, true, bounds)
 	if err != nil {
@@ -181,7 +180,6 @@ type usagePerformanceHistogramBounds struct {
 	failedLatency  float64
 	streamingTTFT  float64
 	unknownTTFT    float64
-	streamingTPS   float64
 }
 
 func histogramUpperBound(distribution dto.UsagePercentileRecord) float64 {
@@ -299,7 +297,7 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 	item.FailedLatencyMS = usagePercentileRecordWithHistogram(failedLatency, item.FailedAttempts, bounds.failedLatency)
 	item.StreamingTTFTMS = usagePercentileRecordWithHistogram(streamingTTFT, item.SuccessfulExecution.GeneratingStreaming, bounds.streamingTTFT)
 	item.UnknownExecutionTTFTMS = usagePercentileRecordWithHistogram(unknownTTFT, item.SuccessfulExecution.Unknown, bounds.unknownTTFT)
-	item.StreamingOutputTPS = usagePercentileRecordWithHistogram(streamingTPS, item.SuccessfulExecution.GeneratingStreaming, bounds.streamingTPS)
+	item.StreamingOutputTPS = usageOutputTPSDistribution(streamingTPS, item.SuccessfulExecution.GeneratingStreaming)
 	return item
 }
 
@@ -332,10 +330,10 @@ func loadUsageIntegerPercentiles(query *gorm.DB, column string, populationCount 
 	return usagePercentileRecord(values, populationCount), nil
 }
 
-func loadUsageOutputTPSPercentiles(query *gorm.DB, populationCount int64) (dto.UsagePercentileRecord, error) {
+func loadUsageOutputTPSDistribution(query *gorm.DB, populationCount int64) (dto.UsageOutputTPSDistributionRecord, error) {
 	var attempts []usagePerformanceAttempt
 	if err := query.Select("'' AS dimension, " + usagePerformanceAttemptColumns).Scan(&attempts).Error; err != nil {
-		return dto.UsagePercentileRecord{}, err
+		return dto.UsageOutputTPSDistributionRecord{}, err
 	}
 	values := make([]float64, 0, len(attempts))
 	for _, attempt := range attempts {
@@ -344,7 +342,33 @@ func loadUsageOutputTPSPercentiles(query *gorm.DB, populationCount int64) (dto.U
 			values = append(values, *outputTPS)
 		}
 	}
-	return usagePercentileRecord(values, populationCount), nil
+	return usageOutputTPSDistribution(values, populationCount), nil
+}
+
+// usageOutputTPSDistribution reports the low-tail percentile and fixed-band
+// counts of valid Output TPS samples. Samples at or above the last edge share
+// the open-ended band.
+func usageOutputTPSDistribution(values []float64, populationCount int64) dto.UsageOutputTPSDistributionRecord {
+	record := dto.UsageOutputTPSDistributionRecord{PopulationCount: populationCount, SampleCount: int64(len(values))}
+	if populationCount > 0 {
+		coverage := float64(len(values)) / float64(populationCount)
+		record.Coverage = &coverage
+	}
+	if len(values) == 0 {
+		return record
+	}
+	sort.Float64s(values)
+	p50 := nearestRankPercentile(values, 0.50)
+	p10 := nearestRankPercentile(values, 0.10)
+	record.P50 = &p50
+	record.P10 = &p10
+	edges := dto.UsageOutputTPSBandEdges
+	record.Bands = make([]int64, len(edges))
+	for _, value := range values {
+		index := sort.Search(len(edges), func(i int) bool { return edges[i] > value }) - 1
+		record.Bands[max(index, 0)]++
+	}
+	return record
 }
 
 func usagePercentileRecord(values []float64, populationCount int64) dto.UsagePercentileRecord {
