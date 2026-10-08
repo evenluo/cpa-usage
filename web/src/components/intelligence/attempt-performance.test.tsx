@@ -23,9 +23,10 @@ const outputTPSBandEdges = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200
 
 function outputTPS(population: number, samples: number, p50: number | null, p10: number | null, counts?: number[]): UsageOutputTPSDistribution {
   const bands = counts ?? Array<number>(outputTPSBandEdges.length).fill(0)
-  if (counts === undefined) {
-    bands[1] = Math.floor(samples / 2)
-    bands[4] = samples - bands[1]
+  const bandOf = (value: number) => outputTPSBandEdges.filter((edge) => edge <= value).length - 1
+  if (counts === undefined && samples > 0 && p50 !== null && p10 !== null) {
+    bands[bandOf(p10)] += Math.floor(samples / 2)
+    bands[bandOf(p50)] += samples - Math.floor(samples / 2)
   }
   return { population_count: population, sample_count: samples, coverage: population === 0 ? null : samples / population, p50, p10, bands: samples > 0 ? { edges: outputTPSBandEdges, counts: bands } : null }
 }

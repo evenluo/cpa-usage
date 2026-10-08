@@ -205,10 +205,15 @@ function percentile(populationCount: number, sampleCount: number, p50: number | 
 
 const outputTPSBandEdges = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300]
 
+// Samples below the median sit in the band holding p10 and the rest in the
+// band holding p50, so nearest-rank p10/p50 agree with the band counts.
 function outputTPS(populationCount: number, sampleCount: number, p50: number | null, p10: number | null) {
   const counts = Array<number>(outputTPSBandEdges.length).fill(0)
-  counts[4] = Math.floor(sampleCount / 2)
-  counts[1] = sampleCount - counts[4]
+  const bandOf = (value: number) => outputTPSBandEdges.filter((edge) => edge <= value).length - 1
+  if (sampleCount > 0 && p50 !== null && p10 !== null) {
+    counts[bandOf(p10)] += Math.floor(sampleCount / 2)
+    counts[bandOf(p50)] += sampleCount - Math.floor(sampleCount / 2)
+  }
   return {
     population_count: populationCount,
     sample_count: sampleCount,
