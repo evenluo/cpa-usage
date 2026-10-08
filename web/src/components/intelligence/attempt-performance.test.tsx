@@ -178,8 +178,9 @@ describe("AttemptPerformance", () => {
     slow[2] = 60
     slow[5] = 40
     const fast = Array<number>(14).fill(0)
-    fast[12] = 50
-    fast[13] = 50
+    // Rank 10 (p10 = 240) falls in 200–300 and rank 50 (p50 = 300) is the first sample of the open band.
+    fast[12] = 49
+    fast[13] = 51
     data.models.items = [
       { ...data.models.items[0], value: "sonnet", label: "sonnet", attempt_count: 100, output_tps: { generating_streaming: outputTPS(100, 100, 28, 22, slow) } },
       { ...data.models.items[0], value: "haiku", label: "haiku", attempt_count: 100, output_tps: { generating_streaming: outputTPS(100, 100, 300, 240, fast) } },
@@ -192,7 +193,7 @@ describe("AttemptPerformance", () => {
     expect(sonnet.querySelectorAll("[data-heatmap-bin]")).toHaveLength(14)
     expect(sonnet.querySelector('[data-heatmap-bin="2"]')).toHaveAttribute("data-share", "0.6")
     expect(sonnet.querySelector('[data-heatmap-bin="2"]')).toHaveAttribute("title", "20–30 tok/s · 60 samples · 60.0%")
-    expect(haiku.querySelector('[data-heatmap-bin="13"]')).toHaveAttribute("title", "300+ tok/s · 50 samples · 50.0%")
+    expect(haiku.querySelector('[data-heatmap-bin="13"]')).toHaveAttribute("title", "300+ tok/s · 51 samples · 51.0%")
     // Every band is drawn at the same width regardless of its numeric span.
     expect(sonnet.querySelector<HTMLElement>('[data-heatmap-bin="2"]')?.style.width).toBe(haiku.querySelector<HTMLElement>('[data-heatmap-bin="13"]')?.style.width)
     expect(sonnet.querySelector("[data-band-scale-change]")).toHaveStyle({ left: `${10 / 14 * 100}%` })
