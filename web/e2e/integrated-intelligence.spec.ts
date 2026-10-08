@@ -147,6 +147,8 @@ test("correlated attempts keep the fixed scope and clear filters that hide sibli
 })
 
 test("dark responsive Live Capacity separates stored evidence and loads model support explicitly", async ({ page }, testInfo) => {
+  // The identity fixture ends on 2026-09-25; Live Capacity hides past ends, so pin the clock inside the fixture era.
+  await page.clock.setFixedTime(new Date("2026-09-11T07:30:00Z"))
   await setTheme(page, "dark")
   const requests: RecordedAPIRequest[] = []
   await installMockAPI(page, { onRequest: (request) => requests.push(request) })

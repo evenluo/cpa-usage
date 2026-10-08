@@ -32,6 +32,8 @@ test("mobile uses bottom navigation without the fixed desktop sidebar", async ({
 })
 
 test("dashboard controls and evidence stay inside each responsive viewport", async ({ page }) => {
+  // The identity fixture ends on 2026-09-25; Live Capacity hides past ends, so pin the clock inside the fixture era.
+  await page.clock.setFixedTime(new Date("2026-09-11T07:30:00Z"))
   let identityReads = 0
   page.on("request", (request) => {
     if (new URL(request.url()).pathname.endsWith("/api/v1/usage/identities/page")) identityReads++
