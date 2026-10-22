@@ -35,6 +35,9 @@ INSERT INTO model_price_settings (
   updated_at
 )
 VALUES
+  -- Added 2026-09-30, Standard tier, <=272K input tokens:
+  -- https://developers.openai.com/api/docs/models/gpt-6.1-sol
+  ('gpt-6.1-sol', 2.00, 10.00, 0.10, datetime('now'), datetime('now')),
   -- Added 2026-09-06, USD per 1M tokens, Standard tier:
   -- https://developers.openai.com/api/docs/models/gpt-6-astra
   -- https://platform.kimi.ai/
@@ -61,6 +64,6 @@ SELECT
   completion_price_per1_m,
   cache_price_per1_m
 FROM model_price_settings
-WHERE model IN ('gpt-6-astra', 'kimi-k3', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.3-codex')
+WHERE model IN ('gpt-6.1-sol', 'gpt-6-astra', 'kimi-k3', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'gpt-5.3-codex')
 ORDER BY model;
 SQL
