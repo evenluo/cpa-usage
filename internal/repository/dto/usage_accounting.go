@@ -9,6 +9,7 @@ type UsageAttemptFacts struct {
 	RequestServiceTier  *string
 	ResponseServiceTier *string
 	OutputTPS           *float64
+	EndToEndOutputTPS   *float64
 }
 
 // UsageAccountingRecord is either a valid canonical observation or historical

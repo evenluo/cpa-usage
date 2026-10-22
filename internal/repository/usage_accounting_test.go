@@ -63,8 +63,13 @@ func TestAccountingSumsRejectOverflowAndInvalidQuality(t *testing.T) {
 		}
 	}
 	generate, stream := true, true
-	if facts := InterpretUsageAttempt(entities.UsageEvent{UsageAccounting: valid, Generate: &generate, Stream: &stream, OutputTokens: 999, LatencyMS: 1200, TTFTMS: ptr(200)}); facts.OutputTPS == nil || *facts.OutputTPS != 30 {
-		t.Fatalf("expected canonical output including reasoning to own TPS, got %+v", facts.OutputTPS)
+	reasoningFree := valid
+	reasoningFree.CanonicalNonReasoningTokens, reasoningFree.CanonicalReasoningTokens = ptr(30), ptr(0)
+	if facts := InterpretUsageAttempt(entities.UsageEvent{UsageAccounting: reasoningFree, Generate: &generate, Stream: &stream, OutputTokens: 999, LatencyMS: 1200, TTFTMS: ptr(200)}); facts.OutputTPS == nil || *facts.OutputTPS != 30 {
+		t.Fatalf("expected canonical output, not the legacy scalar, to own TPS, got %+v", facts.OutputTPS)
+	}
+	if facts := InterpretUsageAttempt(entities.UsageEvent{UsageAccounting: valid, Generate: &generate, Stream: &stream, OutputTokens: 999, LatencyMS: 1200, TTFTMS: ptr(200)}); facts.OutputTPS != nil || facts.EndToEndOutputTPS == nil || *facts.EndToEndOutputTPS != 25 {
+		t.Fatalf("reasoning attempts must have no Output TPS and canonical End-to-end Output TPS, got %v / %v", facts.OutputTPS, facts.EndToEndOutputTPS)
 	}
 }
 
@@ -87,8 +92,18 @@ func TestAccountingDirectCutDistinguishesHistoricalAbsenceAndRequiresExplicitStr
 	ttft := int64(200)
 	trueValue, falseValue := true, false
 	base := entities.UsageEvent{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Generate: &trueValue, Stream: &trueValue}
-	if got := InterpretUsageAttempt(base).OutputTPS; got == nil || *got != 30 {
-		t.Fatalf("canonical output TPS: got %v want 30", got)
+	if got := InterpretUsageAttempt(base); got.OutputTPS != nil || got.EndToEndOutputTPS == nil || *got.EndToEndOutputTPS != 25 {
+		t.Fatalf("reasoning attempt TPS: got Output %v End-to-end %v, want nil and 25", got.OutputTPS, got.EndToEndOutputTPS)
+	}
+	reasoningFree := base
+	reasoningFree.CanonicalNonReasoningTokens, reasoningFree.CanonicalReasoningTokens = ptr(30), ptr(0)
+	if got := InterpretUsageAttempt(reasoningFree).OutputTPS; got == nil || *got != 30 {
+		t.Fatalf("reasoning-free canonical output TPS: got %v want 30", got)
+	}
+	withoutTTFT := base
+	withoutTTFT.TTFTMS = nil
+	if got := InterpretUsageAttempt(withoutTTFT).EndToEndOutputTPS; got == nil || *got != 25 {
+		t.Fatalf("End-to-end Output TPS must not require TTFT: got %v want 25", got)
 	}
 	for _, event := range []entities.UsageEvent{
 		{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Stream: &trueValue},
@@ -96,8 +111,8 @@ func TestAccountingDirectCutDistinguishesHistoricalAbsenceAndRequiresExplicitStr
 		{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Generate: &falseValue, Stream: &trueValue},
 		{UsageAccounting: valid, LatencyMS: 1200, TTFTMS: &ttft, Generate: &trueValue, Stream: &falseValue},
 	} {
-		if got := InterpretUsageAttempt(event).OutputTPS; got != nil {
-			t.Fatalf("non-generating or non-streaming attempt produced TPS: %v", got)
+		if got := InterpretUsageAttempt(event); got.OutputTPS != nil || got.EndToEndOutputTPS != nil {
+			t.Fatalf("non-generating or non-streaming attempt produced TPS: %v / %v", got.OutputTPS, got.EndToEndOutputTPS)
 		}
 	}
 }

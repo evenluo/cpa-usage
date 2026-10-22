@@ -27,7 +27,10 @@ export interface UsageAttemptFacts {
   stream: boolean | null
   request_service_tier: string | null
   response_service_tier: string | null
+  /** Null for attempts that report reasoning: TTFT cannot bound their generation window. */
   output_tps: number | null
+  /** Canonical output over the whole attempt latency, including queueing, prefill and reasoning. */
+  end_to_end_output_tps: number | null
   accounting: CanonicalComposition<number | null> & {
     state: AccountingState
     quality: AccountingQuality | null
@@ -541,6 +544,9 @@ export interface UsageAttemptPerformanceSummary {
     unknown_execution: UsagePercentileDistribution
   }
   output_tps: {
+    generating_streaming: UsageOutputTPSDistribution
+  }
+  end_to_end_output_tps: {
     generating_streaming: UsageOutputTPSDistribution
   }
 }

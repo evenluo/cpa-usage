@@ -22,7 +22,7 @@ const populatedPage: UsageEventsPage = {
     latency_ms: 10,
     ttft_ms: 2,
     attempt_facts: {
-      generate: true, stream: true, request_service_tier: null, response_service_tier: null, output_tps: 100,
+      generate: true, stream: true, request_service_tier: null, response_service_tier: null, output_tps: 100, end_to_end_output_tps: 80,
       accounting: {
         state: "valid", quality: "complete", total_tokens: 2,
         input: { total_tokens: 1, uncached_tokens: 1, cache_read_tokens: 0, cache_write_tokens: 0 },

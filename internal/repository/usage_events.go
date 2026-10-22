@@ -116,6 +116,15 @@ func usageEventOutputTPS(outputTokens, latencyMS int64, ttftMS *int64) *float64 
 	return &value
 }
 
+// usageEventEndToEndOutputTPS 是 End-to-end Output TPS 规则：output tokens 除以整个 attempt 延迟（含排队、prefill 与推理），不依赖 TTFT，是生成速度的下界。
+func usageEventEndToEndOutputTPS(outputTokens, latencyMS int64) *float64 {
+	if outputTokens <= 0 || latencyMS <= 0 {
+		return nil
+	}
+	value := float64(outputTokens) * 1000 / float64(latencyMS)
+	return &value
+}
+
 func usageEventAPIKeyIdentity(event entities.UsageEvent) string {
 	if apiGroupKey := strings.TrimSpace(event.APIGroupKey); strings.HasPrefix(apiGroupKey, "sk-") {
 		return apiGroupKey

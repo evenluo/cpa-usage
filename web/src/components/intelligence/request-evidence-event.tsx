@@ -62,6 +62,7 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
     ["Generate", formatOptionalBoolean(facts.generate)],
     ["Stream", formatOptionalBoolean(facts.stream)],
     ["TTFT", event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms)],
+    ["E2E TPS", formatOutputTPS(facts.end_to_end_output_tps)],
     ["Token data status", ACCOUNTING_STATE_LABELS[accounting.state]],
     ["Reported quality", accounting.quality ?? "-"],
     ...getCanonicalTokenFields(accounting).map(([label, value]) => [label, formatTokenCount(value)]),
@@ -69,7 +70,7 @@ function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
 
   return (
     <div className="mt-4 border-t border-terracotta-200 pt-3 dark:border-terracotta-900/60">
-      <p className="mb-3 text-xs text-muted-foreground">Token counts come from the upstream provider. Missing values are shown as "-". Output TPS requires complete token data for streaming requests.</p>
+      <p className="mb-3 text-xs text-muted-foreground">Token counts come from the upstream provider. Missing values are shown as "-". Output TPS requires complete token data for streaming requests without reasoning tokens. E2E TPS divides all output by total latency.</p>
       <dl className="grid min-w-0 gap-x-4 gap-y-3 sm:grid-cols-2">
         {fields.map(([label, value]) => (
           <div key={label} className="min-w-0">

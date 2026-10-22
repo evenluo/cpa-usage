@@ -73,10 +73,12 @@ func TestUsagePerformancePayloadPreservesCoverageTopNAndSafeAccountLabel(t *test
 	bands := make([]int64, len(dto.UsageOutputTPSBandEdges))
 	bands[1], bands[4] = 1, 1
 	tps := dto.UsageOutputTPSDistributionRecord{PopulationCount: 2, SampleCount: 2, Coverage: &p50, P50: &tpsP50, P10: &tpsP10, Bands: bands}
+	endToEndP50, endToEndP10 := 31.0, 12.0
+	endToEndTPS := dto.UsageOutputTPSDistributionRecord{PopulationCount: 2, SampleCount: 2, Coverage: &p50, P50: &endToEndP50, P10: &endToEndP10, Bands: bands}
 	item := dto.UsagePerformanceBreakdownItemRecord{
 		Value: "auth-1", AttemptCount: 5, SuccessfulAttempts: 4, FailedAttempts: 1,
 		SuccessfulExecution: dto.UsageExecutionPopulationRecord{GeneratingStreaming: 2, NonGenerating: 1, Unknown: 1},
-		SuccessfulLatencyMS: metric, StreamingTTFTMS: metric, StreamingOutputTPS: tps,
+		SuccessfulLatencyMS: metric, StreamingTTFTMS: metric, StreamingOutputTPS: tps, StreamingEndToEndTPS: endToEndTPS,
 	}
 	record := &dto.UsageAttemptPerformanceRecord{
 		TotalAttempts: 5, SuccessfulAttempts: 4, FailedAttempts: 1,
@@ -113,6 +115,10 @@ func TestUsagePerformancePayloadPreservesCoverageTopNAndSafeAccountLabel(t *test
 	gotTPS := decoded.Accounts.Items[0].OutputTPS.GeneratingStreaming
 	if gotTPS.P10 == nil || *gotTPS.P10 != 18.5 || gotTPS.Bands == nil || len(gotTPS.Bands.Edges) != 14 || gotTPS.Bands.Edges[13] != 300 || gotTPS.Bands.Counts[4] != 1 {
 		t.Fatalf("lost TPS low tail or fixed band edges: %s", encoded)
+	}
+	gotEndToEnd := decoded.Accounts.Items[0].EndToEndOutputTPS.GeneratingStreaming
+	if gotEndToEnd.P50 == nil || *gotEndToEnd.P50 != 31 || gotEndToEnd.P10 == nil || *gotEndToEnd.P10 != 12 || gotEndToEnd.Bands == nil || len(gotEndToEnd.Bands.Edges) != 14 {
+		t.Fatalf("lost End-to-end Output TPS distribution: %s", encoded)
 	}
 	if !strings.Contains(string(encoded), `"p10":18.5`) {
 		t.Fatalf("TPS payload must expose the low tail as p10: %s", encoded)

@@ -39,6 +39,7 @@ function summary(): UsageAttemptPerformanceSummary {
     latency_ms: { successful: metric(18, 18, 500, 9_000), failed: metric(2, 1, 12_000, 12_000) },
     ttft_ms: { generating_streaming: metric(10, 8, 120, 1_500), unknown_execution: metric(5, 0, null, null) },
     output_tps: { generating_streaming: outputTPS(10, 7, 42, 18) },
+    end_to_end_output_tps: { generating_streaming: outputTPS(10, 9, 31, 12) },
   }
 }
 
@@ -170,6 +171,12 @@ describe("AttemptPerformance", () => {
     expect(equalPercentiles.querySelector('[data-percentile="p50"]')).toHaveStyle({ left: "30%" })
     expect(equalPercentiles.querySelector('[data-percentile="p10"]')).toHaveStyle({ left: "30%" })
     expect(screen.getAllByLabelText("Overall selected metric")[0]).toHaveTextContent("p10 18.0 tok/s")
+
+    fireEvent.click(within(metrics).getByRole("button", { name: "E2E TPS" }))
+    expect(within(metrics).getByRole("button", { name: "E2E TPS" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getAllByLabelText("Overall selected metric")[0]).toHaveTextContent("Overall p50 31.0 tok/s")
+    expect(screen.getAllByLabelText("Overall selected metric")[0]).toHaveTextContent("p10 12.0 tok/s")
+    expect(within(screen.getByRole("region", { name: "Accounts" })).getByRole("img", { name: "Claude Primary: p50 31.0 tok/s, p10 12.0 tok/s" })).toBeInTheDocument()
   })
 
   it("keeps slow throughput legible in fixed 10 tok/s bands beside a fast model and leaves the open band unstretched", () => {

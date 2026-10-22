@@ -17,9 +17,13 @@ Historical events retain attempt counts, status and timing, with absent canonica
 
 ## Execution and Cost
 
-Output TPS = canonical output total × 1000 / (latency_ms − ttft_ms). It includes reasoning tokens and requires complete-quality canonical facts, `generate=true`, `stream=true`, positive output/TTFT, and latency greater than TTFT. Unknown historical execution never supplies TPS. This is a token throughput observation; provider/model tokenization and workloads still affect comparisons.
+Output TPS = canonical output total × 1000 / (latency_ms − ttft_ms). It requires zero canonical reasoning tokens, complete-quality canonical facts, `generate=true`, `stream=true`, positive output/TTFT, and latency greater than TTFT. CPA marks TTFT on the first client-visible token; when a provider hides or summarizes reasoning, generation starts before TTFT while the output total still counts reasoning, so the ratio overstates speed (observed above 1,000 tok/s). Usage records carry no generation-start time and CPA declined to add one ([router-for-me/CLIProxyAPI#6485](https://github.com/router-for-me/CLIProxyAPI/issues/6485)); whether reasoning was streamed is not observable, so no reasoning-attempt formula is valid for every request.
 
-Request Evidence exposes tokens, execution, Output TPS and service tiers only under `attempt_facts`, with no duplicate top-level projections or client fallbacks. Requested and response service tier are distinct optional observations. Neither establishes prices or billing multipliers.
+End-to-end Output TPS = canonical output total × 1000 / latency_ms. It includes reasoning tokens and requires complete-quality canonical facts, `generate=true`, `stream=true`, positive output and positive latency; it does not require TTFT. Its denominator includes queueing, prefill and reasoning, so it never exceeds generation speed and reads lowest for long-input, short-output attempts.
+
+Unknown historical execution never supplies either rate. Both are token throughput observations; provider/model tokenization and workloads still affect comparisons.
+
+Request Evidence exposes tokens, execution, Output TPS, End-to-end Output TPS and service tiers only under `attempt_facts`, with no duplicate top-level projections or client fallbacks. Requested and response service tier are distinct optional observations. Neither establishes prices or billing multipliers.
 
 Local three-rate Cost uses complete canonical facts only: uncached plus cache-write input at the prompt rate, cache-read input at the cache rate, and total canonical output at the completion rate. Existing operator rates and aliases remain untouched. Missing pricing, unavailable accounting or non-complete quality must qualify Cost as incomplete/unavailable. This defined local estimate is not an upstream bill.
 

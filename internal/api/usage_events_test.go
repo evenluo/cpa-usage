@@ -23,7 +23,7 @@ import (
 func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T) {
 	statusCode := 429
 	ttftMS := int64(12)
-	outputTPS := 34.5
+	outputTPS, endToEndOutputTPS := 34.5, 12.25
 	canonicalInput, canonicalOutput, canonicalReasoning := int64(6), int64(3), int64(1)
 	canonicalCacheRead, canonicalCacheWrite, canonicalUnclassified, canonicalTotal := int64(1), int64(2), int64(1), int64(10)
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
@@ -31,7 +31,7 @@ func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T
 		Provider: "\t=provider", Source: "sk-live-secret-value", AuthType: "apikey", AuthIndex: "auth-1",
 		APIKeyIdentity: "sk-live-secret-value", Model: "\n=model", ModelAlias: "@别名\"quoted", Endpoint: "/v1/messages?api_key=secret",
 		RequestID: "\r+request", Failed: true, StatusCode: &statusCode, LatencyMS: 80, TTFTMS: &ttftMS,
-		AttemptFacts: dto.UsageAttemptFacts{OutputTPS: &outputTPS, Accounting: dto.UsageAccountingRecord{
+		AttemptFacts: dto.UsageAttemptFacts{OutputTPS: &outputTPS, EndToEndOutputTPS: &endToEndOutputTPS, Accounting: dto.UsageAccountingRecord{
 			State: "valid", TotalTokens: &canonicalTotal,
 			Input:              dto.UsageTokenInput{TotalTokens: &canonicalInput, CacheReadTokens: &canonicalCacheRead, CacheWriteTokens: &canonicalCacheWrite},
 			Output:             dto.UsageTokenOutput{TotalTokens: &canonicalOutput, ReasoningTokens: &canonicalReasoning},
@@ -83,8 +83,8 @@ func TestUsageEventsExportUsesTheExactSelectionAndSafeCSVProjection(t *testing.T
 	if row[6] != "/v1/messages" || strings.Contains(resp.Body.String(), "sk-live-secret-value") || strings.Contains(resp.Body.String(), "api_key=secret") || strings.Contains(resp.Body.String(), "auth-1") || strings.Contains(resp.Body.String(), "provider") {
 		t.Fatalf("expected only safe endpoint and no raw identity material, got %q", resp.Body.String())
 	}
-	if row[8] != "failed" || row[9] != "429" || row[10] != "80" || row[11] != "12" || row[12] != "34.5" ||
-		strings.Join(row[13:20], ",") != "6,3,1,1,2,1,10" {
+	if row[8] != "failed" || row[9] != "429" || row[10] != "80" || row[11] != "12" || row[12] != "34.5" || row[13] != "12.25" ||
+		strings.Join(row[14:21], ",") != "6,3,1,1,2,1,10" {
 		t.Fatalf("unexpected CSV units or empty semantics: %#v", row)
 	}
 }
@@ -337,6 +337,7 @@ func (s *usageEventsStub) GetUsageAnalysis(context.Context, dto.UsageTimeScope) 
 func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	ttftMS := int64(1052)
 	outputTPS := 48.33358094488189
+	endToEndOutputTPS := 12.5
 	statusCode := 200
 	canonicalInput := int64(10)
 	canonicalUncached := int64(6)
@@ -352,7 +353,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	responseTier := "default"
 	provider := &usageEventsStub{events: []dto.UsageEventRecord{{
 		AttemptFacts: dto.UsageAttemptFacts{
-			Generate: &generate, Stream: &stream, RequestServiceTier: &requestTier, ResponseServiceTier: &responseTier, OutputTPS: &outputTPS,
+			Generate: &generate, Stream: &stream, RequestServiceTier: &requestTier, ResponseServiceTier: &responseTier, OutputTPS: &outputTPS, EndToEndOutputTPS: &endToEndOutputTPS,
 			Accounting: dto.UsageAccountingRecord{
 				State: "valid", Quality: &quality, TotalTokens: &canonicalTotal,
 				Input:              dto.UsageTokenInput{TotalTokens: &canonicalInput, UncachedTokens: &canonicalUncached, CacheReadTokens: &canonicalZero, CacheWriteTokens: &canonicalOutput},
@@ -405,7 +406,7 @@ func TestUsageEventsReturnsFilteredRows(t *testing.T) {
 	if !contains(body, `"auth_index":"2"`) {
 		t.Fatalf("expected auth index in response body: %s", body)
 	}
-	if !contains(body, `"ttft_ms":1052`) || !contains(body, `"output_tps":48.33358094488189`) {
+	if !contains(body, `"ttft_ms":1052`) || !contains(body, `"output_tps":48.33358094488189`) || !contains(body, `"end_to_end_output_tps":12.5`) {
 		t.Fatalf("expected TTFT and Output TPS in response body: %s", body)
 	}
 	if strings.Count(body, `"output_tps":`) != 1 || contains(body, `"tokens":`) || contains(body, `"service_tier":`) {
@@ -485,10 +486,10 @@ func TestUsageEventsReturnsUnavailableOutputTPSAsNull(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", resp.Code)
 	}
 	body := resp.Body.String()
-	if !contains(body, `"ttft_ms":null`) || strings.Count(body, `"output_tps":null`) != 1 {
+	if !contains(body, `"ttft_ms":null`) || strings.Count(body, `"output_tps":null`) != 1 || strings.Count(body, `"end_to_end_output_tps":null`) != 1 {
 		t.Fatalf("expected missing TTFT and Output TPS to remain null: %s", body)
 	}
-	if !contains(body, `"attempt_facts":{"generate":null,"stream":null,"request_service_tier":null,"response_service_tier":null,"output_tps":null,"accounting":{"state":"absent"`) ||
+	if !contains(body, `"attempt_facts":{"generate":null,"stream":null,"request_service_tier":null,"response_service_tier":null,"output_tps":null,"end_to_end_output_tps":null,"accounting":{"state":"absent"`) ||
 		!contains(body, `"quality":null`) || !contains(body, `"unclassified_tokens":null`) {
 		t.Fatalf("expected absent attempt facts to remain explicit nulls: %s", body)
 	}

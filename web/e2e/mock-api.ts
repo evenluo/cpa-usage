@@ -79,12 +79,13 @@ export const usageEvents = Array.from({ length: 11 }, (_, index) => ({
       request_service_tier: null,
       response_service_tier: null,
       output_tps: index === 0 ? 48.33358094488189 : null,
+      end_to_end_output_tps: index === 0 ? 45.94022122852436 : null,
       accounting: index === 0 ? {
         state: "valid",
         quality: "complete",
         total_tokens: 105_091,
         input: { total_tokens: 104_115, uncached_tokens: 104_095, cache_read_tokens: 20, cache_write_tokens: 0 },
-        output: { total_tokens: 976, non_reasoning_tokens: 876, reasoning_tokens: 100 },
+        output: { total_tokens: 976, non_reasoning_tokens: 976, reasoning_tokens: 0 },
         unclassified_tokens: 0,
       } : {
         state: "absent",
@@ -239,11 +240,17 @@ const performanceSummary = {
   output_tps: {
     generating_streaming: outputTPS(10, 7, 42, 18),
   },
+  end_to_end_output_tps: {
+    generating_streaming: outputTPS(10, 9, 31, 12),
+  },
 }
 
 const performanceSummaryWithoutComparableTPS = {
   ...performanceSummary,
   output_tps: {
+    generating_streaming: outputTPS(10, 0, null, null),
+  },
+  end_to_end_output_tps: {
     generating_streaming: outputTPS(10, 0, null, null),
   },
 }

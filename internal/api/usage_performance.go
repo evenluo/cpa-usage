@@ -18,6 +18,7 @@ type usageAttemptPerformanceResponse struct {
 	LatencyMS           usageResultPercentilesPayload    `json:"latency_ms"`
 	TTFTMS              usageTTFTPercentilesPayload      `json:"ttft_ms"`
 	OutputTPS           usageOutputTPSPercentilesPayload `json:"output_tps"`
+	EndToEndOutputTPS   usageOutputTPSPercentilesPayload `json:"end_to_end_output_tps"`
 	Providers           usagePerformanceBreakdownPayload `json:"providers"`
 	Models              usagePerformanceBreakdownPayload `json:"models"`
 	Accounts            usagePerformanceBreakdownPayload `json:"accounts"`
@@ -89,6 +90,7 @@ type usagePerformanceBreakdownItemPayload struct {
 	LatencyMS           usageResultPercentilesPayload    `json:"latency_ms"`
 	TTFTMS              usageTTFTPercentilesPayload      `json:"ttft_ms"`
 	OutputTPS           usageOutputTPSPercentilesPayload `json:"output_tps"`
+	EndToEndOutputTPS   usageOutputTPSPercentilesPayload `json:"end_to_end_output_tps"`
 }
 
 func registerUsagePerformanceRoute(router gin.IRoutes, usageProvider UsageProvider, usageIdentityProvider UsageIdentityProvider) {
@@ -147,6 +149,9 @@ func buildUsageAttemptPerformancePayload(filter usageDiagnosticFilter, record *r
 		OutputTPS: usageOutputTPSPercentilesPayload{
 			GeneratingStreaming: buildUsageOutputTPSPayload(record.StreamingOutputTPS),
 		},
+		EndToEndOutputTPS: usageOutputTPSPercentilesPayload{
+			GeneratingStreaming: buildUsageOutputTPSPayload(record.StreamingEndToEndTPS),
+		},
 		Providers: buildUsagePerformanceBreakdownPayload(record.Providers, identityLabel),
 		Models:    buildUsagePerformanceBreakdownPayload(record.Models, identityLabel),
 		Accounts: buildUsagePerformanceBreakdownPayload(record.Accounts, func(value string) string {
@@ -183,6 +188,9 @@ func buildUsagePerformanceBreakdownPayload(record repodto.UsagePerformanceBreakd
 			},
 			OutputTPS: usageOutputTPSPercentilesPayload{
 				GeneratingStreaming: buildUsageOutputTPSPayload(item.StreamingOutputTPS),
+			},
+			EndToEndOutputTPS: usageOutputTPSPercentilesPayload{
+				GeneratingStreaming: buildUsageOutputTPSPayload(item.StreamingEndToEndTPS),
 			},
 		})
 	}

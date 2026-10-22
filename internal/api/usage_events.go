@@ -76,6 +76,7 @@ var usageEventsCSVHeader = []string{
 	"latency_ms",
 	"ttft_ms",
 	"output_tps",
+	"end_to_end_output_tps",
 	"canonical_input_tokens",
 	"canonical_output_tokens",
 	"canonical_reasoning_tokens",
@@ -91,6 +92,7 @@ type usageAttemptFactsPayload struct {
 	RequestServiceTier  *string                       `json:"request_service_tier"`
 	ResponseServiceTier *string                       `json:"response_service_tier"`
 	OutputTPS           *float64                      `json:"output_tps"`
+	EndToEndOutputTPS   *float64                      `json:"end_to_end_output_tps"`
 	Accounting          usageAttemptAccountingPayload `json:"accounting"`
 }
 
@@ -265,6 +267,7 @@ func encodeUsageEventsCSV(events []usageEventPayload) ([]byte, error) {
 			strconv.FormatInt(event.LatencyMS, 10),
 			formatUsageEventsCSVInt(event.TTFTMS),
 			formatUsageEventsCSVFloat(event.AttemptFacts.OutputTPS),
+			formatUsageEventsCSVFloat(event.AttemptFacts.EndToEndOutputTPS),
 			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Input.TotalTokens),
 			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Output.TotalTokens),
 			formatUsageEventsCSVInt(event.AttemptFacts.Accounting.Output.ReasoningTokens),
@@ -417,6 +420,7 @@ func mapUsageAttemptFactsPayload(facts repodto.UsageAttemptFacts) usageAttemptFa
 		RequestServiceTier:  facts.RequestServiceTier,
 		ResponseServiceTier: facts.ResponseServiceTier,
 		OutputTPS:           facts.OutputTPS,
+		EndToEndOutputTPS:   facts.EndToEndOutputTPS,
 		Accounting: usageAttemptAccountingPayload{
 			State:       facts.Accounting.State,
 			Quality:     facts.Accounting.Quality,

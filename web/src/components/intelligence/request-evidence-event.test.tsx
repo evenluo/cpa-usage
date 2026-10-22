@@ -18,7 +18,7 @@ const event: UsageEvent = {
   latency_ms: 1_000,
   ttft_ms: 100,
   attempt_facts: {
-    generate: true, stream: null, request_service_tier: "priority", response_service_tier: null, output_tps: 42,
+    generate: true, stream: null, request_service_tier: "priority", response_service_tier: null, output_tps: 42, end_to_end_output_tps: 31.5,
     accounting: {
       state: "valid", quality: "complete",
       total_tokens: 100,
@@ -59,6 +59,7 @@ describe("RequestEvidenceEvent", () => {
     expect(screen.getByText("req-123")).toBeInTheDocument()
     expect(screen.getAllByText("50")).toHaveLength(2)
     expect(screen.getByText("42.0 tok/s")).toBeInTheDocument()
+    expect(screen.getByText("E2E TPS").nextElementSibling).toHaveTextContent("31.5 tok/s")
     expect(screen.getByText("4")).toBeInTheDocument()
     expect(screen.getByText("0")).toBeInTheDocument()
     expect(screen.getByText("5")).toBeInTheDocument()
@@ -79,7 +80,7 @@ describe("RequestEvidenceEvent", () => {
     render(<RequestEvidenceEvent label="Selected attempt" detail event={{
       ...event,
       attempt_facts: {
-        generate: false, stream: null, request_service_tier: "priority", response_service_tier: "default", output_tps: null,
+        generate: false, stream: null, request_service_tier: "priority", response_service_tier: "default", output_tps: null, end_to_end_output_tps: null,
         accounting: {
           state: "valid", quality: "inconsistent",
           total_tokens: 999,
@@ -98,11 +99,12 @@ describe("RequestEvidenceEvent", () => {
     expect(value("Generate")).toHaveTextContent("No")
     expect(value("Stream")).toHaveTextContent("Unknown")
     expect(value("Output TPS")).toHaveTextContent("-")
+    expect(value("E2E TPS")).toHaveTextContent("-")
   })
 
   it("does not synthesize canonical facts or response tier for historical evidence", () => {
     render(<RequestEvidenceEvent event={{ ...event, attempt_facts: {
-      generate: null, stream: null, request_service_tier: null, response_service_tier: null, output_tps: null,
+      generate: null, stream: null, request_service_tier: null, response_service_tier: null, output_tps: null, end_to_end_output_tps: null,
       accounting: {
         state: "absent", quality: null, total_tokens: null,
         input: { total_tokens: null, uncached_tokens: null, cache_read_tokens: null, cache_write_tokens: null },

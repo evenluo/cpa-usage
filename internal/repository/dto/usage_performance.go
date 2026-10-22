@@ -12,6 +12,7 @@ type UsageAttemptPerformanceRecord struct {
 	StreamingTTFTMS        UsagePercentileRecord
 	UnknownExecutionTTFTMS UsagePercentileRecord
 	StreamingOutputTPS     UsageOutputTPSDistributionRecord
+	StreamingEndToEndTPS   UsageOutputTPSDistributionRecord
 	Providers              UsagePerformanceBreakdownRecord
 	Models                 UsagePerformanceBreakdownRecord
 	Accounts               UsagePerformanceBreakdownRecord
@@ -35,6 +36,7 @@ type UsagePerformanceBreakdownItemRecord struct {
 	StreamingTTFTMS        UsagePercentileRecord
 	UnknownExecutionTTFTMS UsagePercentileRecord
 	StreamingOutputTPS     UsageOutputTPSDistributionRecord
+	StreamingEndToEndTPS   UsageOutputTPSDistributionRecord
 }
 
 // UsageExecutionPopulationRecord is an exhaustive, non-overlapping partition
@@ -72,6 +74,7 @@ const UsagePerformanceHistogramBins = 24
 // so 90% of valid samples are at least that fast. Bands are fixed perceptual
 // intervals rather than a data-dependent equal-width histogram, so a slow model
 // keeps its resolution next to a fast one and bands compare across snapshots.
+// End-to-end Output TPS uses the same shape and bands.
 type UsageOutputTPSDistributionRecord struct {
 	PopulationCount int64
 	SampleCount     int64

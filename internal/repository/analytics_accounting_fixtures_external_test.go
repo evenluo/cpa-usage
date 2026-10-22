@@ -116,11 +116,17 @@ func TestPinnedAccountingFixturesPreserveCanonicalRawHybridRollupAndEvidenceSema
 			byProvider[event.Provider] = event
 		}
 	}
-	expectedTPS := map[string]float64{"gemini": 42, "claude": 30}
-	for provider, wantTPS := range expectedTPS {
+	// Both fixtures report reasoning, so TTFT cannot bound their generation
+	// window: Output TPS is unavailable and End-to-end Output TPS uses the
+	// canonical output total over the whole 1200 ms attempt.
+	expectedEndToEndTPS := map[string]float64{"gemini": 35, "claude": 25}
+	for provider, wantTPS := range expectedEndToEndTPS {
 		evidence := byProvider[provider]
-		if evidence.AttemptFacts.OutputTPS == nil || math.Abs(*evidence.AttemptFacts.OutputTPS-wantTPS) > 1e-9 {
-			t.Fatalf("%s evidence must use canonical output total for TPS, got %+v", provider, evidence.AttemptFacts)
+		if evidence.AttemptFacts.OutputTPS != nil {
+			t.Fatalf("%s reasoning evidence must not report Output TPS, got %+v", provider, evidence.AttemptFacts)
+		}
+		if evidence.AttemptFacts.EndToEndOutputTPS == nil || math.Abs(*evidence.AttemptFacts.EndToEndOutputTPS-wantTPS) > 1e-9 {
+			t.Fatalf("%s evidence must use canonical output total for End-to-end Output TPS, got %+v", provider, evidence.AttemptFacts)
 		}
 		if evidence.AttemptFacts.Accounting.Output.ReasoningTokens == nil || *evidence.AttemptFacts.Accounting.Output.ReasoningTokens != 12 {
 			t.Fatalf("%s evidence lost canonical reasoning bucket: %+v", provider, evidence.AttemptFacts.Accounting)

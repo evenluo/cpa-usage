@@ -102,8 +102,9 @@ func TestAccountingDirectCutAcrossIntakeAnalyticsEvidenceAndExport(t *testing.T)
 		Events []struct {
 			RequestID    string `json:"request_id"`
 			AttemptFacts struct {
-				OutputTPS  *float64 `json:"output_tps"`
-				Accounting struct {
+				OutputTPS         *float64 `json:"output_tps"`
+				EndToEndOutputTPS *float64 `json:"end_to_end_output_tps"`
+				Accounting        struct {
 					Total  *int64 `json:"total_tokens"`
 					Output struct {
 						Total *int64 `json:"total_tokens"`
@@ -120,10 +121,11 @@ func TestAccountingDirectCutAcrossIntakeAnalyticsEvidenceAndExport(t *testing.T)
 	}
 	for _, row := range evidence.Events {
 		if row.RequestID == event.RequestID {
-			if row.AttemptFacts.Accounting.Total == nil || *row.AttemptFacts.Accounting.Total != 142 || row.AttemptFacts.Accounting.Output.Total == nil || *row.AttemptFacts.Accounting.Output.Total != 42 || row.AttemptFacts.OutputTPS == nil || *row.AttemptFacts.OutputTPS != 42 {
+			if row.AttemptFacts.Accounting.Total == nil || *row.AttemptFacts.Accounting.Total != 142 || row.AttemptFacts.Accounting.Output.Total == nil || *row.AttemptFacts.Accounting.Output.Total != 42 ||
+				row.AttemptFacts.OutputTPS != nil || row.AttemptFacts.EndToEndOutputTPS == nil || *row.AttemptFacts.EndToEndOutputTPS != 35 {
 				t.Fatalf("evidence uses another token unit: %+v", row)
 			}
-		} else if row.AttemptFacts.Accounting.Total != nil || row.AttemptFacts.OutputTPS != nil {
+		} else if row.AttemptFacts.Accounting.Total != nil || row.AttemptFacts.OutputTPS != nil || row.AttemptFacts.EndToEndOutputTPS != nil {
 			t.Fatalf("historical absence became a scalar fallback: %+v", row)
 		}
 	}
