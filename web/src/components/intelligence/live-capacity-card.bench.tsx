@@ -1,5 +1,5 @@
 import { cleanup, render } from "@testing-library/react"
-import { bench, describe, expect, vi } from "vitest"
+import { describe, expect, test, vi } from "vitest"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 import {
   buildLiveCapacityRows,
@@ -150,21 +150,29 @@ for (const fixture of [capacity100x8, capacity100x64, capacity20x64]) {
 }
 
 describe("Live Capacity scale", () => {
-  bench("build rows: 100 accounts x 8 quota rows", () => {
-    liveCapacityRowsSink = capacityRows(capacity100x8)
-    void liveCapacityRowsSink.length
+  test("build rows: 100 accounts x 8 quota rows", async ({ bench }) => {
+    await bench("build rows: 100 accounts x 8 quota rows", () => {
+      liveCapacityRowsSink = capacityRows(capacity100x8)
+      void liveCapacityRowsSink.length
+    }).run()
   })
 
-  bench("build rows: 100 accounts x 64 quota rows", () => {
-    liveCapacityRowsSink = capacityRows(capacity100x64)
-    void liveCapacityRowsSink.length
+  test("build rows: 100 accounts x 64 quota rows", async ({ bench }) => {
+    await bench("build rows: 100 accounts x 64 quota rows", () => {
+      liveCapacityRowsSink = capacityRows(capacity100x64)
+      void liveCapacityRowsSink.length
+    }).run()
   })
 
-  bench("render+cleanup: 100 accounts x 8 quota rows", () => {
-    renderAndCleanup(capacity100x8)
+  test("render+cleanup: 100 accounts x 8 quota rows", async ({ bench }) => {
+    await bench("render+cleanup: 100 accounts x 8 quota rows", () => {
+      renderAndCleanup(capacity100x8)
+    }).run()
   })
 
-  bench("render+cleanup: 20 accounts x 64 quota rows", () => {
-    renderAndCleanup(capacity20x64)
+  test("render+cleanup: 20 accounts x 64 quota rows", async ({ bench }) => {
+    await bench("render+cleanup: 20 accounts x 64 quota rows", () => {
+      renderAndCleanup(capacity20x64)
+    }).run()
   })
 })
