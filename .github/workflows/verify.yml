@@ -29,7 +29,7 @@ jobs:
       - name: Vulnerability scan (govulncheck)
         run: |
           # Keep the scanner compatible with the Go version in go.mod.
-          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./cmd/... ./internal/...
 
       - name: Verify backend
