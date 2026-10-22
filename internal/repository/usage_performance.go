@@ -103,10 +103,11 @@ func buildUsageAttemptPerformanceSnapshot(ctx context.Context, db *gorm.DB, filt
 	}
 	providerSelected := strings.TrimSpace(filter.Provider) != ""
 	streamingTPS := usageOutputTPSDistribution(nil, execution.GeneratingStreaming)
+	streamingEndToEndTPS := usageOutputTPSDistribution(nil, execution.GeneratingStreaming)
 	if providerSelected {
-		streamingTPS, err = loadUsageOutputTPSDistribution(base().Where("failed = 0 AND "+knownStreamingExecutionSQL), execution.GeneratingStreaming)
+		streamingTPS, streamingEndToEndTPS, err = loadUsageThroughputDistributions(base().Where("failed = 0 AND "+knownStreamingExecutionSQL), execution.GeneratingStreaming)
 		if err != nil {
-			return nil, fmt.Errorf("load generating streaming Output TPS distribution: %w", err)
+			return nil, fmt.Errorf("load generating streaming throughput distributions: %w", err)
 		}
 	}
 
@@ -139,6 +140,7 @@ func buildUsageAttemptPerformanceSnapshot(ctx context.Context, db *gorm.DB, filt
 		StreamingTTFTMS:        streamingTTFT,
 		UnknownExecutionTTFTMS: unknownTTFT,
 		StreamingOutputTPS:     streamingTPS,
+		StreamingEndToEndTPS:   streamingEndToEndTPS,
 		Providers:              providers,
 		Models:                 models,
 		Accounts:               accounts,
@@ -258,6 +260,7 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 	streamingTTFT := make([]float64, 0, len(attempts))
 	unknownTTFT := make([]float64, 0, len(attempts))
 	streamingTPS := make([]float64, 0, len(attempts))
+	streamingEndToEndTPS := make([]float64, 0, len(attempts))
 	for _, attempt := range attempts {
 		if attempt.Failed {
 			item.FailedAttempts++
@@ -278,8 +281,12 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 				streamingTTFT = append(streamingTTFT, float64(*attempt.TTFTMS))
 			}
 			if includeOutputTPS {
-				if outputTPS := InterpretUsageAttempt(attempt.entity()).OutputTPS; outputTPS != nil {
-					streamingTPS = append(streamingTPS, *outputTPS)
+				facts := InterpretUsageAttempt(attempt.entity())
+				if facts.OutputTPS != nil {
+					streamingTPS = append(streamingTPS, *facts.OutputTPS)
+				}
+				if facts.EndToEndOutputTPS != nil {
+					streamingEndToEndTPS = append(streamingEndToEndTPS, *facts.EndToEndOutputTPS)
 				}
 			}
 		case "non_generating":
@@ -298,6 +305,7 @@ func summarizeUsagePerformanceGroup(value string, attempts []usagePerformanceAtt
 	item.StreamingTTFTMS = usagePercentileRecordWithHistogram(streamingTTFT, item.SuccessfulExecution.GeneratingStreaming, bounds.streamingTTFT)
 	item.UnknownExecutionTTFTMS = usagePercentileRecordWithHistogram(unknownTTFT, item.SuccessfulExecution.Unknown, bounds.unknownTTFT)
 	item.StreamingOutputTPS = usageOutputTPSDistribution(streamingTPS, item.SuccessfulExecution.GeneratingStreaming)
+	item.StreamingEndToEndTPS = usageOutputTPSDistribution(streamingEndToEndTPS, item.SuccessfulExecution.GeneratingStreaming)
 	return item
 }
 
@@ -330,23 +338,29 @@ func loadUsageIntegerPercentiles(query *gorm.DB, column string, populationCount 
 	return usagePercentileRecord(values, populationCount), nil
 }
 
-func loadUsageOutputTPSDistribution(query *gorm.DB, populationCount int64) (dto.UsageOutputTPSDistributionRecord, error) {
+// loadUsageThroughputDistributions interprets each attempt once and returns
+// the Output TPS and End-to-end Output TPS distributions of the same population.
+func loadUsageThroughputDistributions(query *gorm.DB, populationCount int64) (dto.UsageOutputTPSDistributionRecord, dto.UsageOutputTPSDistributionRecord, error) {
 	var attempts []usagePerformanceAttempt
 	if err := query.Select("'' AS dimension, " + usagePerformanceAttemptColumns).Scan(&attempts).Error; err != nil {
-		return dto.UsageOutputTPSDistributionRecord{}, err
+		return dto.UsageOutputTPSDistributionRecord{}, dto.UsageOutputTPSDistributionRecord{}, err
 	}
-	values := make([]float64, 0, len(attempts))
+	outputTPS := make([]float64, 0, len(attempts))
+	endToEndTPS := make([]float64, 0, len(attempts))
 	for _, attempt := range attempts {
-		event := attempt.entity()
-		if outputTPS := InterpretUsageAttempt(event).OutputTPS; outputTPS != nil {
-			values = append(values, *outputTPS)
+		facts := InterpretUsageAttempt(attempt.entity())
+		if facts.OutputTPS != nil {
+			outputTPS = append(outputTPS, *facts.OutputTPS)
+		}
+		if facts.EndToEndOutputTPS != nil {
+			endToEndTPS = append(endToEndTPS, *facts.EndToEndOutputTPS)
 		}
 	}
-	return usageOutputTPSDistribution(values, populationCount), nil
+	return usageOutputTPSDistribution(outputTPS, populationCount), usageOutputTPSDistribution(endToEndTPS, populationCount), nil
 }
 
 // usageOutputTPSDistribution reports the low-tail percentile and fixed-band
-// counts of valid Output TPS samples. Samples at or above the last edge share
+// counts of valid Output TPS or End-to-end Output TPS samples. Samples at or above the last edge share
 // the open-ended band.
 func usageOutputTPSDistribution(values []float64, populationCount int64) dto.UsageOutputTPSDistributionRecord {
 	record := dto.UsageOutputTPSDistributionRecord{PopulationCount: populationCount, SampleCount: int64(len(values))}

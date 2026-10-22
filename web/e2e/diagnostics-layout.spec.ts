@@ -26,6 +26,7 @@ const performance = withHistograms({
     unknown_execution: { population_count: 0, sample_count: 0, coverage: null, p50: null, p95: null },
   },
   output_tps: { generating_streaming: { population_count: 1199, sample_count: 1199, coverage: 1, p50: 43.6, p10: 18.4 } },
+  end_to_end_output_tps: { generating_streaming: { population_count: 1199, sample_count: 1199, coverage: 1, p50: 31.2, p10: 12.6 } },
   providers: { items: [], other_count: 1200 },
   accounts: { items: [], other_count: 1200 },
   models: {
@@ -43,6 +44,7 @@ const performance = withHistograms({
         unknown_execution: { population_count: 0, sample_count: 0, coverage: null, p50: null, p95: null },
       },
       output_tps: { generating_streaming: { population_count: row.attempts - (index === 0 ? 1 : 0), sample_count: 0, coverage: 0, p50: null, p10: null } },
+      end_to_end_output_tps: { generating_streaming: { population_count: row.attempts - (index === 0 ? 1 : 0), sample_count: 0, coverage: 0, p50: null, p10: null } },
       latency_ms: {
         successful: { population_count: row.attempts - (index === 0 ? 1 : 0), sample_count: row.attempts - (index === 0 ? 1 : 0), coverage: 1, p50: row.p50, p95: row.p95 },
         failed: { population_count: index === 0 ? 1 : 0, sample_count: index === 0 ? 1 : 0, coverage: index === 0 ? 1 : null, p50: index === 0 ? 7800 : null, p95: index === 0 ? 7800 : null },
@@ -89,7 +91,7 @@ function withHistograms<T>(value: T, upper = 60000): T {
     }
     return { ...record, histogram: count > 0 ? { upper_bound: upper, counts } : null } as T
   }
-  return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, withHistograms(item, key === "ttft_ms" ? 30000 : key === "output_tps" ? 200 : upper)])) as T
+  return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, withHistograms(item, key === "ttft_ms" ? 30000 : key === "output_tps" || key === "end_to_end_output_tps" ? 200 : upper)])) as T
 }
 
 for (const theme of ["light", "dark"]) {

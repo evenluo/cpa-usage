@@ -22,16 +22,18 @@ interface AttemptPerformanceProps {
   onRetry: () => void
 }
 
-type PerformanceMetric = "successful-latency" | "failed-latency" | "ttft" | "output-tps"
+type ThroughputMetric = "output-tps" | "end-to-end-tps"
+type PerformanceMetric = "successful-latency" | "failed-latency" | "ttft" | ThroughputMetric
 type PrimaryMetric = Exclude<PerformanceMetric, "failed-latency">
 type ComparisonDimension = "model" | "provider" | "account"
-type LatencyMetric = Exclude<PerformanceMetric, "output-tps">
+type LatencyMetric = Exclude<PerformanceMetric, ThroughputMetric>
 type SampleCoverageFacts = Pick<UsagePercentileDistribution, "population_count" | "sample_count" | "coverage">
 
 const performanceMetrics: Array<{ value: PrimaryMetric; label: string }> = [
   { value: "successful-latency", label: "Latency" },
   { value: "ttft", label: "TTFT" },
   { value: "output-tps", label: "Output TPS" },
+  { value: "end-to-end-tps", label: "E2E TPS" },
 ]
 
 const comparisonDimensions: Array<{ value: ComparisonDimension; label: string }> = [
@@ -97,8 +99,8 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
                 <span className="font-serif text-2xl font-semibold">{formatCompact(data.total_attempts)}</span>
                 <span className="text-xs text-muted-foreground">attempts · {formatCompact(data.failed_attempts)} failed</span>
               </div>
-              {metric === "output-tps" ? (
-                provider ? <div><OutputTPSAggregateReading metric={data.output_tps.generating_streaming} /></div> : null
+              {isThroughputMetric(metric) ? (
+                provider ? <div><OutputTPSAggregateReading metric={getThroughputDistribution(data, metric)} /></div> : null
               ) : (
                 <div>
                   <AggregateReading
@@ -110,7 +112,7 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
             </div>
 
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <ControlGroup label="Performance metric">
+              <ControlGroup label="Performance metric" columns="grid-cols-2 sm:grid-cols-4">
                 {performanceMetrics.map((option) => (
                   <div key={option.value} className={`flex items-center justify-center rounded-md ${metric === option.value ? "bg-terracotta-500 text-white" : "text-muted-foreground hover:bg-muted"}`}>
                     <button
@@ -125,7 +127,7 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
                   </div>
                 ))}
               </ControlGroup>
-              <ControlGroup label="Compare by">
+              <ControlGroup label="Compare by" columns="grid-cols-3">
                 {comparisonDimensions.map((option) => (
                   <button
                     key={option.value}
@@ -168,7 +170,8 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
 
             <details className="text-xs text-muted-foreground">
               <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Sample rules</summary>
-              <p className="mt-2">TTFT and Output TPS use successful streaming attempts. Excluded: {formatCompact(data.successful_execution.non_generating)} not generating, {formatCompact(data.successful_execution.non_streaming)} not streaming, {formatCompact(data.successful_execution.unknown)} unknown.</p>
+              <p className="mt-2">TTFT and TPS use successful streaming attempts. Excluded: {formatCompact(data.successful_execution.non_generating)} not generating, {formatCompact(data.successful_execution.non_streaming)} not streaming, {formatCompact(data.successful_execution.unknown)} unknown.</p>
+              <p className="mt-1">Output TPS counts output after the first token and skips attempts with reasoning tokens, whose hidden reasoning starts before it. E2E TPS divides all output by total latency, including queueing, prefill and reasoning, so it reads lower but also covers attempts with reasoning.</p>
             </details>
           </div>
         )}
@@ -177,11 +180,11 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
   )
 }
 
-function ControlGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function ControlGroup({ label, columns, children }: { label: string; columns: string; children: React.ReactNode }) {
   return (
     <div>
       <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">{label}</p>
-      <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-card p-1" aria-label={label}>{children}</div>
+      <div className={`grid ${columns} gap-1 rounded-lg border border-border bg-card p-1`} aria-label={label}>{children}</div>
     </div>
   )
 }
@@ -250,10 +253,10 @@ function PerformanceBreakdown({ title, breakdown, provider, windowEnd, selection
   selection: ComparisonDimension
   metric: PerformanceMetric
 }) {
-  const showChart = metric !== "output-tps" || Boolean(provider)
-  const needsProvider = metric === "output-tps" && !provider && selection !== "provider"
-  if (metric === "output-tps") {
-    const distributions = breakdown.items.map((item) => item.output_tps.generating_streaming)
+  const showChart = !isThroughputMetric(metric) || Boolean(provider)
+  const needsProvider = isThroughputMetric(metric) && !provider && selection !== "provider"
+  if (isThroughputMetric(metric)) {
+    const distributions = breakdown.items.map((item) => getThroughputDistribution(item, metric))
     const edges = distributions.find((distribution) => distribution.bands !== null)?.bands?.edges
     return (
       <BreakdownSection
@@ -621,6 +624,15 @@ function getDimensionLabel(dimension: ComparisonDimension): string {
   if (dimension === "provider") return "Providers"
   if (dimension === "account") return "Accounts"
   return "Models"
+}
+
+function isThroughputMetric(metric: PerformanceMetric): metric is ThroughputMetric {
+  return metric === "output-tps" || metric === "end-to-end-tps"
+}
+
+function getThroughputDistribution(item: UsageAttemptPerformanceSummary, metric: ThroughputMetric): UsageOutputTPSDistribution {
+  if (metric === "end-to-end-tps") return item.end_to_end_output_tps.generating_streaming
+  return item.output_tps.generating_streaming
 }
 
 function getPerformanceMetric(item: UsageAttemptPerformanceSummary, metric: LatencyMetric): UsagePercentileDistribution {

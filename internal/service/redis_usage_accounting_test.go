@@ -40,13 +40,15 @@ func mutateAccountingFixture(t testing.TB, mutate func(map[string]any)) string {
 
 func TestAccountingV2FixturesSurviveSafeProjection(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		quality string
-		tps     *float64
+		name        string
+		quality     string
+		endToEndTPS *float64
 	}{
-		{name: "v7.2.152-complete", quality: "complete", tps: float64Pointer(30)},
-		{name: "v7.2.152-separate-reasoning", quality: "complete", tps: float64Pointer(42)},
-		{name: "v7.2.152-independent", quality: "complete", tps: float64Pointer(30)},
+		// Every complete fixture reports reasoning, so Output TPS stays
+		// unavailable and End-to-end Output TPS spans the 1200 ms attempt.
+		{name: "v7.2.152-complete", quality: "complete", endToEndTPS: float64Pointer(25)},
+		{name: "v7.2.152-separate-reasoning", quality: "complete", endToEndTPS: float64Pointer(35)},
+		{name: "v7.2.152-independent", quality: "complete", endToEndTPS: float64Pointer(25)},
 		{name: "v7.2.152-inconsistent", quality: "inconsistent"},
 		{name: "v7.2.152-unclassified", quality: "unclassified"},
 	} {
@@ -56,8 +58,11 @@ func TestAccountingV2FixturesSurviveSafeProjection(t *testing.T) {
 			if facts.Accounting.State != repository.AccountingValid || facts.Accounting.Quality == nil || *facts.Accounting.Quality != test.quality {
 				t.Fatalf("unexpected accounting facts: %+v", facts)
 			}
-			if !equalOptionalFloat64(facts.OutputTPS, test.tps) {
-				t.Fatalf("canonical Output TPS: got %v want %v", facts.OutputTPS, test.tps)
+			if facts.OutputTPS != nil {
+				t.Fatalf("reasoning fixture produced Output TPS: %v", *facts.OutputTPS)
+			}
+			if !equalOptionalFloat64(facts.EndToEndOutputTPS, test.endToEndTPS) {
+				t.Fatalf("canonical End-to-end Output TPS: got %v want %v", facts.EndToEndOutputTPS, test.endToEndTPS)
 			}
 		})
 	}

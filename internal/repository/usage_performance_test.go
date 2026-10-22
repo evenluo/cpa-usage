@@ -30,7 +30,7 @@ func TestUsageAttemptPerformanceSeparatesResultExecutionAndInvalidSamples(t *tes
 		events = append(events, entities.UsageEvent{
 			EventKey: "tail-" + string(rune('a'+index)), Timestamp: start.Add(time.Duration(index+1) * time.Minute),
 			Provider: "claude", Model: "sonnet", AuthIndex: "account-a", LatencyMS: latency, TTFTMS: &ttft,
-			OutputTokens: 100, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceAccountingWithOutput("complete", 100),
+			OutputTokens: 100, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceReasoningFreeAccounting("complete", 100),
 		})
 	}
 	events = append(events,
@@ -62,6 +62,9 @@ func TestUsageAttemptPerformanceSeparatesResultExecutionAndInvalidSamples(t *tes
 	assertUsagePercentiles(t, result.StreamingTTFTMS, 11, 10, 50, 100, 10.0/11.0)
 	if result.StreamingOutputTPS.SampleCount != 10 || result.StreamingOutputTPS.PopulationCount != 11 {
 		t.Fatalf("missing TTFT must lower known-execution TPS coverage: %+v", result.StreamingOutputTPS)
+	}
+	if result.StreamingEndToEndTPS.SampleCount != 11 || result.StreamingEndToEndTPS.PopulationCount != 11 {
+		t.Fatalf("End-to-end Output TPS must cover reasoning and missing-TTFT attempts: %+v", result.StreamingEndToEndTPS)
 	}
 	assertUsagePercentiles(t, result.UnknownExecutionTTFTMS, 2, 2, 100, 100, 1)
 	if len(result.Providers.Items) != 1 || result.Providers.Items[0].AttemptCount != 17 {
@@ -153,13 +156,14 @@ func TestUsageAttemptPerformanceLeavesInvalidTimingAndTokensUnavailable(t *testi
 		{Failed: true, LatencyMS: 400, TTFTMS: &validTTFT, Generate: &knownTrue, Stream: &knownTrue},
 	}
 	for index, output := range []int64{10, 10, 10, 0, 10, 10} {
-		setPerformanceAttemptAccounting(&attempts[index], performanceAccountingWithOutput("complete", output))
+		setPerformanceAttemptAccounting(&attempts[index], performanceReasoningFreeAccounting("complete", output))
 	}
 	item := summarizeUsagePerformanceGroup("edge-cases", attempts, true, usagePerformanceHistogramBounds{})
 	if item.AttemptCount != 6 || item.SuccessfulAttempts != 5 || item.FailedAttempts != 1 {
 		t.Fatalf("unexpected edge-case populations: %+v", item)
 	}
-	if item.SuccessfulLatencyMS.SampleCount != 4 || item.StreamingTTFTMS.PopulationCount != 4 || item.StreamingTTFTMS.SampleCount != 1 || item.StreamingOutputTPS.SampleCount != 0 {
+	if item.SuccessfulLatencyMS.SampleCount != 4 || item.StreamingTTFTMS.PopulationCount != 4 || item.StreamingTTFTMS.SampleCount != 1 || item.StreamingOutputTPS.SampleCount != 0 ||
+		item.StreamingEndToEndTPS.PopulationCount != 4 || item.StreamingEndToEndTPS.SampleCount != 2 {
 		t.Fatalf("invalid timing/tokens must lower the applicable sample coverage: %+v", item)
 	}
 	if item.SuccessfulExecution.NonGenerating != 1 || item.FailedLatencyMS.SampleCount != 1 {
@@ -178,8 +182,8 @@ func TestUsageAttemptPerformanceRequiresProviderForComparableOutputTPS(t *testin
 	knownTrue := true
 	ttft := int64(100)
 	events := []entities.UsageEvent{
-		{EventKey: "claude", Timestamp: start.Add(time.Minute), Provider: "claude", Model: "shared-model", AuthIndex: "shared-account", LatencyMS: 1_100, TTFTMS: &ttft, OutputTokens: 100, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceAccountingWithOutput("complete", 100)},
-		{EventKey: "openai", Timestamp: start.Add(2 * time.Minute), Provider: "openai", Model: "shared-model", AuthIndex: "shared-account", LatencyMS: 1_100, TTFTMS: &ttft, OutputTokens: 200, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceAccountingWithOutput("complete", 200)},
+		{EventKey: "claude", Timestamp: start.Add(time.Minute), Provider: "claude", Model: "shared-model", AuthIndex: "shared-account", LatencyMS: 1_100, TTFTMS: &ttft, OutputTokens: 100, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceReasoningFreeAccounting("complete", 100)},
+		{EventKey: "openai", Timestamp: start.Add(2 * time.Minute), Provider: "openai", Model: "shared-model", AuthIndex: "shared-account", LatencyMS: 1_100, TTFTMS: &ttft, OutputTokens: 200, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceReasoningFreeAccounting("complete", 200)},
 	}
 	if _, _, err := InsertUsageEvents(db, events); err != nil {
 		t.Fatalf("insert usage attempts: %v", err)
@@ -192,10 +196,15 @@ func TestUsageAttemptPerformanceRequiresProviderForComparableOutputTPS(t *testin
 	if result.StreamingOutputTPS.PopulationCount != 2 || result.StreamingOutputTPS.SampleCount != 0 || result.StreamingOutputTPS.P50 != nil {
 		t.Fatalf("cross-provider overall TPS must remain unavailable: %+v", result.StreamingOutputTPS)
 	}
-	if len(result.Providers.Items) != 2 || result.Providers.Items[0].StreamingOutputTPS.SampleCount != 1 || result.Providers.Items[1].StreamingOutputTPS.SampleCount != 1 {
+	if result.StreamingEndToEndTPS.PopulationCount != 2 || result.StreamingEndToEndTPS.SampleCount != 0 {
+		t.Fatalf("cross-provider overall End-to-end Output TPS must remain unavailable: %+v", result.StreamingEndToEndTPS)
+	}
+	if len(result.Providers.Items) != 2 || result.Providers.Items[0].StreamingOutputTPS.SampleCount != 1 || result.Providers.Items[1].StreamingOutputTPS.SampleCount != 1 ||
+		result.Providers.Items[0].StreamingEndToEndTPS.SampleCount != 1 || result.Providers.Items[1].StreamingEndToEndTPS.SampleCount != 1 {
 		t.Fatalf("provider-qualified breakdowns must retain comparable TPS: %+v", result.Providers)
 	}
-	if result.Models.Items[0].StreamingOutputTPS.SampleCount != 0 || result.Accounts.Items[0].StreamingOutputTPS.SampleCount != 0 {
+	if result.Models.Items[0].StreamingOutputTPS.SampleCount != 0 || result.Accounts.Items[0].StreamingOutputTPS.SampleCount != 0 ||
+		result.Models.Items[0].StreamingEndToEndTPS.SampleCount != 0 || result.Accounts.Items[0].StreamingEndToEndTPS.SampleCount != 0 {
 		t.Fatalf("model/account TPS must remain unavailable until provider is selected: models=%+v accounts=%+v", result.Models, result.Accounts)
 	}
 
@@ -204,8 +213,46 @@ func TestUsageAttemptPerformanceRequiresProviderForComparableOutputTPS(t *testin
 	if err != nil {
 		t.Fatalf("build provider performance: %v", err)
 	}
-	if selected.StreamingOutputTPS.SampleCount != 1 || selected.Models.Items[0].StreamingOutputTPS.SampleCount != 1 || selected.Accounts.Items[0].StreamingOutputTPS.SampleCount != 1 {
+	if selected.StreamingOutputTPS.SampleCount != 1 || selected.Models.Items[0].StreamingOutputTPS.SampleCount != 1 || selected.Accounts.Items[0].StreamingOutputTPS.SampleCount != 1 ||
+		selected.StreamingEndToEndTPS.SampleCount != 1 || selected.Models.Items[0].StreamingEndToEndTPS.SampleCount != 1 {
 		t.Fatalf("provider-selected TPS must be available throughout: %+v", selected)
+	}
+}
+
+func TestUsageAttemptPerformanceExcludesReasoningOnlyFromOutputTPS(t *testing.T) {
+	db, err := OpenDatabase(config.Config{SQLitePath: filepath.Join(t.TempDir(), "attempt-performance-reasoning.db")})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	closeTestDatabase(t, db)
+	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	knownTrue := true
+	ttft := int64(100)
+	events := []entities.UsageEvent{
+		{EventKey: "reasoning-free", Timestamp: start.Add(time.Minute), Provider: "openai", Model: "gpt", AuthIndex: "account", LatencyMS: 1_100, TTFTMS: &ttft, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceReasoningFreeAccounting("complete", 100)},
+		{EventKey: "reasoning", Timestamp: start.Add(2 * time.Minute), Provider: "openai", Model: "gpt", AuthIndex: "account", LatencyMS: 1_000, TTFTMS: &ttft, Generate: &knownTrue, Stream: &knownTrue, UsageAccounting: performanceAccountingWithOutput("complete", 300)},
+	}
+	if _, _, err := InsertUsageEvents(db, events); err != nil {
+		t.Fatalf("insert usage attempts: %v", err)
+	}
+	filter := dto.UsageDiagnosticFilter{UsageTimeScope: dto.UsageTimeScope{StartTime: &start, EndTime: &end, Provider: "openai"}}
+	result, err := BuildUsageAttemptPerformanceWithFilter(context.Background(), db, filter)
+	if err != nil {
+		t.Fatalf("build attempt performance: %v", err)
+	}
+	// The reasoning attempt has valid TTFT, so only its reasoning tokens keep it
+	// out of Output TPS; it still lowers coverage and enters End-to-end Output TPS.
+	for name, tps := range map[string]dto.UsageOutputTPSDistributionRecord{"overall": result.StreamingOutputTPS, "model": result.Models.Items[0].StreamingOutputTPS} {
+		if tps.PopulationCount != 2 || tps.SampleCount != 1 || tps.P50 == nil || *tps.P50 != 100 {
+			t.Fatalf("%s Output TPS must exclude the reasoning attempt: %+v", name, tps)
+		}
+	}
+	for name, tps := range map[string]dto.UsageOutputTPSDistributionRecord{"overall": result.StreamingEndToEndTPS, "model": result.Models.Items[0].StreamingEndToEndTPS} {
+		// 100 tokens / 1.1 s ≈ 90.9 tok/s lands in band 9; 300 tokens / 1 s in the open 300+ band.
+		if tps.PopulationCount != 2 || tps.SampleCount != 2 || tps.P50 == nil || math.Abs(*tps.P50-100.0/1.1) > 1e-9 || tps.Bands[9] != 1 || tps.Bands[13] != 1 {
+			t.Fatalf("%s End-to-end Output TPS must include the reasoning attempt: %+v", name, tps)
+		}
 	}
 }
 
@@ -284,6 +331,14 @@ func performanceInt64Pointer(value int64) *int64 { return &value }
 
 func performanceAccounting(quality string) entities.UsageAccounting {
 	return performanceAccountingWithOutput(quality, 30)
+}
+
+// performanceReasoningFreeAccounting reports all output as non-reasoning, the
+// only population where TTFT bounds the generation window for Output TPS.
+func performanceReasoningFreeAccounting(quality string, output int64) entities.UsageAccounting {
+	accounting := performanceAccountingWithOutput(quality, output)
+	accounting.CanonicalNonReasoningTokens, accounting.CanonicalReasoningTokens = performanceInt64Pointer(output), performanceInt64Pointer(0)
+	return accounting
 }
 
 func performanceAccountingWithOutput(quality string, output int64) entities.UsageAccounting {

@@ -48,7 +48,13 @@ func InterpretUsageAttempt(event entities.UsageEvent) dto.UsageAttemptFacts {
 	if event.Generate == nil || !*event.Generate || event.Stream == nil || !*event.Stream {
 		return facts
 	}
-	facts.OutputTPS = usageEventOutputTPS(*event.CanonicalOutputTokens, event.LatencyMS, event.TTFTMS)
+	facts.EndToEndOutputTPS = usageEventEndToEndOutputTPS(*event.CanonicalOutputTokens, event.LatencyMS)
+	// TTFT marks the first client-visible token. When reasoning is hidden or
+	// summarized, generation starts before TTFT, so Output TPS has no valid
+	// denominator for attempts that report reasoning tokens.
+	if *event.CanonicalReasoningTokens == 0 {
+		facts.OutputTPS = usageEventOutputTPS(*event.CanonicalOutputTokens, event.LatencyMS, event.TTFTMS)
+	}
 	return facts
 }
 

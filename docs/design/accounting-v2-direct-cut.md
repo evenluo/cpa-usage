@@ -4,6 +4,7 @@ Status: accepted by maintainer, revision r3, 2026-09-07
 Review-cleanup base: PR #152 at 5e8a3a38c928af35986eb55c55b6933331a5b183.
 Supersedes: Parent #140 r1 G7 and the legacy metric preservation clauses in #144/#145 and the earlier CPA compatibility design.
 Implementation base: PR #152 at 0b1b5f60620a7e9239aa5979653ba95d2570073b.
+Later change: the Output TPS formula below, which includes reasoning, is superseded. Output TPS now excludes attempts that report reasoning tokens, and End-to-end Output TPS covers them; the [accounting contract](usage-accounting-contract.md) owns both formulas.
 
 ## Contract
 

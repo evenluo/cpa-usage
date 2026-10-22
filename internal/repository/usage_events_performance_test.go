@@ -40,7 +40,7 @@ func BenchmarkUsageAttemptPerformanceHighCardinality(b *testing.B) {
 		canonical_total_tokens = 130, canonical_input_tokens = 100,
 		canonical_uncached_tokens = 50, canonical_cache_read_tokens = 40,
 		canonical_cache_write_tokens = 10, canonical_output_tokens = 30,
-		canonical_non_reasoning_tokens = 18, canonical_reasoning_tokens = 12,
+		canonical_non_reasoning_tokens = 30, canonical_reasoning_tokens = 0,
 		canonical_unclassified_tokens = 0`).Error; err != nil {
 		b.Fatalf("prepare attempt performance execution facts: %v", err)
 	}
@@ -57,7 +57,8 @@ func BenchmarkUsageAttemptPerformanceHighCardinality(b *testing.B) {
 	if err != nil {
 		b.Fatalf("warm attempt performance benchmark: %v", err)
 	}
-	if warm.TotalAttempts != expectedAttempts || len(warm.Providers.Items) != dto.UsagePerformanceBreakdownLimit || warm.Providers.Items[0].StreamingOutputTPS.SampleCount == 0 {
+	if warm.TotalAttempts != expectedAttempts || len(warm.Providers.Items) != dto.UsagePerformanceBreakdownLimit ||
+		warm.Providers.Items[0].StreamingOutputTPS.SampleCount == 0 || warm.Providers.Items[0].StreamingEndToEndTPS.SampleCount == 0 {
 		b.Fatalf("benchmark fixture did not exercise exact percentile breakdowns: %+v", warm)
 	}
 	b.ReportMetric(float64(expectedAttempts), "window_attempts")

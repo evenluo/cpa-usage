@@ -65,9 +65,9 @@ func TestUsageHistogramSharesBoundsWithoutExtraReads(t *testing.T) {
 	end := start.Add(24 * time.Hour)
 	streaming := true
 	events := []entities.UsageEvent{
-		{EventKey: "fast-a", Timestamp: start.Add(time.Minute), Provider: "claude", Model: "a", AuthIndex: "account-a", LatencyMS: 100, TTFTMS: performanceInt64Pointer(10), Generate: &streaming, Stream: &streaming, UsageAccounting: performanceAccountingWithOutput("complete", 100)},
-		{EventKey: "fast-b", Timestamp: start.Add(2 * time.Minute), Provider: "claude", Model: "a", AuthIndex: "account-a", LatencyMS: 200, TTFTMS: performanceInt64Pointer(20), Generate: &streaming, Stream: &streaming, UsageAccounting: performanceAccountingWithOutput("complete", 100)},
-		{EventKey: "slow", Timestamp: start.Add(3 * time.Minute), Provider: "claude", Model: "b", AuthIndex: "account-b", LatencyMS: 10_000, TTFTMS: performanceInt64Pointer(100), Generate: &streaming, Stream: &streaming, UsageAccounting: performanceAccountingWithOutput("complete", 100)},
+		{EventKey: "fast-a", Timestamp: start.Add(time.Minute), Provider: "claude", Model: "a", AuthIndex: "account-a", LatencyMS: 100, TTFTMS: performanceInt64Pointer(10), Generate: &streaming, Stream: &streaming, UsageAccounting: performanceReasoningFreeAccounting("complete", 100)},
+		{EventKey: "fast-b", Timestamp: start.Add(2 * time.Minute), Provider: "claude", Model: "a", AuthIndex: "account-a", LatencyMS: 200, TTFTMS: performanceInt64Pointer(20), Generate: &streaming, Stream: &streaming, UsageAccounting: performanceReasoningFreeAccounting("complete", 100)},
+		{EventKey: "slow", Timestamp: start.Add(3 * time.Minute), Provider: "claude", Model: "b", AuthIndex: "account-b", LatencyMS: 10_000, TTFTMS: performanceInt64Pointer(100), Generate: &streaming, Stream: &streaming, UsageAccounting: performanceReasoningFreeAccounting("complete", 100)},
 		{EventKey: "invalid-output", Timestamp: start.Add(4 * time.Minute), Provider: "claude", Model: "b", AuthIndex: "account-b", LatencyMS: 300, TTFTMS: performanceInt64Pointer(30), Generate: &streaming, Stream: &streaming, UsageAccounting: performanceAccountingWithOutput("inconsistent", 10)},
 		{EventKey: "failed", Timestamp: start.Add(5 * time.Minute), Provider: "claude", Model: "b", AuthIndex: "account-b", Failed: true, LatencyMS: 500},
 	}
