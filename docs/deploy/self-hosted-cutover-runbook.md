@@ -183,6 +183,14 @@ New entries verified on 2026-09-06 (USD per 1M tokens):
 
 Sources: [GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra), [Kimi API](https://platform.kimi.ai/). These are reference token rates. GPT-6 uses Standard pricing for at most 272K input tokens; the current three-rate schema does not represent long-context multipliers, Fast/Batch/Flex tiers, or separate cache-write pricing.
 
+Added and verified on 2026-09-30 (USD per 1M tokens):
+
+| Model | Input | Output | Cache read |
+| --- | ---: | ---: | ---: |
+| `gpt-6.1-sol` | 2.00 | 10.00 | 0.10 |
+
+Source: [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol). These rates use Standard pricing for at most 272K input tokens, with the same three-rate estimate limitations described above. Cache writes cost $2.50 per 1M tokens upstream; the local estimate applies the input rate to cache-write tokens.
+
 On the deployment host:
 
 ```sh
