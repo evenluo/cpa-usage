@@ -248,7 +248,30 @@ func baseAuthFileUsageIdentity(file authfiles.AuthFile, observedAt time.Time) en
 		LastRefresh:        copyOptionalTime(file.LastRefresh),
 		NextRetryAfter:     copyOptionalTime(file.NextRetryAfter),
 		MetadataObservedAt: &observedAt,
+		AuthRenewal:        authRenewalObservation(file),
 	}
+}
+
+func authRenewalObservation(file authfiles.AuthFile) *entities.AuthRenewalObservation {
+	if file.RequiresSignIn == nil && file.RenewalState == nil && file.RecoveryStage == nil && file.AccessTokenExpiresAt == nil && file.NextRefreshAfter == nil && file.NextAction == nil && file.RecoveryHint == nil && file.RefreshError == nil {
+		return nil
+	}
+	observation := &entities.AuthRenewalObservation{
+		RequiresSignIn:       copyOptionalBool(file.RequiresSignIn),
+		RenewalState:         file.RenewalState,
+		RecoveryStage:        file.RecoveryStage,
+		AccessTokenExpiresAt: copyOptionalTime(file.AccessTokenExpiresAt),
+		NextRefreshAfter:     copyOptionalTime(file.NextRefreshAfter),
+		NextAction:           file.NextAction,
+		RecoveryHint:         file.RecoveryHint,
+	}
+	if file.RefreshError != nil {
+		observation.RefreshError = &entities.AuthRefreshErrorObservation{
+			Code:       file.RefreshError.Code,
+			HTTPStatus: file.RefreshError.HTTPStatus,
+		}
+	}
+	return observation
 }
 
 func boundedAuthFileStatus(status *string) *string {

@@ -847,6 +847,72 @@ func TestSyncMetadataPreservesUnavailableIdentityAndClearsTransientState(t *test
 	}
 }
 
+func TestSyncMetadataReplacesAuthRenewalSnapshot(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	requiresSignIn := true
+	renewalState := "expired_sign_in_required"
+	recoveryStage := "sign_in_required"
+	nextAction := "sign_in"
+	recoveryHint := "Re-authenticate on this CPA instance."
+	expiresAt := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	nextRefreshAt := expiresAt.Add(time.Hour)
+	syncAt := expiresAt.Add(2 * time.Hour)
+	service := NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return syncAt },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex: "auth-renewal", Type: "codex", Provider: "Codex",
+			RequiresSignIn: &requiresSignIn, RenewalState: &renewalState, RecoveryStage: &recoveryStage,
+			AccessTokenExpiresAt: &expiresAt, NextRefreshAfter: &nextRefreshAt,
+			NextAction: &nextAction, RecoveryHint: &recoveryHint,
+			RefreshError: &authfiles.AuthFileRefreshError{Code: "invalid_grant", HTTPStatus: 400},
+		}}}}},
+	})
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("SyncMetadata returned error: %v", err)
+	}
+	rows, err := repository.ListUsageIdentities(context.Background(), db)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list usage identities: rows=%+v err=%v", rows, err)
+	}
+	renewal := rows[0].AuthRenewal
+	if renewal == nil || renewal.RequiresSignIn == nil || !*renewal.RequiresSignIn || renewal.RenewalState == nil || *renewal.RenewalState != renewalState || renewal.RecoveryStage == nil || *renewal.RecoveryStage != recoveryStage {
+		t.Fatalf("expected persisted sign-in state, got %+v", rows[0])
+	}
+	if renewal.AccessTokenExpiresAt == nil || !renewal.AccessTokenExpiresAt.Equal(expiresAt) || renewal.NextRefreshAfter == nil || !renewal.NextRefreshAfter.Equal(nextRefreshAt) || renewal.NextAction == nil || *renewal.NextAction != nextAction || renewal.RecoveryHint == nil || *renewal.RecoveryHint != recoveryHint {
+		t.Fatalf("expected persisted recovery facts, got %+v", renewal)
+	}
+	if renewal.RefreshError == nil || renewal.RefreshError.Code != "invalid_grant" || renewal.RefreshError.HTTPStatus != 400 {
+		t.Fatalf("expected structured refresh error, got %+v", renewal.RefreshError)
+	}
+
+	requiresSignIn = false
+	renewalState = "renewal_verified"
+	recoveryStage = "renewal_verified"
+	service = NewSyncServiceWithOptions(db, SyncServiceOptions{
+		BaseURL: "https://cpa.example.com",
+		Now:     func() time.Time { return syncAt.Add(time.Minute) },
+		MetadataFetcher: stubMetadataFetcher{authFilesResult: &response.AuthFilesResult{StatusCode: 200, Payload: authfiles.AuthFilesResponse{Files: []authfiles.AuthFile{{
+			AuthIndex: "auth-renewal", Type: "codex", Provider: "Codex",
+			RequiresSignIn: &requiresSignIn, RenewalState: &renewalState, RecoveryStage: &recoveryStage,
+		}}}}},
+	})
+	if err := service.SyncMetadata(context.Background()); err != nil {
+		t.Fatalf("second SyncMetadata returned error: %v", err)
+	}
+	rows, err = repository.ListUsageIdentities(context.Background(), db)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("list refreshed identities: rows=%+v err=%v", rows, err)
+	}
+	renewal = rows[0].AuthRenewal
+	if renewal == nil || renewal.RequiresSignIn == nil || *renewal.RequiresSignIn || renewal.RenewalState == nil || *renewal.RenewalState != "renewal_verified" || renewal.RecoveryStage == nil || *renewal.RecoveryStage != "renewal_verified" {
+		t.Fatalf("expected replacement renewal state, got %+v", rows[0])
+	}
+	if renewal.AccessTokenExpiresAt != nil || renewal.NextRefreshAfter != nil || renewal.NextAction != nil || renewal.RecoveryHint != nil || renewal.RefreshError != nil {
+		t.Fatalf("expected stale renewal facts to be cleared, got %+v", renewal)
+	}
+}
+
 func TestSyncMetadataKeepsDisabledAndUnavailableIndependentAndBoundsStatus(t *testing.T) {
 	db := openSyncTestDatabase(t)
 	now := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)

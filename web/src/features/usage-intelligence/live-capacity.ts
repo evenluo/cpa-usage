@@ -1,4 +1,4 @@
-import type { KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaObservationsResponse, QuotaRow, QuotaWindow } from "@/types/api"
+import type { AuthRenewalObservation, KeyIdentity, PassiveModelQuotaObservation, PassiveQuotaObservation, QuotaObservationsResponse, QuotaRow, QuotaWindow } from "@/types/api"
 import type { LiveCapacityTaskState } from "@/hooks/useQuota"
 
 export type LiveCapacityStatus = "observed" | "no_observation" | "refreshing" | "failed" | "unsupported"
@@ -43,6 +43,7 @@ export interface LiveCapacityRow {
   metadataObservedAt?: string | null
   lastRefresh?: string | null
   nextRetryAfter?: string | null
+  authRenewal?: AuthRenewalObservation | null
   passiveQuota?: LiveCapacityPassiveObservation
   passiveModelQuotas: LiveCapacityPassiveModelObservation[]
   /** Subscription start, exposed only while still in the future. */
@@ -176,6 +177,7 @@ export function buildLiveCapacityRows(input: {
         metadataObservedAt: identity.metadata_observed_at,
         lastRefresh: identity.last_refresh,
         nextRetryAfter: identity.next_retry_after,
+        authRenewal: identity.auth_renewal,
         passiveQuota,
         passiveModelQuotas,
         // active_start only carries signal while still in the future (the

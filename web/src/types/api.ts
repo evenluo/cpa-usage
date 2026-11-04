@@ -189,6 +189,22 @@ export interface AnalyticsHeatmapResponse {
   heatmap: HeatmapData
 }
 
+export interface AuthRefreshErrorObservation {
+  code?: string
+  http_status?: number
+}
+
+export interface AuthRenewalObservation {
+  requires_sign_in?: boolean | null
+  renewal_state?: string | null
+  recovery_stage?: string | null
+  access_token_expires_at?: string | null
+  next_refresh_after?: string | null
+  next_action?: string | null
+  recovery_hint?: string | null
+  refresh_error?: AuthRefreshErrorObservation | null
+}
+
 export interface KeyIdentity {
   id: number
   name: string
@@ -205,6 +221,7 @@ export interface KeyIdentity {
   last_refresh?: string | null
   next_retry_after?: string | null
   metadata_observed_at?: string | null
+  auth_renewal?: AuthRenewalObservation | null
   passive_quota?: PassiveQuotaObservation | null
   passive_model_quotas?: PassiveModelQuotaObservation[] | null
   plan_type?: string | null

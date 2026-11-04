@@ -201,6 +201,29 @@ func TestSetIdentityDisabledReadsBackCPAState(t *testing.T) {
 	}
 }
 
+func TestSetIdentityDisabledReadsBackAuthRenewal(t *testing.T) {
+	db := openSyncTestDatabase(t)
+	identity := seedAuthFileIdentity(t, db, entities.UsageIdentity{Name: "account", AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "auth", Type: "codex"})
+	requiresSignIn := true
+	renewalState := "sign_in_required"
+	after := authfiles.AuthFile{
+		Name: "account.json", AuthIndex: "auth", Disabled: true,
+		RequiresSignIn: &requiresSignIn, RenewalState: &renewalState,
+		RefreshError: &authfiles.AuthFileRefreshError{Code: "invalid_grant", HTTPStatus: 400},
+	}
+	client := &stubAuthFileStatusClient{file: authfiles.AuthFile{Name: "account.json", AuthIndex: "auth"}, found: true, afterSetFile: &after}
+	if err := NewAccountStatusService(db, client).SetIdentityDisabled(context.Background(), identity.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repository.GetUsageIdentityByID(context.Background(), db, identity.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AuthRenewal == nil || got.AuthRenewal.RequiresSignIn == nil || !*got.AuthRenewal.RequiresSignIn || got.AuthRenewal.RenewalState == nil || *got.AuthRenewal.RenewalState != renewalState || got.AuthRenewal.RefreshError == nil || got.AuthRenewal.RefreshError.Code != "invalid_grant" {
+		t.Fatalf("expected auth renewal readback, got %+v", got.AuthRenewal)
+	}
+}
+
 func TestSetIdentityDisabledReportsReadbackFailureAfterAcceptedChange(t *testing.T) {
 	for _, missing := range []bool{false, true} {
 		t.Run(fmt.Sprintf("missing=%v", missing), func(t *testing.T) {

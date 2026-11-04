@@ -1,6 +1,6 @@
 # Passive quota observation contract
 
-CPA Usage reads passive quota watermarks only from the existing successful `/management/auth-files` metadata snapshot. It does not call a provider while serving the page, add a worker, or merge these facts into the retained manual capacity-probe observations. [Quota observation retention](quota-observation-retention.md) defines their shared user-facing lifetime and **Last updated** semantics.
+CPA Usage reads passive quota watermarks only from the existing successful `/v8/management/credentials` metadata snapshot. It does not call a provider while serving the page, add a worker, or merge these facts into the retained manual capacity-probe observations. [Quota observation retention](quota-observation-retention.md) defines their shared user-facing lifetime and **Last updated** semantics.
 
 ## Producer and shape
 

@@ -42,6 +42,7 @@ const (
 	migrationAddUsageIdentityPassiveQuota           = "20260907_add_usage_identity_passive_quota"
 	migrationMakeUsageEventCacheColumnsNullable     = "20260907_make_usage_event_cache_columns_nullable"
 	migrationCreateQuotaObservations                = "20260908_create_quota_observations"
+	migrationAddUsageIdentityAuthRenewal            = "20261103_add_usage_identity_auth_renewal"
 )
 
 type schemaMigration struct {
@@ -128,6 +129,7 @@ func orderedMigrations() []databaseMigration {
 		{version: migrationAddUsageIdentityPassiveQuota, run: addUsageIdentityPassiveQuotaMigration},
 		{version: migrationMakeUsageEventCacheColumnsNullable, run: makeUsageEventCacheColumnsNullableMigration},
 		{version: migrationCreateQuotaObservations, run: createQuotaObservationsMigration},
+		{version: migrationAddUsageIdentityAuthRenewal, run: addUsageIdentityAuthRenewalMigration},
 	}
 }
 

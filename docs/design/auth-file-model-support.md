@@ -2,7 +2,7 @@
 
 Status: current for slice I / issue #149
 Authority: Parent #140 r1 and child #149 r1
-Upstream evidence: CLIProxyAPI `c76dfd4e0edabab9000628b1560ab8ab379eadb8`
+Upstream evidence: CLIProxyAPI `c76dfd4e0edabab9000628b1560ab8ab379eadb8`; v8 credentials paths verified against v8.0.53
 
 ## User-visible claim
 
@@ -12,7 +12,7 @@ The protected local Interface is `POST /api/v1/usage/identities/model-support` w
 
 ## Pinned upstream facts
 
-- `GET /v0/management/auth-files/models?name=...` returns registered model identity fields (`id` and optional `display_name`, `type`, `owned_by`). A successful empty list does not distinguish every possible upstream reason and does not prove future or immediate routing.
+- `GET /v8/management/credentials/models?name=...` returns registered model identity fields (`id` and optional `display_name`, `type`, `owned_by`). A successful empty list does not distinguish every possible upstream reason and does not prove future or immediate routing.
 - `GET /v0/management/model-definitions/:channel` returns an embedded static catalog. CPA Usage allowlists only context/input/output limits, thinking support, and input/output modalities. Configuration and unknown fields are discarded.
 - Capability metadata joins registered support by exact model ID. There is no family or alias fallback.
 - The exact channel map is restricted to the pinned upstream catalog. `gemini-cli` is explicitly mapped to the upstream `gemini` catalog, while `gemini-interactions` keeps its exact pinned channel; unknown local account types retain registered support with an explicit unknown-channel capability state.
