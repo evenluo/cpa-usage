@@ -26,6 +26,7 @@ type PassiveQuotaMetric struct {
 	PlanType          string              `json:"planType,omitempty"`
 	UsedPercent       *float64            `json:"usedPercent,omitempty"`
 	Remaining         *float64            `json:"remaining,omitempty"`
+	Balance           string              `json:"balance,omitempty"`
 	Unit              string              `json:"unit,omitempty"`
 	Allowed           *bool               `json:"allowed,omitempty"`
 	LimitReached      *bool               `json:"limitReached,omitempty"`

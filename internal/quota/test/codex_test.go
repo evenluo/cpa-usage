@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"cpa-usage/internal/cpa/dto/apicall"
@@ -51,8 +52,12 @@ func TestCodexProviderUsesAccountIDForUsageRequest(t *testing.T) {
 		t.Fatalf("expected nil additional rate limit payload, got %#v", result.Usage.AdditionalRateLimits)
 	}
 	rows := quota.NormalizeQuotaRows(output)
-	if len(rows) != 2 || rows[0].PlanType != "plus" || rows[1].PlanType != "plus" {
+	if len(rows) != 3 || rows[0].PlanType != "plus" || rows[1].PlanType != "plus" || rows[2].PlanType != "plus" {
 		t.Fatalf("expected normalized Codex rows to carry planType plus, got %#v", rows)
+	}
+	credits := rows[2]
+	if credits.Key != "credits" || credits.Balance != "0" || credits.Remaining == nil || *credits.Remaining != 0 || credits.HasCredits == nil || *credits.HasCredits || credits.Unlimited == nil || *credits.Unlimited || credits.OverageLimitReached == nil || *credits.OverageLimitReached {
+		t.Fatalf("expected zero balance and present false credit facts, got %+v", credits)
 	}
 	encoded, err := json.Marshal(output.Result)
 	if err != nil {
@@ -74,6 +79,64 @@ func TestCodexProviderUsesAccountIDForUsageRequest(t *testing.T) {
 	}
 	if request.Data != nil {
 		t.Fatalf("expected no data body, got %#v", request.Data)
+	}
+}
+
+func TestCodexCreditsKeepExactBalancesAndMissingFacts(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		credits string
+		balance string
+		rows    int
+	}{
+		{name: "missing"},
+		{name: "null", credits: `null`},
+		{name: "empty", credits: `{}`},
+		{name: "null facts", credits: `{"balance":null,"has_credits":null,"unlimited":null,"overage_limit_reached":null}`},
+		{name: "string zero", credits: `{"balance":"0"}`, balance: "0", rows: 1},
+		{name: "numeric zero", credits: `{"balance":0}`, balance: "0", rows: 1},
+		{name: "exact string decimal", credits: `{"balance":"12345.67890123456789"}`, balance: "12345.67890123456789", rows: 1},
+		{name: "exact numeric decimal", credits: `{"balance":12345.67890123456789}`, balance: "12345.67890123456789", rows: 1},
+		{name: "false boolean", credits: `{"has_credits":false}`, rows: 1},
+		{name: "negative", credits: `{"balance":"-1"}`},
+		{name: "NaN", credits: `{"balance":"NaN"}`},
+		{name: "infinity", credits: `{"balance":"Inf"}`},
+		{name: "exponent", credits: `{"balance":"1e5"}`},
+		{name: "nonnumeric", credits: `{"balance":"credits"}`},
+		{name: "object", credits: `{"balance":{}}`},
+		{name: "boolean balance", credits: `{"balance":false}`},
+		{name: "unbounded", credits: `{"balance":"` + strings.Repeat("9", 65) + `"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := `{"plan_type":"pro"`
+			if test.credits != "" {
+				body += `,"credits":` + test.credits
+			}
+			body += `}`
+			caller := &recordingManagementCaller{responses: []*apicall.Response{{StatusCode: 200, BodyText: body}}}
+			output, err := quota.NewCodexProvider(caller, quota.DefaultProviderConfigs().Codex).Check(context.Background(), quota.ProviderInput{})
+			if err != nil {
+				t.Fatalf("Check returned error: %v", err)
+			}
+			rows := quota.NormalizeQuotaRows(output)
+			if len(rows) != test.rows {
+				t.Fatalf("expected %d quota rows, got %+v", test.rows, rows)
+			}
+			if len(rows) == 0 {
+				return
+			}
+			row := rows[0]
+			if row.Key != "credits" || row.Balance != test.balance || row.Unit != "credits" {
+				t.Fatalf("unexpected credit row: %+v", row)
+			}
+			if test.balance != "" {
+				if row.Remaining == nil || row.HasCredits != nil || row.Unlimited != nil || row.OverageLimitReached != nil {
+					t.Fatalf("balance must not invent boolean facts: %+v", row)
+				}
+			} else if row.Remaining != nil || row.HasCredits == nil || *row.HasCredits {
+				t.Fatalf("false has_credits must not invent a zero balance: %+v", row)
+			}
+		})
 	}
 }
 

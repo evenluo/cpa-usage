@@ -51,6 +51,7 @@ func parseCodexUsagePayload(response *apicall.Response) (*CodexUsagePayload, err
 		PlanType:            stringField(object, "plan_type", "planType"),
 		RateLimit:           parseCodexRateLimitInfo(objectField(object, "rate_limit", "rateLimit")),
 		CodeReviewRateLimit: parseCodexRateLimitInfo(objectField(object, "code_review_rate_limit", "codeReviewRateLimit")),
+		Credits:             parseCodexCredits(objectField(object, "credits")),
 	}
 	for _, raw := range arrayField(object, "additional_rate_limits", "additionalRateLimits") {
 		limitObject := rawObject(raw)
@@ -64,6 +65,48 @@ func parseCodexUsagePayload(response *apicall.Response) (*CodexUsagePayload, err
 		})
 	}
 	return payload, nil
+}
+
+func parseCodexCredits(object map[string]json.RawMessage) *CodexCredits {
+	credits := &CodexCredits{
+		HasCredits:          boolPtrField(object, "has_credits", "hasCredits"),
+		Unlimited:           boolPtrField(object, "unlimited"),
+		OverageLimitReached: boolPtrField(object, "overage_limit_reached", "overageLimitReached"),
+	}
+	if raw, ok := object["balance"]; ok {
+		text := strings.TrimSpace(string(raw))
+		var decoded string
+		if json.Unmarshal(raw, &decoded) == nil {
+			text = decoded
+		}
+		credits.Balance, _ = parseCreditBalance(text)
+	}
+	if credits.Balance == "" && credits.HasCredits == nil && credits.Unlimited == nil && credits.OverageLimitReached == nil {
+		return nil
+	}
+	return credits
+}
+
+// Credit balances are bounded non-negative decimals. Keeping the validated
+// decimal text avoids rounding provider balances while remaining is retained
+// as the existing numeric projection. Exponent notation is not a credit fact
+// supported by the provider payload or passive headers.
+func parseCreditBalance(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" || len(text) > 64 {
+		return "", false
+	}
+	decimal := false
+	for index, char := range text {
+		if char == '.' && !decimal && index > 0 && index < len(text)-1 {
+			decimal = true
+			continue
+		}
+		if char < '0' || char > '9' {
+			return "", false
+		}
+	}
+	return text, true
 }
 
 func parseCodexRateLimitInfo(object map[string]json.RawMessage) *CodexRateLimitInfo {
@@ -441,6 +484,9 @@ func boolField(object map[string]json.RawMessage, keys ...string) bool {
 func boolPtrField(object map[string]json.RawMessage, keys ...string) *bool {
 	for _, key := range keys {
 		if raw, ok := object[key]; ok {
+			if strings.TrimSpace(string(raw)) == "null" {
+				continue
+			}
 			var value bool
 			if err := json.Unmarshal(raw, &value); err == nil {
 				return &value

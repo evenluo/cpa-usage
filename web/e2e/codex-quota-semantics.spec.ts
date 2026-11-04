@@ -50,7 +50,10 @@ for (const theme of ["light", "dark"]) {
     }
     await page.route(/\/api\/v1\/quota\/observations$/, (route) => route.fulfill({ json: { items: [{
       id: withReserve.identity, observedAt,
-      quota: [{ key: "additional_rate_limits.gpt-reserve.primary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 0, resetAt, window: { seconds: 604_800 } }],
+      quota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 86, resetAt, window: { seconds: 604_800 } },
+        { key: "additional_rate_limits.gpt-reserve.primary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 0, resetAt, window: { seconds: 604_800 } },
+      ],
     }, ...(refreshed ? [refreshedObservation] : [])] } }))
     await page.route(/\/api\/v1\/quota\/refresh$/, (route) => route.fulfill({ json: {
       tasks: [{ authIndex: withoutReserve.identity, taskId: "refresh-without-reserve" }],
@@ -118,5 +121,71 @@ for (const theme of ["light", "dark"]) {
     expect(await card.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
     expect(await missingCard.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  })
+
+  test(`${theme} a successful refresh replaces historical extras and preserves exact credits after reload`, async ({ page }, testInfo) => {
+    await page.clock.setFixedTime(new Date("2026-11-04T12:00:00Z"))
+    await page.addInitScript((value) => localStorage.setItem("cpa-theme", value), theme)
+    await installMockAPI(page)
+    const account = {
+      ...authFileIdentitiesPayload.identities[0],
+      id: 703, identity: "codex-snapshot", name: "Codex snapshot", displayName: "Codex snapshot", alias: "",
+      provider: "codex", type: "codex", plan_type: "pro", disabled: false, unavailable: false,
+      passive_quota: {
+        source: "cpa_passive", scope: "account", observed_at: "2026-11-04T11:00:00Z",
+        quota: [
+          { key: "codex.rate_limit.primary", label: "Weekly", usedPercent: 20, window: { seconds: 604_800 } },
+          { key: "codex.additional-gpt-reserve.primary", label: "gpt-reserve Weekly", metric: "gpt-reserve", usedPercent: 0, window: { seconds: 604_800 } },
+          { key: "codex.bengalfox.primary", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 0, window: { seconds: 18_000 } },
+          { key: "codex.credits", label: "Credits", balance: "500.0000", remaining: 500, hasCredits: true, unit: "credits" },
+        ],
+      },
+      passive_model_quotas: [],
+    }
+    const observation = {
+      id: account.identity, observedAt: "2026-11-04T12:00:00Z",
+      quota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 25, window: { seconds: 604_800 } },
+        { key: "credits", label: "Credits", balance: "102.345678901234567890", remaining: Number("102.345678901234567890"), hasCredits: true, unit: "credits" },
+      ],
+    }
+    let refreshed = false
+    let refreshCalls = 0
+    await page.route(/\/api\/v1\/usage\/identities\/page(?:\?|$)/, (route) => route.fulfill({
+      json: { identities: [account], total_count: 1, page: 1, page_size: 100, total_pages: 1 },
+    }))
+    await page.route(/\/api\/v1\/quota\/observations$/, (route) => route.fulfill({ json: { items: refreshed ? [observation] : [] } }))
+    await page.route(/\/api\/v1\/quota\/refresh$/, (route) => {
+      refreshCalls++
+      return route.fulfill({ json: { tasks: [{ authIndex: account.identity, taskId: "snapshot-refresh" }], rejected: [], accepted: 1, skipped: 0, limit: 20 } })
+    })
+    await page.route(/\/api\/v1\/quota\/refresh\/snapshot-refresh$/, (route) => {
+      refreshed = true
+      return route.fulfill({ json: { taskId: "snapshot-refresh", authIndex: account.identity, status: "completed", quota: observation } })
+    })
+    await page.goto("/")
+    const capacity = page.locator(".rounded-xl").filter({ has: page.getByRole("heading", { name: /^Live Capacity/ }) })
+    await capacity.scrollIntoViewIfNeeded()
+    const card = capacity.locator(".group").filter({ has: page.getByRole("button", { name: "Refresh Codex snapshot", exact: true }) })
+    await card.scrollIntoViewIfNeeded()
+    await expect(card.getByRole("region", { name: "Luna Reserve", exact: true })).toBeVisible()
+    expect(refreshCalls).toBe(0)
+    await card.getByRole("button", { name: "Refresh Codex snapshot", exact: true }).click()
+    await expect(card.getByLabel("Weekly: 25% used", { exact: true })).toBeVisible()
+    await expect(card.getByRole("region", { name: "Luna Reserve", exact: true })).toHaveCount(0)
+    await card.locator("summary").filter({ hasText: /more$/ }).click()
+    await expect(card.getByText("102.34567890123456789 credits left · Credits available", { exact: true })).toBeVisible()
+    await expect(card.getByText(/GPT-5.3-Codex-Spark|500 credits/)).toHaveCount(0)
+    await page.reload()
+    await capacity.scrollIntoViewIfNeeded()
+    await card.scrollIntoViewIfNeeded()
+    await expect(card.getByLabel("Weekly: 25% used", { exact: true })).toBeVisible()
+    await expect(card.getByRole("region", { name: "Luna Reserve", exact: true })).toHaveCount(0)
+    await card.locator("summary").filter({ hasText: /more$/ }).click()
+    await expect(card.getByText("102.34567890123456789 credits left · Credits available", { exact: true })).toBeVisible()
+    await expect(card.getByText(/GPT-5.3-Codex-Spark|500 credits/)).toHaveCount(0)
+    expect(refreshCalls).toBe(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await card.screenshot({ path: testInfo.outputPath(`codex-exact-credits-${theme}.png`), animations: "disabled" })
   })
 }

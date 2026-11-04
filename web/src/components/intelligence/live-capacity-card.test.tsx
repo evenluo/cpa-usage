@@ -317,7 +317,7 @@ describe("LiveCapacityCard", () => {
     }
   })
 
-  it("renders account and model passive observations separately from a manual probe", () => {
+  it("keeps old passive quota out of a newer successful Codex inventory", () => {
     vi.useFakeTimers({ now: new Date("2026-09-07T08:00:00Z") })
     try {
       setupMock({
@@ -353,19 +353,90 @@ describe("LiveCapacityCard", () => {
       expect(screen.queryByText("No reading")).not.toBeInTheDocument()
       expect(screen.queryByText("25% used · Blocked")).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
-      // Window-less reported rows and the active limit live behind the per-tile
-      // fold. Codex model snapshots do not participate in this card.
+      // The old active-limit observation keeps its own timestamp; its quota
+      // rows cannot fill gaps in the newer complete manual inventory.
       const fold = screen.getByText(/··· \d+ more/).closest("details")
       expect(fold).not.toHaveAttribute("open")
       expect(within(fold as HTMLElement).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
-      expect(within(fold as HTMLElement).getByText("4.5 credits left")).toBeInTheDocument()
+      expect(within(fold as HTMLElement).queryByText("4.5 credits left")).not.toBeInTheDocument()
       expect(within(fold as HTMLElement).queryByText("Model request observations (1)")).not.toBeInTheDocument()
       expect(screen.queryByText("gpt-5.3-codex")).not.toBeInTheDocument()
-      // Only the account-level reported Credits meter remains; the newer manual 5h wins its window.
-      expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(1)
+      expect(container.querySelectorAll("div[title^='Reported by CPA · observed']")).toHaveLength(0)
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it("shows the exact newer credit balance once and preserves its observation tooltip", async () => {
+    setupMock({
+      identities: [identity({
+        passive_quota: {
+          source: "cpa_passive", scope: "account", observed_at: "2026-09-07T08:00:00Z",
+          quota: [{ key: "codex.credits", label: "Credits", balance: "5000.25", remaining: 5000.25, hasCredits: true }],
+        },
+      })],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "credits", label: "Credits", metric: "credits", balance: "1234.1234567890123000", remaining: 1234.1234567890124, hasCredits: true },
+      ] }] },
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    await userEvent.click(screen.getByText(/··· \d+ more/))
+    const balance = screen.getByText("1,234.1234567890123 credits left · Credits available")
+    expect(balance).toBeVisible()
+    expect(screen.getAllByLabelText("Credits: 1,234.1234567890123 credits left · Credits available")).toHaveLength(1)
+    expect(balance.closest("div[title]")).toHaveAttribute("title", `Manual probe · observed ${formatDate(OBSERVED_AT)}`)
+    expect(screen.queryByText(/5,000\.25 credits left/)).not.toBeInTheDocument()
+  })
+
+  it("does not flag healthy included capacity when the account has no extra credits", () => {
+    setupMock({
+      identities: [identity({})],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 10, allowed: true, window: { seconds: 604_800 } },
+        { key: "credits", label: "Credits", balance: "0", remaining: 0, hasCredits: false, unlimited: false },
+      ] }] },
+    })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(screen.getByLabelText("Weekly: 10% used")).toBeInTheDocument()
+    expect(screen.getByText("0 credits left · No credits")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Capacity constrained")).not.toBeInTheDocument()
+  })
+
+  it("keeps a complete successful Codex inventory through refresh failure and remount", () => {
+    const props = setupMock({
+      identities: [identity({ passive_quota: {
+        source: "cpa_passive", scope: "account", observed_at: "2026-09-07T08:00:00Z",
+        quota: [
+          { key: "codex.additional-gpt-reserve.primary", label: "gpt-reserve Weekly", metric: "gpt-reserve", usedPercent: 0, window: { seconds: 604_800 } },
+          { key: "spark", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 0, window: { seconds: 18_000 } },
+          { key: "codex.credits", label: "Credits", balance: "5000", hasCredits: true },
+        ],
+      } })],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 32, window: { seconds: 604_800 } },
+        { key: "credits", label: "Credits", balance: "1234.125", hasCredits: true },
+      ] }] },
+    })
+    const view = render(<LiveCapacityCard provider="" />)
+    const expectInventory = () => {
+      expect(screen.getByLabelText("Weekly: 32% used")).toBeInTheDocument()
+      expect(screen.getAllByText("1,234.125 credits left · Credits available")).toHaveLength(1)
+      expect(screen.queryByRole("region", { name: "Luna Reserve" })).not.toBeInTheDocument()
+      expect(screen.queryByText("GPT-5.3-Codex-Spark 5h")).not.toBeInTheDocument()
+      expect(screen.queryByText(/5,000 credits left/)).not.toBeInTheDocument()
+    }
+    expectInventory()
+
+    setupMock({ ...props, taskStates: { "codex-auth": { status: "failed", error: "unauthorized" } } })
+    view.rerender(<LiveCapacityCard provider="" />)
+    expectInventory()
+
+    view.unmount()
+    setupMock(props)
+    render(<LiveCapacityCard provider="" />)
+    expectInventory()
   })
 
   it("shows account limits and Reserve without exposing Codex model snapshots", () => {
@@ -387,7 +458,10 @@ describe("LiveCapacityCard", () => {
         })],
         observations: { items: [{
           id: "codex-auth", observedAt: accountObservedAt,
-          quota: [{ key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 0, resetAt, window: { seconds: 604_800 } }],
+          quota: [
+            { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 86, resetAt, window: { seconds: 604_800 } },
+            { key: "additional_rate_limits.gpt-reserve.secondary_window", label: "gpt-reserve Weekly", metric: "base_model_inference", usedPercent: 0, resetAt, window: { seconds: 604_800 } },
+          ],
         }] },
       })
       render(<LiveCapacityCard provider="" />)
@@ -905,7 +979,7 @@ describe("LiveCapacityCard", () => {
         passive_quota: {
           source: "cpa_passive",
           scope: "account",
-          observed_at: "2026-09-07T08:00:00Z",
+          observed_at: "2026-09-07T10:00:00Z",
           quota: [{ key: "codex-passive", label: "Codex passive evidence", allowed: true }],
         },
       }),
