@@ -175,10 +175,11 @@ type codexPassiveGroup struct {
 }
 
 type codexPassiveWindow struct {
-	usedPercent *float64
-	seconds     *int64
-	resetAfter  *float64
-	resetAt     string
+	usedPercent  *float64
+	seconds      *int64
+	zeroDuration bool
+	resetAfter   *float64
+	resetAt      string
 }
 
 func normalizeCodexPassiveRows(scope string, signals map[string]string) []entities.PassiveQuotaMetric {
@@ -233,7 +234,11 @@ func normalizeCodexPassiveRows(scope string, signals map[string]string) []entiti
 				window.usedPercent = &parsed
 			}
 		case "window-minutes":
-			if minutes, valid := parsePositiveInt(value); valid && minutes <= math.MaxInt64/60 {
+			if minutes, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil && minutes >= 0 && minutes <= math.MaxInt64/60 {
+				if minutes == 0 {
+					window.zeroDuration = true
+					continue
+				}
 				seconds := minutes * 60
 				window.seconds = &seconds
 			}
@@ -257,7 +262,11 @@ func normalizeCodexPassiveRows(scope string, signals map[string]string) []entiti
 	for _, name := range names {
 		entry := groups[name]
 		for windowName, window := range entry.windowData {
-			if window.usedPercent == nil && window.seconds == nil && window.resetAfter == nil && window.resetAt == "" {
+			// CPA emits an explicit zero-duration secondary placeholder when the
+			// provider reports no secondary window. Missing duration alone remains
+			// unknown, and any independent nonzero/reset fact remains observable.
+			zeroPlaceholder := window.zeroDuration && (window.usedPercent == nil || *window.usedPercent == 0) && (window.resetAfter == nil || *window.resetAfter == 0) && window.resetAt == ""
+			if zeroPlaceholder || (window.usedPercent == nil && window.seconds == nil && window.resetAfter == nil && window.resetAt == "") {
 				delete(entry.windowData, windowName)
 			}
 		}
@@ -342,7 +351,9 @@ func normalizeCodexCredits(scope, planType string, signals map[string]string) *e
 		row.Unlimited = &value
 		hasFact = true
 	}
-	if value, ok := parseBoundedFloat(signals["x-codex-credits-balance"], 0, math.MaxFloat64); ok {
+	if balance, ok := parseCreditBalance(signals["x-codex-credits-balance"]); ok {
+		value, _ := strconv.ParseFloat(balance, 64)
+		row.Balance = balance
 		row.Remaining = &value
 		hasFact = true
 	}
@@ -445,11 +456,6 @@ func parseBoundedFloat(value string, minValue, maxValue float64) (float64, bool)
 		return 0, false
 	}
 	return parsed, true
-}
-
-func parsePositiveInt(value string) (int64, bool) {
-	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
-	return parsed, err == nil && parsed > 0
 }
 
 func parseNonNegativeFloat(value string) (float64, bool) {

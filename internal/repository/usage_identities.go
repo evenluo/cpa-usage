@@ -545,53 +545,13 @@ func mergePassiveAccountObservation(existing, incoming *entities.PassiveQuotaObs
 	if incoming == nil || incoming.ObservedAt.IsZero() {
 		return existing
 	}
-	if existing == nil || existing.ObservedAt.IsZero() {
+	// One source timestamp describes one intact snapshot. A key-wise union
+	// would stamp retained rows with a time at which they were never observed.
+	// Reprojection at the same source time also repairs such previously merged rows.
+	if existing == nil || !incoming.ObservedAt.Before(existing.ObservedAt) {
 		return incoming
 	}
-	return mergePassiveAccountMetrics(existing, incoming)
-}
-
-func mergePassiveAccountMetrics(existing, incoming *entities.PassiveQuotaObservation) *entities.PassiveQuotaObservation {
-	type keyedMetric struct {
-		metric     entities.PassiveQuotaMetric
-		observedAt time.Time
-	}
-	byKey := make(map[string]keyedMetric, len(existing.Quota)+len(incoming.Quota))
-	add := func(observation *entities.PassiveQuotaObservation) {
-		for _, metric := range observation.Quota {
-			key := strings.TrimSpace(metric.Key)
-			if key == "" {
-				continue
-			}
-			metric.Key = key
-			if current, ok := byKey[key]; !ok || observation.ObservedAt.After(current.observedAt) {
-				byKey[key] = keyedMetric{metric: metric, observedAt: observation.ObservedAt}
-			}
-		}
-	}
-	add(existing)
-	add(incoming)
-
-	keys := make([]string, 0, len(byKey))
-	for key := range byKey {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	merged := make([]entities.PassiveQuotaMetric, 0, len(keys))
-	for _, key := range keys {
-		merged = append(merged, byKey[key].metric)
-	}
-
-	result := *incoming
-	if existing.ObservedAt.After(incoming.ObservedAt) {
-		result = *existing
-	}
-	if len(merged) == 0 {
-		result.Quota = nil
-	} else {
-		result.Quota = merged
-	}
-	return &result
+	return existing
 }
 
 func mergePassiveModelObservations(existing, incoming []entities.PassiveModelQuotaObservation) []entities.PassiveModelQuotaObservation {

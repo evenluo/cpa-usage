@@ -7,10 +7,45 @@ import (
 	"time"
 
 	"cpa-usage/internal/config"
+	"cpa-usage/internal/cpa/dto/apicall"
 	"cpa-usage/internal/entities"
 	dbrepository "cpa-usage/internal/repository"
 	"gorm.io/gorm"
 )
+
+func TestCreditOnlyCheckPersistsExactBalanceAcrossDatabaseReopen(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "credits.db")
+	db := openQuotaTestDatabase(t, dbPath)
+	identity := entities.UsageIdentity{AuthType: entities.UsageIdentityAuthTypeAuthFile, Identity: "codex-credit-account", Name: "Codex", Provider: "codex", Type: "codex"}
+	if err := db.Create(&identity).Error; err != nil {
+		t.Fatalf("create identity: %v", err)
+	}
+	usage, err := parseCodexUsagePayload(&apicall.Response{StatusCode: 200, BodyText: `{"plan_type":"pro","credits":{"balance":"12345.67890123456789","has_credits":true,"unlimited":false,"overage_limit_reached":false}}`})
+	if err != nil {
+		t.Fatalf("parse credit-only response: %v", err)
+	}
+	handler := &refreshHandlerStub{output: ProviderOutput{Provider: "codex", Result: CodexResult{Usage: usage}}}
+	service := NewServiceWithRegistry(NewRepository(db), NewProviderRegistry(map[string]ProviderHandler{"codex": handler}))
+	observedAt := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return observedAt }
+	response, err := service.Check(ctx, CheckRequest{AuthIndex: identity.Identity})
+	if err != nil || len(response.Quota) != 1 {
+		t.Fatalf("persist credit-only response: %+v, error %v", response, err)
+	}
+	closeQuotaTestDatabase(t, db)
+
+	db = openQuotaTestDatabase(t, dbPath)
+	defer closeQuotaTestDatabase(t, db)
+	observations, err := NewRepository(db).ListQuotaObservations(ctx, []string{identity.Identity}, 1)
+	if err != nil || len(observations) != 1 || len(observations[0].Quota) != 1 {
+		t.Fatalf("read credit observation after reopen: %+v, error %v", observations, err)
+	}
+	got := observations[0].Quota[0]
+	if !observations[0].ObservedAt.Equal(observedAt) || got.Balance != "12345.67890123456789" || got.Unit != "credits" || got.HasCredits == nil || !*got.HasCredits || got.Unlimited == nil || *got.Unlimited || got.OverageLimitReached == nil || *got.OverageLimitReached {
+		t.Fatalf("persisted credits must retain exact balance and present false values: %+v", observations[0])
+	}
+}
 
 func TestQuotaObservationSurvivesDatabaseReopen(t *testing.T) {
 	ctx := context.Background()

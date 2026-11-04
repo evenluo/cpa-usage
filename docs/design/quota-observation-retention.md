@@ -11,6 +11,8 @@ Keep the last successful reading and its original time until a later successful 
 
 Account and model observations retain their scopes. Different windows may have different ages: the newest observation wins when sources describe the same window, and each reading keeps its own source/time tooltip. The card's **Last updated** is the newest successful manual or account passive observation. Claude also includes its visible model observations; Codex excludes model snapshots. The timestamp does not imply every visible reading was fetched together.
 
+For Codex, a successful manual probe is a complete account quota inventory at its observation time. A passive snapshot at or before that time cannot supplement the probe with omitted windows, additional allowances or credits. A newer passive snapshot may update the displayed readings, keeping each displayed item's actual source/time. A failed refresh does not advance this inventory watermark. Omission means **not reported in this observation**, not zero, loss of eligibility or product retirement.
+
 Disabled auth-file accounts support manual quota checks, individual refreshes and displayed-batch refreshes. The Disabled badge and account ordering remain independent of quota progress, failure and readings. A quota query does not enable the account or change its CPA dispatch state; provider errors remain visible and leave the last successful reading intact.
 
 Compatibility change (2026-09-10): quota check and refresh intentionally stop rejecting accounts solely because they are disabled. The request/response shapes, supported-provider checks, deleted-identity exclusion, refresh limits, concurrency and observation retention stay the same. This uses the existing CPA management `api-call` path: in the pinned CPA v7.2.152 (`c76dfd4e0edabab9000628b1560ab8ab379eadb8`), [credential lookup and token substitution](https://github.com/router-for-me/CLIProxyAPI/blob/c76dfd4e0edabab9000628b1560ab8ab379eadb8/internal/api/handlers/management/api_tools.go) do not exclude disabled auth files. Successful quota retrieval still depends on valid credentials and the provider response.
@@ -19,7 +21,7 @@ Compatibility change (2026-09-10): quota check and refresh intentionally stop re
 
 - SQLite owns the latest successful manual observation for each auth-file identity. Persist only the normalized quota response and observation time; never store credentials, raw provider payloads or headers.
 - A manual check reports success only after its normalized observation has been saved. Persistence failure is an explicit failed operation, leaving the previous observation intact.
-- Passive observations remain in their existing identity fields. Metadata updates retain the latest valid account observation and latest valid observation per model. Missing or older inputs do not replace them.
+- Passive observations remain in their existing identity fields. Metadata updates retain the latest valid account observation and latest valid observation per model. Missing or older inputs do not replace them. Account snapshots are replaced intact, never unioned by metric key: one source timestamp cannot establish when an omitted, retained metric was observed. An equal-time account snapshot is reprojected from the source and replaces the stored snapshot, repairing rows previously mixed into it.
 - Retention is one latest snapshot per source/scope, not an audit log. Existing identity lifecycle rules continue to control which accounts are visible; retained observations must not resurrect a deleted account or change refresh eligibility.
 - Refresh tasks own queue, running, completed and failed states only. Their internal terminal-record retention may clean up polling receipts; it does not expire successful observations and is not exposed as quota validity.
 - The frontend observation query holds the successful snapshot. Starting or failing another task does not overwrite it, and an older task completion cannot replace a newer snapshot. Page loading reads these observations without probing providers.
@@ -31,6 +33,16 @@ Compatibility change (2026-09-10): quota check and refresh intentionally stop re
 `POST /api/v1/quota/check` returns the same timestamped successful observation. Refresh-task polling returns that observation in `quota` upon completion. `cachedAt` and `expiresAt` are removed; task responses do not duplicate the observation timestamp at the top level. The old cache route and fields have no aliases or dual-read support. Backend and frontend must be released together.
 
 Existing passive snapshots retain their source timestamps. Manual results already lost from the previous process-memory cache cannot be reconstructed and are not assigned fabricated timestamps; the next successful explicit check creates their retained observation. The change requires a forward SQLite migration and no production data reset.
+
+### Accuracy correction (2026-11-04)
+
+The existing routes and observation JSON arrays remain supported; this correction needs no SQLite schema migration. Manual Codex probes now retain a normalized Credits row, including an optional exact decimal `balance` string, numeric `remaining`, `unit`, `hasCredits`, `unlimited` and `overageLimitReached`. Passive credit balances also preserve the exact decimal value. The string is authoritative for display; numeric `remaining` continues to support existing consumers. Credit amounts are provider credits, not dollars or a percentage. Missing values remain absent, including `null` boolean facts; zero and false are preserved.
+
+The Codex display intentionally stops reviving older passive allowances omitted by a successful manual inventory. Credits from the two sources describe the same balance and are merged by observation time, with the manual result winning ties. Reading retained observations still makes no provider call. An explicit refresh is needed to populate credit fields missing from previously saved manual results.
+
+The earlier key-wise union may already have lost individual historical source times. They cannot be reconstructed. An equal-or-newer valid CPA snapshot replaces the mixed account snapshot; a successful manual inventory prevents an older snapshot from supplying current allowances. If neither source supplies such an observation, historical data remains retained and cannot be certified as a fresh per-item reading. This correction does not delete historical records or invent source times.
+
+Model availability, rate-limit reset credits, spend controls and additional CPA administration flags are separate account facts and remain outside this correction's retained quota-row contract.
 
 ## Acceptance evidence
 

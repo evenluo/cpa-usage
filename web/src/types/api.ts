@@ -344,6 +344,8 @@ export interface QuotaRow {
   used?: number
   limit?: number
   remaining?: number
+  /** Exact nonnegative decimal balance in provider credits. */
+  balance?: string
   unit?: string
   usedPercent?: number
   remainingFraction?: number
@@ -351,6 +353,7 @@ export interface QuotaRow {
   limitReached?: boolean
   hasCredits?: boolean
   unlimited?: boolean
+  overageLimitReached?: boolean
   window?: QuotaWindow
   resetAt?: string
   resetAfterSeconds?: number

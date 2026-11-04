@@ -1117,7 +1117,10 @@ function MetricMeter({
           {source === "reported" ? <Eye className="h-3 w-3 shrink-0" aria-hidden="true" /> : null}
           <span className="truncate" title={metric.displayLabel ? metric.label : undefined}>{displayTitle}</span>
         </span>
-        <span className="truncate font-medium">{metric.valueLabel}</span>
+        <span
+          className={metric.isCreditBalance ? "min-w-0 break-words text-right font-medium" : "truncate font-medium"}
+          title={metric.valueLabel}
+        >{metric.valueLabel}</span>
       </div>
       <div
         className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"

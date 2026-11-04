@@ -458,8 +458,40 @@ describe("Live Capacity view model", () => {
 
     expect(rows[0].passiveQuota?.metrics).toEqual([
       expect.objectContaining({ valueLabel: "53% used · Blocked", tone: "red" }),
-      expect.objectContaining({ valueLabel: "No credits", tone: "muted" }),
+      expect.objectContaining({ valueLabel: "0 credits left · No credits · Unlimited", tone: "muted" }),
     ])
+  })
+
+  it("shows exact credit balances without rounding them or replacing them with boolean state", () => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({})],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "credits", label: "Credits", metric: "credits", balance: "12345.1234567890123000", remaining: 12345.123456789011, hasCredits: true },
+        { key: "credits-conflict", label: "Credits", metric: "credits", balance: "4.5000", remaining: 4.5, hasCredits: false, unlimited: true, overageLimitReached: true },
+      ] }] },
+    })[0]
+
+    expect(row.additionalMetrics.map((metric) => metric.valueLabel)).toEqual([
+      "12,345.1234567890123 credits left · Credits available",
+      "4.5 credits left · No credits · Unlimited · Overage limit reached",
+    ])
+    expect(row.additionalMetrics[0]).toMatchObject({ isCreditBalance: true, progress: null, tone: "muted" })
+  })
+
+  it("keeps missing credit balances distinct from observed zero", () => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({})],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "credits", label: "Credits", hasCredits: true },
+        { key: "codex.credits", label: "Credits", hasCredits: false },
+        { key: "zero", label: "Credits", metric: "credits", balance: "0.0000", hasCredits: false },
+      ] }] },
+    })[0]
+
+    expect(row.additionalMetrics.map((metric) => metric.valueLabel)).toEqual([
+      "Credits available", "No credits", "0 credits left · No credits",
+    ])
+    expect(row.additionalMetrics[2].tone).toBe("red")
   })
 
   it("keeps missing account state and availability explicit", () => {
@@ -710,6 +742,49 @@ describe("Live Capacity view model", () => {
       tone: "red",
     })
     expect(rows[0].isConstrained).toBe(true)
+  })
+
+  it("does not treat an empty Codex credit balance as an exhausted included allowance", () => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({})],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 10, allowed: true, window: { seconds: 604_800 } },
+        { key: "credits", label: "Credits", balance: "0", remaining: 0, hasCredits: false, unlimited: false },
+      ] }] },
+    })[0]
+
+    expect(row.isConstrained).toBe(false)
+    expect(row.additionalMetrics[0]).toMatchObject({ valueLabel: "0 credits left · No credits", tone: "red" })
+  })
+
+  it.each([
+    { manualPercent: 100, passivePercent: 10, expectedConstrained: false },
+    { manualPercent: 10, passivePercent: 100, expectedConstrained: true },
+    { manualPercent: 10, passivePercent: 80, expectedConstrained: false },
+  ])("derives Codex account attention from the effective window ($manualPercent% manual, $passivePercent% reported)", ({ manualPercent, passivePercent, expectedConstrained }) => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({ passive_quota: {
+        source: "cpa_passive", scope: "account", observed_at: "2026-09-07T10:00:00Z",
+        quota: [{ key: "codex.rate_limit.primary", label: "Weekly", usedPercent: passivePercent, window: { seconds: 604_800 } }],
+      } })],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: manualPercent, window: { seconds: 604_800 } },
+      ] }] },
+    })[0]
+
+    expect(row.isConstrained).toBe(expectedConstrained)
+    expect(mergeCapacityEntries(row)[0]).toMatchObject({ source: "reported", metric: { valueLabel: `${passivePercent}% used` } })
+  })
+
+  it("keeps explicit Codex quota blocking visible even below the usage threshold", () => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({})],
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 10, allowed: false, window: { seconds: 604_800 } },
+      ] }] },
+    })[0]
+
+    expect(row.isConstrained).toBe(true)
   })
 
   it("keeps failed, refreshing, and constrained states out of ordering priority", () => {
@@ -1006,9 +1081,60 @@ describe("mergeCapacityEntries", () => {
     expect(entries[0].source).toBe("probe")
   })
 
-  it("never merges an unknown-window row into a short or long window row", () => {
+  it.each(["2026-09-07T07:00:00Z", "2026-09-07T09:00:00Z", ""])("does not restore missing Codex allowances from a passive snapshot at %s", (passiveObservedAt) => {
     const row = rowWithProbeAndPassive({
       probeObservedAt: "2026-09-07T09:00:00Z",
+      probeQuota: [
+        { key: "rate_limit.primary_window", label: "Weekly", usedPercent: 32, window: { seconds: 604_800 } },
+        { key: "credits", label: "Credits", balance: "1234.125", hasCredits: true },
+      ],
+      passiveQuota: {
+        source: "cpa_passive", scope: "account", observed_at: passiveObservedAt,
+        quota: [
+          { key: "codex.additional-gpt-reserve.primary", label: "gpt-reserve Weekly", metric: "gpt-reserve", usedPercent: 0, window: { seconds: 604_800 } },
+          { key: "spark", label: "GPT-5.3-Codex-Spark 5h", usedPercent: 0, window: { seconds: 18_000 } },
+          { key: "codex.credits", label: "Credits", balance: "5000", hasCredits: true },
+        ],
+      },
+    })
+
+    const entries = mergeCapacityEntries(row)
+    expect(entries).toHaveLength(2)
+    expect(entries.every((entry) => entry.source === "probe" && entry.observedAt === "2026-09-07T09:00:00Z")).toBe(true)
+    expect(capacityLayout(entries, "codex").reserve).toEqual([])
+    expect(entries.map((entry) => entry.metric.valueLabel)).toEqual(["32% used", "1,234.125 credits left · Credits available"])
+  })
+
+  it("retains passive Codex readings until there is a successful manual inventory", () => {
+    const row = buildLiveCapacityRows({ identities: [identity({ passive_quota: {
+      source: "cpa_passive", scope: "account", observed_at: "2026-09-07T07:00:00Z",
+      quota: [{ key: "reserve", label: "gpt-reserve Weekly", metric: "gpt-reserve", usedPercent: 12, window: { seconds: 604_800 } }],
+    } })], taskStates: { "codex-auth": { status: "failed", error: "unauthorized" } } })[0]
+
+    expect(mergeCapacityEntries(row)).toEqual([expect.objectContaining({
+      source: "reported", observedAt: "2026-09-07T07:00:00Z", metric: expect.objectContaining({ isLunaReserve: true, valueLabel: "12% used" }),
+    })])
+  })
+
+  it("preserves per-window union for non-Codex providers", () => {
+    const row = buildLiveCapacityRows({
+      identities: [identity({ provider: "Claude", type: "claude", passive_quota: {
+        source: "cpa_passive", scope: "account", observed_at: "2026-09-07T07:00:00Z",
+        quota: [{ key: "passive", label: "Weekly", usedPercent: 30, window: { seconds: 604_800 } }],
+      } })],
+      observations: { items: [{ id: "codex-auth", observedAt: "2026-09-07T09:00:00Z", quota: [
+        { key: "manual", label: "5h", usedPercent: 10, window: { seconds: 18_000 } },
+      ] }] },
+    })[0]
+
+    expect(mergeCapacityEntries(row).map((entry) => [entry.metric.label, entry.source, entry.observedAt])).toEqual([
+      ["5h", "probe", "2026-09-07T09:00:00Z"], ["Weekly", "reported", "2026-09-07T07:00:00Z"],
+    ])
+  })
+
+  it("never merges an unknown-window row into a short or long window row", () => {
+    const row = rowWithProbeAndPassive({
+      probeObservedAt: "2026-09-07T07:00:00Z",
       probeQuota: [{ key: "manual", label: "5h", usedPercent: 10 }],
       passiveQuota: {
         source: "cpa_passive",
@@ -1024,7 +1150,7 @@ describe("mergeCapacityEntries", () => {
     ])
   })
 
-  it("passes rows without window semantics through unmerged", () => {
+  it("merges the account credit balance across sources without mixing their facts", () => {
     const row = rowWithProbeAndPassive({
       probeObservedAt: "2026-09-07T09:00:00Z",
       probeQuota: [{ key: "credits", label: "Credits", remaining: 5, unit: "credits" }],
@@ -1039,8 +1165,40 @@ describe("mergeCapacityEntries", () => {
     const entries = mergeCapacityEntries(row)
     expect(entries.map((entry) => [entry.source, entry.metric.valueLabel, entry.windowRole])).toEqual([
       ["probe", "5 credits left", null],
-      ["reported", "No credits", null],
     ])
+  })
+
+  it("uses the complete newer reported credit reading and its source time", () => {
+    const row = rowWithProbeAndPassive({
+      probeObservedAt: "2026-09-07T07:00:00Z",
+      probeQuota: [{ key: "credits", label: "Credits", balance: "18.75", remaining: 18.75, hasCredits: true }],
+      passiveQuota: {
+        source: "cpa_passive",
+        scope: "account",
+        observed_at: "2026-09-07T08:00:00Z",
+        quota: [{ key: "codex.credits", label: "Credits", balance: "0", remaining: 0, hasCredits: false, unlimited: true }],
+      },
+    })
+
+    expect(mergeCapacityEntries(row)).toEqual([
+      expect.objectContaining({
+        source: "reported", observedAt: "2026-09-07T08:00:00Z",
+        metric: expect.objectContaining({ valueLabel: "0 credits left · No credits · Unlimited", tone: "muted" }),
+      }),
+    ])
+  })
+
+  it("keeps unrelated rows without window semantics separate", () => {
+    const row = rowWithProbeAndPassive({
+      probeObservedAt: "2026-09-07T07:00:00Z",
+      probeQuota: [{ key: "retry", label: "Retry", resetAfterSeconds: 30 }],
+      passiveQuota: {
+        source: "cpa_passive", scope: "account", observed_at: "2026-09-07T08:00:00Z",
+        quota: [{ key: "retry", label: "Retry", resetAfterSeconds: 60 }],
+      },
+    })
+
+    expect(mergeCapacityEntries(row).map((entry) => entry.source)).toEqual(["probe", "reported"])
   })
 
   it("classifies named additional limits as non-base and merges matching label stems", () => {
@@ -1178,7 +1336,7 @@ describe("capacityLayout", () => {
         passive_quota: {
           source: "cpa_passive",
           scope: "account",
-          observed_at: "2026-09-07T08:00:00Z",
+          observed_at: "2026-09-07T10:00:00Z",
           quota: [
             { key: "window", label: "Window", usedPercent: 40 },
             { key: "credits", label: "Credits", remaining: 0, hasCredits: false },

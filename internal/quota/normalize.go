@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -80,6 +81,18 @@ func (result CodexResult) QuotaRows() []QuotaRow {
 		primaryLabel := additional.LimitName + " 5h"
 		secondaryLabel := additional.LimitName + " Weekly"
 		rows = appendCodexWindowQuotaRows(rows, "additional_rate_limits."+additional.LimitName, primaryLabel, secondaryLabel, "additional", metric, additional.RateLimit)
+	}
+	if credits := result.Usage.Credits; credits != nil {
+		row := QuotaRow{
+			Key: "credits", Label: "Credits", Scope: "credits", Metric: "credits", Unit: "credits",
+			Balance: credits.Balance, HasCredits: credits.HasCredits, Unlimited: credits.Unlimited,
+			OverageLimitReached: credits.OverageLimitReached,
+		}
+		if credits.Balance != "" {
+			remaining, _ := strconv.ParseFloat(credits.Balance, 64)
+			row.Remaining = &remaining
+		}
+		rows = append(rows, row)
 	}
 	if planType := strings.TrimSpace(result.Usage.PlanType); planType != "" {
 		for index := range rows {

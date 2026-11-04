@@ -99,11 +99,99 @@ func TestNormalizePassiveQuotaSnapshotCodexPreservesAllRelevantWindowsAndModels(
 		t.Fatalf("unexpected named limit row: %+v", named)
 	}
 	credits := got.Account.Quota[3]
-	if credits.Remaining == nil || *credits.Remaining != 4.5 || credits.Unit != "credits" || credits.HasCredits == nil || *credits.HasCredits || credits.Allowed != nil || credits.Unlimited == nil || *credits.Unlimited {
+	if credits.Balance != "4.5" || credits.Remaining == nil || *credits.Remaining != 4.5 || credits.Unit != "credits" || credits.HasCredits == nil || *credits.HasCredits || credits.Allowed != nil || credits.Unlimited == nil || *credits.Unlimited {
 		t.Fatalf("unexpected credits row: %+v", credits)
 	}
 	if len(got.Models) != 1 || got.Models[0].Model != "gpt-5.3-codex" || len(got.Models[0].Quota) != 1 || got.Models[0].Quota[0].Scope != "model" {
 		t.Fatalf("unexpected model observations: %+v", got.Models)
+	}
+}
+
+func TestPassiveCreditBalancePreservesDecimalPrecisionAndRejectsInvalidNumbers(t *testing.T) {
+	for _, test := range []struct {
+		balance string
+		valid   bool
+	}{
+		{balance: "12345.67890123456789", valid: true},
+		{balance: "0", valid: true},
+		{balance: "-1"},
+		{balance: "NaN"},
+		{balance: "Inf"},
+		{balance: "1e8"},
+		{balance: ".5"},
+		{balance: "1.2.3"},
+	} {
+		t.Run(test.balance, func(t *testing.T) {
+			got := NormalizePassiveQuotaSnapshot("codex", &authfiles.QuotaObservation{
+				ObservedAt: "2026-11-04T12:00:00Z",
+				Signals: map[string]any{
+					"X-Codex-Credits-Balance": test.balance,
+				},
+			}, nil)
+			if !test.valid {
+				if got.Account != nil {
+					t.Fatalf("invalid balance must not become a quota reading: %+v", got.Account)
+				}
+				return
+			}
+			if got.Account == nil || len(got.Account.Quota) != 1 || got.Account.Quota[0].Balance != test.balance || got.Account.Quota[0].Remaining == nil || got.Account.Quota[0].HasCredits != nil {
+				t.Fatalf("exact balance must survive without invented boolean state: %+v", got.Account)
+			}
+		})
+	}
+}
+
+func TestCodexPassiveZeroDurationPlaceholderDoesNotInventSecondaryWindow(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		secondary map[string]any
+		wantRows  int
+	}{
+		{name: "explicit all zero", secondary: map[string]any{"window-minutes": "0", "used-percent": "0", "reset-after-seconds": "0"}, wantRows: 1},
+		{name: "zero duration only", secondary: map[string]any{"window-minutes": "0"}, wantRows: 1},
+		{name: "duration missing", secondary: map[string]any{"used-percent": "0", "reset-after-seconds": "0"}, wantRows: 2},
+		{name: "nonzero usage", secondary: map[string]any{"window-minutes": "0", "used-percent": "25"}, wantRows: 2},
+		{name: "nonzero reset delay", secondary: map[string]any{"window-minutes": "0", "reset-after-seconds": "60"}, wantRows: 2},
+		{name: "actual reset time", secondary: map[string]any{"window-minutes": "0", "reset-at": "1794310278"}, wantRows: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			signals := map[string]any{
+				"X-Codex-Primary-Window-Minutes": "10080",
+				"X-Codex-Primary-Used-Percent":   "32",
+				"X-Codex-Allowed":                "true",
+				"X-Codex-Limit-Reached":          "false",
+			}
+			for name, value := range test.secondary {
+				signals["x-codex-secondary-"+name] = value
+			}
+			got := NormalizePassiveQuotaSnapshot("codex", &authfiles.QuotaObservation{ObservedAt: "2026-11-04T12:00:00Z", Signals: signals}, nil)
+			if got.Account == nil || len(got.Account.Quota) != test.wantRows {
+				t.Fatalf("expected %d rows, got %+v", test.wantRows, got.Account)
+			}
+			primary := got.Account.Quota[0]
+			if primary.Label != "Weekly" || primary.Allowed == nil || !*primary.Allowed {
+				t.Fatalf("primary window and its actual state must survive: %+v", primary)
+			}
+		})
+	}
+}
+
+func TestCodexPassiveZeroWindowKeepsIndependentGroupState(t *testing.T) {
+	got := NormalizePassiveQuotaSnapshot("codex", &authfiles.QuotaObservation{
+		ObservedAt: "2026-11-04T12:00:00Z",
+		Signals: map[string]any{
+			"X-Codex-Secondary-Window-Minutes": "0",
+			"X-Codex-Secondary-Used-Percent":   "0",
+			"X-Codex-Allowed":                  "false",
+			"X-Codex-Limit-Reached":            "true",
+		},
+	}, nil)
+	if got.Account == nil || len(got.Account.Quota) != 1 {
+		t.Fatalf("expected independent group state, got %+v", got.Account)
+	}
+	row := got.Account.Quota[0]
+	if row.Key != "codex.rate_limit.state" || row.UsedPercent != nil || row.Window != nil || row.Allowed == nil || *row.Allowed || row.LimitReached == nil || !*row.LimitReached {
+		t.Fatalf("group state must survive without invented window: %+v", row)
 	}
 }
 
