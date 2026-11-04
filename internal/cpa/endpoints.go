@@ -1,8 +1,8 @@
 package cpa
 
 const (
-	cpaManagementAuthFilesEndpoint           = "/v0/management/auth-files"
-	cpaManagementAuthFileModelsEndpoint      = "/v0/management/auth-files/models"
+	cpaManagementAuthFilesEndpoint           = "/v8/management/credentials"
+	cpaManagementAuthFileModelsEndpoint      = "/v8/management/credentials/models"
 	cpaManagementModelDefinitionsEndpoint    = "/v0/management/model-definitions/"
 	cpaManagementExternalAPIKeysEndpoint     = "/v0/management/api-keys"
 	cpaManagementVertexAPIKeyEndpoint        = "/v0/management/vertex-api-key"
@@ -13,7 +13,7 @@ const (
 	cpaManagementOpenAICompatibilityEndpoint = "/v0/management/openai-compatibility"
 	cpaManagementUsageQueueEndpoint          = "/v0/management/usage-queue"
 	cpaManagementAPICallEndpoint             = "/v0/management/api-call"
-	cpaManagementAuthFilesStatusEndpoint     = "/v0/management/auth-files/status"
+	cpaManagementAuthFilesStatusEndpoint     = "/v8/management/credentials/status"
 	cpaModelsEndpoint                        = "/v1/models"
 
 	cpaManagementRedisNetwork     = "tcp"

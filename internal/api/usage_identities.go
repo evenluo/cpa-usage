@@ -53,6 +53,7 @@ type usageIdentityResponse struct {
 	LastRefresh                *time.Time                             `json:"last_refresh,omitempty"`
 	NextRetryAfter             *time.Time                             `json:"next_retry_after,omitempty"`
 	MetadataObservedAt         *time.Time                             `json:"metadata_observed_at,omitempty"`
+	AuthRenewal                *entities.AuthRenewalObservation       `json:"auth_renewal,omitempty"`
 	PassiveQuota               *passiveQuotaObservationResponse       `json:"passive_quota,omitempty"`
 	PassiveModelQuotas         []passiveModelQuotaObservationResponse `json:"passive_model_quotas,omitempty"`
 	TotalRequests              int64                                  `json:"total_requests"`
@@ -461,6 +462,7 @@ func mapUsageIdentityResponse(item entities.UsageIdentity, aliases map[service.U
 		LastRefresh:                item.LastRefresh,
 		NextRetryAfter:             item.NextRetryAfter,
 		MetadataObservedAt:         item.MetadataObservedAt,
+		AuthRenewal:                item.AuthRenewal,
 		PassiveQuota:               passiveQuota,
 		PassiveModelQuotas:         passiveModelQuotas,
 		TotalRequests:              item.TotalRequests,

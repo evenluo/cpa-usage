@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -175,6 +176,14 @@ func UpdateUsageIdentityAuthFileState(ctx context.Context, db *gorm.DB, id uint,
 	if db == nil {
 		return fmt.Errorf("database is nil")
 	}
+	var authRenewal any
+	if observed.AuthRenewal != nil {
+		encoded, err := json.Marshal(observed.AuthRenewal)
+		if err != nil {
+			return fmt.Errorf("encode auth renewal: %w", err)
+		}
+		authRenewal = string(encoded)
+	}
 	result := db.WithContext(ctx).Model(&entities.UsageIdentity{}).Where("id = ?", id).
 		Updates(map[string]any{
 			"disabled":             observed.Disabled,
@@ -183,6 +192,7 @@ func UpdateUsageIdentityAuthFileState(ctx context.Context, db *gorm.DB, id uint,
 			"last_refresh":         observed.LastRefresh,
 			"next_retry_after":     observed.NextRetryAfter,
 			"metadata_observed_at": observed.MetadataObservedAt,
+			"auth_renewal":         authRenewal,
 			"updated_at":           observed.MetadataObservedAt,
 		})
 	if result.Error != nil {
@@ -701,6 +711,7 @@ func upsertUsageIdentities(tx *gorm.DB, identities []entities.UsageIdentity) err
 			"last_refresh":         gorm.Expr("excluded.last_refresh"),
 			"next_retry_after":     gorm.Expr("excluded.next_retry_after"),
 			"metadata_observed_at": gorm.Expr("excluded.metadata_observed_at"),
+			"auth_renewal":         gorm.Expr("excluded.auth_renewal"),
 			"passive_quota":        gorm.Expr("excluded.passive_quota"),
 			"passive_model_quotas": gorm.Expr("excluded.passive_model_quotas"),
 			"disabled":             gorm.Expr("excluded.disabled"),

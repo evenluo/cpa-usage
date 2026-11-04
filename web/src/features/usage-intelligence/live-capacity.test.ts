@@ -292,6 +292,34 @@ describe("Live Capacity view model", () => {
     })
   })
 
+  it("preserves the CPA auth renewal snapshot", () => {
+    const rows = buildLiveCapacityRows({
+      identities: [identity({
+        auth_renewal: {
+          requires_sign_in: true,
+          renewal_state: "expired_sign_in_required",
+          recovery_stage: "sign_in_required",
+          access_token_expires_at: "2026-10-29T10:00:00Z",
+          next_refresh_after: "2026-10-29T11:00:00Z",
+          next_action: "sign_in",
+          recovery_hint: "Re-authenticate on this CPA instance.",
+          refresh_error: { code: "invalid_grant", http_status: 400 },
+        },
+      })],
+    })
+
+    expect(rows[0].authRenewal).toEqual({
+      requires_sign_in: true,
+      renewal_state: "expired_sign_in_required",
+      recovery_stage: "sign_in_required",
+      access_token_expires_at: "2026-10-29T10:00:00Z",
+      next_refresh_after: "2026-10-29T11:00:00Z",
+      next_action: "sign_in",
+      recovery_hint: "Re-authenticate on this CPA instance.",
+      refresh_error: { code: "invalid_grant", http_status: 400 },
+    })
+  })
+
   it("keeps passive CPA observations separate from manual probe state and plan", () => {
     const rows = buildLiveCapacityRows({
       identities: [identity({

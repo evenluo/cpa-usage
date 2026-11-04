@@ -45,16 +45,16 @@ func TestFetchExternalAPIKeysSendsBearerTokenAndParsesExternalKeys(t *testing.T)
 	}
 }
 
-func TestFetchAuthFilesParsesCodexIDTokenFields(t *testing.T) {
+func TestFetchAuthFilesParsesCodexV8State(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != cpaManagementAuthFilesEndpoint {
+		if r.URL.Path != "/v8/management/credentials" {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer management-secret" {
 			t.Fatalf("expected management Authorization header, got %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"files":[{"auth_index":"codex-auth","type":"codex","id_token":{"chatgpt_account_id":"acct_123","chatgpt_subscription_active_start":"2026-05-01T00:00:00Z","chatgpt_subscription_active_until":"2026-06-01T00:00:00Z","plan_type":"team"}}]}`))
+		_, _ = w.Write([]byte(`{"files":[{"auth_index":"codex-auth","type":"codex","requires_sign_in":true,"renewal_state":"expired_sign_in_required","recovery_stage":"sign_in_required","access_token_expires_at":"2026-10-29T10:00:00Z","next_refresh_after":"2026-10-29T11:00:00Z","next_action":"sign_in","recovery_hint":"Re-authenticate this account on this proxy instance via OAuth login.","refresh_error":{"code":"invalid_grant","message":"provider response must not be retained","http_status":400},"id_token":{"chatgpt_account_id":"acct_123","chatgpt_subscription_active_start":"2026-05-01T00:00:00Z","chatgpt_subscription_active_until":"2026-06-01T00:00:00Z","plan_type":"team"}}]}`))
 	}))
 	defer server.Close()
 
@@ -81,6 +81,22 @@ func TestFetchAuthFilesParsesCodexIDTokenFields(t *testing.T) {
 	}
 	if file.IDToken.PlanType == nil || *file.IDToken.PlanType != "team" {
 		t.Fatalf("expected plan type to decode, got %+v", file.IDToken.PlanType)
+	}
+	if file.RequiresSignIn == nil || !*file.RequiresSignIn || file.RenewalState == nil || *file.RenewalState != "expired_sign_in_required" || file.RecoveryStage == nil || *file.RecoveryStage != "sign_in_required" {
+		t.Fatalf("expected v8 sign-in state, got %+v", file)
+	}
+	if file.AccessTokenExpiresAt == nil || !file.AccessTokenExpiresAt.Equal(time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)) || file.NextRefreshAfter == nil || !file.NextRefreshAfter.Equal(time.Date(2026, 10, 29, 11, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected v8 renewal timestamps, got %+v", file)
+	}
+	if file.NextAction == nil || *file.NextAction != "sign_in" || file.RecoveryHint == nil || *file.RecoveryHint == "" || file.RefreshError == nil || file.RefreshError.Code != "invalid_grant" || file.RefreshError.HTTPStatus != 400 {
+		t.Fatalf("expected allowlisted recovery facts, got %+v", file)
+	}
+	payload, err := json.Marshal(result.Payload)
+	if err != nil {
+		t.Fatalf("marshal auth files payload: %v", err)
+	}
+	if strings.Contains(string(payload), "provider response must not be retained") {
+		t.Fatalf("refresh error message must not be retained: %s", payload)
 	}
 }
 

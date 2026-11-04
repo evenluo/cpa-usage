@@ -7,7 +7,7 @@ type AuthFileModelsResponse struct {
 }
 
 // RegisteredModel is the allowlisted model identity returned by
-// /management/auth-files/models.
+// /v8/management/credentials/models.
 type RegisteredModel struct {
 	ID          string `json:"id"`
 	DisplayName string `json:"display_name,omitempty"`

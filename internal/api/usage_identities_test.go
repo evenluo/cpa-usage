@@ -246,6 +246,39 @@ func TestUsageIdentitiesRouteReturnsMetadataStatsAndActiveRows(t *testing.T) {
 	}
 }
 
+func TestUsageIdentitiesRouteReturnsAuthRenewalSnapshot(t *testing.T) {
+	requiresSignIn := true
+	renewalState := "sign_in_required"
+	recoveryStage := "sign_in_required"
+	nextAction := "sign_in"
+	recoveryHint := "Re-authenticate on this CPA instance."
+	expiresAt := time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{UsageIdentity: usageIdentitiesStub{activeItems: []entities.UsageIdentity{{
+		ID: 1, Name: "Codex", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-codex", Type: "codex", Provider: "Codex",
+		AuthRenewal: &entities.AuthRenewalObservation{
+			RequiresSignIn: &requiresSignIn, RenewalState: &renewalState, RecoveryStage: &recoveryStage,
+			AccessTokenExpiresAt: &expiresAt, NextAction: &nextAction, RecoveryHint: &recoveryHint,
+			RefreshError: &entities.AuthRefreshErrorObservation{Code: "invalid_grant", HTTPStatus: 400},
+		},
+	}}}})
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/identities", nil)
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	body := resp.Body.String()
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", resp.Code, body)
+	}
+	for _, expected := range []string{
+		`"auth_renewal":{"requires_sign_in":true,"renewal_state":"sign_in_required","recovery_stage":"sign_in_required","access_token_expires_at":"2026-10-29T10:00:00Z","next_action":"sign_in","recovery_hint":"Re-authenticate on this CPA instance.","refresh_error":{"code":"invalid_grant","http_status":400}}`,
+	} {
+		if !contains(body, expected) {
+			t.Fatalf("expected %s in response body: %s", expected, body)
+		}
+	}
+}
+
 func TestUsageIdentitiesRoutePreservesMissingAvailabilityEvidence(t *testing.T) {
 	router := NewRouter(nil, nil, nil, nil, AuthConfig{}, nil, "", OptionalProviders{UsageIdentity: usageIdentitiesStub{activeItems: []entities.UsageIdentity{{
 		ID: 1, Name: "Disk-only auth file", AuthType: entities.UsageIdentityAuthTypeAuthFile, AuthTypeName: "oauth", Identity: "auth-disk", Type: "codex", Provider: "Codex",

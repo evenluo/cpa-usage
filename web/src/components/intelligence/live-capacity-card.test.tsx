@@ -199,6 +199,70 @@ describe("LiveCapacityCard", () => {
     expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
   })
 
+  it("shows the CPA sign-in requirement and renewal timing", () => {
+    setupMock({ identities: [identity({
+      status: "error",
+      unavailable: true,
+      auth_renewal: {
+        requires_sign_in: true,
+        renewal_state: "expired_sign_in_required",
+        recovery_stage: "sign_in_required",
+        access_token_expires_at: "2026-10-29T10:00:00Z",
+        next_refresh_after: "2026-10-29T11:00:00Z",
+        next_action: "sign_in",
+        recovery_hint: "Re-authenticate on this CPA instance.",
+        refresh_error: { code: "invalid_grant", http_status: 400 },
+      },
+    })] })
+    render(<LiveCapacityCard provider="" />)
+
+    const availability = screen.getByRole("group", { name: "Account availability" })
+    const signInBadge = within(availability).getByText("Sign in required")
+    expect(signInBadge).toHaveAttribute("title", expect.stringContaining("Re-authenticate on this CPA instance."))
+    expect(signInBadge).toHaveAttribute("title", expect.stringContaining("Refresh error: invalid_grant"))
+    expect(signInBadge).toHaveAttribute("title", expect.stringContaining("HTTP 400"))
+    expect(within(availability).queryByText("CPA: Error")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Sign in required in CPA")).toBeInTheDocument()
+
+    const timing = screen.getByRole("group", { name: "Account and observation timing" })
+    expect(within(timing).getByText("Access token expires")).toBeInTheDocument()
+    expect(within(timing).getByText("Next renewal")).toBeInTheDocument()
+    expect(timing.querySelector("time[datetime='2026-10-29T10:00:00Z']")).toBeInTheDocument()
+    expect(timing.querySelector("time[datetime='2026-10-29T11:00:00Z']")).toBeInTheDocument()
+  })
+
+  it("shows a scheduled CPA renewal retry", () => {
+    setupMock({ identities: [identity({
+      auth_renewal: {
+        requires_sign_in: false,
+        renewal_state: "retry_scheduled",
+        recovery_stage: "loaded",
+        refresh_error: { code: "temporarily_unavailable", http_status: 503 },
+      },
+    })] })
+    render(<LiveCapacityCard provider="" />)
+
+    const availability = screen.getByRole("group", { name: "Account availability" })
+    expect(within(availability).getByText("Renewal retry scheduled")).toHaveAttribute("title", expect.stringContaining("temporarily_unavailable"))
+    expect(screen.getByLabelText("Credential renewal retry scheduled in CPA")).toBeInTheDocument()
+  })
+
+  it("keeps an independent CPA error beside a healthy renewal state", () => {
+    setupMock({ identities: [identity({
+      status: "error",
+      auth_renewal: {
+        requires_sign_in: false,
+        renewal_state: "renewal_verified",
+        recovery_stage: "renewal_verified",
+      },
+    })] })
+    render(<LiveCapacityCard provider="" />)
+
+    const availability = screen.getByRole("group", { name: "Account availability" })
+    expect(within(availability).getByText("CPA: Error")).toBeInTheDocument()
+    expect(within(availability).getByText("Renewal verified")).toBeInTheDocument()
+  })
+
   it("does not use a Codex model snapshot as a card observation", () => {
     vi.useFakeTimers({ now: new Date("2026-09-07T12:00:00Z") })
     try {

@@ -48,6 +48,24 @@ func ParseUsageIdentityAuthType(name string) (UsageIdentityAuthType, bool) {
 	}
 }
 
+// AuthRenewalObservation is the latest v8 sign-in and renewal snapshot reported by CPA.
+type AuthRenewalObservation struct {
+	RequiresSignIn       *bool                        `json:"requires_sign_in,omitempty"`
+	RenewalState         *string                      `json:"renewal_state,omitempty"`
+	RecoveryStage        *string                      `json:"recovery_stage,omitempty"`
+	AccessTokenExpiresAt *time.Time                   `json:"access_token_expires_at,omitempty"`
+	NextRefreshAfter     *time.Time                   `json:"next_refresh_after,omitempty"`
+	NextAction           *string                      `json:"next_action,omitempty"`
+	RecoveryHint         *string                      `json:"recovery_hint,omitempty"`
+	RefreshError         *AuthRefreshErrorObservation `json:"refresh_error,omitempty"`
+}
+
+// AuthRefreshErrorObservation keeps structured failure facts without the upstream response message.
+type AuthRefreshErrorObservation struct {
+	Code       string `json:"code,omitempty"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+}
+
 // UsageIdentity 是从 CPA auth_files 和 provider config 同步出的 usage source 身份实体。
 type UsageIdentity struct {
 	CanonicalValidAttempts int64                 `gorm:"-"`
@@ -74,6 +92,7 @@ type UsageIdentity struct {
 	LastRefresh        *time.Time
 	NextRetryAfter     *time.Time
 	MetadataObservedAt *time.Time
+	AuthRenewal        *AuthRenewalObservation        `gorm:"serializer:json;type:text"`
 	PassiveQuota       *PassiveQuotaObservation       `gorm:"serializer:json;type:text"`
 	PassiveModelQuotas []PassiveModelQuotaObservation `gorm:"serializer:json;type:text"`
 

@@ -464,17 +464,23 @@ function LiveCapacityAccountTile({
   }
 
   const isRowRefreshing = row.status === "refreshing"
-  const hasAttention = row.isConstrained || row.status === "failed" || row.unavailable === true || row.accountState.kind === "error"
+  const requiresSignIn = row.authRenewal?.requires_sign_in === true
+  const renewalRetryScheduled = row.authRenewal?.renewal_state === "retry_scheduled"
+  const hasAttention = requiresSignIn || renewalRetryScheduled || row.isConstrained || row.status === "failed" || row.unavailable === true || row.accountState.kind === "error"
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
   const attentionLabel = row.status === "failed"
     ? `Refresh failed: ${row.errorLabel ?? "Failed"}`
-    : row.unavailable === true
-      ? "Unavailable in CPA"
-      : row.accountState.kind === "error"
-        ? "CPA error"
-        : row.isConstrained
-          ? "Capacity constrained"
-          : undefined
+    : requiresSignIn
+      ? "Sign in required in CPA"
+      : renewalRetryScheduled
+        ? "Credential renewal retry scheduled in CPA"
+        : row.unavailable === true
+          ? "Unavailable in CPA"
+          : row.accountState.kind === "error"
+            ? "CPA error"
+            : row.isConstrained
+              ? "Capacity constrained"
+              : undefined
 
   const capacityEntries = mergeCapacityEntries(row)
   const layout = capacityLayout(capacityEntries, row.providerKind)
@@ -485,7 +491,9 @@ function LiveCapacityAccountTile({
     (row.lastRefresh ? 1 : 0) +
     (row.nextRetryAfter ? 1 : 0) +
     (row.activeStart ? 1 : 0) +
-    (row.activeUntil ? 1 : 0)
+    (row.activeUntil ? 1 : 0) +
+    (row.authRenewal?.access_token_expires_at ? 1 : 0) +
+    (row.authRenewal?.next_refresh_after ? 1 : 0)
   const foldedCount =
     layout.extras.length +
     visibleModelSnapshots.length +
@@ -563,7 +571,7 @@ function LiveCapacityAccountTile({
         {hasAttention ? (
           <span title={attentionLabel}>
             <AlertTriangle
-              className={cn("h-4 w-4", row.status === "failed" ? "text-red-600" : "text-amber-600")}
+              className={cn("h-4 w-4", row.status === "failed" || requiresSignIn ? "text-red-600" : "text-amber-600")}
               aria-label={attentionLabel}
             />
           </span>
@@ -710,6 +718,8 @@ function LiveCapacityAccountTile({
                 observedAt={row.observedAt}
                 activeStart={row.activeStart}
                 activeUntil={row.activeUntil}
+                accessTokenExpiresAt={row.authRenewal?.access_token_expires_at}
+                nextRefreshAfter={row.authRenewal?.next_refresh_after}
               />
             ) : null}
           </div>
@@ -882,11 +892,14 @@ function definitionStatusLabel(status: RegisteredModelSupport["definition_status
 }
 
 function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
+  const renewal = authRenewalPresentation(row.authRenewal)
+  const renewalExplainsError = row.authRenewal?.requires_sign_in === true || row.authRenewal?.renewal_state === "retry_scheduled"
   // Omit a matching disabled lifecycle state already covered by the header badge.
   const showAccountState = row.accountState.kind !== "active"
     && row.accountState.kind !== "not_reported"
     && !(row.disabled && row.accountState.kind === "disabled")
-  if (row.unavailable !== true && !showAccountState) return null
+    && !(renewalExplainsError && row.accountState.kind === "error")
+  if (row.unavailable !== true && !showAccountState && !renewal) return null
   return (
     <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Account availability">
       {row.unavailable === true ? <Badge variant="red" className="px-1.5 py-0 text-[10px] leading-4">Unavailable</Badge> : null}
@@ -899,8 +912,48 @@ function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
           CPA: {row.accountState.label}
         </Badge>
       ) : null}
+      {renewal ? (
+        <Badge variant={renewal.tone} className="px-1.5 py-0 text-[10px] leading-4" title={renewal.title}>
+          {renewal.label}
+        </Badge>
+      ) : null}
     </div>
   )
+}
+
+function authRenewalPresentation(observation: LiveCapacityRow["authRenewal"]): {
+  label: string
+  tone: "green" | "amber" | "red" | "secondary"
+  title: string
+} | null {
+  if (!observation) return null
+  const details = [
+    observation.recovery_hint,
+    observation.recovery_stage ? `Recovery stage: ${observation.recovery_stage}` : undefined,
+    observation.refresh_error?.code ? `Refresh error: ${observation.refresh_error.code}` : undefined,
+    observation.refresh_error?.http_status ? `HTTP ${observation.refresh_error.http_status}` : undefined,
+  ].filter((value): value is string => Boolean(value))
+  const title = details.join(" · ")
+  switch (observation.renewal_state) {
+    case "sign_in_required":
+      return { label: "Sign in required", tone: "red", title: title || "CPA requires re-authentication on this instance." }
+    case "expired_sign_in_required":
+      return { label: "Sign in required", tone: "red", title: title || "CPA reports an expired token; re-authentication is required." }
+    case "retry_scheduled":
+      return { label: "Renewal retry scheduled", tone: "amber", title: title || "CPA has scheduled another credential renewal attempt." }
+    case "renewal_verified":
+      return { label: "Renewal verified", tone: "green", title: title || "CPA verified the latest credential renewal." }
+    case "awaiting_first_renewal":
+      return { label: "Awaiting first renewal", tone: "secondary", title: title || "CPA has not verified a credential renewal yet." }
+    default:
+      if (observation.requires_sign_in === true) {
+        return { label: "Sign in required", tone: "red", title: title || "CPA requires re-authentication on this instance." }
+      }
+      if (observation.renewal_state) {
+        return { label: `Renewal: ${observation.renewal_state}`, tone: "secondary", title: title || "Unrecognized renewal state reported by CPA." }
+      }
+      return null
+  }
 }
 
 function accountStateBadgeVariant(tone: LiveCapacityAccountStateTone): "green" | "amber" | "red" | "secondary" {
@@ -914,6 +967,8 @@ function AccountTiming({
   observedAt,
   activeStart,
   activeUntil,
+  accessTokenExpiresAt,
+  nextRefreshAfter,
 }: {
   metadataObservedAt?: string | null
   lastRefresh?: string | null
@@ -921,6 +976,8 @@ function AccountTiming({
   observedAt?: string | null
   activeStart?: string | null
   activeUntil?: string | null
+  accessTokenExpiresAt?: string | null
+  nextRefreshAfter?: string | null
 }) {
   // activeStart arrives pre-filtered by buildLiveCapacityRows: it is only set
   // while the subscription start is still in the future.
@@ -942,6 +999,10 @@ function AccountTiming({
       ) : null}
       {activeStart ? <TimingLine label="Starts" value={activeStart} /> : null}
       {activeUntil ? <TimingLine label="Ends" value={activeUntil} /> : null}
+      {accessTokenExpiresAt ? <TimingLine label="Access token expires" value={accessTokenExpiresAt} /> : null}
+      {nextRefreshAfter ? (
+        <TimingLine label="Next renewal" value={nextRefreshAfter} title="Next automatic credential refresh time reported by CPA." />
+      ) : null}
     </div>
   )
 }
