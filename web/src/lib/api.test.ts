@@ -4,6 +4,9 @@ import { apiFetch, apiFetchBlob, apiPath, appBasePath, ApiError, metricsFetch, m
 const CPA_STORAGE_PREFIX = "enc::v1::"
 const CPA_STORAGE_SEED = "cli-proxy-api-webui::secure-storage"
 
+// Produced by the upstream v2 encoder for host localhost (the Vitest origin).
+const CPA_V2_AUTH_FIXTURE = "enc::v2::GE4aWREGClpDVkMRGUQ1BBEQSwAYGxEXBUhKAh8bDBMNDwoPGE1PQwEJARITBgEMQwQ5CgFbF0MDAUwFAAZYHwgXAAAABxcRD19WHRcMAggeCR0zAB8bGBwGB05TWQIHCgVVDxcVG14eCgxXUwpH"
+
 function encodeCPAStorageValue(plaintext: string): string {
   const key = new TextEncoder().encode(
     `${CPA_STORAGE_SEED}|${window.location.host}|${window.navigator.userAgent}`,
@@ -148,6 +151,39 @@ describe("apiFetch", () => {
 
     await apiFetch("/status")
     expect(requestHeaders(fetchMock.mock.calls[0]).get("Authorization")).toBe("Bearer persisted-secret")
+  })
+
+  it("authenticates a session with the upstream v2 remembered login", async () => {
+    window.localStorage.setItem("cli-proxy-auth", CPA_V2_AUTH_FIXTURE)
+    fetchMock.mockResolvedValueOnce(jsonResponse({ authenticated: true }))
+
+    await apiFetch("/auth/session")
+
+    expect(requestHeaders(fetchMock.mock.calls[0]).get("Authorization")).toBe("Bearer shared-v2-secret")
+    expect(window.localStorage.getItem("cli-proxy-auth")).toBe(CPA_V2_AUTH_FIXTURE)
+  })
+
+  it("reads upstream v2 storage after the browser user agent changes", async () => {
+    const userAgent = vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("updated-browser")
+    try {
+      window.localStorage.setItem("cli-proxy-auth", CPA_V2_AUTH_FIXTURE)
+      fetchMock.mockResolvedValueOnce(jsonResponse({}))
+
+      await apiFetch("/status")
+
+      expect(requestHeaders(fetchMock.mock.calls[0]).get("Authorization")).toBe("Bearer shared-v2-secret")
+    } finally {
+      userAgent.mockRestore()
+    }
+  })
+
+  it("ignores malformed upstream v2 storage", async () => {
+    window.localStorage.setItem("cli-proxy-auth", "enc::v2::%%%not-base64%%%")
+    fetchMock.mockResolvedValueOnce(jsonResponse({}))
+
+    await apiFetch("/auth/session")
+
+    expect(requestHeaders(fetchMock.mock.calls[0]).has("Authorization")).toBe(false)
   })
 
   it("prefers managementKey over the persisted cli-proxy-auth key", async () => {

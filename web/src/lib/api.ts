@@ -18,7 +18,8 @@ export function metricsPath(): string {
 	return withBasePath("/metrics")
 }
 
-const cpaStoragePrefix = "enc::v1::"
+const cpaStoragePrefix = "enc::v2::"
+const cpaUserAgentStoragePrefix = "enc::v1::"
 const cpaStorageSeed = "cli-proxy-api-webui::secure-storage"
 
 function readSharedManagementKey(): string | null {
@@ -60,14 +61,21 @@ function readCPAStorageString(key: string): string {
   if (!raw) {
     return ""
   }
-  return raw.startsWith(cpaStoragePrefix) ? decodeCPAStorageValue(raw) : raw
+  if (raw.startsWith(cpaStoragePrefix) || raw.startsWith(cpaUserAgentStoragePrefix)) {
+    return decodeCPAStorageValue(raw)
+  }
+  return raw
 }
 
 function decodeCPAStorageValue(value: string): string {
-  const payload = window.atob(value.slice(cpaStoragePrefix.length))
+  const usesUserAgent = value.startsWith(cpaUserAgentStoragePrefix)
+  const prefix = usesUserAgent ? cpaUserAgentStoragePrefix : cpaStoragePrefix
+  const payload = window.atob(value.slice(prefix.length))
   const encrypted = Uint8Array.from(payload, (char) => char.charCodeAt(0))
   const key = new TextEncoder().encode(
-    `${cpaStorageSeed}|${window.location.host}|${window.navigator.userAgent}`
+    usesUserAgent
+      ? `${cpaStorageSeed}|${window.location.host}|${window.navigator.userAgent}`
+      : `${cpaStorageSeed}|${window.location.host}`
   )
   const decoded = encrypted.map((byte, index) => byte ^ key[index % key.length])
   return new TextDecoder().decode(decoded)
