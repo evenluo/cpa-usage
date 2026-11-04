@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       DOKPLOY_CPA_USAGE_COMPOSE_ID: ${{ vars.DOKPLOY_CPA_USAGE_COMPOSE_ID }}
       DOKPLOY_CPA_USAGE_HEALTH_URL: ${{ vars.DOKPLOY_CPA_USAGE_HEALTH_URL }}
