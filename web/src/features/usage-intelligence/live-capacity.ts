@@ -27,6 +27,7 @@ export interface LiveCapacityRow {
   unavailable: boolean | null
   accountState: LiveCapacityAccountState
   status: LiveCapacityStatus
+  refreshPhase?: "starting" | "queued" | "running"
   /** Humanized refresh-failure label for the attention tooltip; only set for failed rows. */
   errorLabel?: string
   error?: string
@@ -62,6 +63,50 @@ export interface LiveCapacityPassiveModelObservation extends LiveCapacityPassive
   model: string
 }
 
+export interface LiveCapacityCredit {
+  balance?: string
+  hasCredits?: boolean
+  unlimited?: boolean
+  overageLimitReached?: boolean
+  allowed?: boolean
+  limitReached?: boolean
+}
+
+export interface LiveCapacityNotice {
+  label: string
+  tone: "red" | "amber" | "muted"
+  description?: string
+}
+
+export function requiresAccountSignIn(observation: AuthRenewalObservation | null | undefined): boolean {
+  return observation?.requires_sign_in === true || observation?.renewal_state === "sign_in_required" || observation?.renewal_state === "expired_sign_in_required"
+}
+
+export function accountNotices(row: LiveCapacityRow): LiveCapacityNotice[] {
+  const notices: LiveCapacityNotice[] = []
+  const signIn = requiresAccountSignIn(row.authRenewal)
+  const retry = row.authRenewal?.renewal_state === "retry_scheduled"
+  if (signIn) notices.push({ label: "Sign in required", tone: "red", description: "Re-authenticate on this CPA instance. Quota refresh does not sign in the account." })
+  if (row.unavailable === true) notices.push({ label: "Unavailable", tone: "red" })
+  if (row.accountState.kind !== "active" && row.accountState.kind !== "not_reported" && row.accountState.kind !== "unknown" && row.accountState.kind !== "other"
+    && !(row.disabled && row.accountState.kind === "disabled") && !((signIn || retry) && row.accountState.kind === "error")) {
+    notices.push({ label: `CPA: ${row.accountState.label}`, tone: row.accountState.tone === "green" ? "muted" : row.accountState.tone })
+  }
+  if (retry && !signIn) notices.push({ label: "Renewal retry scheduled", tone: "amber", description: "CPA has scheduled another credential renewal attempt; recovery is not guaranteed." })
+  return notices
+}
+
+export function renewalRecordLabel(observation: AuthRenewalObservation): string {
+  switch (observation.renewal_state) {
+    case "awaiting_first_renewal": return "Renewal not yet verified"
+    case "renewal_verified": return "Renewal verified"
+    case "sign_in_required":
+    case "expired_sign_in_required": return "Sign in required"
+    case "retry_scheduled": return "Renewal retry scheduled"
+    default: return observation.renewal_state ? `Renewal: ${observation.renewal_state}` : "Renewal state not reported"
+  }
+}
+
 export interface LiveCapacityMetric {
   /** Provider label retained for matching observations of the same quota window. */
   label: string
@@ -79,7 +124,7 @@ export interface LiveCapacityMetric {
   /** An explicitly named Codex Reserve limit, never inferred from a model or metered feature. */
   isLunaReserve?: boolean
   /** The Codex account credit balance, shared by manual and passive readings. */
-  isCreditBalance?: boolean
+  credit?: LiveCapacityCredit
 }
 
 export type CapacityWindowRole = "short" | "long" | "unknown"
@@ -163,6 +208,7 @@ export function buildLiveCapacityRows(input: {
         unavailable: identity.unavailable ?? null,
         accountState: accountStateFromIdentity(identity.status),
         status,
+        refreshPhase: taskState?.status === "starting" || taskState?.status === "queued" || taskState?.status === "running" ? taskState.status : undefined,
         errorLabel,
         error,
         fiveHour: fiveHour ? metricFromQuotaRow(fiveHour, providerKind) : undefined,
@@ -191,7 +237,7 @@ export function buildLiveCapacityRows(input: {
       if (providerKind === "codex") {
         // Paid credits extend usage; an empty balance does not exhaust the
         // included allowance. Account attention follows the displayed quotas.
-        row.isConstrained = mergeCapacityEntries(row).some(({ metric }) => !metric.isCreditBalance && metric.tone === "red")
+        row.isConstrained = mergeCapacityEntries(row).some(({ metric }) => !metric.credit && metric.tone === "red")
       }
       return row
     })
@@ -302,11 +348,14 @@ export interface CapacityLayout {
   main: CapacityEntry[]
   /** Folded rows: named limits, unknown-window base rows, and window-less pass-throughs. */
   extras: CapacityEntry[]
+  credits: CapacityEntry[]
 }
 
 export function capacityLayout(entries: CapacityEntry[], providerKind: ProviderKind): CapacityLayout {
+  const credits = entries.filter((entry) => entry.metric.credit)
+  entries = entries.filter((entry) => !entry.metric.credit)
   if (providerKind === "claude") {
-    const layout: CapacityLayout = { hasWindowSkeleton: true, main: [], extras: [], reserve: [] }
+    const layout: CapacityLayout = { hasWindowSkeleton: true, main: [], extras: [], reserve: [], credits }
     for (const entry of entries) {
       if (entry.isBaseWindow && entry.windowRole === "short") layout.baseShort = entry
       else if (entry.isBaseWindow && entry.windowRole === "long") layout.baseLong = entry
@@ -315,7 +364,7 @@ export function capacityLayout(entries: CapacityEntry[], providerKind: ProviderK
     return layout
   }
   if (providerKind === "codex") {
-    const layout: CapacityLayout = { hasWindowSkeleton: false, main: [], extras: [], reserve: [] }
+    const layout: CapacityLayout = { hasWindowSkeleton: false, main: [], extras: [], reserve: [], credits }
     for (const entry of entries) {
       if (entry.metric.isLunaReserve) layout.reserve.push(entry)
       else if (entry.isBaseWindow && (entry.windowRole === "short" || entry.windowRole === "long")) layout.main.push(entry)
@@ -329,6 +378,7 @@ export function capacityLayout(entries: CapacityEntry[], providerKind: ProviderK
     main: entries.filter((entry) => entry.isBaseWindow || entry.windowRole === null),
     extras: entries.filter((entry) => !entry.isBaseWindow && entry.windowRole !== null),
     reserve: [],
+    credits,
   }
 }
 
@@ -344,7 +394,7 @@ function capacityEntry(metric: LiveCapacityMetric, source: CapacityEntry["source
 }
 
 function capacityMergeKey(entry: CapacityEntry): string | null {
-  if (entry.metric.isCreditBalance) return "codex.credits"
+  if (entry.metric.credit) return "codex.credits"
   if (entry.windowRole === null) return null
   return `${capacityLabelStem(entry.metric.label)}|${entry.windowRole}`
 }
@@ -494,7 +544,8 @@ function quotaWindowSeconds(window: QuotaWindow | undefined): number | undefined
 }
 
 function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapacityMetric {
-  const progress = progressFromQuotaRow(row)
+  const credit = isCreditBalanceRow(row)
+  const progress = credit ? null : progressFromQuotaRow(row)
   const label = metricLabel(row)
   // Only the explicitly named reserve limit earns the product label. A request
   // model or the metered feature alone does not establish an allowance's identity.
@@ -506,12 +557,19 @@ function metricFromQuotaRow(row: QuotaRow, providerKind: ProviderKind): LiveCapa
       description: "gpt-reserve · Extra Luna usage after regular usage is exhausted.",
       isLunaReserve: true,
     } : {}),
-    ...(providerKind === "codex" && isCreditBalanceRow(row) ? { isCreditBalance: true } : {}),
+    ...(credit ? { credit: {
+      balance: row.balance !== undefined ? formatCreditBalance(row.balance) : typeof row.remaining === "number" ? formatCreditBalance(String(row.remaining)) : undefined,
+      hasCredits: row.hasCredits,
+      unlimited: row.unlimited,
+      overageLimitReached: row.overageLimitReached,
+      allowed: row.allowed,
+      limitReached: row.limitReached,
+    } } : {}),
     valueLabel: valueLabel(row),
     resetAt: row.resetAt,
     resetAfterSeconds: typeof row.resetAfterSeconds === "number" ? row.resetAfterSeconds : undefined,
     progress,
-    tone: toneFromProgress(row, progress),
+    tone: credit ? "muted" : toneFromProgress(row, progress),
     windowSeconds: quotaWindowSeconds(row.window),
   }
 }
@@ -604,17 +662,17 @@ function toneFromProgress(row: QuotaRow, progress: number | null): LiveCapacityM
   if (row.limitReached || row.allowed === false) return "red"
   if (isRemainingExhausted(row)) return "red"
   if (progress === null) return "muted"
-  if (progress >= 95) return "red"
+  if (progress >= 100) return "red"
   if (progress >= 80) return "amber"
   return "green"
 }
 
 function isConstrainedQuotaRow(row: QuotaRow | undefined): boolean {
-  if (!row) return false
+  if (!row || isCreditBalanceRow(row)) return false
   if (row.limitReached || row.allowed === false) return true
   if (isRemainingExhausted(row)) return true
   const progress = progressFromQuotaRow(row)
-  return progress !== null && progress >= 95
+  return !isCreditBalanceRow(row) && progress !== null && progress >= 100
 }
 
 function isRemainingExhausted(row: QuotaRow): boolean {

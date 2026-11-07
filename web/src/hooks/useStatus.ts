@@ -11,7 +11,8 @@ const METRICS_QUERY_KEY = ["metrics"] as const
  *
  * Excluded on purpose:
  * - ["status"] is refreshed onSettled so operators see sync state after success or failure
- * - ["quota"] is Live Capacity quota observations, not a usage-event read model
+ * - quota observations and refresh tasks are independent of metadata sync; only the
+ *   auth-file identity read is refreshed to expose synchronized account facts
  * - ["auth"] is session state, not a sync read model
  */
 export const MANUAL_SYNC_READ_MODEL_QUERY_KEYS = [
@@ -20,6 +21,7 @@ export const MANUAL_SYNC_READ_MODEL_QUERY_KEYS = [
   ["events"],
   ["keys"],
   ["pricing"],
+  ["quota", "auth-file-identities"],
 ] as const
 
 export function useStatus() {

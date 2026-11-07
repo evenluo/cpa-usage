@@ -169,11 +169,11 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   await expect(page.getByText("62% used")).toBeVisible()
   await expect(page.getByText("Manual capacity probe")).toHaveCount(0)
   // Data freshness sits on the card surface.
-  await expect(page.getByText(/^Last updated /)).toBeVisible()
+  await expect(page.getByText(/^Latest quota observation /)).toBeVisible()
 
   // The active limit, subscription end, and timing lines live
   // behind the per-tile fold.
-  await page.getByText(/··· \d+ more/).first().click()
+  await page.getByText("Account & observation details").first().click()
   await expect(page.getByText("Active limit codex_primary")).toBeVisible()
   await expect(capacity.getByRole("region", { name: "Model request observations", exact: true })).toHaveCount(0)
   await expect(capacity.locator("time[datetime='2026-09-07T07:30:00Z']")).toHaveCount(0)

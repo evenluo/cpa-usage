@@ -308,6 +308,22 @@ export function useLiveCapacity(provider: string, enabled = true) {
   return {
     identities: visibleIdentities,
     observations: observationsQuery.data,
+    identitiesRead: {
+      data: identitiesQuery.data === undefined ? undefined : visibleIdentities,
+      isLoading: identitiesQuery.isLoading,
+      isFetching: identitiesQuery.isFetching,
+      error: identitiesQuery.error,
+      retry: () => { if (enabled) void identitiesQuery.refetch() },
+    },
+    observationsRead: {
+      data: observationsQuery.data,
+      isLoading: observationsQuery.isLoading,
+      isFetching: observationsQuery.isFetching,
+      error: observationsQuery.error,
+      retry: () => {
+        if (enabled && visibleAuthIndexes.length > 0) void observationsQuery.refetch()
+      },
+    },
     taskStates,
     refresh,
     refreshLimit: QUOTA_REFRESH_LIMIT,

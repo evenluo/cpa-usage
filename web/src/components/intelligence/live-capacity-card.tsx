@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  accountNotices,
+  renewalRecordLabel,
   buildLiveCapacityRows,
   capacityLayout,
   FIVE_HOUR_WINDOW_SECONDS,
@@ -24,8 +26,8 @@ import {
   orderLiveCapacityRows,
   resetCountdown,
   WEEKLY_WINDOW_SECONDS,
-  type LiveCapacityAccountStateTone,
   type LiveCapacityMetric,
+  type CapacityEntry,
   type LiveCapacityPassiveObservation,
   type LiveCapacityPlanTone,
   type LiveCapacityRow,
@@ -55,7 +57,9 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
     return () => observer.disconnect()
   }, [isActivated])
 
-  const { identities, observations, taskStates, refresh, refreshLimit, isLoading, isRefreshing, error } = useLiveCapacity(provider, isActivated)
+  const { identities, observations, taskStates, refresh, refreshLimit, isRefreshing, identitiesRead, observationsRead } = useLiveCapacity(provider, isActivated)
+  const error = identitiesRead.error
+  const initialAccountFailure = error && identitiesRead.data === undefined
   const modelSupport = useModelSupport()
   const derivedRows = useMemo(
     () => buildLiveCapacityRows({ identities, observations, taskStates }),
@@ -93,10 +97,10 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
 
   const [rowOrder, setRowOrder] = useState<string[]>([])
   useLayoutEffect(() => {
-    if (isLoading || error) return
+    if (identitiesRead.isLoading || initialAccountFailure) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- useLayoutEffect blocks paint, so no flash
     setRowOrder((currentOrder) => mergeLiveCapacityRowOrder(currentOrder, allRegularRows))
-  }, [allRegularRows, error, isLoading])
+  }, [allRegularRows, initialAccountFailure, identitiesRead.isLoading])
   const orderedRegularRows = useMemo(
     () => orderLiveCapacityRows(allRegularRows, rowOrder),
     [allRegularRows, rowOrder],
@@ -182,11 +186,11 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   }
 
   const regularRowKeys = useMemo(() => regularRows.map((r) => r.authIndex), [regularRows])
-  const flipEnabled = !isLoading && !error && regularRows.length > 0
+  const flipEnabled = !identitiesRead.isLoading && !initialAccountFailure && regularRows.length > 0
   const { containerRef, registerItem } = useFlipReorder(regularRowKeys, { enabled: flipEnabled })
 
   const displayedCount = displayedRows.length
-  const refreshLabel = displayedCount > refreshLimit ? `Refresh first ${refreshLimit}` : "Refresh"
+  const refreshLabel = displayedCount > refreshLimit ? `Refresh quota: first ${refreshLimit}` : "Refresh quota"
   const refreshDisplayed = () => {
     if (effectiveKind === "all") refresh()
     else refresh(displayedRows.map((row) => row.authIndex))
@@ -198,12 +202,11 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
         <div>
           <CardTitle className="flex items-center gap-2">
             Live Capacity
-            <Gauge className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Live quotas" />
+            <Gauge className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Quota observations" />
           </CardTitle>
-          <CardDescription>Current quotas</CardDescription>
+          <CardDescription>Latest quota observations</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="blue">Live</Badge>
           {displayedCount > refreshLimit ? <Badge variant="amber">max {refreshLimit}</Badge> : null}
           <Button type="button" variant="outline" size="sm" onClick={refreshDisplayed} disabled={displayedCount === 0}>
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isRefreshing && "animate-spin")} />
@@ -212,15 +215,17 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
         </div>
       </CardHeader>
       <CardContent>
-        {!isActivated || isLoading ? (
+        {!initialAccountFailure && identitiesRead.error ? <ReadFailure label="Account read failed; showing the last account snapshot." retry={identitiesRead.retry} /> : null}
+        {!initialAccountFailure && observationsRead.error ? <ReadFailure label="Quota observation read failed; available readings retain their original times." retry={observationsRead.retry} /> : null}
+        {!isActivated || identitiesRead.isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-14 w-full" />
             <Skeleton className="h-14 w-full" />
             <Skeleton className="h-14 w-full" />
           </div>
-        ) : error ? (
+        ) : initialAccountFailure ? (
           <div className="flex h-[140px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-red-500">
-            Couldn't load live capacity
+            <div className="space-y-2 text-center"><p>Couldn't load live capacity</p><Button variant="outline" size="sm" onClick={identitiesRead.retry}>Retry account read</Button></div>
           </div>
         ) : identities.length === 0 ? (
           <div className="flex h-[140px] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
@@ -228,6 +233,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
+            {observationsRead.isLoading ? <p role="status" className="text-xs text-muted-foreground">Loading saved quota observations…</p> : null}
             {providerGroups.length > 1 ? (
               <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter accounts by provider">
                 <ProviderFilterChip
@@ -464,41 +470,18 @@ function LiveCapacityAccountTile({
   }
 
   const isRowRefreshing = row.status === "refreshing"
-  const requiresSignIn = row.authRenewal?.requires_sign_in === true
-  const renewalRetryScheduled = row.authRenewal?.renewal_state === "retry_scheduled"
-  const hasAttention = requiresSignIn || renewalRetryScheduled || row.isConstrained || row.status === "failed" || row.unavailable === true || row.accountState.kind === "error"
+  const notices = accountNotices(row)
   const accountTitle = row.alias || row.displayName || row.name || row.authIndex
-  const attentionLabel = row.status === "failed"
-    ? `Refresh failed: ${row.errorLabel ?? "Failed"}`
-    : requiresSignIn
-      ? "Sign in required in CPA"
-      : renewalRetryScheduled
-        ? "Credential renewal retry scheduled in CPA"
-        : row.unavailable === true
-          ? "Unavailable in CPA"
-          : row.accountState.kind === "error"
-            ? "CPA error"
-            : row.isConstrained
-              ? "Capacity constrained"
-              : undefined
+  const attentionLabel = notices.map((notice) => notice.label).join(" · ")
 
   const capacityEntries = mergeCapacityEntries(row)
   const layout = capacityLayout(capacityEntries, row.providerKind)
   const visibleModelSnapshots = row.providerKind === "codex" ? [] : row.passiveModelQuotas
-  const sharedObservation = Boolean(row.metadataObservedAt && row.observedAt && row.metadataObservedAt === row.observedAt)
-  const timingLineCount =
-    (sharedObservation ? 1 : (row.metadataObservedAt ? 1 : 0) + (row.observedAt ? 1 : 0)) +
-    (row.lastRefresh ? 1 : 0) +
-    (row.nextRetryAfter ? 1 : 0) +
-    (row.activeStart ? 1 : 0) +
-    (row.activeUntil ? 1 : 0) +
-    (row.authRenewal?.access_token_expires_at ? 1 : 0) +
-    (row.authRenewal?.next_refresh_after ? 1 : 0)
-  const foldedCount =
-    layout.extras.length +
-    visibleModelSnapshots.length +
-    timingLineCount +
-    (row.passiveQuota?.activeLimit ? 1 : 0)
+  const hasTiming = [row.metadataObservedAt, row.observedAt, row.lastRefresh, row.nextRetryAfter, row.activeStart, row.activeUntil,
+    row.authRenewal?.access_token_expires_at, row.authRenewal?.next_refresh_after].some(Boolean)
+  const hasDetails = capacityEntries.length > 0 || visibleModelSnapshots.length > 0 || hasTiming
+    || Boolean(row.passiveQuota?.activeLimit || row.authRenewal)
+    || row.accountState.kind !== "not_reported" || row.unavailable !== null
   const observationSources: Array<[string, string]> = [
     ...(row.observedAt ? [["Manual probe", row.observedAt] as [string, string]] : []),
     ...(row.passiveQuota?.observedAt ? [["Reported by CPA", row.passiveQuota.observedAt] as [string, string]] : []),
@@ -517,14 +500,10 @@ function LiveCapacityAccountTile({
       className={cn(
         "group flex min-h-[190px] min-w-0 flex-col rounded-lg border border-border bg-background/70 p-3 text-sm transition-[background-color,border-color,box-shadow] duration-300 hover:border-terracotta-500/25 hover:shadow-xs",
         row.disabled && "opacity-60",
-        row.status === "failed" && "border-red-500/25 bg-red-500/[0.025]",
-        row.status !== "failed" && row.isConstrained && "border-amber-500/30 bg-amber-500/[0.03]",
-        row.status !== "failed" && !row.isConstrained && row.isPriorityAccount && "border-terracotta-500/30 shadow-[inset_2px_0_0_rgba(192,80,62,0.45)]",
+        row.isPriorityAccount && "border-terracotta-500/30 shadow-[inset_2px_0_0_rgba(192,80,62,0.45)]",
         isRowRefreshing && "border-amber-500/25 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]",
       )}
     >
-      {/* 不再渲染状态 chip：额度观测由读数本身表达，refreshing 由刷新按钮动画表达，
-          failed 由 ⚠️ 与红色边框表达，disabled 由标题旁徽章表达。 */}
       <div className="flex items-center gap-2">
         <div
           className="flex h-[42px] w-9 shrink-0 items-center justify-center rounded-md border border-border/70 bg-muted/20 dark:border-white/10 dark:bg-white/90"
@@ -568,10 +547,10 @@ function LiveCapacityAccountTile({
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-        {hasAttention ? (
+        {notices.length > 0 ? (
           <span title={attentionLabel}>
             <AlertTriangle
-              className={cn("h-4 w-4", row.status === "failed" || requiresSignIn ? "text-red-600" : "text-amber-600")}
+              className={cn("h-4 w-4", notices.some((notice) => notice.tone === "red") ? "text-red-600" : "text-amber-600")}
               aria-label={attentionLabel}
             />
           </span>
@@ -622,6 +601,9 @@ function LiveCapacityAccountTile({
         </div>
       </div>
 
+      <AccountAvailabilitySummary row={row} />
+      <QuotaRefreshFeedback row={row} hasReadings={capacityEntries.length > 0} />
+
       {layout.hasWindowSkeleton ? (
         <div className="mt-3 grid gap-2">
           <MetricMeter
@@ -655,6 +637,13 @@ function LiveCapacityAccountTile({
         <div className="mt-3 rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">No account quota readings</div>
       ) : null}
 
+      {layout.credits.map((entry, index) => (
+        <div className="mt-2" key={`credits:${index}`}><CreditBalance entry={entry} /></div>
+      ))}
+      {row.providerKind === "codex" && layout.main.length === 0 && layout.credits.length > 0 ? (
+        <p className="mt-2 text-xs text-muted-foreground">Quota windows not reported</p>
+      ) : null}
+
       {row.providerKind === "codex" && layout.reserve.length > 0 ? (
         <section className="mt-2" aria-label="Luna Reserve">
           {layout.reserve.map((entry, index) => (
@@ -669,10 +658,21 @@ function LiveCapacityAccountTile({
         </section>
       ) : null}
 
-      {foldedCount > 0 ? (
+      {hasDetails ? (
         <details className="mt-2 rounded-md border border-border/70 bg-muted/[0.12] px-2.5 py-1.5">
-          <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">··· {foldedCount} more</summary>
+          <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">Account &amp; observation details</summary>
           <div className="mt-2 space-y-3">
+            <AccountFacts row={row} credits={layout.credits} />
+            {capacityEntries.length > 0 ? (
+              <section aria-label="Quota observation details" className="space-y-2">
+                {capacityEntries.map((entry, index) => entry.observedAt ? (
+                  <div key={`${index}:${entry.metric.label}`}>
+                    <p className="text-xs text-muted-foreground">{entry.metric.displayLabel ?? entry.metric.label} · {entry.source === "reported" ? "Reported by CPA" : "Manual probe"}</p>
+                    <TimingLine label="Observed" value={entry.observedAt} />
+                  </div>
+                ) : null)}
+              </section>
+            ) : null}
             {row.passiveQuota?.activeLimit ? (
               <p
                 className="text-[10px] text-muted-foreground"
@@ -710,7 +710,7 @@ function LiveCapacityAccountTile({
                 </div>
               </section>
             ) : null}
-            {timingLineCount > 0 ? (
+            {hasTiming ? (
               <AccountTiming
                 metadataObservedAt={row.metadataObservedAt}
                 lastRefresh={row.lastRefresh}
@@ -726,8 +726,6 @@ function LiveCapacityAccountTile({
         </details>
       ) : null}
 
-      <AccountAvailabilitySummary row={row} />
-
       {modelSupport ? <AccountModelSupportDetails account={modelSupport} /> : null}
 
       {latestObservedAt ? (
@@ -735,7 +733,7 @@ function LiveCapacityAccountTile({
           className="mt-2 flex items-center justify-end gap-1 text-[10px] text-muted-foreground"
           title={observationSources.map(([label, at]) => `${label} · ${formatDate(at)}`).join("\n")}
         >
-          <span>Last updated {formatRelativeAge(latestObservedAt)}</span>
+          <span>Latest quota observation {formatRelativeAge(latestObservedAt)}</span>
         </div>
       ) : null}
     </div>
@@ -891,73 +889,58 @@ function definitionStatusLabel(status: RegisteredModelSupport["definition_status
   return "Couldn't load capability data."
 }
 
+function ReadFailure({ label, retry }: { label: string; retry: () => void }) {
+  return <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-xs text-amber-700 dark:text-amber-400"><span>{label}</span><Button variant="outline" size="sm" onClick={retry}>Retry read</Button></div>
+}
+
 function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
-  const renewal = authRenewalPresentation(row.authRenewal)
-  const renewalExplainsError = row.authRenewal?.requires_sign_in === true || row.authRenewal?.renewal_state === "retry_scheduled"
-  // Omit a matching disabled lifecycle state already covered by the header badge.
-  const showAccountState = row.accountState.kind !== "active"
-    && row.accountState.kind !== "not_reported"
-    && !(row.disabled && row.accountState.kind === "disabled")
-    && !(renewalExplainsError && row.accountState.kind === "error")
-  if (row.unavailable !== true && !showAccountState && !renewal) return null
+  const notices = accountNotices(row)
+  if (notices.length === 0) return null
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-1.5" role="group" aria-label="Account availability">
-      {row.unavailable === true ? <Badge variant="red" className="px-1.5 py-0 text-[10px] leading-4">Unavailable</Badge> : null}
-      {showAccountState ? (
-        <Badge
-          variant={accountStateBadgeVariant(row.accountState.tone)}
-          className="px-1.5 py-0 text-[10px] leading-4"
-          title={row.accountState.explanation}
-        >
-          CPA: {row.accountState.label}
-        </Badge>
-      ) : null}
-      {renewal ? (
-        <Badge variant={renewal.tone} className="px-1.5 py-0 text-[10px] leading-4" title={renewal.title}>
-          {renewal.label}
-        </Badge>
-      ) : null}
+    <div className="mt-3 space-y-1.5 text-xs" role="group" aria-label="Account availability">
+      {notices.map((notice) => <div key={notice.label}>
+        <p className={notice.tone === "red" ? "font-medium text-red-600 dark:text-red-400" : "font-medium text-amber-700 dark:text-amber-400"}>{notice.label}</p>
+        {notice.description ? <p className="mt-0.5 text-muted-foreground">{notice.description}</p> : null}
+      </div>)}
     </div>
   )
 }
 
-function authRenewalPresentation(observation: LiveCapacityRow["authRenewal"]): {
-  label: string
-  tone: "green" | "amber" | "red" | "secondary"
-  title: string
-} | null {
-  if (!observation) return null
-  const details = [
-    observation.recovery_hint,
-    observation.recovery_stage ? `Recovery stage: ${observation.recovery_stage}` : undefined,
-    observation.refresh_error?.code ? `Refresh error: ${observation.refresh_error.code}` : undefined,
-    observation.refresh_error?.http_status ? `HTTP ${observation.refresh_error.http_status}` : undefined,
-  ].filter((value): value is string => Boolean(value))
-  const title = details.join(" · ")
-  switch (observation.renewal_state) {
-    case "sign_in_required":
-      return { label: "Sign in required", tone: "red", title: title || "CPA requires re-authentication on this instance." }
-    case "expired_sign_in_required":
-      return { label: "Sign in required", tone: "red", title: title || "CPA reports an expired token; re-authentication is required." }
-    case "retry_scheduled":
-      return { label: "Renewal retry scheduled", tone: "amber", title: title || "CPA has scheduled another credential renewal attempt." }
-    case "renewal_verified":
-      return { label: "Renewal verified", tone: "green", title: title || "CPA verified the latest credential renewal." }
-    case "awaiting_first_renewal":
-      return { label: "Awaiting first renewal", tone: "secondary", title: title || "CPA has not verified a credential renewal yet." }
-    default:
-      if (observation.requires_sign_in === true) {
-        return { label: "Sign in required", tone: "red", title: title || "CPA requires re-authentication on this instance." }
-      }
-      if (observation.renewal_state) {
-        return { label: `Renewal: ${observation.renewal_state}`, tone: "secondary", title: title || "Unrecognized renewal state reported by CPA." }
-      }
-      return null
-  }
+function QuotaRefreshFeedback({ row, hasReadings }: { row: LiveCapacityRow; hasReadings: boolean }) {
+  if (row.status !== "refreshing" && row.status !== "failed") return null
+  return <p role="status" className={cn("mt-2 text-xs", row.status === "failed" ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>
+    {row.status === "refreshing" ? row.refreshPhase === "queued" ? "Quota refresh queued…" : row.refreshPhase === "starting" ? "Starting quota refresh…" : "Refreshing quota…" : `Quota refresh failed: ${row.errorLabel ?? "Failed"}.`}
+    {hasReadings ? " Previous readings and observation times are retained." : " No previous quota readings."}
+  </p>
 }
 
-function accountStateBadgeVariant(tone: LiveCapacityAccountStateTone): "green" | "amber" | "red" | "secondary" {
-  return tone === "muted" ? "secondary" : tone
+function AccountFacts({ row, credits }: { row: LiveCapacityRow; credits: CapacityEntry[] }) {
+  const renewal = row.authRenewal
+  return <section aria-label="Account details" className="space-y-1.5 text-xs">
+    <p>CPA state: {row.accountState.label}</p>
+    <p>Unavailable reported: {reportedBoolean(row.unavailable)}</p>
+    {renewal ? <>
+      <p>{renewalRecordLabel(renewal)}</p>
+      <p className="text-muted-foreground">Renewal records do not establish account health or an active renewal task.</p>
+      <p>Sign-in required reported: {reportedBoolean(renewal.requires_sign_in)}</p>
+      {renewal.recovery_stage ? <p>Recovery stage: {renewal.recovery_stage}</p> : null}
+      {renewal.next_action ? <p>Next action reported: {renewal.next_action}</p> : null}
+      {renewal.recovery_hint ? <p>{renewal.recovery_hint}</p> : null}
+      {renewal.refresh_error?.code ? <p>Refresh error: {renewal.refresh_error.code}</p> : null}
+      {renewal.refresh_error?.http_status ? <p>HTTP {renewal.refresh_error.http_status}</p> : null}
+    </> : null}
+    {credits.map(({ metric }, index) => <div key={index} className="space-y-1">
+      <p>Credits available reported: {reportedBoolean(metric.credit?.hasCredits)}</p>
+      <p>Unlimited credits reported: {reportedBoolean(metric.credit?.unlimited)}</p>
+      <p>Overage limit reached reported: {reportedBoolean(metric.credit?.overageLimitReached)}</p>
+      <p>Credit use allowed reported: {reportedBoolean(metric.credit?.allowed)}</p>
+      <p>Credit limit reached reported: {reportedBoolean(metric.credit?.limitReached)}</p>
+    </div>)}
+  </section>
+}
+
+function reportedBoolean(value: boolean | null | undefined): string {
+  return value === true ? "Yes" : value === false ? "No" : "Not reported"
 }
 
 function AccountTiming({
@@ -1001,7 +984,7 @@ function AccountTiming({
       {activeUntil ? <TimingLine label="Ends" value={activeUntil} /> : null}
       {accessTokenExpiresAt ? <TimingLine label="Access token expires" value={accessTokenExpiresAt} /> : null}
       {nextRefreshAfter ? (
-        <TimingLine label="Next renewal" value={nextRefreshAfter} title="Next automatic credential refresh time reported by CPA." />
+        <TimingLine label="Next credential refresh" value={nextRefreshAfter} title="Next automatic credential refresh time reported by CPA." />
       ) : null}
     </div>
   )
@@ -1058,6 +1041,30 @@ function PlanBadge({
   )
 }
 
+function ObservationProvenance({ source, observedAt }: { source: CapacityEntry["source"]; observedAt?: string }) {
+  return <p className="mt-1.5 text-[11px] text-muted-foreground">
+    {source === "reported" ? "Reported by CPA" : "Manual probe"}{observedAt ? <> · observed <time dateTime={observedAt} title={formatDate(observedAt)}>{formatRelativeAge(observedAt)}</time></> : null}
+  </p>
+}
+
+function CreditBalance({ entry }: { entry: CapacityEntry }) {
+  const { metric, source, observedAt } = entry
+  const credit = metric.credit!
+  const states = [
+    credit.hasCredits === true ? "Credits available" : credit.hasCredits === false ? "No credits" : null,
+    credit.unlimited === true ? "Unlimited credits reported" : null,
+    credit.overageLimitReached === true ? "Overage limit reached" : null,
+    credit.allowed === false ? "Credit use blocked" : null,
+    credit.limitReached === true ? "Credit limit reached" : null,
+  ].filter(Boolean)
+  return <section aria-label="Credits" className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2" title={observedAt ? `${source === "reported" ? "Reported by CPA" : "Manual probe"} · observed ${formatDate(observedAt)}` : undefined}>
+    <p className="text-xs text-muted-foreground">Credits</p>
+    {credit.balance !== undefined ? <p className="mt-1 break-words text-lg font-medium tabular-nums">{credit.balance} <span className="text-xs font-normal text-muted-foreground">credits</span></p> : <p className="mt-1 text-xs text-muted-foreground">Balance not reported</p>}
+    {states.length > 0 ? <p className={cn("mt-1 text-xs", credit.overageLimitReached || credit.allowed === false || credit.limitReached ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>{states.join(" · ")}</p> : null}
+    <ObservationProvenance source={source} observedAt={observedAt} />
+  </section>
+}
+
 function MetricMeter({
   title,
   metric,
@@ -1090,6 +1097,8 @@ function MetricMeter({
     )
   }
 
+  if (metric.credit) return <CreditBalance entry={{ metric, source, observedAt, windowRole: null, isBaseWindow: false }} />
+
   const countdown = resetCountdown(metric, observedAt)
   const resetText = countdown
     ? countdown.isDue
@@ -1118,21 +1127,21 @@ function MetricMeter({
           <span className="truncate" title={metric.displayLabel ? metric.label : undefined}>{displayTitle}</span>
         </span>
         <span
-          className={metric.isCreditBalance ? "min-w-0 break-words text-right font-medium" : "truncate font-medium"}
+          className={cn("min-w-0 break-words text-right font-medium", metric.tone === "red" && "text-red-600 dark:text-red-400", metric.tone === "amber" && "text-amber-700 dark:text-amber-400")}
           title={metric.valueLabel}
         >{metric.valueLabel}</span>
       </div>
-      <div
+      {metric.progress !== null ? <div
+        role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={metric.progress}
         className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"
         aria-label={`${displayTitle}: ${metric.valueLabel}`}
       >
-        {metric.progress !== null ? (
-          <div
-            className={cn("h-full rounded-full transition-[width,background-color] duration-500", metricToneClasses(metric.tone).bar)}
-            style={{ width: `${metric.progress}%` }}
-          />
-        ) : null}
-      </div>
+        <div
+          className={cn("h-full rounded-full transition-[width,background-color] duration-500", metricToneClasses(metric.tone).bar)}
+          style={{ width: `${metric.progress}%` }}
+        />
+      </div> : null}
+      <ObservationProvenance source={source} observedAt={observedAt} />
       {resetText ? (
         <div
           className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-xs font-semibold", metricToneClasses(metric.tone).reset)}

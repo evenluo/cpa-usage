@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { KeyIdentity, QuotaObservationsResponse } from "@/types/api"
 import {
+  accountNotices,
   buildLiveCapacityRows,
   capacityLayout,
   isSupportedQuotaIdentity,
@@ -475,7 +476,7 @@ describe("Live Capacity view model", () => {
       "12,345.1234567890123 credits left · Credits available",
       "4.5 credits left · No credits · Unlimited · Overage limit reached",
     ])
-    expect(row.additionalMetrics[0]).toMatchObject({ isCreditBalance: true, progress: null, tone: "muted" })
+    expect(row.additionalMetrics[0]).toMatchObject({ credit: expect.objectContaining({ balance: "12,345.1234567890123" }), progress: null, tone: "muted" })
   })
 
   it("keeps missing credit balances distinct from observed zero", () => {
@@ -491,7 +492,7 @@ describe("Live Capacity view model", () => {
     expect(row.additionalMetrics.map((metric) => metric.valueLabel)).toEqual([
       "Credits available", "No credits", "0 credits left · No credits",
     ])
-    expect(row.additionalMetrics[2].tone).toBe("red")
+    expect(row.additionalMetrics[2].tone).toBe("muted")
   })
 
   it("keeps missing account state and availability explicit", () => {
@@ -708,13 +709,13 @@ describe("Live Capacity view model", () => {
       label: "gemini-2.5-pro_vertex",
       valueLabel: "98% used",
       progress: 98,
-      tone: "red",
+      tone: "amber",
     })
     expect(rows[0].additionalMetrics[1]).toMatchObject({
       label: "Code Assist Credit",
       valueLabel: "10 left",
     })
-    expect(rows[0].isConstrained).toBe(true)
+    expect(rows[0].isConstrained).toBe(false)
     expect(rows[0].additionalMetrics[0].resetAt).toBe("2026-05-09T12:00:00Z")
   })
 
@@ -754,7 +755,7 @@ describe("Live Capacity view model", () => {
     })[0]
 
     expect(row.isConstrained).toBe(false)
-    expect(row.additionalMetrics[0]).toMatchObject({ valueLabel: "0 credits left · No credits", tone: "red" })
+    expect(row.additionalMetrics[0]).toMatchObject({ valueLabel: "0 credits left · No credits", tone: "muted" })
   })
 
   it.each([
@@ -816,7 +817,8 @@ describe("Live Capacity view model", () => {
     })
 
     expect(rows.map((row) => row.authIndex)).toEqual(["codex-pro", "claude-max", "z-codex"])
-    expect(rows[0].isConstrained).toBe(true)
+    expect(rows[0].isConstrained).toBe(false)
+    expect(rows[0].weekly?.tone ?? rows[0].fiveHour?.tone).toBe("amber")
     expect(rows[1].status).toBe("refreshing")
     expect(rows[2].status).toBe("failed")
   })
@@ -1361,7 +1363,7 @@ describe("capacityLayout", () => {
     expect(layout.baseShort).toBeUndefined()
     expect(layout.baseLong).toBeUndefined()
     expect(layout.main.map((entry) => entry.metric.label)).toEqual(["5h", "Weekly"])
-    expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["GPT-5.3-Codex-Spark 5h", "Window", "Credits"])
+    expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["GPT-5.3-Codex-Spark 5h", "Window"])
   })
 
   it("keeps the flat surface split for providers without a window skeleton", () => {
@@ -1384,7 +1386,40 @@ describe("capacityLayout", () => {
     expect(layout.hasWindowSkeleton).toBe(false)
     expect(layout.baseShort).toBeUndefined()
     expect(layout.baseLong).toBeUndefined()
-    expect(layout.main.map((entry) => entry.metric.label)).toEqual(["5h", "Credits"])
+    expect(layout.main.map((entry) => entry.metric.label)).toEqual(["5h"])
+    expect(layout.credits.map((entry) => entry.metric.label)).toEqual(["Credits"])
     expect(layout.extras.map((entry) => entry.metric.label)).toEqual(["Spark 5h"])
+  })
+})
+
+
+describe("independent account and capacity presentation", () => {
+  it.each(["renewal_verified", "awaiting_first_renewal", "retry_scheduled"])("prioritizes sign-in facts over %s without hiding disabled or unavailable", (renewal_state) => {
+    const row = buildLiveCapacityRows({ identities: [identity({ disabled: true, unavailable: true, status: "error", auth_renewal: { requires_sign_in: true, renewal_state } })] })[0]
+    expect(accountNotices(row).map(({ label }) => label)).toEqual(["Sign in required", "Unavailable"])
+    expect(row.disabled).toBe(true)
+  })
+
+  it("recognizes an explicit sign-in state without requiring the separate flag", () => {
+    const row = buildLiveCapacityRows({ identities: [identity({ auth_renewal: { renewal_state: "expired_sign_in_required" } })] })[0]
+    expect(accountNotices(row)[0].label).toBe("Sign in required")
+  })
+
+  it.each([[79, "green", false], [80, "amber", false], [95, "amber", false], [99, "amber", false], [100, "red", true]] as const)("keeps usage %s separate from account errors", (usedPercent, tone, isConstrained) => {
+    const row = buildLiveCapacityRows({ identities: [identity({})], observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "primary", label: "Weekly", usedPercent }] }] } })[0]
+    expect(row.weekly?.tone).toBe(tone)
+    expect(row.isConstrained).toBe(isConstrained)
+    expect(accountNotices(row)).toEqual([])
+  })
+
+  it("keeps blocked window facts independent of a positive credit balance", () => {
+    const row = buildLiveCapacityRows({ identities: [identity({})], observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [
+      { key: "primary", label: "Weekly", usedPercent: 10, allowed: false },
+      { key: "credits", label: "Credits", balance: "25.000", hasCredits: false, unlimited: false, overageLimitReached: true, usedPercent: 90 },
+    ] }] } })[0]
+    const layout = capacityLayout(mergeCapacityEntries(row), "codex")
+    expect(layout.credits[0].metric).toMatchObject({ progress: null, tone: "muted", credit: { balance: "25", hasCredits: false, unlimited: false, overageLimitReached: true } })
+    expect(row.weekly?.valueLabel).toBe("10% used · Blocked")
+    expect(accountNotices(row)).toEqual([])
   })
 })

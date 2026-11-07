@@ -209,12 +209,92 @@ describe("useLiveCapacity refresh targeting", () => {
     })
   }
 
+  it("keeps the two initial read failures distinct and retries only the failed read", async () => {
+    mockedApiFetch.mockRejectedValueOnce(new Error("accounts unavailable"))
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.identitiesRead.error?.message).toBe("accounts unavailable"))
+    expect(result.current.identitiesRead.data).toBeUndefined()
+    expect(result.current.observationsRead.data).toBeUndefined()
+    expect(result.current.observationsRead.error).toBeNull()
+
+    act(() => { result.current.observationsRead.retry() })
+    expect(mockedApiFetch).toHaveBeenCalledTimes(1)
+    act(() => { result.current.identitiesRead.retry() })
+    await waitFor(() => expect(result.current.observationsRead.data).toEqual({ items: [] }))
+    expect(result.current.identitiesRead.error).toBeNull()
+    expect(mockedApiFetch.mock.calls.filter(([path]) => String(path).startsWith("/usage/identities/page"))).toHaveLength(2)
+    expect(mockedApiFetch.mock.calls.filter(([path]) => path === "/quota/refresh")).toHaveLength(0)
+  })
+
+  it("exposes an initial observation error without discarding successfully read accounts", async () => {
+    const existingImplementation = mockedApiFetch.getMockImplementation()!
+    mockedApiFetch.mockImplementation(async (path, init) => {
+      if (path === "/quota/observations") throw new Error("observations unavailable")
+      return existingImplementation(path, init)
+    })
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.observationsRead.error?.message).toBe("observations unavailable"))
+    expect(result.current.identitiesRead.data).toEqual(identities)
+    expect(result.current.observationsRead.data).toBeUndefined()
+    mockedApiFetch.mockClear()
+    act(() => { result.current.observationsRead.retry() })
+    await waitFor(() => expect(mockedApiFetch).toHaveBeenCalledTimes(1))
+    expect(mockedApiFetch.mock.calls[0][0]).toBe("/quota/observations")
+  })
+
+  it.each(["identities", "observations"] as const)("retains data and source time after a background %s read fails", async (failedRead) => {
+    const observation = {
+      id: "a-auth", observedAt: "2026-11-08T01:00:00Z",
+      quota: [{ key: "credits", balance: "1234.125", unit: "credits" }],
+    }
+    let fail = false
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (String(path).startsWith("/usage/identities/page")) {
+        if (fail && failedRead === "identities") throw new Error("account read failed")
+        return { identities, total_count: identities.length, page: 1, page_size: 100, total_pages: 1 }
+      }
+      if (path === "/quota/observations") {
+        if (fail && failedRead === "observations") throw new Error("observation read failed")
+        return { items: [observation] }
+      }
+      throw new Error(`unexpected path: ${String(path)}`)
+    })
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.observationsRead.data?.items).toEqual([observation]))
+    fail = true
+    mockedApiFetch.mockClear()
+    act(() => { result.current[failedRead === "identities" ? "identitiesRead" : "observationsRead"].retry() })
+    await waitFor(() => expect(result.current[failedRead === "identities" ? "identitiesRead" : "observationsRead"].error).toBeTruthy())
+    expect(result.current.identitiesRead.data).toEqual(identities)
+    expect(result.current.observationsRead.data?.items).toEqual([observation])
+    expect(result.current.isLoading).toBe(false)
+    expect(mockedApiFetch.mock.calls.map(([path]) => String(path))).toEqual([
+      failedRead === "identities" ? "/usage/identities/page?auth_type=1&page=1&page_size=100" : "/quota/observations",
+    ])
+    fail = false
+    act(() => { result.current[failedRead === "identities" ? "identitiesRead" : "observationsRead"].retry() })
+    await waitFor(() => expect(result.current[failedRead === "identities" ? "identitiesRead" : "observationsRead"].error).toBeNull())
+  })
+
+  it("does not read quota observations when a successful account read is empty", async () => {
+    mockedApiFetch.mockResolvedValue({ identities: [], total_count: 0, page: 1, page_size: 100, total_pages: 1 })
+    const { result } = renderLiveCapacity()
+    await waitFor(() => expect(result.current.identitiesRead.data).toEqual([]))
+    act(() => { result.current.observationsRead.retry() })
+    expect(result.current.observationsRead.isLoading).toBe(false)
+    expect(mockedApiFetch).toHaveBeenCalledTimes(1)
+  })
+
   it("does not scan identities before an offscreen card is enabled", async () => {
     const { result } = renderLiveCapacity(false)
 
     await Promise.resolve()
 
     expect(result.current.identities).toEqual([])
+    act(() => {
+      result.current.identitiesRead.retry()
+      result.current.observationsRead.retry()
+    })
     expect(mockedApiFetch).not.toHaveBeenCalled()
   })
 

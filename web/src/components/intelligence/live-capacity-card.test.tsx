@@ -77,7 +77,9 @@ interface LiveCapacityReturn {
   refreshLimit: number
   isLoading: boolean
   isRefreshing: boolean
-  error: unknown
+  error: Error | null
+  identitiesRead: ReturnType<typeof import("@/hooks/useQuota").useLiveCapacity>["identitiesRead"]
+  observationsRead: ReturnType<typeof import("@/hooks/useQuota").useLiveCapacity>["observationsRead"]
 }
 
 function setupMock(props: Partial<LiveCapacityReturn> = {}): LiveCapacityReturn {
@@ -90,6 +92,8 @@ function setupMock(props: Partial<LiveCapacityReturn> = {}): LiveCapacityReturn 
     isLoading: false,
     isRefreshing: false,
     error: null,
+    identitiesRead: { data: props.error ? undefined : props.identities ?? [], isLoading: props.isLoading ?? false, isFetching: false, error: props.error ?? null, retry: vi.fn() },
+    observationsRead: { data: props.observations, isLoading: false, isFetching: false, error: null, retry: vi.fn() },
   }
   const merged = { ...defaults, ...props }
   mockUseLiveCapacity.mockReturnValue(merged)
@@ -196,7 +200,7 @@ describe("LiveCapacityCard", () => {
     for (const timestamp of ["2026-09-07T08:00:00Z", "2026-09-07T07:45:00Z", "2026-09-07T08:30:00Z"]) {
       expect(timing.querySelector(`time[datetime='${timestamp}']`)).toBeInTheDocument()
     }
-    expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Latest quota observation /)).not.toBeInTheDocument()
   })
 
   it("shows the CPA sign-in requirement and renewal timing", () => {
@@ -218,17 +222,33 @@ describe("LiveCapacityCard", () => {
 
     const availability = screen.getByRole("group", { name: "Account availability" })
     const signInBadge = within(availability).getByText("Sign in required")
-    expect(signInBadge).toHaveAttribute("title", expect.stringContaining("Re-authenticate on this CPA instance."))
-    expect(signInBadge).toHaveAttribute("title", expect.stringContaining("Refresh error: invalid_grant"))
-    expect(signInBadge).toHaveAttribute("title", expect.stringContaining("HTTP 400"))
+    expect(signInBadge).toBeInTheDocument()
+    expect(within(availability).getByText(/Re-authenticate on this CPA instance/)).toBeInTheDocument()
+    expect(screen.getByText("Refresh error: invalid_grant")).toBeInTheDocument()
+    expect(screen.getByText("HTTP 400")).toBeInTheDocument()
     expect(within(availability).queryByText("CPA: Error")).not.toBeInTheDocument()
-    expect(screen.getByLabelText("Sign in required in CPA")).toBeInTheDocument()
+    expect(screen.getByLabelText("Sign in required · Unavailable")).toBeInTheDocument()
 
     const timing = screen.getByRole("group", { name: "Account and observation timing" })
     expect(within(timing).getByText("Access token expires")).toBeInTheDocument()
-    expect(within(timing).getByText("Next renewal")).toBeInTheDocument()
+    expect(within(timing).getByText("Next credential refresh")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-10-29T10:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector("time[datetime='2026-10-29T11:00:00Z']")).toBeInTheDocument()
+  })
+
+  it("describes unverified renewal without implying a pending task", () => {
+    setupMock({ identities: [identity({
+      auth_renewal: {
+        requires_sign_in: false,
+        renewal_state: "awaiting_first_renewal",
+        recovery_stage: "loaded",
+      },
+    })] })
+    render(<LiveCapacityCard provider="" />)
+
+    expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
+    expect(screen.getByText("Renewal not yet verified").closest("details")).not.toBeNull()
+    expect(screen.getByText(/Renewal records do not establish account health/)).toBeInTheDocument()
   })
 
   it("shows a scheduled CPA renewal retry", () => {
@@ -243,8 +263,9 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
 
     const availability = screen.getByRole("group", { name: "Account availability" })
-    expect(within(availability).getByText("Renewal retry scheduled")).toHaveAttribute("title", expect.stringContaining("temporarily_unavailable"))
-    expect(screen.getByLabelText("Credential renewal retry scheduled in CPA")).toBeInTheDocument()
+    expect(within(availability).getByText("Renewal retry scheduled")).toBeInTheDocument()
+    expect(screen.getByText("Refresh error: temporarily_unavailable")).toBeInTheDocument()
+    expect(screen.getByLabelText("Renewal retry scheduled")).toBeInTheDocument()
   })
 
   it("keeps an independent CPA error beside a healthy renewal state", () => {
@@ -260,7 +281,8 @@ describe("LiveCapacityCard", () => {
 
     const availability = screen.getByRole("group", { name: "Account availability" })
     expect(within(availability).getByText("CPA: Error")).toBeInTheDocument()
-    expect(within(availability).getByText("Renewal verified")).toBeInTheDocument()
+    expect(within(availability).queryByText("Renewal verified")).not.toBeInTheDocument()
+    expect(screen.getByText("Renewal verified").closest("details")).not.toBeNull()
   })
 
   it("does not use a Codex model snapshot as a card observation", () => {
@@ -280,7 +302,7 @@ describe("LiveCapacityCard", () => {
       })
       render(<LiveCapacityCard provider="" />)
 
-      expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
+      expect(screen.queryByText(/^Latest quota observation /)).not.toBeInTheDocument()
       expect(screen.queryByRole("region", { name: "Model request observations" })).not.toBeInTheDocument()
     } finally {
       vi.useRealTimers()
@@ -306,7 +328,7 @@ describe("LiveCapacityCard", () => {
       })
       render(<LiveCapacityCard provider="" />)
 
-      const updated = screen.getByText("Last updated 3h ago")
+      const updated = screen.getByText("Latest quota observation 3h ago")
       expect(updated.parentElement).toHaveAttribute(
         "title",
         `Reported by CPA (claude-sonnet-4) · ${formatDate("2026-09-07T09:00:00Z")}`,
@@ -355,7 +377,7 @@ describe("LiveCapacityCard", () => {
       expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
       // The old active-limit observation keeps its own timestamp; its quota
       // rows cannot fill gaps in the newer complete manual inventory.
-      const fold = screen.getByText(/··· \d+ more/).closest("details")
+      const fold = screen.getByText("Account & observation details").closest("details")
       expect(fold).not.toHaveAttribute("open")
       expect(within(fold as HTMLElement).getByText("Active limit codex_bengalfox")).toBeInTheDocument()
       expect(within(fold as HTMLElement).queryByText("4.5 credits left")).not.toBeInTheDocument()
@@ -381,11 +403,11 @@ describe("LiveCapacityCard", () => {
     })
     render(<LiveCapacityCard provider="" />)
 
-    await userEvent.click(screen.getByText(/··· \d+ more/))
-    const balance = screen.getByText("1,234.1234567890123 credits left · Credits available")
+    const balance = screen.getByText("1,234.1234567890123")
     expect(balance).toBeVisible()
-    expect(screen.getAllByLabelText("Credits: 1,234.1234567890123 credits left · Credits available")).toHaveLength(1)
-    expect(balance.closest("div[title]")).toHaveAttribute("title", `Manual probe · observed ${formatDate(OBSERVED_AT)}`)
+    expect(screen.getAllByRole("region", { name: "Credits" })).toHaveLength(1)
+    expect(screen.getByRole("region", { name: "Credits" }).querySelector("[role=progressbar]")).toBeNull()
+    expect(balance.closest("section[title]")).toHaveAttribute("title", `Manual probe · observed ${formatDate(OBSERVED_AT)}`)
     expect(screen.queryByText(/5,000\.25 credits left/)).not.toBeInTheDocument()
   })
 
@@ -400,7 +422,7 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByLabelText("Weekly: 10% used")).toBeInTheDocument()
-    expect(screen.getByText("0 credits left · No credits")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Credits" })).toHaveTextContent("0 credits")
     expect(screen.queryByLabelText("Capacity constrained")).not.toBeInTheDocument()
   })
 
@@ -422,7 +444,8 @@ describe("LiveCapacityCard", () => {
     const view = render(<LiveCapacityCard provider="" />)
     const expectInventory = () => {
       expect(screen.getByLabelText("Weekly: 32% used")).toBeInTheDocument()
-      expect(screen.getAllByText("1,234.125 credits left · Credits available")).toHaveLength(1)
+      expect(screen.getAllByRole("region", { name: "Credits" })).toHaveLength(1)
+      expect(screen.getByRole("region", { name: "Credits" })).toHaveTextContent("1,234.125 credits")
       expect(screen.queryByRole("region", { name: "Luna Reserve" })).not.toBeInTheDocument()
       expect(screen.queryByText("GPT-5.3-Codex-Spark 5h")).not.toBeInTheDocument()
       expect(screen.queryByText(/5,000 credits left/)).not.toBeInTheDocument()
@@ -470,7 +493,7 @@ describe("LiveCapacityCard", () => {
       expect(screen.queryByText("34% used")).not.toBeInTheDocument()
       expect(screen.queryByText("gpt-5.6-terra")).not.toBeInTheDocument()
       expect(screen.queryByRole("region", { name: "Model request observations" })).not.toBeInTheDocument()
-      expect(screen.getByText("··· 2 more")).toBeInTheDocument()
+      expect(screen.getByText("Account & observation details")).toBeInTheDocument()
       const reserve = screen.getByRole("region", { name: "Luna Reserve" })
       expect(within(reserve).getByLabelText("Luna Reserve Weekly: 0% used")).toBeInTheDocument()
       expect((within(reserve).getByText("0% used").closest("div[title]"))).toHaveAttribute(
@@ -479,7 +502,7 @@ describe("LiveCapacityCard", () => {
       )
       expect(reserve.querySelector(`time[datetime='${new Date(resetAt).toISOString()}']`)).toBeInTheDocument()
       expect(within(reserve).getByText("gpt-reserve · Extra Luna usage after regular usage is exhausted.")).toBeInTheDocument()
-      const updated = screen.getByText("Last updated 3h ago")
+      const updated = screen.getByText("Latest quota observation 3h ago")
       expect(updated.parentElement).toHaveAttribute(
         "title",
         `Manual probe · ${formatDate(accountObservedAt)}\nReported by CPA · ${formatDate(accountObservedAt)}`,
@@ -521,7 +544,7 @@ describe("LiveCapacityCard", () => {
     expect(screen.getByText("No account quota readings")).toBeInTheDocument()
     expect(screen.queryByText("12% used")).not.toBeInTheDocument()
     expect(screen.queryByText("gpt-5.6-luna")).not.toBeInTheDocument()
-    expect(screen.queryByText(/^Last updated /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Latest quota observation /)).not.toBeInTheDocument()
   })
 
   it("merges probe and reported windows into one list and folds named limits and timing away", () => {
@@ -558,18 +581,18 @@ describe("LiveCapacityCard", () => {
       expect(screen.queryByText("No reading")).not.toBeInTheDocument()
       // Freshness line: the newer of the two observation times, with both
       // sources and their absolute times on the tooltip.
-      const updated = screen.getByText("Last updated 3h ago")
+      const updated = screen.getByText("Latest quota observation 3h ago")
       expect(updated.parentElement).toHaveAttribute(
         "title",
         `Manual probe · ${formatDate("2026-09-07T09:00:00Z")}\nReported by CPA · ${formatDate("2026-09-07T08:00:00Z")}`,
       )
       // Named additional limits and timing lines live behind the fold; a shared
       // metadata/probe observation time collapses to a single "Observed" line.
-      const fold = screen.getByText("··· 2 more").closest("details")
+      const fold = screen.getByText("Account & observation details").closest("details")
       expect(fold).not.toHaveAttribute("open")
       expect(within(fold as HTMLElement).getByText("More limits (1)")).toBeInTheDocument()
       expect(within(fold as HTMLElement).getByText("GPT-5.3-Codex-Spark 5h")).toBeInTheDocument()
-      expect(within(fold as HTMLElement).getByText("Observed")).toBeInTheDocument()
+      expect(within(screen.getByRole("group", { name: "Account and observation timing" })).getByText("Observed")).toBeInTheDocument()
       expect(within(fold as HTMLElement).queryByText("Metadata observed")).not.toBeInTheDocument()
       expect(within(fold as HTMLElement).queryByText(/cache expires|stale/i)).not.toBeInTheDocument()
     } finally {
@@ -582,7 +605,7 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
     expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
     expect(screen.queryByText(/^CPA:/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/··· \d+ more/)).not.toBeInTheDocument()
+    expect(screen.queryByText("Account & observation details")).not.toBeInTheDocument()
   })
 
   it("renders tiles for each identity", () => {
@@ -736,7 +759,7 @@ describe("LiveCapacityCard", () => {
     expect(timing.querySelector("time[datetime='2026-08-31T01:00:00Z']")).toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
     // Data freshness sits on the card surface instead of the subscription end.
-    expect(screen.getByText(/^Last updated /)).toBeInTheDocument()
+    expect(screen.getByText(/^Latest quota observation /)).toBeInTheDocument()
   })
 
   it("keeps an old observation visible without cache-expiry or stale UI", () => {
@@ -754,7 +777,7 @@ describe("LiveCapacityCard", () => {
     const timing = screen.getByRole("group", { name: "Account and observation timing" })
     expect(within(timing).getByText("Observed")).toBeInTheDocument()
     expect(screen.getByText("10% used")).toBeInTheDocument()
-    expect(screen.getByText(/^Last updated /)).toBeInTheDocument()
+    expect(screen.getByText(/^Latest quota observation /)).toBeInTheDocument()
     expect(screen.queryByText(/stale|cache expires|expired/i)).not.toBeInTheDocument()
   })
 
@@ -807,7 +830,7 @@ describe("LiveCapacityCard", () => {
     expect(within(timing).getByText("Ends")).toBeInTheDocument()
     expect(within(timing).queryByText("Starts")).not.toBeInTheDocument()
     expect(timing.querySelector(`time[datetime='${futureUntil}']`)).toBeInTheDocument()
-    expect(screen.getByText(/^Last updated /)).toBeInTheDocument()
+    expect(screen.getByText(/^Latest quota observation /)).toBeInTheDocument()
   })
 
   it("shows both subscription endpoints when the active start is still in the future", () => {
@@ -1049,11 +1072,11 @@ describe("LiveCapacityCard", () => {
 
     const chipGroup = screen.getByRole("group", { name: "Filter accounts by provider" })
     await user.click(within(chipGroup).getByRole("button", { name: /Claude/ }))
-    await user.click(screen.getByRole("button", { name: "Refresh" }))
+    await user.click(screen.getByRole("button", { name: "Refresh quota" }))
     expect(mock.refresh).toHaveBeenCalledWith(["claude-a"])
 
     await user.click(within(chipGroup).getByRole("button", { name: /^All/ }))
-    await user.click(screen.getByRole("button", { name: "Refresh" }))
+    await user.click(screen.getByRole("button", { name: "Refresh quota" }))
     expect(mock.refresh).toHaveBeenLastCalledWith()
   })
 
@@ -1200,7 +1223,7 @@ describe("LiveCapacityCard", () => {
     render(<LiveCapacityCard provider="" />)
 
     expect(screen.getByText("Disabled")).toBeInTheDocument()
-    expect(screen.getByTitle("Refresh failed: HTTP 401")).toBeInTheDocument()
+    expect(screen.getByText(/Quota refresh failed: HTTP 401/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
     expect(screen.getByText("10% used")).toBeInTheDocument()
   })
@@ -1215,5 +1238,97 @@ describe("LiveCapacityCard", () => {
     const { container } = render(<LiveCapacityCard provider="" />)
 
     expect(readGridAuthIndexes(getSectionGrids(container)[0])).toEqual(["beta-codex", "gamma-codex", "alpha-codex"])
+  })
+})
+
+
+describe("Live Capacity independent feedback", () => {
+  afterEach(cleanup)
+
+  it("keeps sign-in and disabled visible beside a quota failure and a renewal success record", async () => {
+    setupMock({ identities: [identity({ disabled: true, status: "error", auth_renewal: { requires_sign_in: true, renewal_state: "renewal_verified" } })],
+      taskStates: { "codex-auth": { status: "failed", error: "timeout" } },
+      observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "primary", label: "Weekly", usedPercent: 20 }] }] },
+    })
+    render(<LiveCapacityCard provider="" />)
+    expect(screen.getByText("Disabled")).toBeVisible()
+    expect(within(screen.getByRole("group", { name: "Account availability" })).getByText("Sign in required")).toBeVisible()
+    expect(screen.getByText(/Quota refresh failed:/)).toBeVisible()
+    expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeEnabled()
+    expect(screen.getByRole("progressbar", { name: "Weekly: 20% used" })).toBeVisible()
+    expect(screen.getByText("Renewal verified").closest("details")).not.toBeNull()
+    await userEvent.click(screen.getByText("Account & observation details"))
+    expect(screen.getByText("Renewal verified")).toBeVisible()
+  })
+
+  it.each([
+    { balance: "0", hasCredits: false, unlimited: false },
+    { hasCredits: true },
+    { hasCredits: false },
+    { balance: "4.5000", hasCredits: false, unlimited: true, overageLimitReached: true },
+  ])("shows independent credit facts without inventing a ratio: %j", (facts) => {
+    setupMock({ identities: [identity({})], observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "credits", label: "Credits", ...facts }] }] } })
+    render(<LiveCapacityCard provider="" />)
+    const credit = screen.getByRole("region", { name: "Credits" })
+    expect(credit.closest("details")).toBeNull()
+    expect(within(credit).queryByRole("progressbar")).not.toBeInTheDocument()
+    expect(credit.querySelector(".h-1\\.5")).toBeNull()
+    expect(credit).toHaveTextContent(facts.hasCredits ? "Credits available" : "No credits")
+    if (facts.balance === undefined) expect(credit).toHaveTextContent("Balance not reported")
+    if (facts.unlimited) {
+      expect(credit).toHaveTextContent("4.5 credits")
+      expect(credit).toHaveTextContent("Unlimited credits reported")
+      expect(credit).toHaveTextContent("Overage limit reached")
+    }
+    expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
+    expect(screen.getByText("Quota windows not reported")).toBeVisible()
+  })
+
+  it.each([
+    ["starting", "Starting quota refresh…"],
+    ["queued", "Quota refresh queued…"],
+    ["running", "Refreshing quota…"],
+  ] as const)("distinguishes a %s quota task from account state", (status, label) => {
+    setupMock({ identities: [identity({ auth_renewal: { renewal_state: "awaiting_first_renewal" } })],
+      taskStates: { "codex-auth": status === "starting" ? { status } : { status, taskId: "refresh-task" } },
+    })
+    render(<LiveCapacityCard provider="" />)
+    expect(screen.getByRole("status")).toHaveTextContent(label)
+    expect(screen.queryByRole("group", { name: "Account availability" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Refresh Codex Auth" })).toBeDisabled()
+  })
+
+  it("renders a nonnumeric window without an empty progress track", () => {
+    setupMock({ identities: [identity({})], observations: { items: [{ id: "codex-auth", observedAt: OBSERVED_AT, quota: [{ key: "primary", label: "Weekly", allowed: false }] }] } })
+    render(<LiveCapacityCard provider="" />)
+    expect(screen.getByText("Blocked")).toBeVisible()
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+  })
+
+  it("exposes passive-only source and absolute time without requiring metadata or manual observations", async () => {
+    setupMock({ identities: [identity({ passive_quota: { source: "cpa_passive", scope: "account", observed_at: OBSERVED_AT, quota: [{ key: "window", label: "Weekly", usedPercent: 30 }] } })] })
+    render(<LiveCapacityCard provider="" />)
+    await userEvent.click(screen.getByText("Account & observation details"))
+    const details = screen.getByRole("region", { name: "Quota observation details" })
+    expect(within(details).getByText("Weekly · Reported by CPA")).toBeVisible()
+    expect(details.querySelector(`time[datetime='${OBSERVED_AT}']`)).toBeVisible()
+    expect(details).toHaveTextContent(formatDate(OBSERVED_AT))
+  })
+
+  it("retains cards on independent background read failures and retries only the failed read", async () => {
+    const retryAccounts = vi.fn()
+    const retryObservations = vi.fn()
+    const accounts = [identity({ passive_quota: { source: "cpa_passive", scope: "account", observed_at: OBSERVED_AT, quota: [{ key: "window", label: "Weekly", usedPercent: 30 }] } })]
+    setupMock({ identities: accounts,
+      identitiesRead: { data: accounts, isLoading: false, isFetching: false, error: new Error("offline"), retry: retryAccounts },
+      observationsRead: { data: undefined, isLoading: false, isFetching: false, error: new Error("offline"), retry: retryObservations },
+    })
+    render(<LiveCapacityCard provider="" />)
+    expect(screen.getByRole("progressbar", { name: "Weekly: 30% used" })).toBeVisible()
+    const alerts = screen.getAllByRole("alert")
+    expect(alerts).toHaveLength(2)
+    await userEvent.click(within(alerts[1]).getByRole("button", { name: "Retry read" }))
+    expect(retryObservations).toHaveBeenCalledOnce()
+    expect(retryAccounts).not.toHaveBeenCalled()
   })
 })
