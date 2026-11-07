@@ -5,11 +5,11 @@ Compatibility: incompatible direct cut, authorized for Live Capacity quota obser
 
 ## User-visible contract
 
-**Last updated** means the account's latest successful quota observation time, regardless of whether a manual probe or CPA supplied it. Metadata sync time, token refresh time and refresh-attempt time are not quota observations.
+**Latest quota observation** means the account's latest successful quota observation time, regardless of whether a manual probe or CPA supplied it. Metadata sync time, token refresh time and refresh-attempt time are not quota observations.
 
 Keep the last successful reading and its original time until a later successful observation replaces it. Page reloads, service restarts, failed refreshes, missing passive reports and disabling the account do not erase it. A Codex account with no account quota readings shows **No account quota readings**, without assumed window or Reserve slots; Claude retains its fixed-window **No reading** placeholders. There is no automatic provider request, cache-expiry label or age-based invalidation; users decide whether to refresh from the displayed age. Provider-reported quota reset times remain separate facts.
 
-Account and model observations retain their scopes. Different windows may have different ages: the newest observation wins when sources describe the same window, and each reading keeps its own source/time tooltip. The card's **Last updated** is the newest successful manual or account passive observation. Claude also includes its visible model observations; Codex excludes model snapshots. The timestamp does not imply every visible reading was fetched together.
+Account and model observations retain their scopes. Different windows may have different ages: the newest observation wins when sources describe the same window, and each reading keeps its own source/time tooltip. The card's **Latest quota observation** is the newest successful manual or account passive observation. Claude also includes its visible model observations; Codex excludes model snapshots. The timestamp does not imply every visible reading was fetched together.
 
 For Codex, a successful manual probe is a complete account quota inventory at its observation time. A passive snapshot at or before that time cannot supplement the probe with omitted windows, additional allowances or credits. A newer passive snapshot may update the displayed readings, keeping each displayed item's actual source/time. A failed refresh does not advance this inventory watermark. Omission means **not reported in this observation**, not zero, loss of eligibility or product retirement.
 
@@ -50,5 +50,9 @@ Model availability, rate-limit reset credits, spend controls and additional CPA 
 - A failed subsequent provider call or persistence write leaves the previous successful observation readable; a newer success replaces it and an older observation does not.
 - Missing or older passive snapshots preserve the latest account/model readings across metadata sync; account deletion still governs visibility.
 - Disabled accounts can complete both direct checks and asynchronous refreshes, save a newer observation and keep their disabled state. The UI exposes individual and batch refreshes, shows progress/errors and retains the Disabled badge through success, failure and reload.
-- Fresh page loading, refresh success/failure and reads of observations older than 20 minutes retain the appropriate data and **Last updated**. Claude model-only observations contribute their real timestamp; Codex model-only snapshots and metadata-only accounts do not.
+- Fresh page loading, refresh success/failure and reads of observations older than 20 minutes retain the appropriate data and **Latest quota observation**. Claude model-only observations contribute their real timestamp; Codex model-only snapshots and metadata-only accounts do not.
 - No cache-expiry/stale indicator or retired cache API remains in the current application contract. Theme, responsive layout, refresh controls and source/time tooltips continue to work.
+
+## Read feedback (2026-11-08)
+
+Initial account-read failure is an explicit error, not an empty list. Once a complete account list or successful observation has been read, a background read failure retains that data and its source time, with a visible source-specific failure and retry. Observation-read failures do not hide independently available account or passive facts. Retry reads the failed application endpoint only; it does not start a provider quota task. Successful Sync now invalidates the Live Capacity account-metadata read, without initiating quota refreshes or advancing quota observation times.

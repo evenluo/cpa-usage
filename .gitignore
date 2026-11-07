@@ -25,6 +25,7 @@ web/playwright-report/
 web-v2/
 
 # local test artifacts
+/.tmp/
 .tmp-test.db
 coverage/
 bin/
