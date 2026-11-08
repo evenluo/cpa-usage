@@ -31,7 +31,6 @@ describe("Canonical token composition", () => {
     expect(summary.parentElement).toHaveAttribute("open")
     expect(screen.getByText(/3 of 10 attempts · 1 complete · 2 with gaps/)).toBeInTheDocument()
     expect(screen.getByText(/excluded: missing token data 7/)).toBeInTheDocument()
-    expect(screen.getByText("Not a provider invoice.")).toBeInTheDocument()
     expect(screen.getByText("Total tokens").nextElementSibling).toHaveTextContent("155")
     const input = within(screen.getByRole("region", { name: "Input composition" }))
     const output = within(screen.getByRole("region", { name: "Output composition" }))
@@ -46,7 +45,7 @@ describe("Canonical token composition", () => {
   it("keeps canonical-absent or empty windows unavailable instead of displaying zero canonical totals", () => {
     const unavailable = { ...accounting, valid_attempts: 0, coverage_pct: 0, valid_quality: { complete: 0, inconsistent: 0, unclassified: 0 } }
     render(<CanonicalTokenComposition accounting={unavailable} />)
-    expect(screen.getByText(/Token totals unavailable/)).toBeInTheDocument()
+    expect(screen.getByText("Token details unavailable.")).toBeInTheDocument()
     expect(screen.queryByText("Total tokens")).not.toBeInTheDocument()
     expect(getAccountingCaption(unavailable)).toBe("Tokens unavailable")
     expect(getAccountingCaption({ ...unavailable, total_attempts: 0, coverage_pct: null })).toBe("No attempts")
@@ -71,7 +70,7 @@ describe("Canonical token composition", () => {
 
   it("does not promote valid inconsistent quality or double-add the reasoning and cache subsets", () => {
     expect(getAccountingCaption({ ...accounting, total_attempts: 3, coverage_pct: 100 })).toBe("33.3% complete, 66.7% partial")
-    expect(getAccountingCaption({ ...accounting, valid_quality: { complete: 3, inconsistent: 0, unclassified: 0 } })).toBe("30.0% of attempts have complete token data")
+    expect(getAccountingCaption({ ...accounting, valid_quality: { complete: 3, inconsistent: 0, unclassified: 0 } })).toBe("30.0% complete")
     expect(Object.fromEntries(getCanonicalTokenFields(accounting.composition))).toMatchObject({
       "Total tokens": 155,
       "Input tokens": 100,

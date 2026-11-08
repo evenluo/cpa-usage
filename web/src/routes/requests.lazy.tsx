@@ -8,7 +8,7 @@ import {
 } from "@/components/intelligence/request-evidence-event"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { buildEventsExportPath, downloadUsageEventsCSV, useEvents } from "@/hooks/useEvents"
 import { ApiError } from "@/lib/api"
@@ -262,7 +262,7 @@ function ProviderScopedRequestsPage({
             </Button>
           </div>
           <p>
-            Same request ID, this 24h and provider. Older data may omit some retries.
+            Filtered to this request ID within the 24h window.
           </p>
         </div>
       ) : null}
@@ -298,7 +298,6 @@ function ProviderScopedRequestsPage({
             <CardHeader className="flex flex-row items-start justify-between gap-4 p-4">
               <div className="min-w-0">
                 <CardTitle>Recent attempts</CardTitle>
-                <CardDescription>Select an attempt.</CardDescription>
               </div>
               <Badge variant="outline" className="shrink-0">
                 {formatCompact(data?.total_count ?? events.length)} attempts

@@ -1,19 +1,26 @@
 import {
+  Activity,
   AlertTriangle,
   CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronRight,
   Clock,
+  Coins,
+  Copy,
   Eye,
   Gauge,
   Loader2,
   ListChecks,
   Power,
   RefreshCw,
+  Sparkles,
   Timer,
 } from "lucide-react"
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   accountNotices,
@@ -190,7 +197,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
   const { containerRef, registerItem } = useFlipReorder(regularRowKeys, { enabled: flipEnabled })
 
   const displayedCount = displayedRows.length
-  const refreshLabel = displayedCount > refreshLimit ? `Refresh quota: first ${refreshLimit}` : "Refresh quota"
+  const refreshLabel = displayedCount > refreshLimit ? `Refresh first ${refreshLimit}` : "Refresh quota"
   const refreshDisplayed = () => {
     if (effectiveKind === "all") refresh()
     else refresh(displayedRows.map((row) => row.authIndex))
@@ -204,10 +211,8 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
             Live Capacity
             <Gauge className="h-3.5 w-3.5 text-muted-foreground/40" aria-label="Quota observations" />
           </CardTitle>
-          <CardDescription>Latest quota observations</CardDescription>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {displayedCount > refreshLimit ? <Badge variant="amber">max {refreshLimit}</Badge> : null}
           <Button type="button" variant="outline" size="sm" onClick={refreshDisplayed} disabled={displayedCount === 0}>
             <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", isRefreshing && "animate-spin")} />
             {refreshLabel}
@@ -215,8 +220,8 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
         </div>
       </CardHeader>
       <CardContent>
-        {!initialAccountFailure && identitiesRead.error ? <ReadFailure label="Account read failed; showing the last account snapshot." retry={identitiesRead.retry} /> : null}
-        {!initialAccountFailure && observationsRead.error ? <ReadFailure label="Quota observation read failed; available readings retain their original times." retry={observationsRead.retry} /> : null}
+        {!initialAccountFailure && identitiesRead.error ? <ReadFailure label="Account read failed. Showing last result." retry={identitiesRead.retry} /> : null}
+        {!initialAccountFailure && observationsRead.error ? <ReadFailure label="Quota read failed. Showing last result." retry={observationsRead.retry} /> : null}
         {!isActivated || identitiesRead.isLoading ? (
           <div className="space-y-2">
             <Skeleton className="h-14 w-full" />
@@ -233,7 +238,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {observationsRead.isLoading ? <p role="status" className="text-xs text-muted-foreground">Loading saved quota observations…</p> : null}
+            {observationsRead.isLoading ? <p role="status" className="text-xs text-muted-foreground">Loading quotas…</p> : null}
             {providerGroups.length > 1 ? (
               <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter accounts by provider">
                 <ProviderFilterChip
@@ -255,7 +260,7 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
               </div>
             ) : null}
             <details
-              className="rounded-md border border-border/70 bg-muted/[0.12]"
+              className="group/support rounded-md border border-border/70 bg-muted/[0.12]"
               onToggle={(event) => setSupportOpen(event.currentTarget.open)}
             >
               <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 p-2.5 text-xs [&::-webkit-details-marker]:hidden">
@@ -263,8 +268,11 @@ export function LiveCapacityCard({ provider }: { provider: string }) {
                   <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
                   Model support
                 </span>
-                <span className={cn("text-muted-foreground", selectionTooLarge && "text-amber-700 dark:text-amber-300")}>
-                  {selectedSupportIdentityIDs.length}/{MODEL_SUPPORT_MAX_ACCOUNTS} accounts selected
+                <span className="flex items-center gap-1.5">
+                  <span className={cn("text-muted-foreground", selectionTooLarge && "text-amber-700 dark:text-amber-300")}>
+                    {selectedSupportIdentityIDs.length}/{MODEL_SUPPORT_MAX_ACCOUNTS} accounts selected
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-open/support:rotate-180" aria-hidden="true" />
                 </span>
               </summary>
               <div className="space-y-2 border-t border-border/60 p-2.5">
@@ -418,9 +426,12 @@ function LiveCapacityAccountTile({
   const toast = useToast()
   const setIdentityDisabled = useSetIdentityDisabled()
   const [confirmingDisable, setConfirmingDisable] = useState(false)
+  const [copied, setCopied] = useState(false)
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => () => {
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current)
+    if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
   }, [])
 
   const clearConfirmTimer = () => {
@@ -464,6 +475,12 @@ function LiveCapacityAccountTile({
     try {
       await navigator.clipboard.writeText(row.authIndex)
       toast.success("Copied")
+      setCopied(true)
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = setTimeout(() => {
+        copyTimerRef.current = null
+        setCopied(false)
+      }, 1500)
     } catch {
       toast.error("Failed to copy auth index")
     }
@@ -524,13 +541,18 @@ function LiveCapacityAccountTile({
           </div>
           <button
             type="button"
-            className="mt-0.5 block max-w-full truncate text-left text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="group/copy mt-0.5 inline-flex max-w-full items-center gap-1 truncate text-left font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
             title={`Copy ${row.authIndex}`}
             aria-label={`Copy auth index ${row.authIndex}`}
             data-auth-index={row.authIndex}
             onClick={copyAuthIndex}
           >
             {formatAuthIndex(row.authIndex)}
+            {copied ? (
+              <Check className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+            ) : (
+              <Copy className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/copy:opacity-70" aria-hidden="true" />
+            )}
           </button>
           {supportSelectionVisible ? (
             <label className="mt-1 flex w-fit cursor-pointer items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -602,7 +624,7 @@ function LiveCapacityAccountTile({
       </div>
 
       <AccountAvailabilitySummary row={row} />
-      <QuotaRefreshFeedback row={row} hasReadings={capacityEntries.length > 0} />
+      <QuotaRefreshFeedback row={row} />
 
       {layout.hasWindowSkeleton ? (
         <div className="mt-3 grid gap-2">
@@ -634,14 +656,14 @@ function LiveCapacityAccountTile({
           ))}
         </div>
       ) : row.providerKind === "codex" && capacityEntries.length === 0 ? (
-        <div className="mt-3 rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">No account quota readings</div>
+        <div className="mt-3 rounded-md border border-border/70 bg-muted/20 p-2 text-xs text-muted-foreground">No quota data</div>
       ) : null}
 
       {layout.credits.map((entry, index) => (
         <div className="mt-2" key={`credits:${index}`}><CreditBalance entry={entry} /></div>
       ))}
       {row.providerKind === "codex" && layout.main.length === 0 && layout.credits.length > 0 ? (
-        <p className="mt-2 text-xs text-muted-foreground">Quota windows not reported</p>
+        <p className="mt-2 text-xs text-muted-foreground">No quota windows</p>
       ) : null}
 
       {row.providerKind === "codex" && layout.reserve.length > 0 ? (
@@ -659,8 +681,11 @@ function LiveCapacityAccountTile({
       ) : null}
 
       {hasDetails ? (
-        <details className="mt-2 rounded-md border border-border/70 bg-muted/[0.12] px-2.5 py-1.5">
-          <summary className="cursor-pointer text-[10px] font-medium text-muted-foreground">Account &amp; observation details</summary>
+        <details className="group/details mt-2 rounded-md border border-border/70 bg-muted/[0.12] px-2.5 py-1.5">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground [&::-webkit-details-marker]:hidden">
+            Details
+            <ChevronRight className="h-3 w-3 shrink-0 transition-transform duration-200 group-open/details:rotate-90" aria-hidden="true" />
+          </summary>
           <div className="mt-2 space-y-3">
             <AccountFacts row={row} credits={layout.credits} />
             {capacityEntries.length > 0 ? (
@@ -699,9 +724,9 @@ function LiveCapacityAccountTile({
             ) : null}
             {visibleModelSnapshots.length > 0 ? (
               <section aria-label="Model request observations">
-                <p className="text-[10px] font-medium text-foreground/70">Model request observations ({visibleModelSnapshots.length})</p>
+                <p className="text-[10px] font-medium text-foreground/70">Model snapshots ({visibleModelSnapshots.length})</p>
                 <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
-                  From requests to this model, not a separate quota.
+                  Shared account quota from model requests.
                 </p>
                 <div className="mt-1.5 space-y-3">
                   {visibleModelSnapshots.map((observation) => (
@@ -730,10 +755,11 @@ function LiveCapacityAccountTile({
 
       {latestObservedAt ? (
         <div
-          className="mt-2 flex items-center justify-end gap-1 text-[10px] text-muted-foreground"
+          className="mt-2 flex items-center justify-end gap-1 text-[10px] tabular-nums text-muted-foreground"
           title={observationSources.map(([label, at]) => `${label} · ${formatDate(at)}`).join("\n")}
         >
-          <span>Latest quota observation {formatRelativeAge(latestObservedAt)}</span>
+          <Clock className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
+          <span>Updated {formatRelativeAge(latestObservedAt)}</span>
         </div>
       ) : null}
     </div>
@@ -802,7 +828,7 @@ function PassiveQuotaObservationSection({
           </span>
         ) : null}
         <time className="ml-auto text-muted-foreground" dateTime={observation.observedAt} title={observation.observedAt}>
-          Observed {formatDate(observation.observedAt)}
+          {formatDate(observation.observedAt)}
         </time>
       </div>
       <div className="mt-1.5 grid gap-1.5">
@@ -823,12 +849,13 @@ function AccountModelSupportDetails({ account }: { account: AccountModelSupport 
     )
   }
   return (
-    <details className="mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5">
+    <details className="group/models mt-3 rounded-md border border-border/70 bg-muted/[0.12] p-2.5">
       <summary
-        className="cursor-pointer text-[11px] font-medium"
+        className="flex cursor-pointer list-none items-center justify-between gap-2 text-[11px] font-medium [&::-webkit-details-marker]:hidden"
         title="Registered with CPA, not live routing."
       >
         Registered models ({account.registered_models.length})
+        <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-200 group-open/models:rotate-90" aria-hidden="true" />
       </summary>
       {account.registered_models.length === 0 ? (
         <p className="mt-2 text-[11px] text-muted-foreground">CPA returned no registered models for this account.</p>
@@ -906,35 +933,44 @@ function AccountAvailabilitySummary({ row }: { row: LiveCapacityRow }) {
   )
 }
 
-function QuotaRefreshFeedback({ row, hasReadings }: { row: LiveCapacityRow; hasReadings: boolean }) {
+function QuotaRefreshFeedback({ row }: { row: LiveCapacityRow }) {
   if (row.status !== "refreshing" && row.status !== "failed") return null
   return <p role="status" className={cn("mt-2 text-xs", row.status === "failed" ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>
-    {row.status === "refreshing" ? row.refreshPhase === "queued" ? "Quota refresh queued…" : row.refreshPhase === "starting" ? "Starting quota refresh…" : "Refreshing quota…" : `Quota refresh failed: ${row.errorLabel ?? "Failed"}.`}
-    {hasReadings ? " Previous readings and observation times are retained." : " No previous quota readings."}
+    {row.status === "refreshing" ? row.refreshPhase === "queued" ? "Refresh queued…" : row.refreshPhase === "starting" ? "Starting refresh…" : "Refreshing…" : `Refresh failed: ${row.errorLabel ?? "Failed"}.`}
   </p>
+}
+
+function FactLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2 text-[10px] text-foreground/70">
+      <span className="font-medium">{label}</span>
+      <span className="ml-auto truncate font-medium text-foreground/90 tabular-nums" title={value}>
+        {value}
+      </span>
+    </div>
+  )
 }
 
 function AccountFacts({ row, credits }: { row: LiveCapacityRow; credits: CapacityEntry[] }) {
   const renewal = row.authRenewal
-  return <section aria-label="Account details" className="space-y-1.5 text-xs">
-    <p>CPA state: {row.accountState.label}</p>
-    <p>Unavailable reported: {reportedBoolean(row.unavailable)}</p>
+  return <section aria-label="Account details" className="space-y-1 text-xs">
+    <FactLine label="CPA state" value={row.accountState.label} />
+    <FactLine label="Unavailable" value={reportedBoolean(row.unavailable)} />
     {renewal ? <>
-      <p>{renewalRecordLabel(renewal)}</p>
-      <p className="text-muted-foreground">Renewal records do not establish account health or an active renewal task.</p>
-      <p>Sign-in required reported: {reportedBoolean(renewal.requires_sign_in)}</p>
-      {renewal.recovery_stage ? <p>Recovery stage: {renewal.recovery_stage}</p> : null}
-      {renewal.next_action ? <p>Next action reported: {renewal.next_action}</p> : null}
-      {renewal.recovery_hint ? <p>{renewal.recovery_hint}</p> : null}
-      {renewal.refresh_error?.code ? <p>Refresh error: {renewal.refresh_error.code}</p> : null}
-      {renewal.refresh_error?.http_status ? <p>HTTP {renewal.refresh_error.http_status}</p> : null}
+      <p className="text-[10px] text-foreground/70">{renewalRecordLabel(renewal)}</p>
+      <FactLine label="Sign-in required" value={reportedBoolean(renewal.requires_sign_in)} />
+      {renewal.recovery_stage ? <FactLine label="Recovery stage" value={renewal.recovery_stage} /> : null}
+      {renewal.next_action ? <FactLine label="Next action" value={renewal.next_action} /> : null}
+      {renewal.recovery_hint ? <p className="text-[10px] text-muted-foreground">{renewal.recovery_hint}</p> : null}
+      {renewal.refresh_error?.code ? <FactLine label="Refresh error" value={renewal.refresh_error.code} /> : null}
+      {renewal.refresh_error?.http_status ? <p className="text-[10px] tabular-nums text-foreground/70">HTTP {renewal.refresh_error.http_status}</p> : null}
     </> : null}
     {credits.map(({ metric }, index) => <div key={index} className="space-y-1">
-      <p>Credits available reported: {reportedBoolean(metric.credit?.hasCredits)}</p>
-      <p>Unlimited credits reported: {reportedBoolean(metric.credit?.unlimited)}</p>
-      <p>Overage limit reached reported: {reportedBoolean(metric.credit?.overageLimitReached)}</p>
-      <p>Credit use allowed reported: {reportedBoolean(metric.credit?.allowed)}</p>
-      <p>Credit limit reached reported: {reportedBoolean(metric.credit?.limitReached)}</p>
+      <FactLine label="Credits available" value={reportedBoolean(metric.credit?.hasCredits)} />
+      <FactLine label="Unlimited credits" value={reportedBoolean(metric.credit?.unlimited)} />
+      <FactLine label="Overage limit reached" value={reportedBoolean(metric.credit?.overageLimitReached)} />
+      <FactLine label="Credit use allowed" value={reportedBoolean(metric.credit?.allowed)} />
+      <FactLine label="Credit limit reached" value={reportedBoolean(metric.credit?.limitReached)} />
     </div>)}
   </section>
 }
@@ -969,22 +1005,22 @@ function AccountTiming({
   return (
     <div className="grid gap-1.5" role="group" aria-label="Account and observation timing">
       {sharedObservation ? (
-        <TimingLine label="Observed" value={sharedObservation} title="Same time as the quota reading." />
+        <TimingLine label="Observed" value={sharedObservation} />
       ) : (
         <>
-          {metadataObservedAt ? <TimingLine label="Metadata observed" value={metadataObservedAt} /> : null}
+          {metadataObservedAt ? <TimingLine label="Metadata synced" value={metadataObservedAt} /> : null}
           {observedAt ? <TimingLine label="Observed" value={observedAt} /> : null}
         </>
       )}
       {lastRefresh ? <TimingLine label="Token refreshed" value={lastRefresh} /> : null}
       {nextRetryAfter ? (
-        <TimingLine label="Retry eligible" value={nextRetryAfter} title="Eligibility time only, not a recovery guarantee." />
+        <TimingLine label="Retry eligible" value={nextRetryAfter} />
       ) : null}
       {activeStart ? <TimingLine label="Starts" value={activeStart} /> : null}
       {activeUntil ? <TimingLine label="Ends" value={activeUntil} /> : null}
       {accessTokenExpiresAt ? <TimingLine label="Access token expires" value={accessTokenExpiresAt} /> : null}
       {nextRefreshAfter ? (
-        <TimingLine label="Next credential refresh" value={nextRefreshAfter} title="Next automatic credential refresh time reported by CPA." />
+        <TimingLine label="Next credential refresh" value={nextRefreshAfter} />
       ) : null}
     </div>
   )
@@ -1042,8 +1078,10 @@ function PlanBadge({
 }
 
 function ObservationProvenance({ source, observedAt }: { source: CapacityEntry["source"]; observedAt?: string }) {
-  return <p className="mt-1.5 text-[11px] text-muted-foreground">
-    {source === "reported" ? "Reported by CPA" : "Manual probe"}{observedAt ? <> · observed <time dateTime={observedAt} title={formatDate(observedAt)}>{formatRelativeAge(observedAt)}</time></> : null}
+  const SourceIcon = source === "reported" ? Eye : Activity
+  return <p className="mt-1.5 flex items-center gap-1 text-[11px] tabular-nums text-muted-foreground">
+    <SourceIcon className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
+    {source === "reported" ? "CPA" : "Probe"}{observedAt ? <> · <time dateTime={observedAt} title={formatDate(observedAt)}>{formatRelativeAge(observedAt)}</time></> : null}
   </p>
 }
 
@@ -1052,13 +1090,16 @@ function CreditBalance({ entry }: { entry: CapacityEntry }) {
   const credit = metric.credit!
   const states = [
     credit.hasCredits === true ? "Credits available" : credit.hasCredits === false ? "No credits" : null,
-    credit.unlimited === true ? "Unlimited credits reported" : null,
+    credit.unlimited === true ? "Unlimited credits" : null,
     credit.overageLimitReached === true ? "Overage limit reached" : null,
     credit.allowed === false ? "Credit use blocked" : null,
     credit.limitReached === true ? "Credit limit reached" : null,
   ].filter(Boolean)
   return <section aria-label="Credits" className="min-w-0 rounded-md border border-border/70 bg-muted/20 p-2" title={observedAt ? `${source === "reported" ? "Reported by CPA" : "Manual probe"} · observed ${formatDate(observedAt)}` : undefined}>
-    <p className="text-xs text-muted-foreground">Credits</p>
+    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <Coins className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      Credits
+    </p>
     {credit.balance !== undefined ? <p className="mt-1 break-words text-lg font-medium tabular-nums">{credit.balance} <span className="text-xs font-normal text-muted-foreground">credits</span></p> : <p className="mt-1 text-xs text-muted-foreground">Balance not reported</p>}
     {states.length > 0 ? <p className={cn("mt-1 text-xs", credit.overageLimitReached || credit.allowed === false || credit.limitReached ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground")}>{states.join(" · ")}</p> : null}
     <ObservationProvenance source={source} observedAt={observedAt} />
@@ -1085,7 +1126,9 @@ function MetricMeter({
     ? Timer
     : (metric?.windowSeconds ?? windowSeconds) === WEEKLY_WINDOW_SECONDS
       ? CalendarDays
-      : null
+      : metric?.isLunaReserve
+        ? Sparkles
+        : null
 
   if (!metric) {
     return (
@@ -1108,7 +1151,7 @@ function MetricMeter({
   const resetTitle = countdown
     ? [
         resetText,
-        countdown.isDue ? "Quota window reset has passed; waiting for the provider's next report" : null,
+        countdown.isDue ? "Reset time passed" : null,
         countdown.resetAt ? formatDate(countdown.resetAt) : null,
       ].filter((part): part is string => Boolean(part)).join(" · ")
     : undefined
@@ -1127,7 +1170,7 @@ function MetricMeter({
           <span className="truncate" title={metric.displayLabel ? metric.label : undefined}>{displayTitle}</span>
         </span>
         <span
-          className={cn("min-w-0 break-words text-right font-medium", metric.tone === "red" && "text-red-600 dark:text-red-400", metric.tone === "amber" && "text-amber-700 dark:text-amber-400")}
+          className={cn("min-w-0 break-words text-right font-medium tabular-nums", metric.tone === "red" && "text-red-600 dark:text-red-400", metric.tone === "amber" && "text-amber-700 dark:text-amber-400")}
           title={metric.valueLabel}
         >{metric.valueLabel}</span>
       </div>
@@ -1144,7 +1187,7 @@ function MetricMeter({
       <ObservationProvenance source={source} observedAt={observedAt} />
       {resetText ? (
         <div
-          className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-xs font-semibold", metricToneClasses(metric.tone).reset)}
+          className={cn("mt-1.5 flex min-w-0 items-center gap-1 text-xs font-semibold tabular-nums", metricToneClasses(metric.tone).reset)}
           title={resetTitle}
         >
           <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />

@@ -49,14 +49,10 @@ export function ModelMappings({
             {data ? <div className="space-y-5">
               <div className="flex flex-wrap items-start justify-between gap-2 text-xs text-muted-foreground">
                 <p>Share of attempts with an alias</p>
-                <details className="max-w-lg">
-                  <summary className="cursor-pointer rounded-sm underline decoration-dotted underline-offset-4 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">About these mappings</summary>
-                  <p className="mt-2 leading-relaxed">Same name does not mean it was routed that way.</p>
-                </details>
               </div>
 
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                <span>{formatCompact(data.observed_alias_attempts)} of {formatCompact(data.total_attempts)} attempts with an alias</span>
+                <span>{formatCompact(data.observed_alias_attempts)} of {formatCompact(data.total_attempts)} attempts aliased</span>
                 <span>Cost · {data.observed_alias_attempts > 0 ? formatObservedCost(data.observed_total_cost, data.observed_cost_status) : "No aliases"}</span>
               </div>
 
@@ -76,7 +72,7 @@ export function ModelMappings({
               )}
 
               {data.other_attempts > 0 ? (
-                <p className="text-xs text-muted-foreground">Other observed attempts · {formatCompact(data.other_attempts)}</p>
+                <p className="text-xs text-muted-foreground">Other attempts · {formatCompact(data.other_attempts)}</p>
               ) : null}
             </div> : isDetailsLoading ? (
               <div className="space-y-2" aria-label="Loading model mapping details">
@@ -137,7 +133,7 @@ function MappingRow({ row, observedAttempts, windowEnd }: { row: UsageModelMappi
           <span className="[overflow-wrap:anywhere]">{row.provider || "Provider unavailable"}</span>
         </span>
         {row.model && row.model_alias === row.model ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Same name</span>
+          <span title="Alias matches the upstream model name" className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Same name</span>
         ) : null}
       </div>
 

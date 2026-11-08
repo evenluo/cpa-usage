@@ -114,7 +114,7 @@ export function getCacheReadShareCaption(state?: CacheReadShareState, coverage?:
   if (state === "no_cache_data") return "No exact cache data"
   const label = state === "available" ? "Exact" : "Partial"
   if (coverage === undefined) return label
-  return `${label} · covers ${coverage.toFixed(1)}% of available input tokens`
+  return `${label} · ${coverage.toFixed(1)}% input coverage`
 }
 
 export function getCacheReadShareValue(value?: number, state?: CacheReadShareState): number | undefined {
@@ -131,7 +131,7 @@ export function getAccountingCaption(accounting: AccountingSummary): string {
   if (accounting.coverage_pct === null) return "No attempts"
   if (accounting.valid_attempts === 0) return "Tokens unavailable"
   if (accounting.valid_quality.complete === accounting.valid_attempts) {
-    return `${accounting.coverage_pct.toFixed(1)}% of attempts have complete token data`
+    return `${accounting.coverage_pct.toFixed(1)}% complete`
   }
   const completePct = accounting.total_attempts > 0
     ? (accounting.valid_quality.complete / accounting.total_attempts) * 100
@@ -143,7 +143,7 @@ export function getAccountingCaption(accounting: AccountingSummary): string {
 /** Compact token-data coverage readout for KPI corner badges; undefined when coverage is unavailable. */
 export function getCanonicalCoverageLabel(accounting?: AccountingSummary): string | undefined {
   if (!accounting || accounting.coverage_pct === null) return undefined
-  return `Token data coverage ${accounting.coverage_pct.toFixed(1)}%`
+  return `${accounting.coverage_pct.toFixed(1)}% token coverage`
 }
 
 // Render the repository's disjoint canonical buckets without adding a subset

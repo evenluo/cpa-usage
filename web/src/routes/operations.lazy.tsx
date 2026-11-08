@@ -1,5 +1,5 @@
 import { createLazyFileRoute, useNavigate } from "@tanstack/react-router"
-import { AlertCircle, CheckCircle2, KeyRound, RefreshCw, Server } from "lucide-react"
+import { Activity, AlertCircle, CheckCircle2, Clock, Gauge, Inbox, KeyRound, RefreshCw, Server } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,7 +18,7 @@ export const Route = createLazyFileRoute("/operations")({
 function syncStatusLabel(status?: string): string {
   switch (status) {
     case "empty":
-      return "No new usage events"
+      return "No new events"
     case "completed":
       return "Completed"
     case "completed_with_warnings":
@@ -31,13 +31,6 @@ function syncStatusLabel(status?: string): string {
     default:
       return status.replace(/_/g, " ")
   }
-}
-
-function syncStatusDescription(status?: string): string | undefined {
-  if (status === "empty") {
-    return "Queue was empty"
-  }
-  return undefined
 }
 
 export function RollupCoverage({ status }: { status?: StatusPayload }) {
@@ -58,6 +51,19 @@ export function RollupCoverage({ status }: { status?: StatusPayload }) {
   )
 }
 
+function runtimeDotClass(label: string): string {
+  switch (label) {
+    case "Active":
+      return "bg-emerald-500"
+    case "Idle":
+      return "bg-sky-500"
+    case "Stopped":
+      return "bg-amber-500"
+    default:
+      return "bg-muted-foreground/50"
+  }
+}
+
 export function IngestionObservations({ metrics, isLoading, isError }: {
   metrics?: MetricsPayload
   isLoading: boolean
@@ -69,7 +75,7 @@ export function IngestionObservations({ metrics, isLoading, isError }: {
   if (isError || !metrics) {
     return (
       <div className="rounded-lg border border-border p-3">
-        <p className="text-sm font-semibold">Ingestion observations unavailable</p>
+        <p className="text-sm font-semibold">Ingestion metrics unavailable</p>
         <p className="mt-1 text-xs text-muted-foreground">Couldn't load metrics.</p>
       </div>
     )
@@ -77,26 +83,37 @@ export function IngestionObservations({ metrics, isLoading, isError }: {
 
   const observations = deriveIngestionObservations(metrics)
   const rows = [
-    ["Inbox pending", observations.backlog],
-    ["Last batch", {
+    ["Inbox pending", Inbox, observations.backlog],
+    ["Last batch", Clock, {
       ...observations.lastProcessed,
       label: observations.lastProcessed.observedAt ? formatDate(observations.lastProcessed.observedAt) : observations.lastProcessed.label,
     }],
-    ["Processing rate", observations.processingRate],
-    ["Runtime", observations.runtime],
+    ["Processing rate", Gauge, observations.processingRate],
+    ["Runtime", Activity, observations.runtime],
   ] as const
 
   return (
     <section aria-labelledby="ingestion-observations-heading">
       <div>
-        <h2 id="ingestion-observations-heading" className="text-sm font-semibold">Ingestion observations</h2>
-        <p className="mt-1 text-xs text-muted-foreground">Local process only — not CPA queue health.</p>
+        <h2 id="ingestion-observations-heading" className="text-sm font-semibold">Ingestion</h2>
+        <p className="mt-1 text-xs text-muted-foreground">Local process metrics</p>
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        {rows.map(([title, observation]) => (
+        {rows.map(([title, Icon, observation]) => (
           <div key={title} className="rounded-lg border border-border p-3">
-            <p className="text-xs font-medium text-muted-foreground">{title}</p>
-            <p className="mt-1 text-sm font-semibold">{observation.label}</p>
+            <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Icon className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
+              {title}
+            </p>
+            <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold tabular-nums">
+              {title === "Runtime" && (
+                <span
+                  aria-hidden="true"
+                  className={`h-2 w-2 shrink-0 rounded-full ${runtimeDotClass(observation.label)}`}
+                />
+              )}
+              {observation.label}
+            </p>
             <p className="mt-1 text-xs text-muted-foreground">{observation.detail}</p>
           </div>
         ))}
@@ -147,7 +164,7 @@ function OperationsPage() {
                       {syncStatusLabel(status?.last_status)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {status?.last_run_at ? [formatDate(status.last_run_at), syncStatusDescription(status.last_status)].filter(Boolean).join(" · ") : "No manual sync observed"}
+                      {status?.last_run_at ? formatDate(status.last_run_at) : "Never synced"}
                     </p>
                   </div>
                 </div>

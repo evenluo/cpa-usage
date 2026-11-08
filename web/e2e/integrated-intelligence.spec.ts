@@ -37,8 +37,7 @@ test("fixed 24-hour diagnostics open the matching request evidence selection", a
   await expect(page.getByText("Model mappings")).toBeVisible()
   await page.getByText("Token breakdown").click()
   await expect(page.getByText(/3 of 10 attempts · 1 complete · 2 with gaps/)).toBeVisible()
-    await expect(page.getByText(/excluded: missing token data 7/)).toBeVisible()
-  await expect(page.getByText("Not a provider invoice.")).toBeVisible()
+  await expect(page.getByText(/excluded: missing token data 7/)).toBeVisible()
   await page.locator("summary").filter({ hasText: "Model mappings" }).click()
   const mapping = page.getByRole("link", { name: "Inspect route-a to actual-a attempts" })
   for (const text of ["route-a", "actual-a", "provider-a"]) {
@@ -86,7 +85,7 @@ test("correlated attempts keep the fixed scope and clear filters that hide sibli
   await page.getByRole("button", { name: "Same request ID" }).click()
 
   const correlationScope = page.locator('[aria-label="Correlation scope"]')
-  await expect(correlationScope).toContainText("Same request ID, this 24h and provider. Older data may omit some retries.")
+  await expect(correlationScope).toContainText("Filtered to this request ID within the 24h window.")
   await expect(correlationScope.getByText(/retry count|final outcome/i)).toHaveCount(0)
 
   await expect.poll(() => {
@@ -169,11 +168,11 @@ test("dark responsive Live Capacity separates stored evidence and loads model su
   await expect(page.getByText("62% used")).toBeVisible()
   await expect(page.getByText("Manual capacity probe")).toHaveCount(0)
   // Data freshness sits on the card surface.
-  await expect(page.getByText(/^Latest quota observation /)).toBeVisible()
+  await expect(page.getByText(/^Updated /)).toBeVisible()
 
   // The active limit, subscription end, and timing lines live
   // behind the per-tile fold.
-  await page.getByText("Account & observation details").first().click()
+  await page.getByText("Details", { exact: true }).first().click()
   await expect(page.getByText("Active limit codex_primary")).toBeVisible()
   await expect(capacity.getByRole("region", { name: "Model request observations", exact: true })).toHaveCount(0)
   await expect(capacity.locator("time[datetime='2026-09-07T07:30:00Z']")).toHaveCount(0)

@@ -169,7 +169,7 @@ describe("RequestsPage provider scope", () => {
   it("shows correlation limits and omits the action when request ID is missing", () => {
     vi.mocked(useEvents).mockReturnValue({ data: eventsPage(1, "claude"), isLoading: false, error: null, refetch: vi.fn() } as never)
     const { rerender } = render(<RequestsPage provider="claude" requestId="request-42" windowEnd="2026-09-07T12:00:00.123456789Z" />)
-    expect(screen.getByLabelText("Correlation scope")).toHaveTextContent("Same request ID, this 24h and provider. Older data may omit some retries.")
+    expect(screen.getByLabelText("Correlation scope")).toHaveTextContent("Filtered to this request ID within the 24h window.")
 
     const missing = eventsPage(1, "claude")
     missing.events = [{ ...missing.events[0], request_id: undefined }]

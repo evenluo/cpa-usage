@@ -86,13 +86,13 @@ export function accountNotices(row: LiveCapacityRow): LiveCapacityNotice[] {
   const notices: LiveCapacityNotice[] = []
   const signIn = requiresAccountSignIn(row.authRenewal)
   const retry = row.authRenewal?.renewal_state === "retry_scheduled"
-  if (signIn) notices.push({ label: "Sign in required", tone: "red", description: "Re-authenticate on this CPA instance. Quota refresh does not sign in the account." })
+  if (signIn) notices.push({ label: "Sign in required", tone: "red", description: "Re-authenticate on this CPA instance." })
   if (row.unavailable === true) notices.push({ label: "Unavailable", tone: "red" })
   if (row.accountState.kind !== "active" && row.accountState.kind !== "not_reported" && row.accountState.kind !== "unknown" && row.accountState.kind !== "other"
     && !(row.disabled && row.accountState.kind === "disabled") && !((signIn || retry) && row.accountState.kind === "error")) {
     notices.push({ label: `CPA: ${row.accountState.label}`, tone: row.accountState.tone === "green" ? "muted" : row.accountState.tone })
   }
-  if (retry && !signIn) notices.push({ label: "Renewal retry scheduled", tone: "amber", description: "CPA has scheduled another credential renewal attempt; recovery is not guaranteed." })
+  if (retry && !signIn) notices.push({ label: "Renewal retry scheduled", tone: "amber", description: "Credential renewal retry scheduled." })
   return notices
 }
 

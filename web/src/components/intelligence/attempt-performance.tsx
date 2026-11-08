@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import * as Popover from "@radix-ui/react-popover"
 import * as Select from "@radix-ui/react-select"
-import { ArrowUpRight, Info, Check, ChevronDown, ChevronUp } from "lucide-react"
+import { ArrowUpRight, Info, Check, ChevronDown, ChevronRight, ChevronUp } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -151,8 +151,11 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
               metric={metric}
             />
 
-            <details className="rounded-lg border border-border px-3 py-2.5">
-              <summary className="cursor-pointer rounded-sm text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Failed latency · {formatCompact(data.failed_attempts)}</summary>
+            <details className="group/failed rounded-lg border border-border px-3 py-2.5">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-sm text-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                <span>Failed latency · {formatCompact(data.failed_attempts)}</span>
+                <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open/failed:rotate-180" aria-hidden="true" />
+              </summary>
               <div className="mt-4">
                 <div className="mb-3">
                   <AggregateReading metric={data.latency_ms.failed} slowLink={{ provider, windowEnd: data.window_end, result: "failed" }} />
@@ -168,10 +171,13 @@ export function AttemptPerformance({ provider, providers, providersError, onRetr
               </div>
             </details>
 
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer rounded-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Sample rules</summary>
+            <details className="group/rules text-xs text-muted-foreground">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-open/rules:rotate-90" aria-hidden="true" />
+                Sample rules
+              </summary>
               <p className="mt-2">TTFT and TPS use successful streaming attempts. Excluded: {formatCompact(data.successful_execution.non_generating)} not generating, {formatCompact(data.successful_execution.non_streaming)} not streaming, {formatCompact(data.successful_execution.unknown)} unknown.</p>
-              <p className="mt-1">Output TPS counts output after the first token and skips attempts with reasoning tokens, whose hidden reasoning starts before it. E2E TPS divides all output by total latency, including queueing, prefill and reasoning, so it reads lower but also covers attempts with reasoning.</p>
+              <p className="mt-1">Output TPS measures post-TTFT generation and excludes reasoning attempts. E2E TPS divides total output by full latency (including reasoning).</p>
             </details>
           </div>
         )}

@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react"
 import { ACCOUNTING_STATE_LABELS } from "@/features/usage-intelligence/view-model"
 import type { AccountingState, AccountingSummary } from "@/types/api"
 
@@ -8,9 +9,10 @@ export function CanonicalTokenComposition({ accounting }: { accounting: Accounti
     .filter((state) => state !== "valid" && accounting.states[state] > 0)
 
   return (
-    <details className="min-w-0 rounded-lg border border-border bg-card px-4 py-3 text-xs">
-      <summary className="cursor-pointer rounded-sm font-medium text-foreground transition-colors hover:text-terracotta-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-terracotta-300">
-        Token breakdown
+    <details className="group min-w-0 rounded-lg border border-border bg-card px-4 py-3 text-xs">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-sm font-medium text-foreground transition-colors hover:text-terracotta-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring dark:hover:text-terracotta-300 [&::-webkit-details-marker]:hidden">
+        <span>Token breakdown</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" aria-hidden="true" />
       </summary>
       <div className="mt-3 space-y-4 border-t border-border pt-3">
         <p className="text-muted-foreground">
@@ -44,9 +46,8 @@ export function CanonicalTokenComposition({ accounting }: { accounting: Accounti
             </div>
           </>
         ) : (
-          <p className="text-muted-foreground">Token totals unavailable. Historical token details are missing.</p>
+          <p className="text-muted-foreground">Token details unavailable.</p>
         )}
-        <p className="text-muted-foreground">Not a provider invoice.</p>
       </div>
     </details>
   )

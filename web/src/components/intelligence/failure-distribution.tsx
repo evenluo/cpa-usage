@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router"
-import { ArrowUpRight } from "lucide-react"
+import { ArrowUpRight, ChevronRight } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -61,9 +61,12 @@ export function FailureDistribution({ provider, data, isLoading, error, onRetry 
                   View failures <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                 </Link>
               </div>
-              <details>
-                <summary className="cursor-pointer rounded-sm text-xs font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">Failure breakdown</summary>
-                                <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+              <details className="group">
+                <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm text-xs font-medium focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-90" aria-hidden="true" />
+                  Failure breakdown
+                </summary>
+                <div className="mt-3 grid gap-x-6 gap-y-5 sm:grid-cols-2">
                   {sections.map((section) => (
                     <FailureBreakdownSection
                       key={section.field}
