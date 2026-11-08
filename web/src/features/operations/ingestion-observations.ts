@@ -8,18 +8,18 @@ export interface IngestionObservations {
 }
 
 function countLabel(value: number | undefined): string {
-  return value === undefined ? "Not observed" : value.toLocaleString()
+  return value === undefined ? "—" : value.toLocaleString()
 }
 
 function processedVolumeDetail(metrics: MetricsPayload): string {
   if (metrics.redis_events_processed_total === undefined) {
-    return "No volume yet."
+    return "No volume yet"
   }
   const events = metrics.redis_events_processed_total.toLocaleString()
   if (metrics.redis_events_processed_batches_total === undefined) {
-    return `${events} events.`
+    return `${events} events`
   }
-  return `${events} events in ${metrics.redis_events_processed_batches_total.toLocaleString()} batches.`
+  return `${events} events in ${metrics.redis_events_processed_batches_total.toLocaleString()} batches`
 }
 
 export function deriveIngestionObservations(metrics: MetricsPayload): IngestionObservations {
@@ -31,24 +31,24 @@ export function deriveIngestionObservations(metrics: MetricsPayload): IngestionO
       ? {
           label: countLabel(metrics.redis_inbox_pending),
           detail: dbUnavailable
-            ? "Retryable rows in the inbox. Other database-backed observations are unavailable."
-            : "Retryable rows in the inbox.",
+            ? "Pending in inbox · DB unavailable"
+            : "Pending in inbox",
         }
       : dbUnavailable
-        ? { label: "Unavailable", detail: "Couldn't read the inbox." }
-        : { label: "Not observed", detail: "No inbox reading." },
+        ? { label: "Unavailable", detail: "Couldn't read inbox" }
+        : { label: "—", detail: "No inbox reading" },
     lastProcessed: metrics.redis_events_last_processed_at
-      ? { label: metrics.redis_events_last_processed_at, observedAt: metrics.redis_events_last_processed_at, detail: "Last nonempty batch this process handled." }
-      : { label: "Not observed", detail: "No batch yet." },
+      ? { label: metrics.redis_events_last_processed_at, observedAt: metrics.redis_events_last_processed_at, detail: "Last processed batch" }
+      : { label: "Never", detail: "No batches yet" },
     processingRate: rate === undefined
-      ? { label: "Rate unavailable", detail: `Need two scrapes to compute a rate. ${processedVolumeDetail(metrics)}` }
+      ? { label: "—", detail: `${processedVolumeDetail(metrics)}` }
       : { label: `${rate.toLocaleString(undefined, { maximumFractionDigits: 1 })} events/min`, detail: `${processedVolumeDetail(metrics)}` },
     runtime: metrics.poller_running !== true
       ? metrics.poller_running === false
-        ? { label: "Runner stopped", detail: "Poller is stopped." }
-        : { label: "Runtime unavailable", detail: "No local poller runtime state was observed." }
+        ? { label: "Stopped", detail: "Poller stopped" }
+        : { label: "Unavailable", detail: "State unknown" }
       : metrics.poller_sync_running === true
-        ? { label: "Processing active", detail: "Pulling or syncing." }
-        : { label: "Runner idle", detail: "Idle." },
+        ? { label: "Active", detail: "Syncing" }
+        : { label: "Idle", detail: "Waiting for next poll" },
   }
 }

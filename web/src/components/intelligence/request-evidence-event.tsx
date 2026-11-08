@@ -49,33 +49,37 @@ export function RequestEvidenceEvent({ event, label, syncState, detail = false }
 function RequestEvidenceDetail({ event }: { event: UsageEvent }) {
   const facts = event.attempt_facts
   const accounting = facts.accounting
-  const fields = [
-    ["Alias", event.model_alias || "-"],
-    ["Model", event.model || "-"],
-    ["Endpoint", event.endpoint || "-"],
-    ["Request ID", event.request_id || "-"],
-    ["Status code", formatOptionalNumber(event.status_code)],
-    ["Executor", event.executor_type || "-"],
-    ["Reasoning effort", event.reasoning_effort || "-"],
-    ["Requested service tier", facts.request_service_tier ?? "-"],
-    ["Response service tier", facts.response_service_tier ?? "-"],
-    ["Generate", formatOptionalBoolean(facts.generate)],
-    ["Stream", formatOptionalBoolean(facts.stream)],
-    ["TTFT", event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms)],
-    ["E2E TPS", formatOutputTPS(facts.end_to_end_output_tps)],
-    ["Token data status", ACCOUNTING_STATE_LABELS[accounting.state]],
-    ["Reported quality", accounting.quality ?? "-"],
-    ...getCanonicalTokenFields(accounting).map(([label, value]) => [label, formatTokenCount(value)]),
+  const fields: Array<{ label: string; value: string; valueClassName?: string }> = [
+    { label: "Alias", value: event.model_alias || "-", valueClassName: "font-mono text-[11px]" },
+    { label: "Model", value: event.model || "-", valueClassName: "font-mono text-[11px]" },
+    { label: "Endpoint", value: event.endpoint || "-", valueClassName: "font-mono text-[11px]" },
+    { label: "Request ID", value: event.request_id || "-", valueClassName: "font-mono text-[11px]" },
+    { label: "Status code", value: formatOptionalNumber(event.status_code), valueClassName: "text-xs tabular-nums" },
+    { label: "Executor", value: event.executor_type || "-" },
+    { label: "Reasoning effort", value: event.reasoning_effort || "-" },
+    { label: "Requested service tier", value: facts.request_service_tier ?? "-" },
+    { label: "Response service tier", value: facts.response_service_tier ?? "-" },
+    { label: "Generate", value: formatOptionalBoolean(facts.generate) },
+    { label: "Stream", value: formatOptionalBoolean(facts.stream) },
+    { label: "TTFT", value: event.ttft_ms === null ? "-" : formatLatency(event.ttft_ms), valueClassName: "text-xs tabular-nums" },
+    { label: "E2E TPS", value: formatOutputTPS(facts.end_to_end_output_tps), valueClassName: "text-xs tabular-nums" },
+    { label: "Token data status", value: ACCOUNTING_STATE_LABELS[accounting.state] },
+    { label: "Reported quality", value: accounting.quality ?? "-" },
+    ...getCanonicalTokenFields(accounting).map(([label, value]) => ({
+      label,
+      value: formatTokenCount(value),
+      valueClassName: "text-xs tabular-nums",
+    })),
   ]
 
   return (
     <div className="mt-4 border-t border-terracotta-200 pt-3 dark:border-terracotta-900/60">
-      <p className="mb-3 text-xs text-muted-foreground">Token counts come from the upstream provider. Missing values are shown as "-". Output TPS requires complete token data for streaming requests without reasoning tokens. E2E TPS divides all output by total latency.</p>
+      <p className="mb-3 text-xs text-muted-foreground">Upstream token counts. Output TPS excludes non-streaming and reasoning attempts; E2E TPS divides output by total latency.</p>
       <dl className="grid min-w-0 gap-x-4 gap-y-3 sm:grid-cols-2">
-        {fields.map(([label, value]) => (
+        {fields.map(({ label, value, valueClassName }) => (
           <div key={label} className="min-w-0">
             <dt className="text-[10px] text-muted-foreground">{label}</dt>
-            <dd className="break-all text-xs font-medium">{value}</dd>
+            <dd className={`break-all font-medium ${valueClassName ?? "text-xs"}`}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -119,7 +123,7 @@ function RequestMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <p className="truncate text-[10px] text-muted-foreground">{label}</p>
-      <p className="whitespace-nowrap text-xs font-medium">{value}</p>
+      <p className="whitespace-nowrap text-xs font-medium tabular-nums">{value}</p>
     </div>
   )
 }

@@ -45,19 +45,19 @@ describe("Operations ingestion observations", () => {
       }}
     />)
 
-    expect(screen.getByText("Ingestion observations")).toBeInTheDocument()
+    expect(screen.getByText("Ingestion")).toBeInTheDocument()
     expect(screen.getByText("0 events/min")).toBeInTheDocument()
     expect(screen.getByText(/0 events in 0 batches/i)).toBeInTheDocument()
-    expect(screen.getByText("Runner idle")).toBeInTheDocument()
+    expect(screen.getByText("Idle")).toBeInTheDocument()
     expect(screen.getByText(formatDate("2026-09-07T01:02:03Z"))).toBeInTheDocument()
-    expect(screen.getByText(/not CPA queue health/i)).toBeInTheDocument()
+    expect(screen.getByText("Local process metrics")).toBeInTheDocument()
     expect(screen.queryByText(/last manual sync/i)).not.toBeInTheDocument()
   })
 
   it("makes a failed metrics request explicit", () => {
     render(<IngestionObservations isLoading={false} isError metrics={undefined} />)
 
-    expect(screen.getByText("Ingestion observations unavailable")).toBeInTheDocument()
+    expect(screen.getByText("Ingestion metrics unavailable")).toBeInTheDocument()
     expect(screen.getByText("Couldn't load metrics.")).toBeInTheDocument()
   })
 })

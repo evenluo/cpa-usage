@@ -24,7 +24,7 @@ func buildAnalyticsInsights(
 			Type:        "top_cost_key",
 			Severity:    "green",
 			Title:       "Top Cost Key",
-			Detail:      "Highest configured Cost contributor in this range.",
+			Detail:      "Highest cost contributor in this range.",
 			Subject:     analyticsInsightKeyLabel(topCost),
 			MetricLabel: "Cost",
 			MetricValue: topCost.TotalCost,
@@ -82,7 +82,7 @@ func metricCompletenessInsight(summary dto.AnalyticsSummary, models []dto.Analyt
 		Type:        "metric_completeness",
 		Severity:    "green",
 		Title:       "Metric Completeness",
-		Detail:      "Cost and cache efficiency have the supporting data needed for complete interpretation.",
+		Detail:      "Cost and cache metrics are complete.",
 		Subject:     "Complete",
 		MetricLabel: "Metric Completeness",
 		MetricValue: 0,
@@ -140,7 +140,7 @@ func cacheEfficiencyInsight(summary dto.AnalyticsSummary) dto.AnalyticsInsight {
 		Type:        "cache_efficiency",
 		Severity:    "green",
 		Title:       "Cache Read Share",
-		Detail:      "Prompt cache reads are measured against prompt input tokens, separately from reasoning tokens.",
+		Detail:      "Share of prompt input tokens served from cache.",
 		Subject:     "Prompt input cache",
 		MetricLabel: "Cache Read Share",
 		MetricValue: summary.CacheReadShare,
@@ -152,16 +152,16 @@ func cacheEfficiencyInsight(summary dto.AnalyticsSummary) dto.AnalyticsInsight {
 		insight.Subject = subject
 		insight.MetricLabel = "Cache state"
 		if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStateNoCacheData {
-			insight.Detail = "Cached-token evidence is unavailable for this range; reasoning tokens are not counted as cache reads."
+			insight.Detail = "No cache-read data reported for this range."
 		} else {
-			insight.Detail = "Prompt input is zero for this range, so Cache Read Share has no denominator."
+			insight.Detail = "No prompt input tokens in this range."
 		}
 		return insight
 	}
 	if summary.CacheReadShareState == dto.AnalyticsCacheReadShareStatePartial {
 		insight.Severity = "amber"
 		insight.Subject = fmt.Sprintf("%.1f%% prompt-input coverage", summary.CacheReadCoverage)
-		insight.Detail = "Cache Read Share is calculated only from prompt input with explicit provider cache-read facts."
+		insight.Detail = "Calculated from attempts that reported cache metrics."
 	}
 	return insight
 }

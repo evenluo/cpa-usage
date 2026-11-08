@@ -232,14 +232,14 @@ describe("Usage Intelligence view model", () => {
     expect(viewModel.modelMixMeasure).toBe("tokens")
     expect(viewModel.modelMixCostStateLabel).toBe("Incomplete · by tokens")
     expect(viewModel.fixedHeatmap?.rows[0].date).toBe("2026-05-11")
-    expect(viewModel.accountingCaption).toBe("100.0% of attempts have complete token data")
+    expect(viewModel.accountingCaption).toBe("100.0% complete")
   })
 
   it("derives the Cache KPI caption from the cache read share state", () => {
     expect(getCacheReadShareCaption(undefined, undefined)).toBeUndefined()
-    expect(getCacheReadShareCaption("available", 100)).toBe("Exact · covers 100.0% of available input tokens")
+    expect(getCacheReadShareCaption("available", 100)).toBe("Exact · 100.0% input coverage")
     expect(getCacheReadShareCaption("available", undefined)).toBe("Exact")
-    expect(getCacheReadShareCaption("partial", 82.4)).toBe("Partial · covers 82.4% of available input tokens")
+    expect(getCacheReadShareCaption("partial", 82.4)).toBe("Partial · 82.4% input coverage")
     expect(getCacheReadShareCaption("no_cache_data", 0)).toBe("No exact cache data")
     expect(getCacheReadShareCaption("no_prompt_input", 0)).toBe("No input token data")
     expect(getCacheReadShareValue(24.6, "partial")).toBe(24.6)
